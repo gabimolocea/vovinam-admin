@@ -6,8 +6,10 @@ import AxiosInstance from "./Axios";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DeleteDialog from "./DeleteDialog"; // Import the global DeleteDialog component
+import { useAuth } from "../contexts/AuthContext";
 
 const Athletes = () => {
+  const { isAdmin } = useAuth();
   const [myData, setMyData] = useState([]);
   const [clubs, setClubs] = useState({});
   const [grades, setGrades] = useState({});
@@ -119,29 +121,33 @@ const Athletes = () => {
             enableRowActions
             positionActionsColumn="last"
             renderTopToolbarCustomActions={() => (
-              <Button
-                variant="contained"
-                size="medium"
-                color="primary"
-                onClick={() => navigate("/create-athlete")} // Navigate to the Create Athlete page
-              >
-                Create Athlete
-              </Button>
+              isAdmin ? (
+                <Button
+                  variant="contained"
+                  size="medium"
+                  color="primary"
+                  onClick={() => navigate("/create-athlete")} // Navigate to the Create Athlete page
+                >
+                  Create Athlete
+                </Button>
+              ) : null
             )}
             renderRowActions={({ row }) => (
-              <Box sx={{ display: "flex", flexWrap: "nowrap", gap: "0rem" }}>
-                <IconButton component={Link} to={`edit/${row.original.id}`}>
-                  <EditIcon />
-                </IconButton>
-                <IconButton
-                  onClick={() => {
-                    setSelectedAthlete(row.original); // Set the selected athlete
-                    setOpenDialog(true); // Open the dialog
-                  }}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </Box>
+              isAdmin ? (
+                <Box sx={{ display: "flex", flexWrap: "nowrap", gap: "0rem" }}>
+                  <IconButton component={Link} to={`edit/${row.original.id}`}>
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    onClick={() => {
+                      setSelectedAthlete(row.original); // Set the selected athlete
+                      setOpenDialog(true); // Open the dialog
+                    }}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Box>
+              ) : null
             )}
           />
         ) : (

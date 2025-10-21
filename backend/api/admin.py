@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 from django.forms import ModelForm
 from django.core.exceptions import ValidationError
@@ -10,6 +10,9 @@ from .models import (
     City,
     Club,
     Athlete,
+    AthleteActivity,
+    CategoryScoreActivity,
+    SupporterAthleteRelation,
     MedicalVisa,
     TrainingSeminar,
     Grade,
@@ -28,6 +31,7 @@ from .models import (
     CategoryTeamScore,
     TeamMember,
     Group,
+    FrontendTheme,
 )
 
 
@@ -374,92 +378,113 @@ class ClubAdmin(admin.ModelAdmin):
 
     readonly_fields = ('created', 'modified')  # Mark non-editable fields as read-only
 
-# Register Athlete model
-@admin.register(Athlete)
-class AthleteAdmin(admin.ModelAdmin):
-    list_display = ('first_name', 'last_name', 'current_grade', 'club', 'city', 'date_of_birth', 'is_coach', 'is_referee', 'view_team_results')
-    search_fields = ('first_name', 'last_name', 'current_grade__name', 'club__name', 'city__name')
-    list_filter = ('current_grade', 'club', 'city', 'is_coach', 'is_referee')
 
-    # Organize fields in the admin form
+@admin.register(FrontendTheme)
+class FrontendThemeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'is_active', 'primary_color_preview', 'secondary_color_preview', 'modified')
+    list_filter = ('is_active', 'created', 'modified')
+    search_fields = ('name',)
+    readonly_fields = ('created', 'modified', 'preview_theme_tokens')
+    actions = ['activate_theme', 'duplicate_theme']
+    
     fieldsets = (
-        ('PERSONAL INFORMATION', {
-            'fields': ('first_name', 'last_name', 'date_of_birth', 'profile_image', 'city', 'address', 'mobile_number')
+        ('Basic Settings', {
+            'fields': ('name', 'is_active'),
+            'description': 'Basic theme identification and activation settings.'
         }),
-        ('CLUB INFORMATION', {
-            'fields': ('club', 'registered_date', 'expiration_date')
+        ('Color Palette', {
+            'fields': (
+                ('primary_color', 'primary_light', 'primary_dark'),
+                ('secondary_color',),
+                ('background_default', 'background_paper'),
+                ('text_primary', 'text_secondary'),
+            ),
+            'description': 'Main color scheme for the application.'
         }),
-        ('FEDERATION ROLE AND TITLE', {
-            'fields': ('federation_role', 'title', 'current_grade')
+        ('Typography', {
+            'fields': (
+                'font_family',
+                ('font_size_base',),
+                ('font_weight_normal', 'font_weight_medium', 'font_weight_bold'),
+            ),
+            'description': 'Font and text styling settings.'
         }),
-        ('OTHER INFORMATION', {
-            'fields': ('is_coach', 'is_referee')
+        ('Layout & Spacing', {
+            'fields': (
+                ('border_radius', 'spacing_unit'),
+            ),
+            'description': 'Global layout and spacing configuration.'
+        }),
+        ('Component Styles', {
+            'fields': (
+                ('button_border_radius', 'card_elevation'),
+                'table_row_hover',
+            ),
+            'description': 'Specific component styling overrides.'
+        }),
+        ('Advanced Settings', {
+            'fields': ('custom_tokens', 'preview_theme_tokens'),
+            'classes': ('collapse',),
+            'description': 'Advanced JSON configuration and theme preview.'
+        }),
+        ('Meta Information', {
+            'fields': ('created', 'modified'),
+            'classes': ('collapse',),
         }),
     )
-
-    readonly_fields = ('current_grade',)
-
-    def save_model(self, request, obj, form, change):
-        """
-        Override save_model to update current_grade after saving the athlete.
-        """
-        super().save_model(request, obj, form, change)
-        obj.update_current_grade()  # Automatically update current_grade
-
-    def view_team_results(self, obj):
-        """
-        Add a link to view team results for the athlete.
-        """
-        return format_html('<a href="{}">View Team Results</a>', f'/admin/api/athlete/{obj.id}/')
-    view_team_results.short_description = "Team Results"
-
-    def get_urls(self):
-        """
-        Add a custom URL for the team results view.
-        """
-        urls = super().get_urls()
-        custom_urls = [
-            path('<int:athlete_id>/team-results/', self.admin_site.admin_view(self.team_results_view), name='team-results'),
-        ]
-        return custom_urls + urls
-
-    def team_results_view(self, request, athlete_id):
-        """
-        Custom view to display team results for the athlete.
-        """
-        athlete = Athlete.objects.get(id=athlete_id)
-        teams = athlete.teams.all()
-        team_results = []
-        for team in teams:
-            first_place_categories = team.first_place_team_categories.all()
-            second_place_categories = team.second_place_team_categories.all()
-            third_place_categories = team.third_place_team_categories.all()
-
-            if first_place_categories.exists():
-                team_results.append(f"{team.name}: 1st Place")
-            elif second_place_categories.exists():
-                team_results.append(f"{team.name}: 2nd Place")
-            elif third_place_categories.exists():
-                team_results.append(f"{team.name}: 3rd Place")
-            else:
-                team_results.append(f"{team.name}: No Placement")
-
-        context = {
-            'athlete': athlete,
-            'team_results': team_results,
+    
+    def primary_color_preview(self, obj):
+        return format_html(
+            '<div style="width: 20px; height: 20px; background-color: {}; border: 1px solid #ccc; display: inline-block;"></div> {}',
+            obj.primary_color,
+            obj.primary_color
+        )
+    primary_color_preview.short_description = 'Primary Color'
+    
+    def secondary_color_preview(self, obj):
+        return format_html(
+            '<div style="width: 20px; height: 20px; background-color: {}; border: 1px solid #ccc; display: inline-block;"></div> {}',
+            obj.secondary_color,
+            obj.secondary_color
+        )
+    secondary_color_preview.short_description = 'Secondary Color'
+    
+    def preview_theme_tokens(self, obj):
+        import json
+        tokens_json = json.dumps(obj.tokens, indent=2)
+        return format_html('<pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-size: 12px;">{}</pre>', tokens_json)
+    preview_theme_tokens.short_description = 'Generated Theme Tokens'
+    
+    def activate_theme(self, request, queryset):
+        if queryset.count() > 1:
+            self.message_user(request, "Please select only one theme to activate.", level=messages.WARNING)
+            return
+        
+        theme = queryset.first()
+        # Deactivate all other themes
+        FrontendTheme.objects.all().update(is_active=False)
+        # Activate selected theme
+        theme.is_active = True
+        theme.save()
+        self.message_user(request, f"Theme '{theme.name}' has been activated.", level=messages.SUCCESS)
+    activate_theme.short_description = "Activate selected theme"
+    
+    def duplicate_theme(self, request, queryset):
+        for theme in queryset:
+            theme.pk = None
+            theme.name = f"{theme.name} (Copy)"
+            theme.is_active = False
+            theme.save()
+        self.message_user(request, f"Successfully duplicated {queryset.count()} theme(s).", level=messages.SUCCESS)
+    duplicate_theme.short_description = "Duplicate selected themes"
+    
+    class Media:
+        css = {
+            'all': ('admin/css/theme_admin.css',)
         }
-        return render(request, 'admin/team_results.html', context)
+        js = ('admin/js/theme_admin.js',)
 
-    # Add the new inlines for solo and fight results
-    inlines = [
-        GradeHistoryInline,
-        MedicalVisaInline,
-        AnnualVisaInline,
-        TrainingSeminarInline,
-        AthleteSoloResultsInline,  # Inline for solo results
-        AthleteFightResultsInline,  # Inline for fight results
-        AthleteTeamResultsInline,  # Inline for team results
-    ]
+# Original Athlete admin removed - using consolidated AthleteAdmin below
 
 # Register MedicalVisa model
 @admin.register(MedicalVisa)
@@ -497,7 +522,7 @@ class TrainingSeminarAdmin(admin.ModelAdmin):
     list_display = ('name', 'start_date', 'end_date', 'place')  # Display seminar details
     search_fields = ('name', 'place')
     list_filter = ('start_date', 'end_date', 'place')
-    filter_horizontal = ('athletes',)  # Allow selecting multiple athletes in the admin panel
+    # Note: athletes field now uses TrainingSeminarParticipation through model
 
 # Register Grade model with the new grade_type field
 @admin.register(Grade)
@@ -794,3 +819,392 @@ class GroupAdmin(admin.ModelAdmin):
     list_display = ('name', 'competition')  # Display name and competition
     search_fields = ('name', 'competition__name')  # Enable search by name and competition
     list_filter = ('competition',)  # Add a filter for competition
+
+
+# User Admin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from .models import User
+
+@admin.register(User)
+class UserAdmin(BaseUserAdmin):
+    """Custom User admin with role management."""
+    list_display = ('email', 'first_name', 'last_name', 'role', 'is_active', 'date_joined')
+    list_filter = ('role', 'is_active', 'is_staff', 'is_superuser', 'date_joined')
+    search_fields = ('email', 'first_name', 'last_name', 'username')
+    ordering = ('-date_joined',)
+    
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Personal info', {'fields': ('first_name', 'last_name', 'email')}),
+        ('Role & Permissions', {'fields': ('role', 'is_active', 'is_staff', 'is_superuser')}),
+        ('Groups & Permissions', {'fields': ('groups', 'user_permissions')}),
+        ('Important dates', {'fields': ('last_login', 'date_joined')}),
+    )
+    
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('username', 'email', 'first_name', 'last_name', 'password1', 'password2', 'role'),
+        }),
+    )
+
+
+# Athlete Profile Management Admin
+class AthleteActivityInline(admin.TabularInline):
+    model = AthleteActivity
+    extra = 0
+    readonly_fields = ('action', 'performed_by', 'timestamp', 'notes')
+    ordering = ('-timestamp',)
+    verbose_name = "Activity Log"
+    verbose_name_plural = "Activity Logs"
+    
+    def has_add_permission(self, request, obj=None):
+        return False  # Prevent manual addition of activities
+
+
+@admin.register(Athlete)
+class AthleteAdmin(admin.ModelAdmin):
+    list_display = [
+        'get_full_name', 'user_email', 'status', 'current_grade', 'club', 'city', 
+        'date_of_birth', 'is_coach', 'is_referee', 'submitted_date', 'get_action_buttons'
+    ]
+    list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
+    search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
+    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade']
+    ordering = ['-submitted_date']
+    inlines = [
+        AthleteActivityInline,
+        GradeHistoryInline,
+        MedicalVisaInline,
+        AnnualVisaInline,
+        TrainingSeminarInline,
+        AthleteSoloResultsInline,
+        AthleteFightResultsInline,
+        AthleteTeamResultsInline,
+    ]
+    
+    fieldsets = (
+        ('Personal Information', {
+            'fields': ('user', 'first_name', 'last_name', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
+        }),
+        ('Sports & Club Information', {
+            'fields': ('club', 'city', 'current_grade', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_referee')
+        }),
+        ('Emergency Contact', {
+            'fields': ('emergency_contact_name', 'emergency_contact_phone')
+        }),
+        ('Experience & Documents', {
+            'fields': ('previous_experience', 'medical_certificate')
+        }),
+        ('Approval Workflow', {
+            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes')
+        }),
+    )
+    
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+    get_full_name.short_description = 'Name'
+    get_full_name.admin_order_field = 'first_name'
+    
+    def user_email(self, obj):
+        return obj.user.email if obj.user else 'No user'
+    user_email.short_description = 'Email'
+    user_email.admin_order_field = 'user__email'
+    
+    def get_action_buttons(self, obj):
+        if obj.status == 'pending':
+            return format_html(
+                '<a class="button" href="{}approve/">Approve</a> '
+                '<a class="button" href="{}reject/">Reject</a> '
+                '<a class="button" href="{}request_revision/">Request Revision</a>',
+                obj.pk, obj.pk, obj.pk
+            )
+        elif obj.status == 'approved':
+            return format_html('<span style="color: green;">✓ Approved</span>')
+        elif obj.status == 'rejected':
+            return format_html('<span style="color: red;">✗ Rejected</span>')
+        elif obj.status == 'revision_required':
+            return format_html('<span style="color: orange;">⚠ Revision Required</span>')
+        return ''
+    get_action_buttons.short_description = 'Actions'
+    
+    def save_model(self, request, obj, form, change):
+        """
+        Override save_model to update current_grade after saving the athlete.
+        """
+        super().save_model(request, obj, form, change)
+        obj.update_current_grade()  # Automatically update current_grade
+    
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('<int:pk>/approve/', self.admin_site.admin_view(self.approve_profile), name='api_athlete_approve'),
+            path('<int:pk>/reject/', self.admin_site.admin_view(self.reject_profile), name='api_athlete_reject'),
+            path('<int:pk>/request_revision/', self.admin_site.admin_view(self.request_revision), name='api_athlete_request_revision'),
+        ]
+        return custom_urls + urls
+    
+    def approve_profile(self, request, pk):
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        from django.utils import timezone
+        
+        athlete = get_object_or_404(Athlete, pk=pk)
+        
+        if athlete.status != 'pending':
+            messages.error(request, f'Athlete profile is not in pending status (current: {athlete.status})')
+            return redirect('admin:api_athlete_changelist')
+        
+        try:
+            # Use the approve method from the consolidated model
+            athlete.approve(request.user)
+            
+            messages.success(request, f'Successfully approved athlete profile for {athlete.first_name} {athlete.last_name}')
+            
+        except Exception as e:
+            messages.error(request, f'Error approving athlete profile: {str(e)}')
+        
+        return redirect('admin:api_athlete_changelist')
+    
+    def reject_profile(self, request, pk):
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        from django.utils import timezone
+        
+        athlete = get_object_or_404(Athlete, pk=pk)
+        
+        if athlete.status != 'pending':
+            messages.error(request, f'Athlete profile is not in pending status (current: {athlete.status})')
+            return redirect('admin:api_athlete_changelist')
+        
+        if request.method == 'POST':
+            rejection_reason = request.POST.get('admin_notes', '')
+            
+            # Use the reject method from the consolidated model
+            athlete.reject(request.user, rejection_reason)
+            
+            messages.success(request, f'Successfully rejected athlete profile for {athlete.first_name} {athlete.last_name}')
+            return redirect('admin:api_athlete_changelist')
+        
+        # Show rejection form
+        context = {
+            'profile': athlete,
+            'title': f'Reject Profile: {athlete.first_name} {athlete.last_name}',
+        }
+        return render(request, 'admin/reject_profile.html', context)
+    
+    def request_revision(self, request, pk):
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        from django.utils import timezone
+        
+        athlete = get_object_or_404(Athlete, pk=pk)
+        
+        if athlete.status != 'pending':
+            messages.error(request, f'Athlete profile is not in pending status (current: {athlete.status})')
+            return redirect('admin:api_athlete_changelist')
+        
+        if request.method == 'POST':
+            revision_notes = request.POST.get('admin_notes', '')
+            
+            # Use the request_revision method from the consolidated model
+            athlete.request_revision(request.user, revision_notes)
+            
+            messages.success(request, f'Successfully requested revision for {athlete.first_name} {athlete.last_name}')
+            return redirect('admin:api_athlete_changelist')
+        
+        # Show revision request form
+        context = {
+            'profile': athlete,
+            'title': f'Request Revision: {athlete.first_name} {athlete.last_name}',
+        }
+        return render(request, 'admin/request_revision.html', context)
+
+
+@admin.register(AthleteActivity)
+class AthleteActivityAdmin(admin.ModelAdmin):
+    list_display = ['athlete', 'action', 'performed_by', 'timestamp']
+    list_filter = ['action', 'timestamp', 'performed_by']
+    search_fields = ['athlete__first_name', 'athlete__last_name', 'performed_by__username']
+    readonly_fields = ['athlete', 'action', 'performed_by', 'timestamp', 'notes']
+    ordering = ['-timestamp']
+    
+    def has_add_permission(self, request):
+        return False  # Prevent manual addition
+    
+    def has_change_permission(self, request, obj=None):
+        return False  # Prevent editing
+
+
+class CategoryScoreActivityInline(admin.TabularInline):
+    model = CategoryScoreActivity
+    extra = 0
+    readonly_fields = ['action', 'performed_by', 'notes', 'timestamp']
+    can_delete = False
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+# Enhanced CategoryAthleteScore admin with approval workflow
+class CategoryAthleteScoreAdmin(admin.ModelAdmin):
+    list_display = [
+        'get_athlete_name', 'get_competition_name', 'get_category_name', 'placement_claimed', 
+        'submitted_by_athlete', 'status', 'submitted_date', 'get_action_buttons'
+    ]
+    list_filter = ['status', 'submitted_by_athlete', 'submitted_date', 'category__competition__start_date']
+    search_fields = ['athlete__first_name', 'athlete__last_name', 'category__name', 'category__competition__name']
+    readonly_fields = ['submitted_date', 'reviewed_date']
+    ordering = ['-submitted_date']
+    inlines = [CategoryScoreActivityInline]
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('athlete', 'category', 'referee', 'score', 'submitted_by_athlete')
+        }),
+        ('Athlete Submission Details', {
+            'fields': ('placement_claimed', 'notes', 'certificate_image', 'result_document'),
+            'classes': ('collapse',)
+        }),
+        ('Approval Status', {
+            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes')
+        }),
+    )
+    
+    def get_queryset(self, request):
+        # Show athlete-submitted results first
+        return super().get_queryset(request).select_related('athlete', 'category__competition', 'reviewed_by')
+    
+    def get_athlete_name(self, obj):
+        return f"{obj.athlete.first_name} {obj.athlete.last_name}"
+    get_athlete_name.short_description = 'Athlete'
+    get_athlete_name.admin_order_field = 'athlete__first_name'
+    
+    def get_competition_name(self, obj):
+        return obj.category.competition.name
+    get_competition_name.short_description = 'Competition'
+    get_competition_name.admin_order_field = 'category__competition__name'
+    
+    def get_category_name(self, obj):
+        return obj.category.name
+    get_category_name.short_description = 'Category'
+    get_category_name.admin_order_field = 'category__name'
+    
+    def get_action_buttons(self, obj):
+        if obj.submitted_by_athlete and obj.status == 'pending':
+            return format_html(
+                '<a class="button" href="{}approve/">Approve</a> '
+                '<a class="button" href="{}reject/">Reject</a> '
+                '<a class="button" href="{}request_revision/">Request Revision</a>',
+                obj.pk, obj.pk, obj.pk
+            )
+        elif obj.status == 'approved':
+            return format_html('<span style="color: green;">✓ Approved</span>')
+        elif obj.status == 'rejected':
+            return format_html('<span style="color: red;">✗ Rejected</span>')
+        elif obj.status == 'revision_required':
+            return format_html('<span style="color: orange;">⚠ Revision Required</span>')
+        elif not obj.submitted_by_athlete:
+            return format_html('<span style="color: blue;">Referee Entry</span>')
+        return ''
+    get_action_buttons.short_description = 'Actions'
+    
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('<int:pk>/approve/', self.admin_site.admin_view(self.approve_score), name='api_categoryathletescore_approve'),
+            path('<int:pk>/reject/', self.admin_site.admin_view(self.reject_score), name='api_categoryathletescore_reject'),
+            path('<int:pk>/request_revision/', self.admin_site.admin_view(self.request_revision), name='api_categoryathletescore_request_revision'),
+        ]
+        return custom_urls + urls
+    
+    def approve_score(self, request, pk):
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        
+        score = get_object_or_404(CategoryAthleteScore, pk=pk)
+        
+        if score.status != 'pending':
+            messages.error(request, f'Score is not in pending status (current: {score.status})')
+            return redirect('admin:api_categoryathletescore_changelist')
+        
+        try:
+            score.approve(request.user)
+            messages.success(request, f'Successfully approved result for {score.athlete}')
+        except Exception as e:
+            messages.error(request, f'Error approving result: {str(e)}')
+        
+        return redirect('admin:api_categoryathletescore_changelist')
+    
+    def reject_score(self, request, pk):
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        
+        score = get_object_or_404(CategoryAthleteScore, pk=pk)
+        
+        if score.status != 'pending':
+            messages.error(request, f'Score is not in pending status (current: {score.status})')
+            return redirect('admin:api_categoryathletescore_changelist')
+        
+        if request.method == 'POST':
+            rejection_reason = request.POST.get('admin_notes', '')
+            score.reject(request.user, rejection_reason)
+            messages.success(request, f'Successfully rejected result for {score.athlete}')
+            return redirect('admin:api_categoryathletescore_changelist')
+        
+        # Show rejection form
+        context = {
+            'score': score,
+            'title': f'Reject Result: {score.category.name} - {score.athlete}',
+        }
+        return render(request, 'admin/reject_score.html', context)
+    
+    def request_revision(self, request, pk):
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        
+        score = get_object_or_404(CategoryAthleteScore, pk=pk)
+        
+        if score.status != 'pending':
+            messages.error(request, f'Score is not in pending status (current: {score.status})')
+            return redirect('admin:api_categoryathletescore_changelist')
+        
+        if request.method == 'POST':
+            revision_notes = request.POST.get('admin_notes', '')
+            score.request_revision(request.user, revision_notes)
+            messages.success(request, f'Successfully requested revision for {score.athlete}')
+            return redirect('admin:api_categoryathletescore_changelist')
+        
+        # Show revision request form
+        context = {
+            'score': score,
+            'title': f'Request Revision: {score.category.name} - {score.athlete}',
+        }
+        return render(request, 'admin/request_score_revision.html', context)
+
+
+@admin.register(CategoryScoreActivity)
+class CategoryScoreActivityAdmin(admin.ModelAdmin):
+    list_display = ['score', 'action', 'performed_by', 'timestamp']
+    list_filter = ['action', 'timestamp', 'performed_by']
+    search_fields = ['score__category__name', 'score__athlete__first_name', 'score__athlete__last_name', 'performed_by__username']
+    readonly_fields = ['score', 'action', 'performed_by', 'timestamp', 'notes']
+    ordering = ['-timestamp']
+    
+    def has_add_permission(self, request):
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+# Register the enhanced CategoryAthleteScore admin
+admin.site.register(CategoryAthleteScore, CategoryAthleteScoreAdmin)
+
+
+@admin.register(SupporterAthleteRelation)
+class SupporterAthleteRelationAdmin(admin.ModelAdmin):
+    list_display = ['supporter', 'athlete', 'relationship', 'can_edit', 'can_register_competitions', 'created']
+    list_filter = ['relationship', 'can_edit', 'can_register_competitions', 'created']
+    search_fields = ['supporter__username', 'supporter__email', 'athlete__first_name', 'athlete__last_name']
+    ordering = ['-created']

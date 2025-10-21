@@ -9,8 +9,6 @@ import {
   Divider,
   Avatar,
   IconButton,
-  Tabs,
-  Tab,
 } from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
 import AxiosInstance from "./Axios";
@@ -27,7 +25,7 @@ const ViewClub = () => {
   const [clubAthletes, setClubAthletes] = useState([]); // State for athletes assigned to the club
   const [errorMessage, setErrorMessage] = useState(""); // State for error message
   const [loading, setLoading] = useState(true); // State for loading indicator
-  const [activeTab, setActiveTab] = useState(0); // State for active tab
+  // We no longer use in-page tabs; show sections stacked and rely on side navigation
   const [clubs, setClubs] = useState([]); // State for all clubs
   const [currentClubIndex, setCurrentClubIndex] = useState(-1); // Index of the current club
 
@@ -126,9 +124,7 @@ const ViewClub = () => {
     fetchClubData();
   }, [id]);
 
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
+
 
   const handlePreviousClub = () => {
     if (currentClubIndex > 0) {
@@ -263,180 +259,63 @@ const ViewClub = () => {
         </Typography>
       </CardContent>
 
-      {/* Tabs Section */}
+      {/* Sections stacked: Athletes then Athlete Results */}
       <Card sx={{ marginTop: 2, padding: 0 }} elevation={0}>
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          scrollButtons
-          allowScrollButtonsMobile
-          aria-label="scrollable auto tabs example"
-        >
-          <Tab label="Athletes" /> {/* Make Athletes Tab the first one */}
-          <Tab label="Athlete Results" />
-        </Tabs>
-
         <CardContent sx={{ padding: 0 }}>
-          {/* Athletes Tab */}
-          {activeTab === 0 && (
-            <>
-              <MaterialReactTable
-                columns={[
-                  {
-                    accessorKey: "name",
-                    header: "Athlete Name",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left", cursor: "pointer" }, // Add pointer cursor for clickable effect
-                    },
-                    Cell: ({ row }) => (
-                      <Typography
-                        sx={{ color: "primary.main", textDecoration: "underline" }}
-                        onClick={() => navigate(`/athletes/${row.original.id}`)} // Redirect to AthleteView page
-                      >
-                        {row.original.name}
-                      </Typography>
-                    ),
-                  },
-                  {
-                    accessorKey: "grade",
-                    header: "Grade",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                  },
-                  {
-                    accessorKey: "joined_date",
-                    header: "Date Joined",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                  },
-                  {
-                    accessorKey: "annual_visa",
-                    header: "Annual Visa",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                  },
-                  {
-                    accessorKey: "medical_visa",
-                    header: "Medical Visa",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                  },
-                  {
-                    accessorKey: "last_exam_date",
-                    header: "Last Exam Date",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                  },
-                ]}
-                data={clubAthletes.length > 0 ? clubAthletes : []}
-                enableColumnResizing
-                enablePagination
-                enableSorting
-                muiTableContainerProps={{
-                  sx: {
-                    maxHeight: "400px", // Add scrollable height
-                  },
-                }}
-                localization={{
-                  noData: "No athletes found for this club.",
-                }}
-              />
-            </>
-          )}
+          <Typography variant="h6" sx={{ marginBottom: 1, fontWeight: 'bold' }}>Athletes</Typography>
+          <Divider sx={{ marginBottom: 1 }} />
+          <MaterialReactTable
+            columns={[
+              {
+                accessorKey: "name",
+                header: "Athlete Name",
+                muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } },
+                muiTableBodyCellProps: { sx: { flex: 1, textAlign: "left", cursor: "pointer" } },
+                Cell: ({ row }) => (
+                  <Typography sx={{ color: "primary.main", textDecoration: "underline" }} onClick={() => navigate(`/athletes/${row.original.id}`)}>
+                    {row.original.name}
+                  </Typography>
+                ),
+              },
+              { accessorKey: "grade", header: "Grade", muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } } },
+              { accessorKey: "joined_date", header: "Date Joined", muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } } },
+              { accessorKey: "annual_visa", header: "Annual Visa", muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } } },
+              { accessorKey: "medical_visa", header: "Medical Visa", muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } } },
+            ]}
+            data={clubAthletes.length > 0 ? clubAthletes : []}
+            enableColumnResizing
+            enablePagination
+            enableSorting
+            muiTableContainerProps={{ sx: { maxHeight: "400px" } }}
+            localization={{ noData: "No athletes found for this club." }}
+          />
 
-          {/* Athlete Results Tab */}
-          {activeTab === 1 && (
-            <>
-              <MaterialReactTable
-                columns={[
-                  {
-                    accessorKey: "name",
-                    header: "Athlete/Team Name",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                  },
-                  {
-                    accessorKey: "competition_name",
-                    header: "Competition",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                  },
-                  {
-                    accessorKey: "category_name",
-                    header: "Category",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                  },
-                  {
-                    accessorKey: "place",
-                    header: "Place",
-                    muiTableHeadCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    muiTableBodyCellProps: {
-                      sx: { flex: 1, textAlign: "left" },
-                    },
-                    Cell: ({ row }) => {
-                      const place = row.original.place;
-                      if (place === "1st") return "🥇 1st Place";
-                      if (place === "2nd") return "🥈 2nd Place";
-                      if (place === "3rd") return "🥉 3rd Place";
-                      return place || "N/A";
-                    },
-                  },
-                ]}
-                data={athleteResults.length > 0 ? athleteResults : []}
-                enableColumnResizing
-                enablePagination
-                enableSorting
-                muiTableContainerProps={{
-                  sx: {
-                    maxHeight: "400px", // Add scrollable height
-                  },
-                }}
-                localization={{
-                  noData: "No athlete results found for this club.",
-                }}
-              />
-            </>
-          )}
+          <Box sx={{ height: 24 }} />
+
+          <Typography variant="h6" sx={{ marginBottom: 1, fontWeight: 'bold' }}>Athlete Results</Typography>
+          <Divider sx={{ marginBottom: 1 }} />
+          <MaterialReactTable
+            columns={[
+              { accessorKey: "name", header: "Athlete/Team Name", muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } } },
+              { accessorKey: "competition_name", header: "Competition", muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } } },
+              { accessorKey: "category_name", header: "Category", muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } } },
+              { accessorKey: "place", header: "Place", muiTableHeadCellProps: { sx: { flex: 1, textAlign: "left" } }, Cell: ({ row }) => {
+                  const place = row.original.place;
+                  if (place === "1st") return "\ud83e\udd47 1st Place";
+                  if (place === "2nd") return "\ud83e\udd48 2nd Place";
+                  if (place === "3rd") return "\ud83e\udd49 3rd Place";
+                  return place || "N/A";
+                } },
+            ]}
+            data={athleteResults}
+            enableColumnResizing
+            enablePagination
+            enableSorting
+            muiTableContainerProps={{ sx: { maxHeight: "400px" } }}
+          />
         </CardContent>
       </Card>
+
     </Box>
   );
 };

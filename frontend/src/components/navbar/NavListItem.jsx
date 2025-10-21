@@ -11,7 +11,7 @@ export default function NavListItem({ item, active }) {
       sx={{
         borderRadius: 1,
         '&.Mui-selected': {
-          backgroundColor: 'rgba(13,71,161,0.08)',
+          backgroundColor: (theme) => theme.palette.primary.main + '14', // 8% opacity
           color: 'primary.main',
         },
       }}

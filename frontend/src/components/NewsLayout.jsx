@@ -4,7 +4,7 @@ import { Box, Container } from '@mui/material';
 
 const NewsLayout = () => {
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f5f5f5' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
       <Box
         component="main"
         sx={{

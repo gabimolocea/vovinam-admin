@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { Box, Typography, MenuItem, Select } from "@mui/material";
+import { Box, Typography, MenuItem, Select, useTheme } from "@mui/material";
 import { Chart as ChartJS, BarElement, CategoryScale, LinearScale, Tooltip, Legend, ArcElement } from "chart.js";
 import { Bar, Pie, Line, Bubble } from "react-chartjs-2";
 import { MaterialReactTable } from "material-react-table";
@@ -12,6 +12,7 @@ import { getClubNameForAthlete } from "../utils/helpers"; // Import utility func
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend, ChartDataLabels, ArcElement);
 
 const Dashboard = () => {
+  const theme = useTheme();
   const [clubsData, setClubsData] = useState([]);
   const [athletesData, setAthletesData] = useState([]);
   const [annualVisaData, setAnnualVisaData] = useState([]);
@@ -225,17 +226,17 @@ const Dashboard = () => {
       {
         label: `Total Athletes (${totalAthletes})`,
         data: clubsData.map((club) => club.athlete_count),
-        backgroundColor: "rgba(75, 192, 192, 0.8)",
+        backgroundColor: theme.palette.primary.main + 'CC', // 80% opacity
       },
       {
         label: `Valid Annual Visa (${totalValidVisas})`,
         data: clubsData.map((club) => club.valid_visa_count),
-        backgroundColor: "rgba(54, 162, 235, 0.8)",
+        backgroundColor: theme.palette.secondary.main + 'CC', // 80% opacity
       },
       {
         label: `Expired Annual Visa (${totalExpiredVisas})`,
         data: clubsData.map((club) => club.expired_visa_count),
-        backgroundColor: "rgba(255, 99, 132, 0.8)",
+        backgroundColor: theme.palette.error?.main + 'CC' || '#f44336CC', // 80% opacity
       },
     ],
   };
@@ -266,7 +267,7 @@ const Dashboard = () => {
       datalabels: {
         anchor: "middle",
         align: "center",
-        color: "#000",
+        color: theme.palette.text.primary,
         font: {
           weight: "bold",
         },
@@ -293,7 +294,7 @@ const Dashboard = () => {
         },
         grid: {
           drawBorder: false,
-          color: "rgba(0, 0, 0, 0.2)", // Light grid lines
+          color: theme.palette.divider, // Light grid lines
           borderWidth: 2, // Bolder divider between clubs
           lineWidth: 2, // Thickness of the divider
         },
@@ -314,20 +315,20 @@ const Dashboard = () => {
         label: "Athletes per Club",
         data: clubsData.map((club) => club.athlete_count),
         backgroundColor: [
-          "rgba(255, 99, 132, 0.8)",
-          "rgba(54, 162, 235, 0.8)",
-          "rgba(255, 206, 86, 0.8)",
-          "rgba(75, 192, 192, 0.8)",
-          "rgba(153, 102, 255, 0.8)",
-          "rgba(255, 159, 64, 0.8)",
+          theme.palette.primary.main + 'CC',
+          theme.palette.secondary.main + 'CC',
+          theme.palette.warning?.main + 'CC' || '#ff9800CC',
+          theme.palette.info?.main + 'CC' || '#2196f3CC',
+          theme.palette.success?.main + 'CC' || '#4caf50CC',
+          theme.palette.error?.main + 'CC' || '#f44336CC',
         ],
         borderColor: [
-          "rgba(255, 99, 132, 1)",
-          "rgba(54, 162, 235, 1)",
-          "rgba(255, 206, 86, 1)",
-          "rgba(75, 192, 192, 1)",
-          "rgba(153, 102, 255, 1)",
-          "rgba(255, 159, 64, 1)",
+          theme.palette.primary.main,
+          theme.palette.secondary.main,
+          theme.palette.warning?.main || '#ff9800',
+          theme.palette.info?.main || '#2196f3',
+          theme.palette.success?.main || '#4caf50',
+          theme.palette.error?.main || '#f44336',
         ],
         borderWidth: 1,
       },

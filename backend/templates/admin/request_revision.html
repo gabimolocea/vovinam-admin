@@ -1,0 +1,65 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:api_athleteprofile_changelist' %}">Athlete Profiles</a>
+&rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="module aligned">
+    <h2>Profile Information</h2>
+    <div class="form-row">
+        <div><strong>Name:</strong> {{ profile.first_name }} {{ profile.last_name }}</div>
+        <div><strong>Email:</strong> {{ profile.user.email }}</div>
+        <div><strong>Date of Birth:</strong> {{ profile.date_of_birth }}</div>
+        <div><strong>Mobile:</strong> {{ profile.mobile_number }}</div>
+        <div><strong>Address:</strong> {{ profile.address }}</div>
+        <div><strong>Club:</strong> {{ profile.club|default:"Not specified" }}</div>
+        <div><strong>Previous Experience:</strong> {{ profile.previous_experience|default:"None specified" }}</div>
+        <div><strong>Emergency Contact:</strong> {{ profile.emergency_contact_name }} ({{ profile.emergency_contact_phone }})</div>
+        <div><strong>Submitted:</strong> {{ profile.submitted_date }}</div>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="module aligned">
+        <h2>Revision Request</h2>
+        <div class="form-row">
+            <div>
+                <label for="admin_notes"><strong>Please specify what needs to be revised:</strong></label>
+                <textarea name="admin_notes" id="admin_notes" rows="6" cols="80" required 
+                          placeholder="Explain what information needs to be corrected or added. This will be visible to the applicant."></textarea>
+            </div>
+        </div>
+    </div>
+    
+    <div class="submit-row">
+        <input type="submit" value="Request Revision" class="default" style="background-color: #ffc107; color: #212529;">
+        <a href="{% url 'admin:api_athleteprofile_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+</form>
+
+<style>
+.cancel-link {
+    background: #f8f8f8;
+    border: 1px solid #ccc;
+    color: #333;
+    padding: 10px 15px;
+    text-decoration: none;
+    margin-left: 10px;
+    border-radius: 4px;
+}
+.cancel-link:hover {
+    background: #e8e8e8;
+}
+</style>
+{% endblock %}

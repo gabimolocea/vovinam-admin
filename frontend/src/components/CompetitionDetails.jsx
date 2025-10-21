@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Typography, Box, IconButton, Tabs, Tab, Menu, MenuItem } from "@mui/material";
+import React, { useEffect, useState, useRef } from "react";
+import { Typography, Box, IconButton, Tabs, Tab, Menu, MenuItem, useTheme } from "@mui/material";
 import { ArrowBack } from "@mui/icons-material";
 import { Link, useParams } from "react-router-dom";
 import { MaterialReactTable } from "material-react-table";
@@ -15,6 +15,7 @@ import * as d3 from "d3";
 
 export const D3BracketTree = ({ rounds }) => {
   const svgRef = useRef();
+  const theme = useTheme();
 
   useEffect(() => {
     if (!rounds || rounds.length === 0) {
@@ -57,7 +58,7 @@ export const D3BracketTree = ({ rounds }) => {
       .attr("class", "link")
       .attr("d", d3.linkHorizontal().x((d) => d.y).y((d) => d.x))
       .style("fill", "none")
-      .style("stroke", "#ccc")
+      .style("stroke", theme.palette.divider)
       .style("stroke-width", 2);
 
     // Nodes
@@ -66,7 +67,7 @@ export const D3BracketTree = ({ rounds }) => {
     nodes
       .append("circle")
       .attr("r", 5)
-      .style("fill", "#69b3a2");
+      .style("fill", theme.palette.primary.main);
 
     nodes
       .append("text")
@@ -81,6 +82,7 @@ export const D3BracketTree = ({ rounds }) => {
 
 const CompetitionDetails = () => {
   const { competitionId } = useParams();
+  const theme = useTheme();
   const [competitionName, setCompetitionName] = useState("");
   const [competitionPlace, setCompetitionPlace] = useState("");
   const [competitionDate, setCompetitionDate] = useState("");
@@ -663,8 +665,8 @@ const CompetitionDetails = () => {
           marginBottom: 2,
           gap: 2, // Add gap between items
             padding: 2,
-            backgroundColor: "#f5f5f5",
-            border: "1px solid black",
+            backgroundColor: theme.palette.background.default,
+            border: `1px solid ${theme.palette.divider}`,
             borderRadius: 1,
             flexDirection: {xs: "column", md: "column", lg: "row"}, // Responsive layout
         }}
@@ -769,20 +771,20 @@ const CompetitionDetails = () => {
             key={category.id}
             sx={{
               marginBottom: 4,
-              border: "2px solid black",
+              border: `2px solid ${theme.palette.divider}`,
               borderRadius: 1,
             }}
           >
             {/* Group Header */}
             <Box
               sx={{
-                backgroundColor: "yellow",
+                backgroundColor: theme.palette.primary.light,
                 padding: 1,
-                borderBottom: "2px solid black",
+                borderBottom: `2px solid ${theme.palette.divider}`,
                 textAlign: "center",
               }}
             >
-              <Typography variant="h8" sx={{ fontWeight: "bold", color: "black" }}>
+              <Typography variant="h8" sx={{ fontWeight: "bold", color: theme.palette.primary.contrastText }}>
                 {category.group_name || "No Group Assigned"}
               </Typography>
             </Box>
@@ -790,9 +792,9 @@ const CompetitionDetails = () => {
             {/* Category Header */}
             <Box
               sx={{
-                backgroundColor: "#e0e0e0",
+                backgroundColor: theme.palette.background.paper,
                 padding: 1,
-                borderBottom: "2px solid black",
+                borderBottom: `2px solid ${theme.palette.divider}`,
                 textAlign: "center",
               }}
             >
@@ -827,14 +829,14 @@ const CompetitionDetails = () => {
             {/* Footer */}
             <Box
               sx={{
-                backgroundColor: "#e0e0e0",
+                backgroundColor: theme.palette.background.paper,
                 padding: 1,
                 paddingLeft: 2,
-                borderTop: "2px solid black",
+                borderTop: `2px solid ${theme.palette.divider}`,
                 textAlign: "left",
               }}
             >
-              <Typography variant="body2" sx={{ color: "black" }}>
+              <Typography variant="body2" sx={{ color: theme.palette.text.primary }}>
                 Enrolled Athletes:{" "}
                 {category.type === "teams"
                   ? category.teams.reduce((total, team) => total + team.members.length, 0)
@@ -866,20 +868,20 @@ const CompetitionDetails = () => {
             key={category.id}
             sx={{
               marginBottom: 4,
-              border: "2px solid black",
+              border: `2px solid ${theme.palette.divider}`,
               borderRadius: 1,
             }}
           >
             {/* Group Header */}
             <Box
               sx={{
-                backgroundColor: "yellow",
+                backgroundColor: theme.palette.primary.light,
                 padding: 1,
-                borderBottom: "2px solid black",
+                borderBottom: `2px solid ${theme.palette.divider}`,
                 textAlign: "center",
               }}
             >
-              <Typography variant="h8" sx={{ fontWeight: "bold", color: "black" }}>
+              <Typography variant="h8" sx={{ fontWeight: "bold", color: theme.palette.primary.contrastText }}>
                 {category.group_name || "No Group Assigned"}
               </Typography>
             </Box>
@@ -887,7 +889,7 @@ const CompetitionDetails = () => {
             {/* Category Header */}
             <Box
               sx={{
-                backgroundColor: "#e0e0e0",
+                backgroundColor: theme.palette.background.paper,
                 padding: 1,
                 borderBottom: "2px solid black",
                 textAlign: "center",
@@ -901,9 +903,9 @@ const CompetitionDetails = () => {
             {/* Enrolled Athletes */}
             <Box
               sx={{
-                backgroundColor: "#f5f5f5",
+                backgroundColor: theme.palette.background.default,
                 padding: 2,
-                borderBottom: "2px solid black",
+                borderBottom: `2px solid ${theme.palette.divider}`,
                 textAlign: "left",
               }}
             >
@@ -955,12 +957,12 @@ const CustomBracketTree = ({ rounds }) => {
               <Box
                 key={match.id}
                 sx={{
-                  border: "1px solid black",
+                  border: `1px solid ${theme.palette.divider}`,
                   borderRadius: 4,
                   padding: 2,
                   minWidth: 200,
                   textAlign: "center",
-                  backgroundColor: "#f5f5f5",
+                  backgroundColor: theme.palette.background.default,
                 }}
               >
                 {/* Red Corner */}
@@ -968,7 +970,7 @@ const CustomBracketTree = ({ rounds }) => {
                   variant="body2"
                   sx={{
                     fontWeight: match.teams[0].score === 1 ? "bold" : "normal",
-                    color: match.teams[0].score === 1 ? "green" : "black",
+                    color: match.teams[0].score === 1 ? theme.palette.success?.main || "green" : theme.palette.text.primary,
                   }}
                 >
                   {match.teams[0].name} ({match.teams[0].score})
@@ -984,7 +986,7 @@ const CustomBracketTree = ({ rounds }) => {
                   variant="body2"
                   sx={{
                     fontWeight: match.teams[1].score === 1 ? "bold" : "normal",
-                    color: match.teams[1].score === 1 ? "green" : "black",
+                    color: match.teams[1].score === 1 ? theme.palette.success?.main || "green" : theme.palette.text.primary,
                   }}
                 >
                   {match.teams[1].name} ({match.teams[1].score})

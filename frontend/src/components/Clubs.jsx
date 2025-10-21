@@ -6,8 +6,10 @@ import AxiosInstance from "./Axios";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DeleteDialog from "./DeleteDialog"; // Import the global DeleteDialog component
+import { useAuth } from "../contexts/AuthContext";
 
 const Clubs = () => {
+  const { isAdmin } = useAuth();
   const [myData, setMyData] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedClub, setSelectedClub] = useState(null);
@@ -89,30 +91,34 @@ const Clubs = () => {
             enableRowActions
             positionActionsColumn="last"
             renderTopToolbarCustomActions={() => (
-              <Button
-                variant="contained"
-                size="medium"
-                color="primary"
-                onClick={() => navigate("/create-club")} // Navigate to the Create Club page
-                sx={{ textTransform: 'none' }}
-              >
-                Create Club
-              </Button>
+              isAdmin ? (
+                <Button
+                  variant="contained"
+                  size="medium"
+                  color="primary"
+                  onClick={() => navigate("/create-club")} // Navigate to the Create Club page
+                  sx={{ textTransform: 'none' }}
+                >
+                  Create Club
+                </Button>
+              ) : null
             )}
             renderRowActions={({ row }) => (
-              <Box sx={{ display: "flex", flexWrap: "nowrap", gap: "0rem" }}>
-                <IconButton component={Link} to={`edit/${row.original.id}`}>
-                  <EditIcon />
-                </IconButton>
-                <IconButton
-                  onClick={() => {
-                    setSelectedClub(row.original); // Set the selected club
-                    setOpenDialog(true); // Open the dialog
-                  }}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </Box>
+              isAdmin ? (
+                <Box sx={{ display: "flex", flexWrap: "nowrap", gap: "0rem" }}>
+                  <IconButton component={Link} to={`edit/${row.original.id}`}>
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    onClick={() => {
+                      setSelectedClub(row.original); // Set the selected club
+                      setOpenDialog(true); // Open the dialog
+                    }}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Box>
+              ) : null
             )}
           />
         ) : (

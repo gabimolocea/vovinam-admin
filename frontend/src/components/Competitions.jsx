@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Typography, Box } from "@mui/material";
+import { Typography, Box, useTheme } from "@mui/material";
 import { Link } from "react-router-dom";
 import { MaterialReactTable } from "material-react-table";
 import AxiosInstance from "./Axios";
 
 const Competitions = () => {
+  const theme = useTheme();
   const [competitionsData, setCompetitionsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -41,7 +42,7 @@ const Competitions = () => {
       Cell: ({ cell }) => (
         <Link
           to={`/competition/${cell.row.original.id}`}
-          style={{ textDecoration: "none", color: "#1976d2" }}
+          style={{ textDecoration: "none", color: theme.palette.primary.main }}
         >
           {cell.getValue()}
         </Link>

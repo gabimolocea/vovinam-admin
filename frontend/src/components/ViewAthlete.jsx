@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -17,6 +17,17 @@ import {
   IconButton,
   Tabs,
   Tab,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
 } from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
 import AxiosInstance from "./Axios";
@@ -26,11 +37,15 @@ import CancelIcon from "@mui/icons-material/Cancel";
 import Avatar from "@mui/material/Avatar";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import CloseIcon from "@mui/icons-material/Close";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import { MaterialReactTable } from 'material-react-table';
-
-const ViewAthlete = () => {
+import { useAuth } from '../contexts/AuthContext';const ViewAthlete = () => {
   const { id } = useParams(); // Get athlete ID from URL
   const navigate = useNavigate();
+  const { user, userRole } = useAuth();
   const [athleteData, setAthleteData] = useState(null); // State for athlete data
   const [clubData, setClubData] = useState(null);
   const [relatedData, setRelatedData] = useState({}); // State for related data
@@ -43,6 +58,17 @@ const ViewAthlete = () => {
   const [activeTab, setActiveTab] = useState(0); // State for active tab
   const [athleteIds, setAthleteIds] = useState([]); // List of athlete IDs
   const [currentAthleteIndex, setCurrentAthleteIndex] = useState(-1); // Current athlete index
+  
+  // States for athlete results management
+  const [athleteResults, setAthleteResults] = useState([]); // State for athlete-submitted results
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultDialog, setResultDialog] = useState({ open: false, mode: 'add', data: null });
+  const [seminarDialog, setSeminarDialog] = useState({ open: false, mode: 'add', data: null });
+  const [gradeDialog, setGradeDialog] = useState({ open: false, mode: 'add', data: null });
+  const [medicalVisaDialog, setMedicalVisaDialog] = useState({ open: false, mode: 'add', data: null });
+  const [annualVisaDialog, setAnnualVisaDialog] = useState({ open: false, mode: 'add', data: null });
+  const [matchDialog, setMatchDialog] = useState({ open: false, mode: 'add', data: null });
+  const [isOwnProfile, setIsOwnProfile] = useState(false); // Check if viewing own profile
 
   useEffect(() => {
     const fetchAthleteData = async () => {
@@ -200,6 +226,11 @@ const ViewAthlete = () => {
         // Set data
         setAthleteData(athleteResponse.data);
         setRelatedData(relatedData);
+        
+        // Check if this is the user's own profile
+        if (user && user.athlete && user.athlete.id === parseInt(id)) {
+          setIsOwnProfile(true);
+        }
       } catch (error) {
         console.error("Error fetching athlete data:", error);
         setErrorMessage("Failed to fetch athlete data. Please try again.");
@@ -209,7 +240,97 @@ const ViewAthlete = () => {
     };
 
     fetchAthleteData();
-  }, [id]);
+  }, [id, user]);
+
+  // Fetch athlete's submitted results
+  const fetchAthleteResults = async () => {
+    setResultsLoading(true);
+    try {
+      const response = await AxiosInstance.get('category-athlete-score/my_results/');
+      setAthleteResults(response.data);
+    } catch (error) {
+      console.error("Error fetching athlete results:", error);
+    } finally {
+      setResultsLoading(false);
+    }
+  };
+
+  // Handle result dialog actions
+  const handleResultDialog = (mode, data = null) => {
+    setResultDialog({ open: true, mode, data });
+  };
+
+  const handleCloseDialog = () => {
+    setResultDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleSaveResult = async (resultData) => {
+    try {
+      if (resultDialog.mode === 'add') {
+        await AxiosInstance.post('category-athlete-score/', resultData);
+      } else if (resultDialog.mode === 'edit') {
+        await AxiosInstance.put(`category-athlete-score/${resultDialog.data.id}/`, resultData);
+      }
+      fetchAthleteResults(); // Refresh the results
+      handleCloseDialog();
+    } catch (error) {
+      console.error("Error saving result:", error);
+      // Handle error display here
+    }
+  };
+
+  const handleDeleteResult = async (resultId) => {
+    if (window.confirm('Are you sure you want to delete this result?')) {
+      try {
+        await AxiosInstance.delete(`category-athlete-score/${resultId}/`);
+        fetchAthleteResults(); // Refresh the results
+      } catch (error) {
+        console.error("Error deleting result:", error);
+        // Handle error display here
+      }
+    }
+  };
+
+  // Handler functions for other dialog types
+  const handleSeminarDialog = (mode, data = null) => {
+    setSeminarDialog({ open: true, mode, data });
+  };
+
+  const handleGradeDialog = (mode, data = null) => {
+    setGradeDialog({ open: true, mode, data });
+  };
+
+  const handleMedicalVisaDialog = (mode, data = null) => {
+    setMedicalVisaDialog({ open: true, mode, data });
+  };
+
+  const handleAnnualVisaDialog = (mode, data = null) => {
+    setAnnualVisaDialog({ open: true, mode, data });
+  };
+
+  const handleMatchDialog = (mode, data = null) => {
+    setMatchDialog({ open: true, mode, data });
+  };
+
+  const handleCloseSeminarDialog = () => {
+    setSeminarDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleCloseGradeDialog = () => {
+    setGradeDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleCloseMedicalVisaDialog = () => {
+    setMedicalVisaDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleCloseAnnualVisaDialog = () => {
+    setAnnualVisaDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleCloseMatchDialog = () => {
+    setMatchDialog({ open: false, mode: 'add', data: null });
+  };
 
   useEffect(() => {
     const fetchAthleteIds = async () => {
@@ -377,7 +498,7 @@ const ViewAthlete = () => {
           }}
           >
           <Box sx={{ marginLeft: 0 }}>
-            <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+            <Typography variant="h5">
               {athleteData?.first_name}{" "}
               {athleteData?.last_name || "Athlete Name"}
             </Typography>
@@ -400,7 +521,6 @@ const ViewAthlete = () => {
                     display: "flex",
                     alignItems: "center",
                     gap: 1,
-                    fontWeight: "bold",
                   }}
                 >
                   🥇 {firstPlace}
@@ -446,7 +566,7 @@ const ViewAthlete = () => {
             <CardContent sx={{ padding: 0, marginBottom: 2 }}>
               <Typography
                 variant="h6"
-                sx={{ marginBottom: 0, fontWeight: "bold" }}
+                sx={{ marginBottom: 0 }}
               >
                 Personal Information
               </Typography>
@@ -474,7 +594,7 @@ const ViewAthlete = () => {
             <CardContent sx={{ padding: 0, marginBottom: 2 }}>
               <Typography
                 variant="h6"
-                sx={{ marginBottom: 0, fontWeight: "bold" }}
+                sx={{ marginBottom: 0 }}
               >
                 Club Information
               </Typography>
@@ -512,7 +632,7 @@ const ViewAthlete = () => {
                 <Avatar
                   src={`http://127.0.0.1:8000${relatedData?.club?.logo || "/media/default_logo.jpg"}`}
                   alt={`${relatedData?.club?.name || "Club Logo"}`}
-                  sx={{ width: 100, height: 100, border: "2px solid #ccc" }}
+                  sx={{ width: 100, height: 100, border: (theme) => `2px solid ${theme.palette.divider}` }}
                 />
               </Box>
             </CardContent>
@@ -522,7 +642,7 @@ const ViewAthlete = () => {
             <CardContent sx={{ padding: 0, marginBottom: 2 }}>
               <Typography
                 variant="h6"
-                sx={{ marginBottom: 0, fontWeight: "bold" }}
+                sx={{ marginBottom: 0 }}
               >
                 Federation Role and Title
               </Typography>
@@ -545,7 +665,7 @@ const ViewAthlete = () => {
             <CardContent sx={{ padding: 0 }}>
               <Typography
                 variant="h6"
-                sx={{ marginBottom: 0, fontWeight: "bold" }}
+                sx={{ marginBottom: 0 }}
               >
                 Other Information
               </Typography>
@@ -580,12 +700,25 @@ const ViewAthlete = () => {
           <Tab label="Medical Visa" />
           <Tab label="Annual Visa" />
           <Tab label="Matches" /> {/* New Matches Tab */}
+
         </Tabs>
 
         <CardContent sx={{ padding: 0 }}>
           {activeTab === 0 && (
             <>
               {/* Athlete Results Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Competition Results</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleResultDialog('add')}
+                  >
+                    Submit Result
+                  </Button>
+                </Box>
+              )}
               <MaterialReactTable
                 columns={[
                   {
@@ -690,6 +823,18 @@ const ViewAthlete = () => {
           {activeTab === 1 && (
             <>
               {/* Training Seminars Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Training Seminars</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleSeminarDialog('add')}
+                  >
+                    Submit Training Seminar
+                  </Button>
+                </Box>
+              )}
               <MaterialReactTable
                 columns={[
                   {
@@ -749,6 +894,18 @@ const ViewAthlete = () => {
           {activeTab === 2 && (
             <>
               {/* Grade History Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Grade History</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleGradeDialog('add')}
+                  >
+                    Submit Grading Exam
+                  </Button>
+                </Box>
+              )}
               <MaterialReactTable
                 columns={[
                   {
@@ -799,6 +956,18 @@ const ViewAthlete = () => {
           {activeTab === 3 && (
             <>
               {/* Medical Visa Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Medical Visa</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleMedicalVisaDialog('add')}
+                  >
+                    Submit Medical Visa
+                  </Button>
+                </Box>
+              )}
               <MaterialReactTable
                 columns={[
                   {
@@ -832,9 +1001,9 @@ const ViewAthlete = () => {
                     },
                     Cell: ({ row }) =>
                       row.original.is_valid ? (
-                        <CheckCircleIcon sx={{ color: 'green' }} />
+                        <CheckCircleIcon sx={{ color: 'success.main' }} />
                       ) : (
-                        <CancelIcon sx={{ color: 'grey' }} />
+                        <CancelIcon sx={{ color: 'text.disabled' }} />
                       ),
                   },
                 ]}
@@ -857,6 +1026,18 @@ const ViewAthlete = () => {
           {activeTab === 4 && (
             <>
               {/* Annual Visa Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Annual Visa</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleAnnualVisaDialog('add')}
+                  >
+                    Submit Annual Visa
+                  </Button>
+                </Box>
+              )}
               <MaterialReactTable
                 columns={[
                   {
@@ -890,9 +1071,9 @@ const ViewAthlete = () => {
                     },
                     Cell: ({ row }) =>
                       row.original.is_valid ? (
-                        <CheckCircleIcon sx={{ color: 'green' }} />
+                        <CheckCircleIcon sx={{ color: 'success.main' }} />
                       ) : (
-                        <CancelIcon sx={{ color: 'grey' }} />
+                        <CancelIcon sx={{ color: 'text.disabled' }} />
                       ),
                   },
                 ]}
@@ -915,6 +1096,18 @@ const ViewAthlete = () => {
           {activeTab === 5 && (
             <>
               {/* Matches Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Matches</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleMatchDialog('add')}
+                  >
+                    Submit Match
+                  </Button>
+                </Box>
+              )}
               <MaterialReactTable
                 columns={[
                   {
@@ -943,8 +1136,7 @@ const ViewAthlete = () => {
                       return (
                         <Typography
                           sx={{
-                            color: isWinner ? "green" : "red",
-                            fontWeight: "bold",
+                            color: isWinner ? "success.main" : "error.main",
                             fontSize: ".8rem",
                           }}
                         >
@@ -969,9 +1161,139 @@ const ViewAthlete = () => {
               />
             </>
           )}
+
+
         </CardContent>
       </Card>
+
+      {/* Result Dialog */}
+      <AthleteResultDialog
+        open={resultDialog.open}
+        mode={resultDialog.mode}
+        data={resultDialog.data}
+        onClose={handleCloseDialog}
+        onSave={handleSaveResult}
+      />
     </Box>
+  );
+};
+
+// Result Dialog Component
+const AthleteResultDialog = ({ open, mode, data, onClose, onSave }) => {
+  const [formData, setFormData] = useState({
+    category: '',
+    placement_claimed: '',
+    notes: ''
+  });
+
+  useEffect(() => {
+    if (data && (mode === 'edit' || mode === 'view')) {
+      setFormData({
+        category: data.category || '',
+        placement_claimed: data.placement_claimed || '',
+        notes: data.notes || ''
+      });
+    } else if (mode === 'add') {
+      setFormData({
+        category: '',
+        placement_claimed: '',
+        notes: ''
+      });
+    }
+  }, [data, mode]);
+
+  const handleChange = (field) => (event) => {
+    setFormData({ ...formData, [field]: event.target.value });
+  };
+
+  const handleSubmit = () => {
+    onSave(formData);
+  };
+
+  const isReadOnly = mode === 'view';
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        {mode === 'add' && 'Add Competition Result'}
+        {mode === 'edit' && 'Edit Competition Result'}
+        {mode === 'view' && 'View Competition Result'}
+      </DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+          <FormControl fullWidth disabled={isReadOnly}>
+            <InputLabel>Category</InputLabel>
+            <Select
+              value={formData.category}
+              onChange={handleChange('category')}
+              label="Category"
+              required
+            >
+              {/* These should be populated from available categories/competitions */}
+              <MenuItem value="1">Men's Kata - Spring Championship</MenuItem>
+              <MenuItem value="2">Women's Kumite - Regional Tournament</MenuItem>
+              <MenuItem value="3">Mixed Teams - National Cup</MenuItem>
+            </Select>
+          </FormControl>
+          
+          <TextField
+            label="Placement Claimed"
+            value={formData.placement_claimed}
+            onChange={handleChange('placement_claimed')}
+            fullWidth
+            required
+            disabled={isReadOnly}
+            placeholder="e.g., 1st Place, 2nd Place, Semi-finalist"
+          />
+
+          <TextField
+            label="Notes"
+            value={formData.notes}
+            onChange={handleChange('notes')}
+            fullWidth
+            multiline
+            rows={3}
+            disabled={isReadOnly}
+            placeholder="Additional notes about your performance"
+          />
+
+          {isReadOnly && data && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>Submission Info:</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Competition: {data.competition_name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Category: {data.category_name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Submitted: {new Date(data.submitted_date).toLocaleString()}
+              </Typography>
+              {data.reviewed_date && (
+                <Typography variant="body2" color="text.secondary">
+                  Reviewed: {new Date(data.reviewed_date).toLocaleString()}
+                </Typography>
+              )}
+              {data.admin_notes && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Admin Notes: {data.admin_notes}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>
+          {isReadOnly ? 'Close' : 'Cancel'}
+        </Button>
+        {!isReadOnly && (
+          <Button onClick={handleSubmit} variant="contained">
+            {mode === 'add' ? 'Submit Result' : 'Update Result'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 };
 
