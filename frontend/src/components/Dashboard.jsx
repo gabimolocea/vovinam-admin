@@ -362,7 +362,7 @@ const Dashboard = () => {
   }
 
   return (
-    <Box>
+    <Box sx={{ p: 2 }}>
       {/* Responsive Layout for Pie Chart and Bar Chart */}
       <Box
         sx={{
@@ -375,14 +375,14 @@ const Dashboard = () => {
       >
         {/* Pie Chart */}
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h6">Athletes per Club</Typography>
-          <Typography variant="body1">Total Athletes: {totalAthletes}</Typography>
+          <Typography variant="h5" sx={{ mb: 1 }}>Athletes per Club</Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>Total Athletes: {totalAthletes}</Typography>
           <Pie data={pieChartData} options={pieChartOptions} />
         </Box>
 
         {/* Horizontal Bar Chart */}
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h6">Clubs Overview</Typography>
+          <Typography variant="h5" sx={{ mb: 1 }}>Clubs Overview</Typography>
           <Bar data={horizontalBarChartData} options={horizontalBarChartOptions} />
         </Box>
       </Box>

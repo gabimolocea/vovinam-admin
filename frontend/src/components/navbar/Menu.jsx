@@ -14,25 +14,25 @@ const NAVIGATION = [
         segment: 'dashboard', 
         title: 'Dashboard', 
         icon: <DashboardIcon />, 
-        link: <Link to="/dashboard">Dashboard</Link> 
+        link: '/dashboard'
     },
     { 
         segment: 'clubs', 
         title: 'Clubs', 
         icon: <Groups2Icon />, 
-        link: <Link to="/clubs">Clubs</Link> 
+        link: '/clubs'
     },
     { 
         segment: 'athletes', 
         title: 'Athletes', 
         icon: <AssignmentIndIcon />, 
-        link: <Link to="/athletes">Athletes</Link> 
+        link: '/athletes'
     },
     { 
         segment: 'competitions', 
         title: 'Competitions', 
         icon: <EmojiEventsIcon />, 
-        link: <Link to="/competitions">Competitions</Link> 
+        link: '/competitions'
     },
 ];
 

@@ -1,7 +1,6 @@
 import { React, useState, useEffect } from "react";
 import AxiosInstance from "./Axios";
-import { Box, FormControl } from "@mui/material";
-import Button from "@mui/material/Button";
+import { Box, FormControl, Stack, Button } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import TextForm from "./forms/TextForm";
 import SelectForm from "./forms/SelectForm";
@@ -106,10 +105,10 @@ const CreateClub = () => {
   })
   return (
     <div>
-      <form onSubmit={formik.handleSubmit}>
-      {message}
-      <Box>
-          <FormControl sx={{display: 'flex', flexWrap: 'wrap', width: '100%', gap: '1rem'}}>
+    <form onSubmit={formik.handleSubmit}>
+    {message}
+    <Box>
+      <FormControl sx={{display: 'flex', flexWrap: 'wrap', width: '100%', gap: 2}}>
           <TextForm 
           label={"Club name"} 
           name = 'name'
@@ -160,9 +159,11 @@ const CreateClub = () => {
           helperText = {formik.touched.website && formik.errors.website}
           />
 
-          <Button type="submit" variant="contained" size="large" startIcon={<AddIcon />}>
-          Submit the data
-        </Button>
+          <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
+            <Button type="submit" variant="contained" size="large" startIcon={<AddIcon />}>
+              Submit the data
+            </Button>
+          </Stack>
           </FormControl>
       </Box>
       </form>
