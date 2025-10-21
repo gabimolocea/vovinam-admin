@@ -4,7 +4,34 @@ from rest_framework import viewsets, permissions
 from .serializers import *
 from .models import *
 from rest_framework.response import Response
+from rest_framework.reverse import reverse
+from django.conf import settings
 # Create your views here.
+
+
+@api_view(["GET"])
+def health(request):
+    """Simple health endpoint used by CI readiness checks."""
+    # Check database connectivity
+    db_status = "ok"
+    db_error = None
+    try:
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception as e:
+        db_status = "failed"
+        db_error = str(e)
+
+    payload = {"status": "ok", "database": db_status}
+    if db_error:
+        # Include detailed error only when DEBUG is True; otherwise mask it
+        if getattr(settings, 'DEBUG', False):
+            payload["database_error"] = db_error[:200]
+        else:
+            payload["database_error"] = "unavailable"
+    return Response(payload)
 
 class CityViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]

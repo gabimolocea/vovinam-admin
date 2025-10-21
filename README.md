@@ -47,9 +47,9 @@ A full-stack web application for managing sports organizations, built with Djang
 git clone https://github.com/gabimolocea/frvv-admin.git
 cd frvv-admin
 
-# Install all dependencies
+# Install frontend dependencies (use the lockfile for reproducible installs)
 cd frontend
-npm run setup
+npm ci
 
 # Start development servers
 npm run dev
@@ -64,9 +64,11 @@ python -m venv venv
 
 # Activate virtual environment
 # On macOS/Linux:
-source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
+# source venv/bin/activate
+# On Windows (PowerShell):
+# venv\Scripts\Activate.ps1
+# If execution policy blocks scripts, run PowerShell as Administrator and execute:
+# Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -83,13 +85,11 @@ python manage.py runserver
 
 
 
-# Navigate to frontend directory
+# Navigate to frontend directory and install dependencies
 cd frontend
+npm ci
 
-# Install dependencies
-npm install
-
-# Start development server
+# Start frontend dev server
 npm run dev
 
 

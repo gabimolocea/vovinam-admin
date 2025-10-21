@@ -1,26 +1,10 @@
 import * as React from 'react';
-import { createTheme } from '@mui/material/styles';
 import { AppProvider } from '@toolpad/core/AppProvider';
 import { DashboardLayout } from '@toolpad/core/DashboardLayout';
 import { PageContainer } from '@toolpad/core/PageContainer';
 import NAVIGATION from './Menu'; // Import the menu
+import NavListItem from './NavListItem';
 import { useLocation } from 'react-router-dom';
-
-const demoTheme = createTheme({
-  colorSchemes: { light: true, dark: true },
-  cssVariables: {
-    colorSchemeSelector: 'class',
-  },
-  breakpoints: {
-    values: {
-      xs: 0,
-      sm: 600,
-      md: 600,
-      lg: 1200,
-      xl: 1536,
-    },
-  },
-});
 
 export default function Navbar({ content }) {
   const location = useLocation();
@@ -79,7 +63,7 @@ export default function Navbar({ content }) {
   // Highlight active menu item
   const updatedNavigation = NAVIGATION.map((item) => {
     const itemPath = item.link?.props?.to || ''; // Extract the path from the link
-    const isActive = location.pathname === itemPath; // Check if the current route matches the menu item's path
+    const isActive = location.pathname === item.link; // Check if the current route matches the menu item's path
 
     return {
       ...item,
@@ -98,6 +82,7 @@ export default function Navbar({ content }) {
     >
       <DashboardLayout>
         <PageContainer breadcrumbs={false} title={pageTitle}>
+          {/* Render nav list using NavListItem when the AppProvider/layout expects navigation items */}
           {content}
         </PageContainer>
       </DashboardLayout>

@@ -28,6 +28,12 @@ jobs:
       run: |
         cd backend
         python manage.py migrate
+
+    - name: Smoke check API root
+      run: |
+        cd backend
+        # Run only the api root test to verify the app is responding
+        python manage.py test api.tests.test_api_root
     
     - name: Run tests
       run: |
@@ -59,3 +65,60 @@ jobs:
       run: |
         cd frontend
         npm run build
+
+  integration:
+    needs: backend
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Apply migrations
+      run: |
+        cd backend
+        python manage.py migrate
+
+    - name: Start Django server in background
+      run: |
+        cd backend
+        # start server in background and record PID
+        python manage.py runserver 127.0.0.1:8000 > server.log 2>&1 &
+        echo $! > server.pid
+        # Poll until server responds (timeout after 30s)
+        echo "Waiting for server to be ready (prefers /health/ then /)..."
+        timeout=30
+        count=0
+        HEALTH_URL="http://127.0.0.1:8000/health/"
+        ROOT_URL="http://127.0.0.1:8000/"
+        until (curl -sSf "$HEALTH_URL" >/dev/null 2>&1) || (curl -sSf "$ROOT_URL" >/dev/null 2>&1); do
+          sleep 1
+          count=$((count+1))
+          if [ $count -ge $timeout ]; then
+            echo "Server didn't start within ${timeout}s"
+            echo "---- server.log ----"
+            cat server.log || true
+            exit 1
+          fi
+        done
+        echo "Server is up"
+
+    - name: Run smoke_test.py
+      run: |
+        cd backend
+        python ../scripts/smoke_test.py
+
+    - name: Stop Django server
+      if: always()
+      run: |
+        cd backend
+        if [ -f server.pid ]; then kill $(cat server.pid) || true; fi
