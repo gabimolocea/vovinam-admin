@@ -361,10 +361,7 @@ const ViewAthlete = () => {
             sx={{
               width: { xs: 80, sm: 100, md: 120 },
               height: { xs: 80, sm: 100, md: 120 },
-              borderRadius: "5  0%",
-              marginRight: 0,
-              marginLeft: 0,
-              marginTop: 0, // Negative margin to overlap the cover
+              borderRadius: '5%',
             }}
           />
         </Box>
@@ -387,12 +384,12 @@ const ViewAthlete = () => {
           </Box>
           <Box
             sx={{
-              display: "inline-flex",
-              alignItems: "center",
-              border: "1px solid #ccc",
-              borderRadius: "16px",
-              padding: "0 8px",
-              height: "24px",
+              display: 'inline-flex',
+              alignItems: 'center',
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+              borderRadius: 2,
+              px: 1,
+              height: 28,
             }}
           >
             {(() => {
@@ -424,14 +421,14 @@ const ViewAthlete = () => {
           <IconButton
             onClick={navigateToNextAthlete}
             disabled={currentAthleteIndex === -1} // Disable if athlete IDs are not loaded
-            sx={{ color: "primary.main" }}
+            sx={{ color: 'primary.main' }}
           >
             <ArrowForwardIcon />
           </IconButton>
         ) : (
           <IconButton
-            onClick={() => navigate("/athletes")} // Redirect to athletes page
-            sx={{ color: "primary.main" }}
+            onClick={() => navigate('/athletes')} // Redirect to athletes page
+            sx={{ color: 'primary.main' }}
           >
             <CloseIcon />
           </IconButton>

@@ -74,7 +74,7 @@ const Athletes = () => {
         accessorKey: "full_name",
         header: "Name",
         Cell: ({ row }) => (
-          <Box sx={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
             <Avatar
               src={`http://127.0.0.1:8000${row.original.profile_image || ""}`} // Use the provided base URL and profile image
               alt={`${row.original.first_name || "Athlete"} ${row.original.last_name || "Profile"}`}
@@ -87,12 +87,13 @@ const Athletes = () => {
                 marginTop: 0,
               }}
             />
-            <Link
+            <Button
+              component={Link}
               to={`/athletes/${row.original.id}`}
-              style={{ textDecoration: "none", color: "blue", fontWeight: "bold" }}
+              sx={{ textTransform: 'none', color: 'primary.main', fontWeight: 600 }}
             >
               {`${row.original.first_name} ${row.original.last_name}`}
-            </Link>
+            </Button>
           </Box>
         ),
       },

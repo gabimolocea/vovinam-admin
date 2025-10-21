@@ -50,24 +50,21 @@ const Clubs = () => {
         accessorKey: "name",
         header: "Club Name",
         Cell: ({ row }) => (
-          <Box sx={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
             <Avatar
               src={`http://127.0.0.1:8000${row.original.logo || "/media/default_logo.jpg"}`} // Use the provided base URL and default logo
               alt={`${row.original.name || "Club Logo"}`}
               sx={{
                 width: 40,
                 height: 40,
-                borderRadius: "5%",
-                marginRight: 0,
-                marginLeft: 0,
-                marginTop: 0,
+                borderRadius: '5%',
               }}
             />
             <Button
               variant="text"
               color="primary"
               onClick={() => navigate(`/clubs/${row.original.id}`)} // Navigate to the Club View page
-              sx={{ textTransform: "none", textDecoration: "underline" }} // Styling for the link
+              sx={{ textTransform: "none", textDecoration: "underline", color: 'primary.main' }} // Styling for the link
             >
               {row.original.name}
             </Button>
@@ -97,6 +94,7 @@ const Clubs = () => {
                 size="medium"
                 color="primary"
                 onClick={() => navigate("/create-club")} // Navigate to the Create Club page
+                sx={{ textTransform: 'none' }}
               >
                 Create Club
               </Button>

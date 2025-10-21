@@ -4,6 +4,7 @@ import { DashboardLayout } from '@toolpad/core/DashboardLayout';
 import { PageContainer } from '@toolpad/core/PageContainer';
 import NAVIGATION from './Menu'; // Import the menu
 import NavListItem from './NavListItem';
+import { List, Box } from '@mui/material';
 import { useLocation } from 'react-router-dom';
 
 export default function Navbar({ content }) {
@@ -82,7 +83,14 @@ export default function Navbar({ content }) {
     >
       <DashboardLayout>
         <PageContainer breadcrumbs={false} title={pageTitle}>
-          {/* Render nav list using NavListItem when the AppProvider/layout expects navigation items */}
+          {/* Fallback nav list rendered inside the page for visual consistency */}
+          <Box sx={{ mb: 2, display: { xs: 'none', md: 'block' } }}>
+            <List sx={{ display: 'flex', gap: 1, p: 0 }}>
+              {updatedNavigation.map((item) => (
+                <NavListItem key={item.segment} item={item} active={item.active} />
+              ))}
+            </List>
+          </Box>
           {content}
         </PageContainer>
       </DashboardLayout>
