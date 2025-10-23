@@ -17,7 +17,7 @@ export function buildTheme(serverTokens = {}) {
   };
 
   const typography = {
-    fontFamily: serverTokens?.typography?.fontFamily || ['BeVietnam', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'].join(','),
+    fontFamily: serverTokens?.typography?.fontFamily || ['Be Vietnam Pro', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'].join(','),
     fontSize: serverTokens?.typography?.fontSize?.base || 14,
     fontWeight: {
       normal: serverTokens?.typography?.fontWeight?.normal || 400,
@@ -93,7 +93,7 @@ export function buildTheme(serverTokens = {}) {
 export async function fetchThemeFromBackend() {
   try {
     console.log('🎨 Fetching theme from backend...');
-    const response = await fetch('http://127.0.0.1:8000/frontend-theme/active_tokens/');
+    const response = await fetch('http://127.0.0.1:8000/api/frontend-themes/active_tokens/');
     if (response.ok) {
       const tokens = await response.json();
       console.log('✅ Theme loaded successfully:', tokens);

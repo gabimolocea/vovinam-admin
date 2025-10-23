@@ -441,6 +441,10 @@ class GradeHistory(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
+        
+        # Create notification for grade approval
+        from .notification_utils import create_grade_status_notification
+        create_grade_status_notification(self, 'approved', admin_user, notes)
     
     def reject(self, admin_user, notes=''):
         """Reject the athlete-submitted grade"""
@@ -451,6 +455,10 @@ class GradeHistory(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
+        
+        # Create notification for grade rejection
+        from .notification_utils import create_grade_status_notification
+        create_grade_status_notification(self, 'rejected', admin_user, notes)
     
     def request_revision(self, admin_user, notes=''):
         """Request revision of the athlete-submitted grade"""
@@ -461,6 +469,10 @@ class GradeHistory(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
+        
+        # Create notification for grade revision request
+        from .notification_utils import create_grade_status_notification
+        create_grade_status_notification(self, 'revision_required', admin_user, notes)
 
 
 # Yearly Medical Visa
@@ -717,6 +729,10 @@ class TrainingSeminarParticipation(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
+        
+        # Create notification for seminar participation approval
+        from .notification_utils import create_seminar_status_notification
+        create_seminar_status_notification(self, 'approved', admin_user, notes)
     
     def reject(self, admin_user, notes=''):
         """Reject the athlete-submitted seminar participation"""
@@ -727,6 +743,10 @@ class TrainingSeminarParticipation(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
+        
+        # Create notification for seminar participation rejection
+        from .notification_utils import create_seminar_status_notification
+        create_seminar_status_notification(self, 'rejected', admin_user, notes)
     
     def request_revision(self, admin_user, notes=''):
         """Request revision of the athlete-submitted seminar participation"""
@@ -737,6 +757,10 @@ class TrainingSeminarParticipation(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
+        
+        # Create notification for seminar participation revision request
+        from .notification_utils import create_seminar_status_notification
+        create_seminar_status_notification(self, 'revision_required', admin_user, notes)
 
 class CategoryAthlete(models.Model):
     """
@@ -972,9 +996,15 @@ class RefereeScore(models.Model):
 
 class CategoryAthleteScore(models.Model):
     """
-    Stores referee scores for athletes in a category with approval workflow.
-    Athletes can submit their own results which require admin approval.
+    Stores athlete results for a category with approval workflow.
+    Athletes can submit their own results (individual or team) which require admin approval and auto-populate Category awards.
     """
+    CATEGORY_TYPE_CHOICES = [
+        ('solo', 'Solo'),
+        ('teams', 'Teams'),
+        ('fight', 'Fight'),
+    ]
+    
     STATUS_CHOICES = [
         ('pending', 'Pending Approval'),
         ('approved', 'Approved'),
@@ -982,14 +1012,33 @@ class CategoryAthleteScore(models.Model):
         ('revision_required', 'Revision Required'),
     ]
     
+    PLACEMENT_CHOICES = [
+        ('1st', '1st Place'),
+        ('2nd', '2nd Place'), 
+        ('3rd', '3rd Place'),
+    ]
+    
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='athlete_scores')
     athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='category_scores')
     referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True}, null=True, blank=True)
-    score = models.IntegerField(default=0)  # Score given by the referee
+    score = models.IntegerField(default=0, blank=True, null=True, help_text='Numeric score given by referee/official (not relevant for athlete self-submissions with placement claims)')
+    
+    # Type and group (matching Category model structure)
+    type = models.CharField(max_length=10, choices=CATEGORY_TYPE_CHOICES, default='solo', help_text='Type of result: solo, fight, or teams')
+    group = models.ForeignKey(
+        'Group',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='athlete_scores',
+        help_text='Group assignment (similar to Category model)'
+    )
+    team_members = models.ManyToManyField('Athlete', blank=True, related_name='team_results', help_text='Team members (including submitter for team results)')
+    team_name = models.CharField(max_length=200, blank=True, null=True, help_text='Optional team name')
     
     # Athlete self-submission fields
     submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
-    placement_claimed = models.CharField(max_length=50, blank=True, null=True, help_text='Placement claimed by athlete (e.g., "1st Place", "2nd Place")')
+    placement_claimed = models.CharField(max_length=10, choices=PLACEMENT_CHOICES, blank=True, null=True, help_text='Award placement claimed by athlete')
     notes = models.TextField(blank=True, null=True, help_text='Additional notes about the performance')
     certificate_image = models.ImageField(upload_to='result_certificates/', null=True, blank=True, help_text='Certificate or award photo')
     result_document = models.FileField(upload_to='result_documents/', null=True, blank=True, help_text='Official result document')
@@ -1006,20 +1055,44 @@ class CategoryAthleteScore(models.Model):
 
     def __str__(self):
         if self.submitted_by_athlete:
-            return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Self-submitted: {self.placement_claimed})"
-        return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} - Referee: {self.referee.first_name if self.referee else 'N/A'} {self.referee.last_name if self.referee else ''}"
+            placement_info = f"claims {self.placement_claimed}" if self.placement_claimed else "no placement claimed"
+            return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Athlete {placement_info})"
+        else:
+            referee_name = f"{self.referee.first_name} {self.referee.last_name}" if self.referee else "N/A"
+            return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Referee: {referee_name}, Score: {self.score})"
     
     def save(self, *args, **kwargs):
+        """Override save to track status changes and ensure team submitter is included"""
+        # Track if status is changing to approved
+        status_changed_to_approved = False
+        
+        if self.pk:  # Existing record
+            try:
+                old_instance = CategoryAthleteScore.objects.get(pk=self.pk)
+                status_changed_to_approved = (old_instance.status != 'approved' and self.status == 'approved')
+            except CategoryAthleteScore.DoesNotExist:
+                pass
+        
         # If submitted by athlete, set status to pending
         if self.submitted_by_athlete and not self.pk:
             self.status = 'pending'
         # If submitted by referee/admin, set status to approved
         elif not self.submitted_by_athlete:
             self.status = 'approved'
+            
         super().save(*args, **kwargs)
+        
+        # For team results, ensure the submitting athlete is included in team members
+        if self.type == 'teams' and self.athlete and not self.team_members.filter(pk=self.athlete.pk).exists():
+            self.team_members.add(self.athlete)
+        
+        # Auto-populate Category awards when status changes to approved (only for admin approvals, not team creation)
+        if status_changed_to_approved and self.submitted_by_athlete and self.placement_claimed:
+            # Only update category text fields, don't create teams during auto-save
+            self._update_category_awards_text_only()
     
     def approve(self, admin_user, notes=''):
-        """Approve the athlete-submitted result"""
+        """Approve the athlete-submitted result and auto-populate Category awards"""
         from django.utils import timezone
         
         self.status = 'approved'
@@ -1028,13 +1101,174 @@ class CategoryAthleteScore(models.Model):
         self.admin_notes = notes
         self.save()
         
+        # Auto-populate Category awards if placement is claimed
+        if self.submitted_by_athlete and self.placement_claimed:
+            self._update_category_awards()
+        
         # Log the approval
         CategoryScoreActivity.objects.create(
             score=self,
             action='approved',
             performed_by=admin_user,
-            notes=f'Result approved. {notes}' if notes else 'Result approved.'
+            notes=f'Result approved and category awards updated. {notes}' if notes else 'Result approved and category awards updated.'
         )
+        
+        # Create notification for result approval
+        from .notification_utils import create_result_status_notification
+        create_result_status_notification(self, 'approved', admin_user, notes)
+    
+    def _create_or_get_team_for_award(self):
+        """
+        Create or get Team object for award purposes.
+        """
+        if not hasattr(self, '_award_team'):
+            # Try to find existing team with same members for this category
+            team_members = list(self.team_members.all())
+            existing_teams = Team.objects.filter(categories=self.category)
+            
+            for team in existing_teams:
+                team_member_athletes = [tm.athlete for tm in team.members.all()]
+                if set(team_member_athletes) == set(team_members):
+                    self._award_team = team
+                    break
+            else:
+                # Create new team for this award
+                self._award_team = Team.objects.create(
+                    name=f"Team {', '.join([f'{m.first_name} {m.last_name}' for m in team_members])}"
+                )
+                # Add the team to the category through the many-to-many
+                self._award_team.categories.add(self.category)
+                
+                # Add team members through TeamMember model
+                for athlete in team_members:
+                    TeamMember.objects.create(team=self._award_team, athlete=athlete)
+        
+        return self._award_team
+    
+    def _update_category_awards_text_only(self):
+        """Update only the category text fields without creating teams"""
+        if not self.category or not self.placement_claimed:
+            return
+            
+        category = self.category
+        placement = self.placement_claimed.lower().replace(' place', '').strip()
+        
+        if self.type == 'teams' and self.team_members.exists():
+            # Team result - create/get team and update ForeignKey fields
+            team = self._create_or_get_team_for_award()
+            
+            if placement == '1st':
+                category.first_place_team = team
+            elif placement == '2nd':  
+                category.second_place_team = team
+            elif placement == '3rd':
+                category.third_place_team = team
+        else:
+            # Individual result - update ForeignKey fields for all category types
+            self._ensure_athlete_enrolled()
+            
+            if placement == '1st':
+                category.first_place = self.athlete
+            elif placement == '2nd':
+                category.second_place = self.athlete
+            elif placement == '3rd':
+                category.third_place = self.athlete
+                
+        category.save()
+
+    def _update_category_awards(self):
+        """Update the Category model with the approved award placement and create teams"""
+        if not self.category or not self.placement_claimed:
+            return
+            
+        # First update the text fields
+        self._update_category_awards_text_only()
+        
+        # Then create team objects for team results
+        if self.type == 'teams' and self.team_members.exists():
+            self._create_or_update_team()
+    
+    def auto_generate_team_name(self):
+        """Auto-generate team name from team member names"""
+        if self.type == 'teams' and self.team_members.exists():
+            member_names = [f"{m.first_name} {m.last_name}" for m in self.team_members.all()[:3]]
+            auto_generated_name = f"{', '.join(member_names)}"
+            if self.team_members.count() > 3:
+                auto_generated_name += f" (+{self.team_members.count() - 3} more)"
+            
+            # Update the team name and save
+            self.team_name = auto_generated_name
+            self.save(update_fields=['team_name'])
+            return auto_generated_name
+        return None
+
+    def _create_or_update_team(self):
+        """Create or update Team object when team result is approved"""
+        if not self.team_members.exists():
+            return
+            
+        # Always auto-generate team name from team member names
+        member_names = [f"{m.first_name} {m.last_name}" for m in self.team_members.all()[:3]]
+        auto_generated_name = f"{', '.join(member_names)}"
+        if self.team_members.count() > 3:
+            auto_generated_name += f" (+{self.team_members.count() - 3} more)"
+        
+        # Use auto-generated name (always override any manual name for consistency)
+        team_name = auto_generated_name
+        
+        # Update the CategoryAthleteScore with the auto-generated team name
+        if self.team_name != team_name:
+            self.team_name = team_name
+            self.save(update_fields=['team_name'])
+        
+        # Get or create the team
+        team, created = Team.objects.get_or_create(name=team_name)
+        
+        # Add all team members to the team using the TeamMember through model
+        for member in self.team_members.all():
+            from .models import TeamMember
+            TeamMember.objects.get_or_create(team=team, athlete=member)
+            
+        # AUTO-ENROLL the team in the category (this was missing!)
+        from .models import CategoryTeam
+        try:
+            CategoryTeam.objects.get(category=self.category, team=team)
+            print(f"Team {team.name} already enrolled in category {self.category.name}")
+        except CategoryTeam.DoesNotExist:
+            CategoryTeam.objects.create(category=self.category, team=team)
+            print(f"Auto-enrolled team {team.name} in category {self.category.name}")
+            
+        team.save()
+        return team
+    
+    def _ensure_athlete_enrolled(self):
+        """Ensure the athlete is enrolled in the category before awarding placement"""
+        try:
+            # Check if athlete is already enrolled
+            CategoryAthlete.objects.get(category=self.category, athlete=self.athlete)
+        except CategoryAthlete.DoesNotExist:
+            # Enroll the athlete in the category
+            CategoryAthlete.objects.create(
+                category=self.category,
+                athlete=self.athlete
+                # weight can be added later if needed
+            )
+    
+    @classmethod
+    def create_category_if_needed(cls, competition, name, category_type='solo', gender='mixt', group=None):
+        """Create a category if it doesn't exist"""
+        from .models import Category
+        
+        category, created = Category.objects.get_or_create(
+            name=name,
+            competition=competition,
+            defaults={
+                'type': category_type,
+                'gender': gender,
+                'group': group
+            }
+        )
+        return category, created
     
     def reject(self, admin_user, notes=''):
         """Reject the athlete-submitted result"""
@@ -1053,6 +1287,10 @@ class CategoryAthleteScore(models.Model):
             performed_by=admin_user,
             notes=f'Result rejected. {notes}' if notes else 'Result rejected.'
         )
+        
+        # Create notification for result rejection
+        from .notification_utils import create_result_status_notification
+        create_result_status_notification(self, 'rejected', admin_user, notes)
     
     def request_revision(self, admin_user, notes=''):
         """Request revision on the athlete-submitted result"""
@@ -1071,6 +1309,10 @@ class CategoryAthleteScore(models.Model):
             performed_by=admin_user,
             notes=f'Revision requested. {notes}' if notes else 'Revision requested.'
         )
+        
+        # Create notification for revision request
+        from .notification_utils import create_result_status_notification
+        create_result_status_notification(self, 'revision_required', admin_user, notes)
 
 
 class CategoryTeamScore(models.Model):
@@ -1087,6 +1329,16 @@ class CategoryTeamScore(models.Model):
 
     def __str__(self):
         return f"{self.team.name} - {self.category.name} - Referee: {self.referee.first_name} {self.referee.last_name}"
+
+
+# NOTE: CategoryTeamAthleteScore model consolidated into CategoryAthleteScore with type='teams'
+# This model is deprecated and will be removed after migration
+# 
+# class CategoryTeamAthleteScore(models.Model):
+#     """
+#     DEPRECATED: Team functionality moved to CategoryAthleteScore with type='teams'
+#     """
+#     pass
 
 
 class CategoryScoreActivity(models.Model):
@@ -1365,3 +1617,99 @@ class AthleteMatch(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
+
+
+# Notification System Models
+class Notification(models.Model):
+    """Model for storing notifications to users"""
+    NOTIFICATION_TYPES = [
+        ('result_submitted', 'Result Submitted'),
+        ('result_approved', 'Result Approved'),
+        ('result_rejected', 'Result Rejected'),
+        ('result_revision_required', 'Result Revision Required'),
+        ('grade_submitted', 'Grade Exam Submitted'),
+        ('grade_approved', 'Grade Exam Approved'),
+        ('grade_rejected', 'Grade Exam Rejected'),
+        ('grade_revision_required', 'Grade Exam Revision Required'),
+        ('seminar_submitted', 'Seminar Participation Submitted'),
+        ('seminar_approved', 'Seminar Participation Approved'),
+        ('seminar_rejected', 'Seminar Participation Rejected'),
+        ('seminar_revision_required', 'Seminar Participation Revision Required'),
+        ('competition_created', 'Competition Created'),
+        ('competition_updated', 'Competition Updated'),
+        ('system_announcement', 'System Announcement'),
+    ]
+    
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    notification_type = models.CharField(max_length=30, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    
+    # Optional link to related objects
+    related_result = models.ForeignKey('CategoryAthleteScore', on_delete=models.CASCADE, null=True, blank=True)
+    related_competition = models.ForeignKey('Competition', on_delete=models.CASCADE, null=True, blank=True)
+    
+    # Optional action data (JSON field for flexible data storage)
+    action_data = models.JSONField(null=True, blank=True, help_text="Additional data for notification actions")
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', '-created_at']),
+            models.Index(fields=['recipient', 'is_read']),
+        ]
+    
+    def __str__(self):
+        return f"{self.title} - {self.recipient.get_full_name()}"
+    
+    def mark_as_read(self):
+        """Mark notification as read"""
+        from django.utils import timezone
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save()
+
+
+class NotificationSettings(models.Model):
+    """Model for user notification preferences"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='notification_settings')
+    
+    # Email notification preferences
+    email_on_result_status_change = models.BooleanField(default=True)
+    email_on_competition_updates = models.BooleanField(default=True)
+    email_on_system_announcements = models.BooleanField(default=True)
+    
+    # In-app notification preferences
+    notify_result_submitted = models.BooleanField(default=True)
+    notify_result_approved = models.BooleanField(default=True)
+    notify_result_rejected = models.BooleanField(default=True)
+    notify_result_revision_required = models.BooleanField(default=True)
+    notify_grade_submitted = models.BooleanField(default=True)
+    notify_grade_approved = models.BooleanField(default=True)
+    notify_grade_rejected = models.BooleanField(default=True)
+    notify_grade_revision_required = models.BooleanField(default=True)
+    notify_seminar_submitted = models.BooleanField(default=True)
+    notify_seminar_approved = models.BooleanField(default=True)
+    notify_seminar_rejected = models.BooleanField(default=True)
+    notify_seminar_revision_required = models.BooleanField(default=True)
+    notify_competition_created = models.BooleanField(default=True)
+    notify_competition_updated = models.BooleanField(default=False)
+    notify_system_announcements = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Notification Settings - {self.user.get_full_name()}"
+
+
+# Signal to create notification settings for new users
+@receiver(post_save, sender=User)
+def create_notification_settings(sender, instance, created, **kwargs):
+    """Create notification settings when a new user is created"""
+    if created:
+        NotificationSettings.objects.create(user=instance)

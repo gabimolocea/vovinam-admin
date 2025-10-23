@@ -6,26 +6,31 @@ from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
 
-router.register(r'city', CityViewSet, basename='city')
-router.register('club', ClubViewSet, basename='club')
-router.register('competition', CompetitionViewSet, basename='competition')
-router.register('athlete', AthleteViewSet, basename='athlete')
-router.register('athlete-profile', AthleteProfileViewSet, basename='athlete-profile')
-router.register('supporter-athlete-relation', SupporterAthleteRelationViewSet, basename='supporter-athlete-relation')
-router.register('title', TitleViewSet, basename='title')
-router.register('federation-role', FederationRoleViewSet, basename='federation-role')
-router.register('grade', GradeViewSet, basename='grade')
-router.register('team', TeamViewSet, basename='team')
-router.register('match', MatchViewSet, basename='match')
-router.register('annual-visa', AnnualVisaViewSet, basename='annual-visa')
-router.register('category', CategoryViewSet, basename='category')
-router.register('grade-history', GradeHistoryViewSet, basename='grade-history')
-router.register('medical-visa', MedicalVisaViewSet, basename='medical-visa')
-router.register('training-seminar', TrainingSeminarViewSet, basename='training-seminar')
-router.register('group', GroupViewSet, basename='group')
-router.register('frontend-theme', FrontendThemeViewSet, basename='frontend-theme')
+router.register(r'cities', CityViewSet, basename='city')
+router.register('clubs', ClubViewSet, basename='club')
+router.register('competitions', CompetitionViewSet, basename='competition')
+router.register('athletes', AthleteViewSet, basename='athlete')
+router.register('athlete-profiles', AthleteProfileViewSet, basename='athlete-profile')
+router.register('supporter-athlete-relations', SupporterAthleteRelationViewSet, basename='supporter-athlete-relation')
+router.register('titles', TitleViewSet, basename='title')
+router.register('federation-roles', FederationRoleViewSet, basename='federation-role')
+router.register('grades', GradeViewSet, basename='grade')
+router.register('teams', TeamViewSet, basename='team')
+router.register('matches', MatchViewSet, basename='match')
+router.register('annual-visas', AnnualVisaViewSet, basename='annual-visa')
+router.register('categories', CategoryViewSet, basename='category')
+router.register('grade-histories', GradeHistoryViewSet, basename='grade-history')
+router.register('medical-visas', MedicalVisaViewSet, basename='medical-visa')
+router.register('training-seminars', TrainingSeminarViewSet, basename='training-seminar')
+router.register('groups', GroupViewSet, basename='group')
+router.register('frontend-themes', FrontendThemeViewSet, basename='frontend-theme')
 router.register('category-athlete-score', CategoryAthleteScoreViewSet, basename='category-athlete-score')
 router.register('category-score-activity', CategoryScoreActivityViewSet, basename='category-score-activity')
+router.register('notifications', NotificationViewSet, basename='notification')
+router.register('notification-settings', NotificationSettingsViewSet, basename='notification-settings')
+router.register('grade-submissions', GradeHistorySubmissionViewSet, basename='grade-submission')
+router.register('seminar-submissions', TrainingSeminarParticipationViewSet, basename='seminar-submission')
+# team-scores endpoint deprecated - use category-athlete-score with type='teams' filter
 
 
 urlpatterns = [
@@ -44,10 +49,8 @@ urlpatterns = [
     path('athlete-profile/my-profile/', MyAthleteProfileView.as_view(), name='my-athlete-profile'),
     path('admin-approvals/pending/', PendingApprovalsView.as_view(), name='pending-approvals'),
     
-    # Reference data endpoints
+    # Reference data endpoints (non-conflicting with router)
     path('sports/', views.sports_list, name='sports-list'),
-    path('categories/', views.categories_list, name='categories-list'),
-    path('clubs/', views.clubs_list, name='clubs-list'),
     
     # Router URLs (should come last to avoid conflicts)
     path('', include(router.urls)),  # This will handle the actual endpoints

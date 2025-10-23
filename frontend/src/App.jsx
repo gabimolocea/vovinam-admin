@@ -29,6 +29,8 @@ import AthleteRegistration from './components/AthleteRegistration'
 import AdminApprovals from './components/AdminApprovals'
 import SupporterManagement from './components/SupporterManagement'
 import AthleteProfileStatus from './components/AthleteProfileStatus'
+import NotificationsPage from './pages/NotificationsPage'
+import SubmissionManagement from './components/SubmissionManagement'
 
 function App() {
   return (
@@ -115,6 +117,13 @@ function App() {
           </ProtectedRoute>
         } />
         
+        {/* Notifications route */}
+        <Route path="/notifications" element={
+          <ProtectedRoute>
+            <NotificationsPage />
+          </ProtectedRoute>
+        } />
+        
         {/* Athlete workflow routes */}
         <Route path="/athlete-registration" element={
           <ProtectedRoute requireRole="athlete">
@@ -131,6 +140,11 @@ function App() {
         <Route path="/admin/pending-approvals" element={
           <ProtectedRoute requireAdmin={true}>
             <AdminApprovals />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/submissions" element={
+          <ProtectedRoute requireAdmin={true}>
+            <SubmissionManagement />
           </ProtectedRoute>
         } />
         

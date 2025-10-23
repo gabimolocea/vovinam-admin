@@ -8,13 +8,13 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('api.urls')),  # This will match /api/  
+    path('api/', include('api.urls')),  # API endpoints will be at /api/
     path('health/', health),
     path('landing/', include('landing.urls')),  # Landing app separately
     path("ckeditor5/", include('django_ckeditor_5.urls')),
     
     # JWT token refresh endpoint
-    path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 
 # Serve media files during development

@@ -17,7 +17,7 @@ const Clubs = () => {
 
   const GetData = async () => {
     try {
-      const response = await AxiosInstance.get("club/");
+      const response = await AxiosInstance.get("clubs/");
       console.log("API Response:", response.data);
 
       const transformedData = response.data.map((club) => ({

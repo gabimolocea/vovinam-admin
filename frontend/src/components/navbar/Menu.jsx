@@ -4,10 +4,12 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import DescriptionIcon from '@mui/icons-material/Description';
 import LayersIcon from '@mui/icons-material/Layers';
+import NotificationsIcon from '@mui/icons-material/Notifications';
 import {Link} from 'react-router-dom'
 import Groups2Icon from '@mui/icons-material/Groups2';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import ApprovalIcon from '@mui/icons-material/Approval';
 
 const NAVIGATION = [
     { 
@@ -33,6 +35,18 @@ const NAVIGATION = [
         title: 'Competitions', 
         icon: <EmojiEventsIcon />, 
         link: '/competitions'
+    },
+    { 
+        segment: 'notifications', 
+        title: 'Notifications', 
+        icon: <NotificationsIcon />, 
+        link: '/notifications'
+    },
+    { 
+        segment: 'submissions', 
+        title: 'Manage Submissions', 
+        icon: <ApprovalIcon />, 
+        link: '/admin/submissions'
     },
 ];
 

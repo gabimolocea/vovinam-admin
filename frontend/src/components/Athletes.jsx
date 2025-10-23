@@ -11,7 +11,6 @@ import { useAuth } from "../contexts/AuthContext";
 const Athletes = () => {
   const { isAdmin } = useAuth();
   const [myData, setMyData] = useState([]);
-  const [clubs, setClubs] = useState({});
   const [grades, setGrades] = useState({});
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedAthlete, setSelectedAthlete] = useState(null);
@@ -20,32 +19,25 @@ const Athletes = () => {
   const GetData = async () => {
     try {
       // Fetch athletes
-      const response = await AxiosInstance.get("athlete/");
+      const response = await AxiosInstance.get("athletes/");
       console.log("Athletes API Response:", response.data);
 
-      // Fetch clubs and grades
-      const clubsResponse = await AxiosInstance.get("club/");
-      const gradesResponse = await AxiosInstance.get("grade/");
-      console.log("Clubs API Response:", clubsResponse.data);
+      // Fetch grades (clubs are now included in athlete response)
+      const gradesResponse = await AxiosInstance.get("grades/");
       console.log("Grades API Response:", gradesResponse.data);
 
-      // Map club and grade IDs to their names
-      const clubsMap = clubsResponse.data.reduce((acc, club) => {
-        acc[club.id] = club.name;
-        return acc;
-      }, {});
+      // Map grade IDs to their names
       const gradesMap = gradesResponse.data.reduce((acc, grade) => {
         acc[grade.id] = grade.name;
         return acc;
       }, {});
 
-      setClubs(clubsMap);
       setGrades(gradesMap);
 
       // Transform athlete data
       const transformedData = response.data.map((athlete) => ({
         ...athlete,
-        club: clubsMap[athlete.club] || "N/A", // Map club ID to name
+        club: athlete.club?.name || "N/A", // Use club object name directly
         grade: gradesMap[athlete.current_grade] || "N/A", // Map grade ID to name
       }));
 
@@ -61,7 +53,7 @@ const Athletes = () => {
 
   const handleDelete = async () => {
     try {
-      await AxiosInstance.delete(`athlete/${selectedAthlete.id}/`);
+      await AxiosInstance.delete(`athletes/${selectedAthlete.id}/`);
       console.log("Deleted athlete:", selectedAthlete);
       setMyData(myData.filter((athlete) => athlete.id !== selectedAthlete.id)); // Remove the deleted athlete from the state
       setOpenDialog(false); // Close the dialog

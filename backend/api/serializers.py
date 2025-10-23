@@ -45,7 +45,6 @@ class CompetitionSerializer(serializers.ModelSerializer):
 
 class AthleteSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
-    club = serializers.PrimaryKeyRelatedField(queryset=Club.objects.all(), allow_null=True)  # Accept club ID only
     city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), allow_null=True)  # Accept city ID only
     current_grade = serializers.PrimaryKeyRelatedField(queryset=Grade.objects.all(), allow_null=True)  # Accept grade ID only
     federation_role = serializers.PrimaryKeyRelatedField(queryset=FederationRole.objects.all(), allow_null=True)  # Accept role ID only
@@ -55,7 +54,6 @@ class AthleteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Athlete
         fields = '__all__'
-        depth = 1  # This will include related objects in the output
         extra_kwargs = {
             'first_name': {'required': True},
             'last_name': {'required': True},
@@ -73,6 +71,15 @@ class AthleteSerializer(serializers.ModelSerializer):
                 'email': instance.user.email,
                 'username': instance.user.username
             }
+        
+        # Add club details if available
+        if instance.club:
+            representation['club'] = {
+                'id': instance.club.id,
+                'name': instance.club.name
+            }
+        else:
+            representation['club'] = None
         
         # Add computed properties
         representation['can_edit_profile'] = instance.can_edit_profile
@@ -126,7 +133,11 @@ class TeamSerializer(serializers.ModelSerializer):
                 'athlete': {
                     'id': member.athlete.id,
                     'first_name': member.athlete.first_name,
-                    'last_name': member.athlete.last_name
+                    'last_name': member.athlete.last_name,
+                    'club': {
+                        'id': member.athlete.club.id,
+                        'name': member.athlete.club.name
+                    } if member.athlete.club else None
                 }
             }
             for member in instance.members.all()
@@ -240,6 +251,9 @@ class CategorySerializer(serializers.ModelSerializer):
     first_place_team = TeamSerializer(read_only=True)  # Include detailed team information
     second_place_team = TeamSerializer(read_only=True)  # Include detailed team information
     third_place_team = TeamSerializer(read_only=True)  # Include detailed team information
+    first_place = AthleteSerializer(read_only=True)  # Include full athlete details for first place
+    second_place = AthleteSerializer(read_only=True)  # Include full athlete details for second place
+    third_place = AthleteSerializer(read_only=True)  # Include full athlete details for third place
     group_name = serializers.CharField(source='group.name', read_only=True, allow_null=True)  # Include group name
 
     class Meta:
@@ -251,6 +265,7 @@ class CategorySerializer(serializers.ModelSerializer):
             'first_place_team', 'second_place_team', 'third_place_team',
         ]
 
+# Basic GradeHistory serializer for admin use
 class GradeHistorySerializer(serializers.ModelSerializer):
     athlete_name = serializers.CharField(source='athlete.first_name', read_only=True)
     grade_name = serializers.CharField(source='grade.name', read_only=True)
@@ -262,6 +277,66 @@ class GradeHistorySerializer(serializers.ModelSerializer):
             'level', 'exam_date', 'exam_place', 'technical_director', 'president',
         ]
 
+
+# Enhanced GradeHistory serializer with approval workflow
+class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
+    """Serializer for athlete grade history submissions with approval workflow"""
+    athlete = serializers.PrimaryKeyRelatedField(read_only=True)
+    athlete_name = serializers.CharField(source='athlete.get_full_name', read_only=True)
+    grade_name = serializers.CharField(source='grade.name', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = GradeHistory
+        fields = [
+            'id', 'athlete', 'athlete_name', 'grade', 'grade_name', 'obtained_date',
+            'level', 'exam_date', 'exam_place', 'technical_director', 'president',
+            'submitted_by_athlete', 'certificate_image', 'result_document', 'notes',
+            'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name', 'admin_notes'
+        ]
+        read_only_fields = ['athlete', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name']
+    
+    def create(self, validated_data):
+        """Auto-assign current user's athlete profile and set submission flag"""
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'athlete'):
+            validated_data['athlete'] = request.user.athlete
+            validated_data['submitted_by_athlete'] = True
+            
+            # Create the grade history
+            grade_history = super().create(validated_data)
+            
+            # Log the submission
+            from .models import GradeHistoryActivity
+            try:
+                GradeHistoryActivity.objects.create(
+                    grade_history=grade_history,
+                    action='submitted',
+                    performed_by=request.user,
+                    notes=f'Grade submission for {grade_history.grade.name}'
+                )
+            except:
+                # GradeHistoryActivity model might not exist yet
+                pass
+            
+            # Create notification for grade submission
+            from .notification_utils import create_grade_submitted_notification
+            create_grade_submitted_notification(grade_history)
+            
+            return grade_history
+        else:
+            raise serializers.ValidationError("User must have an athlete profile to submit grade history")
+
+
+class GradeHistoryApprovalSerializer(serializers.Serializer):
+    """Serializer for admin approval/rejection actions on grade history"""
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+
+class TrainingSeminarParticipationApprovalSerializer(serializers.Serializer):
+    """Serializer for admin approval/rejection/revision requests for seminar participation"""
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
 class MedicalVisaSerializer(serializers.ModelSerializer):
     is_valid = serializers.BooleanField(read_only=True)  # Include the computed property
 
@@ -270,12 +345,64 @@ class MedicalVisaSerializer(serializers.ModelSerializer):
         fields = ['id', 'athlete', 'issued_date', 'health_status', 'is_valid']
         read_only_fields = ['is_valid']
 
+# Basic TrainingSeminar serializer for admin use
 class TrainingSeminarSerializer(serializers.ModelSerializer):
     athletes_names = serializers.StringRelatedField(many=True, source='athletes')  # Display athlete names
 
     class Meta:
         model = TrainingSeminar
         fields = ['id', 'name', 'start_date', 'end_date', 'place', 'athletes', 'athletes_names']
+
+
+# TrainingSeminarParticipation serializer with approval workflow
+class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
+    """Serializer for athlete training seminar participation submissions with approval workflow"""
+    athlete = serializers.PrimaryKeyRelatedField(read_only=True)
+    athlete_name = serializers.CharField(source='athlete.__str__', read_only=True)
+    seminar_name = serializers.CharField(source='seminar.name', read_only=True)
+    seminar_details = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.CharField(source='reviewed_by.__str__', read_only=True)
+    
+    class Meta:
+        model = TrainingSeminarParticipation
+        fields = [
+            'id', 'athlete', 'athlete_name', 'seminar', 'seminar_name', 'seminar_details',
+            'submitted_by_athlete', 'participation_certificate', 'participation_document', 'notes',
+            'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name', 'admin_notes'
+        ]
+        read_only_fields = ['athlete', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name']
+    
+    def get_seminar_details(self, obj):
+        """Get detailed seminar information"""
+        return {
+            'name': obj.seminar.name,
+            'start_date': obj.seminar.start_date,
+            'end_date': obj.seminar.end_date,
+            'place': obj.seminar.place
+        }
+    
+    def create(self, validated_data):
+        """Auto-assign current user's athlete profile and set submission flag"""
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'athlete'):
+            validated_data['athlete'] = request.user.athlete
+            validated_data['submitted_by_athlete'] = True
+            
+            # Create the participation record
+            participation = super().create(validated_data)
+            
+            # Note: Activity logging would go here if TrainingSeminarActivity model exists
+            
+            # Create notification for seminar participation submission
+            from .notification_utils import create_seminar_submitted_notification
+            create_seminar_submitted_notification(participation)
+            
+            return participation
+        else:
+            raise serializers.ValidationError("User must have an athlete profile to submit seminar participation")
+
+
+
 
 
 class GroupSerializer(serializers.ModelSerializer):
@@ -555,19 +682,22 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
-    """Serializer for athlete category scores with approval workflow"""
+    """Serializer for athlete category scores with approval workflow (supports both individual and team results)"""
     athlete = serializers.PrimaryKeyRelatedField(read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
+    group_name = serializers.CharField(source='category.group.name', read_only=True, allow_null=True)
     competition_name = serializers.CharField(source='category.competition.name', read_only=True)
     competition_date = serializers.DateField(source='category.competition.date', read_only=True)
     reviewed_by = serializers.StringRelatedField(read_only=True)
+    team_members = serializers.PrimaryKeyRelatedField(many=True, queryset=Athlete.objects.all(), required=False)
     
     class Meta:
         model = CategoryAthleteScore
         fields = [
-            'id', 'athlete', 'category', 'category_name', 'competition_name', 'competition_date',
+            'id', 'athlete', 'category', 'category_name', 'group_name', 'competition_name', 'competition_date',
             'score', 'submitted_by_athlete', 'placement_claimed', 'notes', 'certificate_image', 
-            'result_document', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes'
+            'result_document', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes',
+            'type', 'group', 'team_members', 'team_name'
         ]
         read_only_fields = ['submitted_date', 'reviewed_date', 'reviewed_by']
     
@@ -584,6 +714,18 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
                 'last_name': instance.athlete.last_name
             }
         
+        # Include team member details for team results
+        if instance.type == 'teams' and instance.team_members.exists():
+            representation['team_members'] = [
+                {
+                    'id': member.id,
+                    'name': f"{member.first_name} {member.last_name}",
+                    'first_name': member.first_name,
+                    'last_name': member.last_name
+                }
+                for member in instance.team_members.all()
+            ]
+        
         # Include reviewer details
         if instance.reviewed_by:
             representation['reviewed_by'] = {
@@ -594,25 +736,58 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
         
         return representation
 
+    def validate(self, data):
+        """Custom validation for CategoryAthleteScore"""
+        result_type = data.get('type', 'solo')
+        team_members = data.get('team_members', [])
+        
+        # Validate team_members based on type
+        if result_type != 'teams' and team_members:
+            raise serializers.ValidationError({
+                'team_members': 'Team members can only be specified for team results.'
+            })
+        
+        if result_type == 'teams' and not team_members:
+            raise serializers.ValidationError({
+                'team_members': 'Team members are required for team results.'
+            })
+        
+        return data
+
     def create(self, validated_data):
         """Auto-assign current user's athlete profile and set submission flag"""
         request = self.context.get('request')
         if request and hasattr(request.user, 'athlete'):
             validated_data['athlete'] = request.user.athlete
             validated_data['submitted_by_athlete'] = True
+            
+            # For team results, handle team members separately
+            team_members = validated_data.pop('team_members', [])
+            
+            # Create the result first
+            result = super().create(validated_data)
+            
+            # For team results, ensure submitting athlete is included in team members
+            if result.type == 'teams':
+                if request.user.athlete not in team_members:
+                    team_members.append(request.user.athlete)
+                result.team_members.set(team_members)
+            
+            # Log the submission
+            CategoryScoreActivity.objects.create(
+                score=result,
+                action='submitted',
+                performed_by=request.user,
+                notes=f"{'Team' if result.type == 'teams' else 'Individual'} result submitted for {result.category.name} in {result.category.competition.name}"
+            )
+            
+            # Create notification for result submission
+            from .notification_utils import create_result_submitted_notification
+            create_result_submitted_notification(result)
+            
+            return result
         else:
             raise serializers.ValidationError("User must have an athlete profile to submit results")
-        
-        # Log the submission
-        result = super().create(validated_data)
-        CategoryScoreActivity.objects.create(
-            score=result,
-            action='submitted',
-            performed_by=request.user,
-            notes=f"Result submitted for {result.category.name} in {result.category.competition.name}"
-        )
-        
-        return result
 
 
 class CategoryScoreActivitySerializer(serializers.ModelSerializer):
@@ -630,3 +805,68 @@ class CategoryScoreApprovalSerializer(serializers.Serializer):
     """Serializer for admin approval/rejection actions on category scores"""
     action = serializers.ChoiceField(choices=['approve', 'reject', 'request_revision'])
     notes = serializers.CharField(required=False, allow_blank=True, help_text='Admin notes for the action')
+
+
+# CategoryTeamAthleteScoreSerializer deprecated - team functionality consolidated into CategoryAthleteScoreSerializer
+
+
+# Notification System Serializers
+class NotificationSerializer(serializers.ModelSerializer):
+    """Serializer for user notifications"""
+    recipient_name = serializers.CharField(source='recipient.get_full_name', read_only=True)
+    time_since_created = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'recipient', 'recipient_name', 'notification_type', 'title', 'message',
+            'is_read', 'created_at', 'read_at', 'time_since_created', 'related_result',
+            'related_competition', 'action_data'
+        ]
+        read_only_fields = ['recipient', 'created_at', 'read_at', 'time_since_created']
+    
+    def get_time_since_created(self, obj):
+        """Get human-readable time since notification was created"""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        now = timezone.now()
+        diff = now - obj.created_at
+        
+        if diff < timedelta(minutes=1):
+            return "Just now"
+        elif diff < timedelta(hours=1):
+            minutes = int(diff.total_seconds() / 60)
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        elif diff < timedelta(days=1):
+            hours = int(diff.total_seconds() / 3600)
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f"{days} day{'s' if days > 1 else ''} ago"
+        else:
+            return obj.created_at.strftime('%B %d, %Y')
+
+
+class NotificationSettingsSerializer(serializers.ModelSerializer):
+    """Serializer for user notification settings"""
+    
+    class Meta:
+        model = NotificationSettings
+        fields = [
+            'id', 'user', 'email_on_result_status_change', 'email_on_competition_updates',
+            'email_on_system_announcements', 'notify_result_submitted', 'notify_result_approved',
+            'notify_result_rejected', 'notify_result_revision_required', 'notify_competition_created',
+            'notify_competition_updated', 'notify_system_announcements', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['user', 'created_at', 'updated_at']
+
+
+class NotificationActionSerializer(serializers.Serializer):
+    """Serializer for notification actions (mark as read, etc.)"""
+    action = serializers.ChoiceField(choices=['mark_read', 'mark_unread', 'mark_all_read'])
+    notification_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="List of notification IDs for batch operations"
+    )

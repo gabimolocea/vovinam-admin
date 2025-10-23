@@ -8,6 +8,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { buildTheme, fetchThemeFromBackend } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 
 // Theme wrapper component to handle async theme loading
 const ThemeWrapper = ({ children }) => {
@@ -74,9 +75,11 @@ if (rootElement) {
       <ThemeWrapper>
         <BrowserRouter>
           <AuthProvider>
-            <AppLayout>
-              <App />
-            </AppLayout>
+            <NotificationProvider>
+              <AppLayout>
+                <App />
+              </AppLayout>
+            </NotificationProvider>
           </AuthProvider>
         </BrowserRouter>
       </ThemeWrapper>

@@ -43,6 +43,24 @@ def update_current_grade(sender, instance, **kwargs):
     athlete.current_grade = instance.grade
     athlete.save()
 
+@receiver(m2m_changed, sender=CategoryAthleteScore.team_members.through)
+def auto_generate_team_name(sender, instance, action, **kwargs):
+    """
+    Auto-generate team name when team members are added/changed for CategoryAthleteScore.
+    """
+    if action in ['post_add', 'post_remove', 'post_clear'] and instance.type == 'teams':
+        # Auto-generate team name based on current team members
+        if instance.team_members.exists():
+            member_names = [f"{m.first_name} {m.last_name}" for m in instance.team_members.all()[:3]]
+            auto_generated_name = f"{', '.join(member_names)}"
+            if instance.team_members.count() > 3:
+                auto_generated_name += f" (+{instance.team_members.count() - 3} more)"
+            
+            # Update team name if it's different
+            if instance.team_name != auto_generated_name:
+                instance.team_name = auto_generated_name
+                instance.save(update_fields=['team_name'])
+
 @receiver(m2m_changed, sender=Category.teams.through)
 def sync_category_and_team(sender, instance, action, reverse, pk_set, **kwargs):
     """
@@ -73,19 +91,14 @@ def validate_and_assign_places(sender, instance, **kwargs):
     """
     # Validate that no team with the same set of athletes already exists
     team_members = instance.members.all()
-    existing_teams = Team.objects.exclude(pk=instance.pk)
+    # Allow multiple teams with the same members - teams can compete in different categories/competitions
+    # existing_teams = Team.objects.exclude(pk=instance.pk)
+    # for team in existing_teams:
+    #     if set(team.members.values_list('athlete', flat=True)) == set(team_members.values_list('athlete', flat=True)):
+    #         raise ValueError("A team with the same members already exists.")
 
-    for team in existing_teams:
-        if set(team.members.values_list('athlete', flat=True)) == set(team_members.values_list('athlete', flat=True)):
-            raise ValueError("A team with the same members already exists.")
-
-    # Automatically assign the team's awarded place to its members
-    if instance.categories.filter(first_place_team=instance).exists():
-        instance.assign_team_place_to_members("1st Place")
-    elif instance.categories.filter(second_place_team=instance).exists():
-        instance.assign_team_place_to_members("2nd Place")
-    elif instance.categories.filter(third_place_team=instance).exists():
-        instance.assign_team_place_to_members("3rd Place")
+    # Team placement is now handled through the CategoryAthleteScore system
+    # with team_members relationships, so no additional processing needed here
 
 @receiver(post_save, sender=TeamMember)
 def update_team_name(sender, instance, **kwargs):

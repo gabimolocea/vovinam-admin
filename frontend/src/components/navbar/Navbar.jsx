@@ -6,7 +6,8 @@ import NAVIGATION from './Menu'; // Import the menu
 import NavListItem from './NavListItem';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { MenuItem, Divider, IconButton, Avatar, Menu } from '@mui/material';
+import NotificationBell from '../NotificationBell';
+import { MenuItem, Divider, IconButton, Avatar, Menu, Box } from '@mui/material';
 import { Person, Logout } from '@mui/icons-material';
 
 export default function Navbar({ content }) {
@@ -123,18 +124,21 @@ export default function Navbar({ content }) {
             toolbarActions: () => (
               user && (
                 <>
-                  <IconButton
-                    onClick={handleMenuOpen}
-                    size="small"
-                    aria-controls={Boolean(anchorEl) ? 'account-menu' : undefined}
-                    aria-haspopup="true"
-                    aria-expanded={Boolean(anchorEl) ? 'true' : undefined}
-                    sx={{ mr: 1 }}
-                  >
-                    <Avatar sx={{ width: 32, height: 32, fontSize: '0.875rem' }}>
-                      {`${(user.first_name || 'U').charAt(0).toUpperCase()}${(user.last_name || 'S').charAt(0).toUpperCase()}`}
-                    </Avatar>
-                  </IconButton>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <NotificationBell />
+                    <IconButton
+                      onClick={handleMenuOpen}
+                      size="small"
+                      aria-controls={Boolean(anchorEl) ? 'account-menu' : undefined}
+                      aria-haspopup="true"
+                      aria-expanded={Boolean(anchorEl) ? 'true' : undefined}
+                      sx={{ mr: 1 }}
+                    >
+                      <Avatar sx={{ width: 32, height: 32, fontSize: '0.875rem' }}>
+                        {`${(user.first_name || 'U').charAt(0).toUpperCase()}${(user.last_name || 'S').charAt(0).toUpperCase()}`}
+                      </Avatar>
+                    </IconButton>
+                  </Box>
                   
                   <Menu
                     anchorEl={anchorEl}

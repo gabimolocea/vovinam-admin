@@ -29,6 +29,7 @@ from .models import (
     RefereeScore,
     CategoryAthleteScore,
     CategoryTeamScore,
+    # CategoryTeamAthleteScore, # deprecated - consolidated into CategoryAthleteScore
     TeamMember,
     Group,
     FrontendTheme,
@@ -94,54 +95,9 @@ class CategoryAthleteInline(admin.TabularInline):
     category_type.short_description = "Category Type"
 
 
-class AthleteTeamResultsInline(admin.TabularInline):
-    model = TeamMember  # Use the TeamMember model
-    extra = 0
-    verbose_name = "TEAM RESULTS"
-    verbose_name_plural = "TEAM RESULTS"
-    can_add = False  # Disable the "Add another TEAM RESULTS" button
-    can_delete = False  # Disable the "Delete" button
-    show_change_link = False  # Hide the "Change" link
-    show_add_link = False
-
-    fields = ('category_name', 'competition_name', 'place_obtained')  # Fields to display
-    readonly_fields = ('place_obtained', 'category_name', 'competition_name')  # Make fields read-only
-
-    def category_name(self, obj):
-        """
-        Display the category name without including the team name.
-        """
-        categories = obj.team.categories.all()
-        return ", ".join([category.name for category in categories]) if categories else "No Categories"
-    category_name.short_description = "Category Name"
-
-    def competition_name(self, obj):
-        """
-        Display the competition name associated with the categories the team is enrolled in.
-        """
-        competitions = obj.team.categories.values_list('competition__name', flat=True).distinct()
-        return ", ".join(competitions) if competitions else "No Competitions"
-    competition_name.short_description = "Competition Name"
-
-    
-
-    def place_obtained(self, obj):
-        """
-        Display the place obtained by the team in the categories it is enrolled in.
-        """
-        # Check if the team has been awarded a place in any category
-        first_place_categories = obj.team.first_place_team_categories.all()
-        second_place_categories = obj.team.second_place_team_categories.all()
-        third_place_categories = obj.team.third_place_team_categories.all()
-
-        if first_place_categories.exists():
-            return "1st Place"
-        elif second_place_categories.exists():
-            return "2nd Place"
-        elif third_place_categories.exists():
-            return "3rd Place"
-        return "No Placement"
-    place_obtained.short_description = "Place Obtained"
+# Custom Team Results display - using the improved approach from before
+# Since Django admin inlines have limitations with ManyToMany relationships,
+# we'll use the custom field display method in the main AthleteAdmin
 
 # Inline GradeHistory for Athlete
 class GradeHistoryInline(admin.TabularInline):
@@ -154,7 +110,7 @@ class GradeHistoryInline(admin.TabularInline):
 class MedicalVisaInline(admin.TabularInline):
     model = MedicalVisa
     extra = 0  # Display only existing entries
-    fields = ('issued_date', 'health_status', 'visa_status')  # Include visa status
+    fields = ('issued_date', 'health_status', 'medical_document', 'medical_image', 'notes', 'visa_status')  # Include medical certificate fields
     readonly_fields = ('visa_status',)  # Make visa status read-only
 
     def visa_status(self, obj):
@@ -870,7 +826,7 @@ class AthleteAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
-    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade']
+    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'get_team_results_display']
     ordering = ['-submitted_date']
     inlines = [
         AthleteActivityInline,
@@ -880,7 +836,8 @@ class AthleteAdmin(admin.ModelAdmin):
         TrainingSeminarInline,
         AthleteSoloResultsInline,
         AthleteFightResultsInline,
-        AthleteTeamResultsInline,
+        # Team results displayed via custom method in fieldsets instead of inline
+        # due to Django admin limitations with ManyToMany relationships
     ]
     
     fieldsets = (
@@ -893,11 +850,12 @@ class AthleteAdmin(admin.ModelAdmin):
         ('Emergency Contact', {
             'fields': ('emergency_contact_name', 'emergency_contact_phone')
         }),
-        ('Experience & Documents', {
-            'fields': ('previous_experience', 'medical_certificate')
+        ('Team Results', {
+            'fields': ('get_team_results_display',),
+            'description': 'Team results where this athlete is involved (as submitter or team member)'
         }),
         ('Approval Workflow', {
-            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes')
+            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by')
         }),
     )
     
@@ -927,6 +885,93 @@ class AthleteAdmin(admin.ModelAdmin):
             return format_html('<span style="color: orange;">⚠ Revision Required</span>')
         return ''
     get_action_buttons.short_description = 'Actions'
+    
+    def get_team_results_display(self, obj):
+        """Display team results where this athlete is involved"""
+        from django.db import models
+        
+        # Get all team results where athlete is involved (as main athlete or team member)
+        team_results = CategoryAthleteScore.objects.filter(
+            type='teams'
+        ).filter(
+            models.Q(athlete=obj) | models.Q(team_members=obj)
+        ).distinct().select_related('category__competition').prefetch_related('team_members')
+        
+        if not team_results.exists():
+            return format_html('<div class="inline-group" style="margin: 0;"><div class="tabular inline-related"><h2>Team Results (0)</h2><div style="padding: 10px; font-style: italic; color: #666;">No team results found</div></div></div>')
+        
+        html_parts = []
+        # Start with Django admin inline-like styling
+        html_parts.append('<div class="inline-group" style="margin: 0;">')
+        html_parts.append(f'<div class="tabular inline-related">')
+        html_parts.append(f'<h2>Team Results ({team_results.count()})</h2>')
+        html_parts.append('<table>')
+        html_parts.append('<thead>')
+        html_parts.append('<tr>')
+        html_parts.append('<th class="original">Competition</th>')
+        html_parts.append('<th class="original">Category</th>')
+        html_parts.append('<th class="original">Placement</th>')
+        html_parts.append('<th class="original">Team Name</th>')
+        html_parts.append('<th class="original">Team Members</th>')
+        html_parts.append('<th class="original">Status</th>')
+        html_parts.append('<th class="original">Role</th>')
+        html_parts.append('</tr>')
+        html_parts.append('</thead>')
+        html_parts.append('<tbody>')
+        
+        for i, result in enumerate(team_results):
+            # Determine placement with medal emojis
+            placement = result.placement_claimed or "N/A"
+            if placement == '1st':
+                placement_display = "🥇 1st Place"
+            elif placement == '2nd':
+                placement_display = "🥈 2nd Place"
+            elif placement == '3rd':
+                placement_display = "🥉 3rd Place"
+            else:
+                placement_display = placement
+            
+            # Get team members
+            team_members = ', '.join([
+                f"{member.first_name} {member.last_name}" 
+                for member in result.team_members.all()
+            ])
+            
+            # Determine role
+            role = "Team Member"
+            if result.athlete == obj:
+                role = "Submitter" if result.submitted_by_athlete else "Main Athlete"
+            
+            # Status with colors
+            status = result.status
+            if status == 'approved':
+                status_display = '<span style="color: green;">✅ Approved</span>'
+            elif status == 'pending':
+                status_display = '<span style="color: orange;">⏳ Pending</span>'
+            elif status == 'rejected':
+                status_display = '<span style="color: red;">❌ Rejected</span>'
+            else:
+                status_display = status
+            
+            # Use Django admin row styles
+            row_class = 'row1' if i % 2 == 0 else 'row2'
+            html_parts.append(f'<tr class="{row_class}">')
+            html_parts.append(f'<td>{result.category.competition.name}</td>')
+            html_parts.append(f'<td>{result.category.name}</td>')
+            html_parts.append(f'<td>{placement_display}</td>')
+            html_parts.append(f'<td>{result.team_name or "Auto-generated"}</td>')
+            html_parts.append(f'<td style="font-size: 0.9em;">{team_members}</td>')
+            html_parts.append(f'<td>{status_display}</td>')
+            html_parts.append(f'<td><strong>{role}</strong></td>')
+            html_parts.append('</tr>')
+        
+        html_parts.append('</tbody>')
+        html_parts.append('</table>')
+        html_parts.append('</div>')
+        html_parts.append('</div>')
+        return format_html(''.join(html_parts))
+    
+    get_team_results_display.short_description = 'Team Results'
     
     def save_model(self, request, obj, form, change):
         """
@@ -1049,21 +1094,36 @@ class CategoryScoreActivityInline(admin.TabularInline):
 # Enhanced CategoryAthleteScore admin with approval workflow
 class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     list_display = [
-        'get_athlete_name', 'get_competition_name', 'get_category_name', 'placement_claimed', 
-        'submitted_by_athlete', 'status', 'submitted_date', 'get_action_buttons'
+        'get_athlete_name', 'get_competition_name', 'get_category_name', 'get_submission_type', 
+        'type', 'group', 'placement_claimed', 'status', 'submitted_date', 'get_action_buttons'
     ]
-    list_filter = ['status', 'submitted_by_athlete', 'submitted_date', 'category__competition__start_date']
-    search_fields = ['athlete__first_name', 'athlete__last_name', 'category__name', 'category__competition__name']
+    list_filter = ['status', 'type', 'group', 'submitted_by_athlete', 'submitted_date', 'category__competition__start_date']
+    search_fields = [
+        'athlete__first_name', 'athlete__last_name', 'category__name', 'category__competition__name',
+        'team_members__first_name', 'team_members__last_name', 'team_name'
+    ]
     readonly_fields = ['submitted_date', 'reviewed_date']
     ordering = ['-submitted_date']
     inlines = [CategoryScoreActivityInline]
+    filter_horizontal = ['team_members']
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('athlete', 'category', 'referee', 'score', 'submitted_by_athlete')
+            'fields': ('athlete', 'category', 'submitted_by_athlete', 'type', 'group')
+        }),
+        ('Team Information', {
+            'fields': ('team_name', 'team_members'),
+            'description': 'Only used for team results (type="teams")',
+            'classes': ('collapse',)
+        }),
+        ('Referee Evaluation', {
+            'fields': ('referee', 'score'),
+            'description': 'Used when referees/officials evaluate athletes (not relevant for athlete self-submissions)',
+            'classes': ('collapse',)
         }),
         ('Athlete Submission Details', {
             'fields': ('placement_claimed', 'notes', 'certificate_image', 'result_document'),
+            'description': 'Used when athletes submit their own results with placement claims',
             'classes': ('collapse',)
         }),
         ('Approval Status', {
@@ -1072,8 +1132,19 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     )
     
     def get_queryset(self, request):
-        # Show athlete-submitted results first
-        return super().get_queryset(request).select_related('athlete', 'category__competition', 'reviewed_by')
+        # Show athlete-submitted results first, include team members
+        return super().get_queryset(request).select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
+    
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        
+        # If this is an athlete submission, make score field optional and add help text
+        if obj and obj.submitted_by_athlete:
+            if 'score' in form.base_fields:
+                form.base_fields['score'].required = False
+                form.base_fields['score'].help_text = 'Score not required for athlete self-submissions - focus on placement_claimed instead'
+        
+        return form
     
     def get_athlete_name(self, obj):
         return f"{obj.athlete.first_name} {obj.athlete.last_name}"
@@ -1090,12 +1161,19 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     get_category_name.short_description = 'Category'
     get_category_name.admin_order_field = 'category__name'
     
+    def get_submission_type(self, obj):
+        if obj.submitted_by_athlete:
+            return f"🏅 Self-Submitted ({obj.placement_claimed or 'No placement'})"
+        else:
+            return f"🥋 Referee Score ({obj.score})"
+    get_submission_type.short_description = 'Type'
+    
     def get_action_buttons(self, obj):
         if obj.submitted_by_athlete and obj.status == 'pending':
             return format_html(
-                '<a class="button" href="{}approve/">Approve</a> '
-                '<a class="button" href="{}reject/">Reject</a> '
-                '<a class="button" href="{}request_revision/">Request Revision</a>',
+                '<a class="button" href="{}/approve/">Approve</a> '
+                '<a class="button" href="{}/reject/">Reject</a> '
+                '<a class="button" href="{}/request_revision/">Request Revision</a>',
                 obj.pk, obj.pk, obj.pk
             )
         elif obj.status == 'approved':
@@ -1200,6 +1278,9 @@ class CategoryScoreActivityAdmin(admin.ModelAdmin):
 
 # Register the enhanced CategoryAthleteScore admin
 admin.site.register(CategoryAthleteScore, CategoryAthleteScoreAdmin)
+
+
+# CategoryTeamAthleteScoreAdmin deprecated - team functionality added to CategoryAthleteScoreAdmin
 
 
 @admin.register(SupporterAthleteRelation)

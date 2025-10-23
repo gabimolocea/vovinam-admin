@@ -33,7 +33,7 @@ const ViewClub = () => {
     const fetchClubData = async () => {
       try {
         console.log("Fetching all clubs...");
-        const clubsResponse = await AxiosInstance.get("club/");
+        const clubsResponse = await AxiosInstance.get("clubs/");
         const allClubs = clubsResponse.data;
         setClubs(allClubs);
 
@@ -41,18 +41,18 @@ const ViewClub = () => {
         setCurrentClubIndex(index);
 
         console.log(`Fetching club details for ID: ${id}`);
-        const clubResponse = await AxiosInstance.get(`club/${id}/`);
+        const clubResponse = await AxiosInstance.get(`clubs/${id}/`);
         setClubData(clubResponse.data);
 
         console.log("Fetching grades...");
-        const gradesResponse = await AxiosInstance.get("grade/");
+        const gradesResponse = await AxiosInstance.get("grades/");
         const grades = gradesResponse.data.reduce((acc, grade) => {
           acc[grade.id] = grade.name;
           return acc;
         }, {});
 
         console.log("Fetching athletes...");
-        const athletesResponse = await AxiosInstance.get("athlete/");
+        const athletesResponse = await AxiosInstance.get("athletes/");
         const clubAthletes = athletesResponse.data.filter(
           (athlete) => athlete.club === parseInt(id)
         );
@@ -69,7 +69,7 @@ const ViewClub = () => {
         setClubAthletes(mappedAthletes);
 
         console.log("Fetching categories...");
-        const categoriesResponse = await AxiosInstance.get("category/");
+        const categoriesResponse = await AxiosInstance.get("categories/");
         const categories = categoriesResponse.data;
 
         console.log("Categories Data:", categories);

@@ -1,0 +1,1962 @@
+﻿import React, { useEffect, useState } from "react";
+import {
+  Box,
+  Typography,
+  CircularProgress,
+  Alert,
+  Card,
+  CardContent,
+  Divider,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Tabs,
+  Tab,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+} from "@mui/material";
+import { useParams, useNavigate } from "react-router-dom";
+import AxiosInstance from "./Axios";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CancelIcon from "@mui/icons-material/Cancel";
+import Avatar from "@mui/material/Avatar";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import CloseIcon from "@mui/icons-material/Close";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import { MaterialReactTable } from 'material-react-table';
+import { useAuth } from '../contexts/AuthContext';const ViewAthlete = () => {
+  const { id } = useParams(); // Get athlete ID from URL
+  const navigate = useNavigate();
+  const { user, userRole } = useAuth();
+  const [athleteData, setAthleteData] = useState(null); // State for athlete data
+  const [clubData, setClubData] = useState(null);
+  const [relatedData, setRelatedData] = useState({}); // State for related data
+  const [gradeHistory, setGradeHistory] = useState([]); // State for grade history
+  const [annualVisa, setAnnualVisa] = useState([]); // State for annual visa
+  const [medicalVisa, setMedicalVisa] = useState([]); // State for medical visa
+  const [trainingSeminars, setTrainingSeminars] = useState([]); // State for training seminars
+  const [errorMessage, setErrorMessage] = useState(""); // State for error message
+  const [loading, setLoading] = useState(true); // State for loading indicator
+  const [activeTab, setActiveTab] = useState(0); // State for active tab
+  const [athleteIds, setAthleteIds] = useState([]); // List of athlete IDs
+  const [currentAthleteIndex, setCurrentAthleteIndex] = useState(-1); // Current athlete index
+  
+  // States for athlete results management
+  const [athleteResults, setAthleteResults] = useState([]); // State for athlete-submitted results
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultDialog, setResultDialog] = useState({ open: false, mode: 'add', data: null });
+  const [seminarDialog, setSeminarDialog] = useState({ open: false, mode: 'add', data: null });
+  const [gradeDialog, setGradeDialog] = useState({ open: false, mode: 'add', data: null });
+  const [medicalVisaDialog, setMedicalVisaDialog] = useState({ open: false, mode: 'add', data: null });
+  const [annualVisaDialog, setAnnualVisaDialog] = useState({ open: false, mode: 'add', data: null });
+  const [matchDialog, setMatchDialog] = useState({ open: false, mode: 'add', data: null });
+  const [confirmationDialog, setConfirmationDialog] = useState({ open: false, title: '', message: '', type: 'success' });
+  const [isOwnProfile, setIsOwnProfile] = useState(false); // Check if viewing own profile
+  
+  // Data for form dropdowns
+  const [competitions, setCompetitions] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [grades, setGrades] = useState([]);
+  const [trainingSeminarsAll, setTrainingSeminarsAll] = useState([]);
+
+  useEffect(() => {
+    const fetchAthleteData = async () => {
+      try {
+        const athleteResponse = await AxiosInstance.get(`athlete/${id}/`);
+        const relatedData = {};
+
+        // Fetch related data
+        if (athleteResponse.data.city) {
+          try {
+            // Fetch all cities and find the city by ID
+            const citiesResponse = await AxiosInstance.get(`city/`);
+            const city = citiesResponse.data.find(
+              (city) => city.id === athleteResponse.data.city
+            );
+
+            if (city) {
+              relatedData.city = city;
+              console.log("City data fetched:", city); // Debug log
+            } else {
+              console.warn(`City with ID ${athleteResponse.data.city} not found.`);
+              relatedData.city = { name: "Unknown City" }; // Fallback for missing city
+            }
+          } catch (error) {
+            console.error("Error fetching city data:", error);
+            relatedData.city = { name: "Unknown City" }; // Fallback for errors
+          }
+        } else {
+          relatedData.city = { name: "Unknown City" }; // Fallback for null city
+        }
+
+        if (athleteResponse.data.club) {
+          const clubResponse = await AxiosInstance.get(
+            `club/${athleteResponse.data.club}/`
+          );
+          relatedData.club = clubResponse.data;
+        }
+
+        if (athleteResponse.data.title) {
+          const titleResponse = await AxiosInstance.get(
+            `title/${athleteResponse.data.title}/`
+          );
+          relatedData.title = titleResponse.data;
+        }
+
+        if (athleteResponse.data.federation_role) {
+          const federationRoleResponse = await AxiosInstance.get(
+            `federation-role/${athleteResponse.data.federation_role}/`
+          );
+          relatedData.federationRole = federationRoleResponse.data;
+        }
+
+        if (athleteResponse.data.current_grade) {
+          const gradeResponse = await AxiosInstance.get(
+            `grade/${athleteResponse.data.current_grade}/`
+          );
+          relatedData.grade = gradeResponse.data;
+        }
+
+        const teamResponse = await AxiosInstance.get(`team/?athlete_id=${id}`);
+        relatedData.teams = teamResponse.data;
+
+        const categoryResponse = await AxiosInstance.get(
+          `category/?athlete_id=${id}`
+        );
+        relatedData.categories = categoryResponse.data;
+
+        // Fetch grade history
+        const gradeHistoryResponse = await AxiosInstance.get(
+          `grade-history/?athlete_id=${id}`
+        );
+        setGradeHistory(gradeHistoryResponse.data);
+
+        // Fetch annual visa
+        const annualVisaResponse = await AxiosInstance.get(`annual-visa/`);
+        const filteredAnnualVisa = annualVisaResponse.data.filter(
+          (visa) => visa.athlete === parseInt(id)
+        );
+        setAnnualVisa(filteredAnnualVisa);
+
+        // Fetch medical visa
+        const medicalVisaResponse = await AxiosInstance.get(`medical-visa/`);
+        const filteredMedicalVisa = medicalVisaResponse.data.filter(
+          (visa) => visa.athlete === parseInt(id)
+        );
+        setMedicalVisa(filteredMedicalVisa);
+
+        // Fetch training seminars
+        const trainingSeminarsResponse = await AxiosInstance.get(
+          `training-seminar/?athlete_id=${id}`
+        );
+        setTrainingSeminars(trainingSeminarsResponse.data);
+
+        // Fetch matches
+        const matchesResponse = await AxiosInstance.get(`match/?athlete_id=${id}`);
+        const matches = matchesResponse.data;
+
+        // Fetch categories and competitions for matches
+        const categoryIds = [...new Set(matches.map((match) => match.category))];
+        const categoriesResponse = await Promise.all(
+          categoryIds.map((categoryId) =>
+            AxiosInstance.get(`category/${categoryId}/`)
+          )
+        );
+        const categories = categoriesResponse.map((res) => res.data);
+
+        const competitionIds = [
+          ...new Set(categories.map((category) => category.competition)),
+        ];
+        const competitionsResponse = await Promise.all(
+          competitionIds.map((competitionId) =>
+            AxiosInstance.get(`competition/${competitionId}/`)
+          )
+        );
+        const competitions = competitionsResponse.map((res) => res.data);
+
+        // Fetch opponent details
+        const opponentIds = [
+          ...new Set(
+            matches.flatMap((match) => [match.red_corner, match.blue_corner])
+          ),
+        ].filter((opponentId) => opponentId !== parseInt(id));
+        const opponentsResponse = await Promise.all(
+          opponentIds.map((opponentId) =>
+            AxiosInstance.get(`athlete/${opponentId}/`)
+          )
+        );
+        const opponents = opponentsResponse.map((res) => res.data);
+
+        // Map competition names, categories, and opponents to matches
+        const matchesWithDetails = matches.map((match) => {
+          const category = categories.find(
+            (category) => category.id === match.category
+          );
+          const competition = competitions.find(
+            (competition) => competition.id === category?.competition
+          );
+          const opponentId =
+            match.red_corner === parseInt(id) ? match.blue_corner : match.red_corner;
+          const opponent = opponents.find((athlete) => athlete.id === opponentId);
+
+          return {
+            ...match,
+            competition_name: competition?.name || "N/A",
+            category_name: category?.name || "N/A",
+            opponent_name: `${opponent?.first_name || "N/A"} ${
+              opponent?.last_name || ""
+            }`,
+            opponent_club: opponent?.club_name || "N/A",
+          };
+        });
+
+        relatedData.matches = matchesWithDetails;
+
+        // Set data
+        setAthleteData(athleteResponse.data);
+        setRelatedData(relatedData);
+        
+        // Check if this is the user's own profile
+        console.log('Profile ownership check:', { 
+          user: user?.athlete, 
+          athleteId: parseInt(id), 
+          isOwn: user && user.athlete && user.athlete.id === parseInt(id) 
+        }); // Debug log
+        if (user && user.athlete && user.athlete.id === parseInt(id)) {
+          setIsOwnProfile(true);
+          console.log('Set isOwnProfile to true'); // Debug log
+        }
+      } catch (error) {
+        console.error("Error fetching athlete data:", error);
+        setErrorMessage("Failed to fetch athlete data. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAthleteData();
+    fetchFormData(); // Fetch data for form dropdowns
+  }, [id, user]);
+
+  // Separate useEffect for fetching athlete results when profile ownership is determined
+  useEffect(() => {
+    if (isOwnProfile) {
+      console.log('Fetching athlete results because isOwnProfile is true'); // Debug log
+      fetchAthleteResults();
+    }
+  }, [isOwnProfile]);
+
+  // Fetch athlete's submitted results
+  const fetchAthleteResults = async () => {
+    setResultsLoading(true);
+    try {
+      const response = await AxiosInstance.get('category-athlete-score/my_results/');
+      console.log('Raw API response:', response.data); // Debug log
+      setAthleteResults(response.data);
+    } catch (error) {
+      console.error("Error fetching athlete results:", error);
+    } finally {
+      setResultsLoading(false);
+    }
+  };
+
+  // Handle result dialog actions
+  const handleResultDialog = (mode, data = null) => {
+    setResultDialog({ open: true, mode, data });
+  };
+
+  const handleCloseDialog = () => {
+    setResultDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleSaveResult = async (resultData) => {
+    try {
+      const config = {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      };
+      
+      let response;
+      if (resultDialog.mode === 'add') {
+        response = await AxiosInstance.post('category-athlete-score/', resultData, config);
+        
+        // Check if this is an athlete submission
+        const submittedByAthlete = resultData.get('submitted_by_athlete') === 'true';
+        if (submittedByAthlete) {
+          setConfirmationDialog({
+            open: true,
+            title: 'Result Submitted Successfully! 🎉',
+            message: 'Your competition result has been submitted and is now under review by administrators. You will be notified once it has been approved or if any changes are requested.',
+            type: 'success'
+          });
+        }
+      } else if (resultDialog.mode === 'edit') {
+        response = await AxiosInstance.put(`category-athlete-score/${resultDialog.data.id}/`, resultData, config);
+      }
+      
+      fetchAthleteResults(); // Refresh the results
+      handleCloseDialog();
+    } catch (error) {
+      console.error("Error saving result:", error);
+      
+      // Check for specific error types
+      let errorTitle = 'Submission Failed ❌';
+      let errorMessage = 'There was an error submitting your result. Please check your information and try again.';
+      
+      if (error.response?.status === 400) {
+        const errorData = error.response.data;
+        
+        // Check for duplicate submission error
+        if (errorData.non_field_errors?.some(err => err.includes('already exists')) || 
+            errorData.detail?.includes('already exists') ||
+            errorData.error?.includes('already exists')) {
+          errorTitle = 'Duplicate Submission ⚠️';
+          errorMessage = 'You have already submitted a result for this category. Please check your existing submissions or contact an administrator if you need to update your result.';
+        }
+        // Check for validation errors
+        else if (errorData.category || errorData.placement_claimed) {
+          errorTitle = 'Invalid Data ❌';
+          errorMessage = 'Please check that you have selected a valid category and placement before submitting.';
+        }
+        // Generic 400 error
+        else {
+          errorMessage = 'Please check your submission data and try again. Make sure all required fields are filled correctly.';
+        }
+      } else if (error.response?.status === 403) {
+        errorTitle = 'Permission Denied ❌';
+        errorMessage = 'You do not have permission to submit results. Please contact an administrator.';
+      } else if (error.response?.status >= 500) {
+        errorTitle = 'Server Error ❌';
+        errorMessage = 'There was a server error. Please try again later or contact support if the problem persists.';
+      }
+      
+      setConfirmationDialog({
+        open: true,
+        title: errorTitle,
+        message: errorMessage,
+        type: 'error'
+      });
+    }
+  };
+
+  const handleDeleteResult = async (resultId) => {
+    if (window.confirm('Are you sure you want to delete this result?')) {
+      try {
+        await AxiosInstance.delete(`category-athlete-score/${resultId}/`);
+        fetchAthleteResults(); // Refresh the results
+      } catch (error) {
+        console.error("Error deleting result:", error);
+        // Handle error display here
+      }
+    }
+  };
+
+  // Handler functions for other dialog types
+  const handleSeminarDialog = (mode, data = null) => {
+    setSeminarDialog({ open: true, mode, data });
+  };
+
+  const handleGradeDialog = (mode, data = null) => {
+    setGradeDialog({ open: true, mode, data });
+  };
+
+  const handleMedicalVisaDialog = (mode, data = null) => {
+    setMedicalVisaDialog({ open: true, mode, data });
+  };
+
+  const handleAnnualVisaDialog = (mode, data = null) => {
+    setAnnualVisaDialog({ open: true, mode, data });
+  };
+
+  const handleMatchDialog = (mode, data = null) => {
+    setMatchDialog({ open: true, mode, data });
+  };
+
+  const handleCloseSeminarDialog = () => {
+    setSeminarDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleCloseGradeDialog = () => {
+    setGradeDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleCloseMedicalVisaDialog = () => {
+    setMedicalVisaDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleCloseAnnualVisaDialog = () => {
+    setAnnualVisaDialog({ open: false, mode: 'add', data: null });
+  };
+
+  const handleCloseMatchDialog = () => {
+    setMatchDialog({ open: false, mode: 'add', data: null });
+  };
+
+  // Fetch dropdown data for forms
+  const fetchFormData = async () => {
+    try {
+      const [competitionsRes, groupsRes, categoriesRes, gradesRes, seminarsRes] = await Promise.all([
+        AxiosInstance.get('competition/'),
+        AxiosInstance.get('group/'),
+        AxiosInstance.get('category/'),
+        AxiosInstance.get('grade/'),
+        AxiosInstance.get('training-seminar/')
+      ]);
+      
+      setCompetitions(competitionsRes.data);
+      setGroups(groupsRes.data);
+      setCategories(categoriesRes.data);
+      setGrades(gradesRes.data);
+      setTrainingSeminarsAll(seminarsRes.data);
+    } catch (error) {
+      console.error("Error fetching form data:", error);
+    }
+  };
+
+  useEffect(() => {
+    const fetchAthleteIds = async () => {
+      try {
+        const response = await AxiosInstance.get("athlete/");
+        const ids = response.data.map((athlete) => athlete.id);
+        setAthleteIds(ids);
+
+        // Find the current athlete's index
+        const index = ids.indexOf(parseInt(id));
+        setCurrentAthleteIndex(index);
+      } catch (error) {
+        console.error("Error fetching athlete IDs:", error);
+      }
+    };
+
+    fetchAthleteIds();
+  }, [id]);
+
+  const navigateToPreviousAthlete = () => {
+    if (currentAthleteIndex > 0) {
+      navigate(`/athletes/${athleteIds[currentAthleteIndex - 1]}`);
+    } else {
+      navigate("/athletes"); // Go back to the athletes list if it's the first athlete
+    }
+  };
+
+  const navigateToNextAthlete = () => {
+    if (currentAthleteIndex < athleteIds.length - 1) {
+      navigate(`/athletes/${athleteIds[currentAthleteIndex + 1]}`);
+    }
+  };
+
+  const calculateAwards = () => {
+    let firstPlace = 0;
+    let secondPlace = 0;
+    let thirdPlace = 0;
+
+    if (relatedData?.categories?.length > 0) {
+      relatedData.categories.forEach((category) => {
+        // Individual awards
+        if (category?.first_place_name === athleteData?.first_name) {
+          firstPlace++;
+        }
+        if (category?.second_place_name === athleteData?.first_name) {
+          secondPlace++;
+        }
+        if (category?.third_place_name === athleteData?.first_name) {
+          thirdPlace++;
+        }
+
+        // Team awards
+        if (
+          category?.first_place_team_name?.includes(athleteData?.first_name)
+        ) {
+          firstPlace++;
+        }
+        if (
+          category?.second_place_team_name?.includes(athleteData?.first_name)
+        ) {
+          secondPlace++;
+        }
+        if (
+          category?.third_place_team_name?.includes(athleteData?.first_name)
+        ) {
+          thirdPlace++;
+        }
+      });
+    }
+
+    return { firstPlace, secondPlace, thirdPlace };
+  };
+
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+        }}
+      >
+        <Alert severity="error">{errorMessage}</Alert>
+      </Box>
+    );
+  }
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+
+  return (
+    <Box sx={{ padding: 0 }}>
+      {/* Navigation Icons */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 2,
+          paddingX: 0,
+        }}
+      >
+        {/* ArrowLeft Icon */}
+        <IconButton
+          onClick={navigateToPreviousAthlete}
+          disabled={currentAthleteIndex === -1} // Disable if athlete IDs are not loaded
+          sx={{ color: currentAthleteIndex > 0 ? "primary.main" : "grey.500" }}
+        >
+          <ArrowBackIcon />
+        </IconButton>
+
+        <Box
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "left",
+          marginBottom: 0,
+          gap: { xs: 2, sm: 3, md: 3 },
+        }}
+       >
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            marginBottom: 1,
+            gap: 3,
+          }}
+        >
+          <Avatar
+            src={`http://127.0.0.1:8000${athleteData?.profile_image || ""}`}
+            alt={`${athleteData?.first_name || "Athlete"} ${athleteData?.last_name || "Profile"}`}
+            sx={{
+              width: { xs: 80, sm: 100, md: 120 },
+              height: { xs: 80, sm: 100, md: 120 },
+              borderRadius: '5%',
+            }}
+          />
+        </Box>
+
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "left",
+            alignSelf: "center",
+            marginBottom: 2,
+            gap: { xs: 0, sm: 1, md: 1 },
+          }}
+          >
+          <Box sx={{ marginLeft: 0 }}>
+            <Typography variant="h5">
+              {athleteData?.first_name}{" "}
+              {athleteData?.last_name || "Athlete Name"}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              border: (theme) => `1px solid ${theme.palette.divider}`,
+              borderRadius: 2,
+              px: 1,
+              height: 28,
+            }}
+          >
+            {(() => {
+              const { firstPlace, secondPlace, thirdPlace } = calculateAwards();
+              return (
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  🥇 {firstPlace}
+                  <Divider orientation="vertical" flexItem sx={{ marginX: 1 }} />
+                  🥈 {secondPlace}
+                  <Divider orientation="vertical" flexItem sx={{ marginX: 1 }} />
+                  🥉 {thirdPlace}
+                </Box>
+              );
+            })()}
+          </Box>
+          </Box>
+          </Box>
+
+          
+        {/* ArrowRight or Close Icon */}
+        {currentAthleteIndex < athleteIds.length - 1 ? (
+          <IconButton
+            onClick={navigateToNextAthlete}
+            disabled={currentAthleteIndex === -1} // Disable if athlete IDs are not loaded
+            sx={{ color: 'primary.main' }}
+          >
+            <ArrowForwardIcon />
+          </IconButton>
+        ) : (
+          <IconButton
+            onClick={() => navigate('/athletes')} // Redirect to athletes page
+            sx={{ color: 'primary.main' }}
+          >
+            <CloseIcon />
+          </IconButton>
+        )}
+      </Box>
+
+      {/* Athlete Name and Profile Image */}
+     
+
+          {/* Two Columns Layout */}
+      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
+        {/* Left Column */}
+        <Box sx={{ flex: 1 }}>
+          {/* Personal Information Section */}
+            <CardContent sx={{ padding: 0, marginBottom: 2 }}>
+              <Typography
+                variant="h6"
+                sx={{ marginBottom: 0 }}
+              >
+                Personal Information
+              </Typography>
+              <Divider sx={{ marginBottom: 1 }} />
+              <Typography>
+                <strong>First Name:</strong> {athleteData?.first_name || "N/A"}
+              </Typography>
+              <Typography>
+                <strong>Last Name:</strong> {athleteData?.last_name || "N/A"}
+              </Typography>
+              <Typography>
+                <strong>Date of Birth:</strong>{" "}
+                {athleteData?.date_of_birth || "N/A"}
+              </Typography>
+              <Typography>
+                <strong>City:</strong> {relatedData?.city?.name || "N/A"}
+              </Typography>
+              <Typography>
+                <strong>Mobile Number:</strong>{" "}
+                {athleteData?.mobile_number || "N/A"}
+              </Typography>
+            </CardContent>
+
+            {/* Club Information Section */}
+            <CardContent sx={{ padding: 0, marginBottom: 2 }}>
+              <Typography
+                variant="h6"
+                sx={{ marginBottom: 0 }}
+              >
+                Club Information
+              </Typography>
+              <Divider sx={{ marginBottom: 1 }} />
+
+              {/* Club Information Layout */}
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                {/* Right Column: Club Details */}
+                <Box>
+                  <Typography>
+                    <strong>Club:</strong> {relatedData?.club?.name || "N/A"}
+                  </Typography>
+                  <Typography>
+                    <strong>Address:</strong>{" "}
+                    {relatedData?.club?.address || "N/A"}
+                  </Typography>
+                  <Typography>
+                    <strong>Mobile Number:</strong>{" "}
+                    {relatedData?.club?.mobile_number || "N/A"}
+                  </Typography>
+                  <Typography>
+                    <strong>Website:</strong>{" "}
+                    {relatedData?.club?.website || "N/A"}
+                  </Typography>
+                  <Typography>
+                    <strong>Registered Date:</strong>{" "}
+                    {athleteData?.registered_date || "N/A"}
+                  </Typography>
+                  <Typography>
+                    <strong>Expiration Date:</strong>{" "}
+                    {athleteData?.expiration_date || "N/A"}
+                  </Typography>
+                </Box>
+                {/* Left Column: Club Logo */}
+                <Avatar
+                  src={`http://127.0.0.1:8000${relatedData?.club?.logo || "/media/default_logo.jpg"}`}
+                  alt={`${relatedData?.club?.name || "Club Logo"}`}
+                  sx={{ width: 100, height: 100, border: (theme) => `2px solid ${theme.palette.divider}` }}
+                />
+              </Box>
+            </CardContent>
+
+            {/* Federation Role and Title Section */}
+
+            <CardContent sx={{ padding: 0, marginBottom: 2 }}>
+              <Typography
+                variant="h6"
+                sx={{ marginBottom: 0 }}
+              >
+                Federation Role and Title
+              </Typography>
+              <Divider sx={{ marginBottom: 1 }} />
+              <Typography>
+                <strong>Federation Role:</strong>{" "}
+                {relatedData?.federationRole?.name || "N/A"}
+              </Typography>
+              <Typography>
+                <strong>Title:</strong> {relatedData?.title?.name || "N/A"}
+              </Typography>
+              <Typography>
+                <strong>Current Grade:</strong>{" "}
+                {relatedData?.grade?.name || "N/A"}
+              </Typography>
+            </CardContent>
+
+            {/* Other Information Section */}
+
+            <CardContent sx={{ padding: 0 }}>
+              <Typography
+                variant="h6"
+                sx={{ marginBottom: 0 }}
+              >
+                Other Information
+              </Typography>
+              <Divider sx={{ marginBottom: 1 }} />
+              <Typography>
+                <strong>Is Coach:</strong>{" "}
+                {athleteData?.is_coach ? "Yes" : "No"}
+              </Typography>
+              <Typography>
+                <strong>Is Referee:</strong>{" "}
+                {athleteData?.is_referee ? "Yes" : "No"}
+              </Typography>
+            </CardContent>
+        </Box>
+
+        {/* Right Column */}
+      </Box>
+
+      {/* Athlete Results Section (Full Width) */}
+      <Card sx={{ marginTop: 2, padding: 0 }} elevation={0}>
+        {/* Tabs Section */}
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          scrollButtons
+          allowScrollButtonsMobile
+          aria-label="scrollable auto tabs example"
+        >
+          <Tab label="Athlete Results" />
+          <Tab label="Training Seminars" />
+          <Tab label="Grade History" />
+          <Tab label="Medical Visa" />
+          <Tab label="Annual Visa" />
+          <Tab label="Matches" /> {/* New Matches Tab */}
+
+        </Tabs>
+
+        <CardContent sx={{ padding: 0 }}>
+          {activeTab === 0 && (
+            <>
+              {/* Athlete Results Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Competition Results</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleResultDialog('add')}
+                  >
+                    Submit Result
+                  </Button>
+                </Box>
+              )}
+              <MaterialReactTable
+                columns={[
+                  {
+                    accessorKey: 'competition_name',
+                    header: 'Competition',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                  },
+                  {
+                    accessorKey: 'category_name',
+                    header: 'Category',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                  },
+                  {
+                    accessorKey: 'place',
+                    header: 'Place',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    Cell: ({ row }) => {
+                      const place = row.original.place;
+                      if (place === "1st") return "🥇 1st Place";
+                      if (place === "2nd") return "🥈 2nd Place";
+                      if (place === "3rd") return "🥉 3rd Place";
+                      return place || "N/A";
+                    },
+                  },
+                  {
+                    accessorKey: 'status',
+                    header: 'Status',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    Cell: ({ row }) => {
+                      const status = row.original.status;
+                      if (!status) {
+                        // This is an approved result from category (no status means it's approved/official)
+                        return (
+                          <Chip 
+                            label="✅ Approved" 
+                            color="success" 
+                            size="small" 
+                            variant="outlined"
+                          />
+                        );
+                      }
+                      
+                      // This is a submitted result with status
+                      const statusConfig = {
+                        'pending': { label: '⏳ In Review', color: 'warning' },
+                        'approved': { label: '✅ Approved', color: 'success' },
+                        'rejected': { label: '❌ Rejected', color: 'error' },
+                        'revision_required': { label: '⏳ In Review', color: 'warning' } // Treat revision required as in review
+                      };
+                      const config = statusConfig[status] || { label: '⏳ In Review', color: 'warning' };
+                      return (
+                        <Chip 
+                          label={config.label} 
+                          color={config.color} 
+                          size="small" 
+                          variant="outlined"
+                        />
+                      );
+                    },
+                  },
+                ]}
+                data={(() => {
+                  const combinedResults = [];
+
+                  // Add approved results from categories (official results)
+                  if (relatedData?.categories?.length > 0) {
+                    const approvedResults = relatedData.categories
+                      .filter((category) => {
+                        // Filter out categories where the athlete didn't obtain any result
+                        return (
+                          category?.first_place_name === athleteData?.first_name ||
+                          category?.second_place_name === athleteData?.first_name ||
+                          category?.third_place_name === athleteData?.first_name ||
+                          category?.first_place_team_name?.includes(athleteData?.first_name) ||
+                          category?.second_place_team_name?.includes(athleteData?.first_name) ||
+                          category?.third_place_team_name?.includes(athleteData?.first_name)
+                        );
+                      })
+                      .map((category) => {
+                        // Determine the athlete's place
+                        let place = null;
+                        if (category?.first_place_name === athleteData?.first_name) {
+                          place = "🥇 1st Place";
+                        } else if (category?.second_place_name === athleteData?.first_name) {
+                          place = "🥈 2nd Place";
+                        } else if (category?.third_place_name === athleteData?.first_name) {
+                          place = "🥉 3rd Place";
+                        } else if (category?.first_place_team_name?.includes(athleteData?.first_name)) {
+                          place = `🥇 1st Place (${category.first_place_team_name})`;
+                        } else if (category?.second_place_team_name?.includes(athleteData?.first_name)) {
+                          place = `🥈 2nd Place (${category.second_place_team_name})`;
+                        } else if (category?.third_place_team_name?.includes(athleteData?.first_name)) {
+                          place = `🥉 3rd Place (${category.third_place_team_name})`;
+                        }
+
+                        return {
+                          id: `approved-${category.id}`,
+                          competition_name: category?.competition_name || "N/A",
+                          category_name: category?.name || "N/A",
+                          place,
+                          status: null, // null means it's an official/approved result
+                          type: 'approved'
+                        };
+                      });
+                    combinedResults.push(...approvedResults);
+                  }
+
+                  // Add submitted results (including pending, rejected, etc.)
+                  if (isOwnProfile && athleteResults?.length > 0) {
+                    console.log('Processing athlete results for table:', { isOwnProfile, athleteResults }); // Debug log
+                    const submittedResults = athleteResults.map((result) => {
+                      let place = result.placement_claimed;
+                      if (place === "1st") place = "🥇 1st Place";
+                      else if (place === "2nd") place = "🥈 2nd Place";
+                      else if (place === "3rd") place = "🥉 3rd Place";
+
+                      return {
+                        id: `submitted-${result.id}`,
+                        competition_name: result.competition_name || "N/A",
+                        category_name: result.category_name || "N/A",  
+                        place,
+                        status: result.status,
+                        type: 'submitted'
+                      };
+                    });
+                    console.log('Mapped submitted results:', submittedResults); // Debug log
+                    combinedResults.push(...submittedResults);
+                  }
+                  
+                  console.log('Final table data:', combinedResults); // Debug log
+                  return combinedResults;
+                })()}
+                enableColumnResizing
+                enableSorting
+                muiTableContainerProps={{
+                  sx: {
+                    maxHeight: '400px', // Add scrollable height
+                  },
+                }}
+                localization={{
+                  noData: isOwnProfile 
+                    ? 'No competition results found. Submit your first result using the button above!' 
+                    : 'No competition results found for this athlete.',
+                }}
+              />
+            </>
+          )}
+
+          {activeTab === 1 && (
+            <>
+              {/* Training Seminars Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Training Seminars</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleSeminarDialog('add')}
+                  >
+                    Submit Training Seminar
+                  </Button>
+                </Box>
+              )}
+              <MaterialReactTable
+                columns={[
+                  {
+                    accessorKey: 'name',
+                    header: 'Seminar Name',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                  },
+                  {
+                    accessorKey: 'start_date',
+                    header: 'Seminar Date',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    Cell: ({ row }) => {
+                      const startDate = row.original.start_date || "N/A";
+                      const endDate = row.original.end_date || "N/A";
+                      return startDate !== "N/A" && endDate !== "N/A"
+                        ? `${startDate} - ${endDate}`
+                        : "N/A";
+                    },
+                  },
+                  {
+                    accessorKey: 'place',
+                    header: 'Place',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                  },
+                ]}
+                data={trainingSeminars.length > 0 ? trainingSeminars : []}
+                enableColumnResizing
+                enablePagination
+                enableSorting
+                muiTableContainerProps={{
+                  sx: {
+                    maxHeight: '400px', // Add scrollable height
+                  },
+                }}
+                localization={{
+                  noData: 'No training seminar records found for this athlete.',
+                }}
+              />
+            </>
+          )}
+
+          {activeTab === 2 && (
+            <>
+              {/* Grade History Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Grade History</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleGradeDialog('add')}
+                  >
+                    Submit Grading Exam
+                  </Button>
+                </Box>
+              )}
+              <MaterialReactTable
+                columns={[
+                  {
+                    accessorKey: 'grade_name',
+                    header: 'Grade Name',
+                  },
+                  {
+                    accessorKey: 'obtained_date',
+                    header: 'Obtained Date',
+                  },
+                  {
+                    accessorKey: 'level',
+                    header: 'Level',
+                  },
+                  {
+                    accessorKey: 'exam_date',
+                    header: 'Exam Date',
+                  },
+                  {
+                    accessorKey: 'exam_place',
+                    header: 'Exam Place',
+                  },
+                  {
+                    accessorKey: 'technical_director',
+                    header: 'Technical Director',
+                  },
+                  {
+                    accessorKey: 'president',
+                    header: 'President',
+                  },
+                ]}
+                data={gradeHistory.length > 0 ? gradeHistory : []}
+                enableColumnResizing
+                enablePagination
+                enableSorting
+                muiTableContainerProps={{
+                  sx: {
+                    maxHeight: '400px', // Add scrollable height
+                  },
+                }}
+                localization={{
+                  noData: 'No grade history found for this athlete.',
+                }}
+              />
+            </>
+          )}
+
+          {activeTab === 3 && (
+            <>
+              {/* Medical Visa Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Medical Visa</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleMedicalVisaDialog('add')}
+                  >
+                    Submit Medical Visa
+                  </Button>
+                </Box>
+              )}
+              <MaterialReactTable
+                columns={[
+                  {
+                    accessorKey: 'issued_date',
+                    header: 'Issued Date',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                  },
+                  {
+                    accessorKey: 'health_status',
+                    header: 'Health Status',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                  },
+                  {
+                    accessorKey: 'is_valid',
+                    header: 'Valid',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'center' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'center' },
+                    },
+                    Cell: ({ row }) =>
+                      row.original.is_valid ? (
+                        <CheckCircleIcon sx={{ color: 'success.main' }} />
+                      ) : (
+                        <CancelIcon sx={{ color: 'text.disabled' }} />
+                      ),
+                  },
+                ]}
+                data={medicalVisa.length > 0 ? medicalVisa : []}
+                enableColumnResizing
+                enablePagination
+                enableSorting
+                muiTableContainerProps={{
+                  sx: {
+                    maxHeight: '400px', // Add scrollable height
+                  },
+                }}
+                localization={{
+                  noData: 'No medical visa records found for this athlete.',
+                }}
+              />
+            </>
+          )}
+
+          {activeTab === 4 && (
+            <>
+              {/* Annual Visa Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Annual Visa</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleAnnualVisaDialog('add')}
+                  >
+                    Submit Annual Visa
+                  </Button>
+                </Box>
+              )}
+              <MaterialReactTable
+                columns={[
+                  {
+                    accessorKey: 'issued_date',
+                    header: 'Issued Date',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                  },
+                  {
+                    accessorKey: 'visa_status',
+                    header: 'Status',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'left' },
+                    },
+                  },
+                  {
+                    accessorKey: 'is_valid',
+                    header: 'Valid',
+                    muiTableHeadCellProps: {
+                      sx: { flex: 1, textAlign: 'center' },
+                    },
+                    muiTableBodyCellProps: {
+                      sx: { flex: 1, textAlign: 'center' },
+                    },
+                    Cell: ({ row }) =>
+                      row.original.is_valid ? (
+                        <CheckCircleIcon sx={{ color: 'success.main' }} />
+                      ) : (
+                        <CancelIcon sx={{ color: 'text.disabled' }} />
+                      ),
+                  },
+                ]}
+                data={annualVisa.length > 0 ? annualVisa : []}
+                enableColumnResizing
+                enablePagination
+                enableSorting
+                muiTableContainerProps={{
+                  sx: {
+                    maxHeight: '400px', // Add scrollable height
+                  },
+                }}
+                localization={{
+                  noData: 'No annual visa records found for this athlete.',
+                }}
+              />
+            </>
+          )}
+
+          {activeTab === 5 && (
+            <>
+              {/* Matches Section */}
+              {isOwnProfile && (
+                <Box sx={{ mb: 2, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Matches</Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleMatchDialog('add')}
+                  >
+                    Submit Match
+                  </Button>
+                </Box>
+              )}
+              <MaterialReactTable
+                columns={[
+                  {
+                    accessorKey: 'competition_name',
+                    header: 'Competition',
+                  },
+                  {
+                    accessorKey: 'category_name',
+                    header: 'Category',
+                  },
+                  {
+                    accessorKey: 'match_type',
+                    header: 'Match Type',
+                  },
+                  {
+                    accessorKey: 'opponent_name',
+                    header: 'Opponent',
+                    Cell: ({ row }) =>
+                      `${row.original.opponent_name} (${row.original.opponent_club})`,
+                  },
+                  {
+                    accessorKey: 'result',
+                    header: 'Result',
+                    Cell: ({ row }) => {
+                      const isWinner = row.original.winner_name === athleteData?.first_name;
+                      return (
+                        <Typography
+                          sx={{
+                            color: isWinner ? "success.main" : "error.main",
+                            fontSize: ".8rem",
+                          }}
+                        >
+                          {isWinner ? "WIN" : "LOSS"}
+                        </Typography>
+                      );
+                    },
+                  },
+                ]}
+                data={relatedData?.matches?.length > 0 ? relatedData.matches : []}
+                enableColumnResizing
+                enablePagination
+                enableSorting
+                muiTableContainerProps={{
+                  sx: {
+                    maxHeight: '400px', // Add scrollable height
+                  },
+                }}
+                localization={{
+                  noData: 'No matches found for this athlete.',
+                }}
+              />
+            </>
+          )}
+
+
+        </CardContent>
+      </Card>
+
+      {/* Result Dialog */}
+      <AthleteResultDialog
+        open={resultDialog.open}
+        mode={resultDialog.mode}
+        data={resultDialog.data}
+        onClose={handleCloseDialog}
+        onSave={handleSaveResult}
+        competitions={competitions}
+        groups={groups}
+        categories={categories}
+      />
+
+      {/* Confirmation Dialog */}
+      <Dialog 
+        open={confirmationDialog.open} 
+        onClose={() => setConfirmationDialog({ ...confirmationDialog, open: false })}
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          {confirmationDialog.title}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            {confirmationDialog.message}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setConfirmationDialog({ ...confirmationDialog, open: false })}
+            variant="contained"
+            color={confirmationDialog.type === 'success' ? 'success' : 'primary'}
+          >
+            Got it!
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+// Enhanced Result Dialog Component
+const AthleteResultDialog = ({ open, mode, data, onClose, onSave, competitions, groups, categories }) => {
+  const [formData, setFormData] = useState({
+    result_type: '', // 'solo', 'fight', or 'teams'
+    competition: '',
+    group: '',
+    category: '',
+    placement_claimed: '',
+    notes: '',
+    certificate_image: null,
+    result_document: null,
+    team_members: [] // For team results
+  });
+  
+  const [step, setStep] = useState(1); // 1: Type selection, 2: Details
+  
+  const [filteredGroups, setFilteredGroups] = useState([]);
+  const [filteredCategories, setFilteredCategories] = useState([]);
+  const [availableAthletes, setAvailableAthletes] = useState([]);
+
+  useEffect(() => {
+    if (data && (mode === 'edit' || mode === 'view')) {
+      setFormData({
+        result_type: data.result_type || '',
+        competition: data.competition || '',
+        group: data.group || '',
+        category: data.category || '',
+        placement_claimed: data.placement_claimed || '',
+        notes: data.notes || '',
+        certificate_image: null,
+        result_document: null,
+        team_members: data.team_members || []
+      });
+      setStep(2); // Skip type selection for edit mode
+    } else if (mode === 'add') {
+      setFormData({
+        result_type: '',
+        competition: '',
+        group: '',
+        category: '',
+        placement_claimed: '',
+        notes: '',
+        certificate_image: null,
+        result_document: null,
+        team_members: []
+      });
+      setStep(1); // Start with type selection for new submissions
+    }
+  }, [data, mode, open]);
+
+  // Fetch available athletes for team selection
+  useEffect(() => {
+    if (open && formData.result_type === 'teams') {
+      const fetchAthletes = async () => {
+        try {
+          const response = await AxiosInstance.get('athlete/');
+          setAvailableAthletes(response.data);
+        } catch (error) {
+          console.error('Error fetching athletes:', error);
+        }
+      };
+      fetchAthletes();
+    }
+  }, [open, formData.result_type]);
+
+  // Filter groups based on selected competition
+  useEffect(() => {
+    if (formData.competition) {
+      const filtered = groups.filter(group => group.competition == formData.competition);
+      setFilteredGroups(filtered);
+    } else {
+      setFilteredGroups([]);
+    }
+    // Reset group and category when competition changes
+    setFormData(prev => ({ ...prev, group: '', category: '' }));
+    setFilteredCategories([]);
+  }, [formData.competition, groups]);
+
+  // Filter categories based on selected competition and group
+  useEffect(() => {
+    if (formData.competition) {
+      let filtered = categories.filter(category => category.competition == formData.competition);
+      if (formData.group) {
+        filtered = filtered.filter(category => category.group == formData.group);
+      }
+      setFilteredCategories(filtered);
+    } else {
+      setFilteredCategories([]);
+    }
+    // Reset category when group changes
+    if (formData.group) {
+      setFormData(prev => ({ ...prev, category: '' }));
+    }
+  }, [formData.competition, formData.group, categories]);
+
+  const handleChange = (field) => (event) => {
+    setFormData({ ...formData, [field]: event.target.value });
+  };
+
+  const handleFileChange = (field) => (event) => {
+    const file = event.target.files[0];
+    setFormData({ ...formData, [field]: file });
+  };
+
+  const handleSubmit = () => {
+    // Validate required fields
+    if (!formData.category || !formData.placement_claimed) {
+      alert('Please select both a category and award placement.');
+      return;
+    }
+    
+    // Create FormData object to handle file uploads
+    const submitData = new FormData();
+    submitData.append('category', formData.category);
+    submitData.append('placement_claimed', formData.placement_claimed);
+    submitData.append('notes', formData.notes || '');
+    submitData.append('submitted_by_athlete', 'true');
+    // Note: score and referee are not needed for athlete submissions
+    
+    if (formData.certificate_image) {
+      submitData.append('certificate_image', formData.certificate_image);
+    }
+    if (formData.result_document) {
+      submitData.append('result_document', formData.result_document);
+    }
+    
+    onSave(submitData);
+  };
+
+  const isReadOnly = mode === 'view';
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        {mode === 'add' && step === 1 && 'Select Result Type'}
+        {mode === 'add' && step === 2 && `Submit ${formData.result_type === 'teams' ? 'Team' : 'Individual'} Result`}
+        {mode === 'edit' && 'Edit Competition Result'}
+        {mode === 'view' && 'View Competition Result'}
+      </DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+          {mode === 'add' && step === 1 && (
+            <>
+              {/* Step 1: Result Type Selection */}
+              <Typography variant="body1" gutterBottom>
+                What type of competition result are you submitting?
+              </Typography>
+              
+              <FormControl fullWidth required>
+                <InputLabel>Result Type</InputLabel>
+                <Select
+                  value={formData.result_type}
+                  onChange={handleChange('result_type')}
+                  label="Result Type"
+                >
+                  <MenuItem value="solo">
+                    🏃 Solo Performance - Individual competition (forms, kata, etc.)
+                  </MenuItem>
+                  <MenuItem value="fight">
+                    🥊 Fight/Sparring - One-on-one combat competition
+                  </MenuItem>
+                  <MenuItem value="teams">
+                    👥 Team Event - Group/team competition
+                  </MenuItem>
+                </Select>
+              </FormControl>
+              
+              {formData.result_type && (
+                <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {formData.result_type === 'solo' && 'You will submit an individual result for a solo performance category.'}
+                    {formData.result_type === 'fight' && 'You will submit an individual result for a fighting/sparring category.'}
+                    {formData.result_type === 'teams' && 'You will create a team with other athletes and submit a team result.'}
+                  </Typography>
+                </Box>
+              )}
+            </>
+          )}
+          
+          {(step === 2 || mode !== 'add') && (
+            <>
+              {/* Step 2: Competition Details */}
+              {formData.result_type === 'teams' && mode === 'add' && (
+                <>
+                  {/* Team Member Selection */}
+                  <Typography variant="h6" gutterBottom>
+                    Team Members
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Select other athletes to form your team for this competition.
+                  </Typography>
+                  
+                  <FormControl fullWidth>
+                    <InputLabel>Add Team Member</InputLabel>
+                    <Select
+                      value=""
+                      onChange={(e) => {
+                        const athleteId = e.target.value;
+                        const athlete = availableAthletes.find(a => a.id === athleteId);
+                        if (athlete && !formData.team_members.find(m => m.id === athleteId)) {
+                          setFormData(prev => ({
+                            ...prev,
+                            team_members: [...prev.team_members, athlete]
+                          }));
+                        }
+                      }}
+                      label="Add Team Member"
+                    >
+                      {availableAthletes
+                        .filter(athlete => !formData.team_members.find(m => m.id === athlete.id))
+                        .map((athlete) => (
+                          <MenuItem key={athlete.id} value={athlete.id}>
+                            {athlete.first_name} {athlete.last_name}
+                          </MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                  
+                  {formData.team_members.length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Selected Team Members:
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {formData.team_members.map((member) => (
+                          <Chip
+                            key={member.id}
+                            label={`${member.first_name} ${member.last_name}`}
+                            onDelete={() => {
+                              setFormData(prev => ({
+                                ...prev,
+                                team_members: prev.team_members.filter(m => m.id !== member.id)
+                              }));
+                            }}
+                            color="primary"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                  
+                  <Divider sx={{ my: 2 }} />
+                </>
+              )}
+              
+              {/* Step 2: Form fields for the selected result type */}
+              {step === 2 && formData.result_type === 'teams' && (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    Team Result Submission
+                  </Typography>
+                  
+                  <FormControl fullWidth disabled={isReadOnly} required>
+                    <InputLabel>Competition</InputLabel>
+                    <Select
+                      value={formData.competition}
+                      onChange={handleChange('competition')}
+                      label="Competition"
+                      required
+                    >
+                      {competitions.map((competition) => (
+                        <MenuItem key={competition.id} value={competition.id}>
+                          {competition.name} ({competition.start_date} - {competition.end_date})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth disabled={isReadOnly || !formData.competition} required>
+                    <InputLabel>Team Category</InputLabel>
+                    <Select
+                      value={formData.category}
+                      onChange={handleChange('category')}
+                      label="Team Category"
+                      required
+                    >
+                      {filteredCategories.filter(cat => cat.type === 'teams').map((category) => (
+                        <MenuItem key={category.id} value={category.id}>
+                          {category.name} ({category.type} - {category.gender})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Select Team Members (including yourself)
+                    </Typography>
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel>Add Team Member</InputLabel>
+                      <Select
+                        value=""
+                        onChange={(e) => {
+                          const athleteId = e.target.value;
+                          if (athleteId && !formData.team_members.includes(athleteId)) {
+                            setFormData(prev => ({
+                              ...prev,
+                              team_members: [...prev.team_members, athleteId]
+                            }));
+                          }
+                        }}
+                        label="Add Team Member"
+                      >
+                        {availableAthletes
+                          .filter(athlete => !formData.team_members.includes(athlete.id))
+                          .map((athlete) => (
+                            <MenuItem key={athlete.id} value={athlete.id}>
+                              {athlete.first_name} {athlete.last_name} - {athlete.club_name}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                    
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {formData.team_members.map((memberId) => {
+                        const member = availableAthletes.find(a => a.id === memberId);
+                        return member ? (
+                          <Chip
+                            key={memberId}
+                            label={`${member.first_name} ${member.last_name}`}
+                            onDelete={() => {
+                              setFormData(prev => ({
+                                ...prev,
+                                team_members: prev.team_members.filter(id => id !== memberId)
+                              }));
+                            }}
+                            color="primary"
+                            variant="outlined"
+                          />
+                        ) : null;
+                      })}
+                    </Box>
+                  </Box>
+                  
+                  <FormControl fullWidth disabled={isReadOnly} required>
+                    <InputLabel>Team Placement</InputLabel>
+                    <Select
+                      value={formData.placement_claimed}
+                      onChange={handleChange('placement_claimed')}
+                      label="Team Placement"
+                      required
+                    >
+                      <MenuItem value="1st">1st Place</MenuItem>
+                      <MenuItem value="2nd">2nd Place</MenuItem>
+                      <MenuItem value="3rd">3rd Place</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <TextField
+                    label="Team Notes"
+                    value={formData.notes}
+                    onChange={handleChange('notes')}
+                    fullWidth
+                    multiline
+                    rows={3}
+                    disabled={isReadOnly}
+                    placeholder="Additional notes about the team's performance"
+                  />
+                </>
+              )}
+              
+              {step === 2 && (formData.result_type === 'solo' || formData.result_type === 'fight') && (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    {formData.result_type === 'solo' ? 'Solo' : 'Fight'} Result Submission
+                  </Typography>
+                  
+                  <FormControl fullWidth disabled={isReadOnly} required>
+            <InputLabel>Competition</InputLabel>
+            <Select
+              value={formData.competition}
+              onChange={handleChange('competition')}
+              label="Competition"
+              required
+            >
+              {competitions.map((competition) => (
+                <MenuItem key={competition.id} value={competition.id}>
+                  {competition.name} ({competition.start_date} - {competition.end_date})
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth disabled={isReadOnly || !formData.competition}>
+            <InputLabel>Group (Optional)</InputLabel>
+            <Select
+              value={formData.group}
+              onChange={handleChange('group')}
+              label="Group (Optional)"
+            >
+              <MenuItem value="">
+                <em>No Group</em>
+              </MenuItem>
+              {filteredGroups.map((group) => (
+                <MenuItem key={group.id} value={group.id}>
+                  {group.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth disabled={isReadOnly || !formData.competition} required>
+            <InputLabel>Category</InputLabel>
+            <Select
+              value={formData.category}
+              onChange={handleChange('category')}
+              label="Category"
+              required
+            >
+              {filteredCategories.map((category) => (
+                <MenuItem key={category.id} value={category.id}>
+                  {category.name} ({category.type} - {category.gender})
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          
+          <FormControl fullWidth disabled={isReadOnly} required>
+            <InputLabel>Award Placement</InputLabel>
+            <Select
+              value={formData.placement_claimed}
+              onChange={handleChange('placement_claimed')}
+              label="Award Placement"
+              required
+            >
+              <MenuItem value="1st">1st Place</MenuItem>
+              <MenuItem value="2nd">2nd Place</MenuItem>
+              <MenuItem value="3rd">3rd Place</MenuItem>
+            </Select>
+          </FormControl>
+
+          <TextField
+            label="Notes"
+            value={formData.notes}
+            onChange={handleChange('notes')}
+            fullWidth
+            multiline
+            rows={3}
+            disabled={isReadOnly}
+            placeholder="Additional notes about your performance"
+          />
+
+          {!isReadOnly && (
+            <>
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Certificate/Award Photo (Optional)
+                </Typography>
+                <input
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  id="certificate-upload"
+                  type="file"
+                  onChange={handleFileChange('certificate_image')}
+                />
+                <label htmlFor="certificate-upload">
+                  <Button variant="outlined" component="span" startIcon={<AddIcon />}>
+                    Upload Certificate Image
+                  </Button>
+                </label>
+                {formData.certificate_image && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Selected: {formData.certificate_image.name}
+                  </Typography>
+                )}
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Official Result Document (Optional)
+                </Typography>
+                <input
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  style={{ display: 'none' }}
+                  id="document-upload"
+                  type="file"
+                  onChange={handleFileChange('result_document')}
+                />
+                <label htmlFor="document-upload">
+                  <Button variant="outlined" component="span" startIcon={<AddIcon />}>
+                    Upload Result Document
+                  </Button>
+                </label>
+                {formData.result_document && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Selected: {formData.result_document.name}
+                  </Typography>
+                )}
+              </Box>
+            </>
+          )}
+
+          {isReadOnly && data && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>Submission Info:</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Competition: {data.competition_name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Category: {data.category_name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Submitted: {new Date(data.submitted_date).toLocaleString()}
+              </Typography>
+              {data.reviewed_date && (
+                <Typography variant="body2" color="text.secondary">
+                  Reviewed: {new Date(data.reviewed_date).toLocaleString()}
+                </Typography>
+              )}
+              {data.admin_notes && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Admin Notes: {data.admin_notes}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>
+          {isReadOnly ? 'Close' : 'Cancel'}
+        </Button>
+        {mode === 'add' && step === 1 && (
+          <Button 
+            onClick={() => setStep(2)} 
+            variant="contained"
+            disabled={!formData.result_type}
+          >
+            Next
+          </Button>
+        )}
+        {mode === 'add' && step === 2 && (
+          <>
+            <Button onClick={() => setStep(1)}>
+              Back
+            </Button>
+            <Button onClick={handleSubmit} variant="contained">
+              Submit Result
+            </Button>
+          </>
+        )}
+        {mode !== 'add' && !isReadOnly && (
+          <Button onClick={handleSubmit} variant="contained">
+            Update Result
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Simple Generic Dialog for other submission types (placeholder)
+const GenericSubmissionDialog = ({ open, onClose, title, fields, onSave }) => {
+  const [formData, setFormData] = useState({});
+
+  const handleChange = (field) => (event) => {
+    setFormData({ ...formData, [field]: event.target.value });
+  };
+
+  const handleSubmit = () => {
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{title}</DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            This submission form is under development. Please contact an administrator to submit {title.toLowerCase()}.
+          </Typography>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+        <Button onClick={handleSubmit} variant="contained" disabled>
+          Submit (Coming Soon)
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+export default ViewAthlete;

@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.utils import timezone
+from django.db import models
 from rest_framework.decorators import api_view, action
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
@@ -570,7 +571,7 @@ class MedicalVisaViewSet(viewsets.ViewSet):
 
 
 class TrainingSeminarViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
     queryset = TrainingSeminar.objects.all()
     serializer_class = TrainingSeminarSerializer
 
@@ -580,6 +581,10 @@ class TrainingSeminarViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        # Only admins can create seminars
+        if not (request.user.is_authenticated and request.user.is_admin):
+            return Response({'detail': 'Admin privileges required'}, status=403)
+        
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -592,6 +597,10 @@ class TrainingSeminarViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def update(self, request, pk=None):
+        # Only admins can update seminars
+        if not (request.user.is_authenticated and request.user.is_admin):
+            return Response({'detail': 'Admin privileges required'}, status=403)
+            
         instance = self.queryset.get(pk=pk)
         serializer = self.serializer_class(instance, data=request.data)
         if serializer.is_valid():
@@ -600,6 +609,10 @@ class TrainingSeminarViewSet(viewsets.ViewSet):
         return Response(serializer.errors, status=400)
 
     def destroy(self, request, pk=None):
+        # Only admins can delete seminars
+        if not (request.user.is_authenticated and request.user.is_admin):
+            return Response({'detail': 'Admin privileges required'}, status=403)
+            
         instance = self.queryset.get(pk=pk)
         instance.delete()
         return Response(status=204)
@@ -1155,20 +1168,21 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Return scores based on user role and visibility"""
+        """Return scores based on user role and visibility (includes individual and team results)"""
         user = self.request.user
         
         if user.is_staff or hasattr(user, 'role') and user.role == 'admin':
-            # Admins can see all scores
-            return CategoryAthleteScore.objects.all().select_related('athlete', 'category__competition', 'reviewed_by')
+            # Admins can see all scores (individual and team)
+            return CategoryAthleteScore.objects.all().select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
         elif hasattr(user, 'athlete'):
-            # Athletes can see their own scores (all statuses) + approved scores from others
+            # Athletes can see their own scores + team scores they're part of + approved scores from others
             own_scores = CategoryAthleteScore.objects.filter(athlete=user.athlete)
-            approved_scores = CategoryAthleteScore.objects.filter(status='approved').exclude(athlete=user.athlete)
-            return (own_scores | approved_scores).select_related('athlete', 'category__competition', 'reviewed_by').distinct()
+            team_scores = CategoryAthleteScore.objects.filter(team_members=user.athlete)
+            approved_scores = CategoryAthleteScore.objects.filter(status='approved').exclude(athlete=user.athlete).exclude(team_members=user.athlete)
+            return (own_scores | team_scores | approved_scores).select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members').distinct()
         else:
             # Other users only see approved scores
-            return CategoryAthleteScore.objects.filter(status='approved').select_related('athlete', 'category__competition', 'reviewed_by')
+            return CategoryAthleteScore.objects.filter(status='approved').select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
 
     def perform_create(self, serializer):
         """Ensure only athletes can create scores for themselves"""
@@ -1295,28 +1309,102 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def my_results(self, request):
-        """Get all results for the current athlete"""
+        """Get all results for the current athlete (submitted by them OR team results they're part of)"""
         if not hasattr(request.user, 'athlete'):
             return Response(
                 {'error': 'User does not have an athlete profile'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Get results submitted by this athlete OR team results where they are a member
         scores = CategoryAthleteScore.objects.filter(
-            athlete=request.user.athlete, 
-            submitted_by_athlete=True
-        ).select_related('category__competition', 'reviewed_by')
+            models.Q(athlete=request.user.athlete, submitted_by_athlete=True) |  # Individual results they submitted
+            models.Q(team_members=request.user.athlete, type='teams')     # Team results they're part of
+        ).select_related('category__competition', 'reviewed_by', 'athlete').prefetch_related('team_members').distinct()
+        
+        serializer = self.get_serializer(scores, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def all_results(self, request):
+        """Get ALL results for the current athlete (both official and submitted)"""
+        # Check if an athlete_id parameter is provided (for viewing other athletes)
+        athlete_id = request.query_params.get('athlete_id')
+        
+        if athlete_id:
+            # Get results for specific athlete (requires authentication)
+            try:
+                target_athlete = Athlete.objects.get(id=athlete_id)
+            except Athlete.DoesNotExist:
+                return Response(
+                    {'error': 'Athlete not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Get results for current user's athlete
+            if not hasattr(request.user, 'athlete'):
+                return Response(
+                    {'error': 'User does not have an athlete profile'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            target_athlete = request.user.athlete
+        
+        # Get results for the target athlete with visibility rules:
+        # 1. Individual results where they are the athlete 
+        # 2. Team results where they are a team member
+        base_query = CategoryAthleteScore.objects.filter(
+            models.Q(athlete=target_athlete) |                              # All individual results (official + submitted)
+            models.Q(team_members=target_athlete, type='teams')      # All team results they're part of
+        ).select_related('category__competition', 'reviewed_by', 'athlete').prefetch_related('team_members').distinct()
+        
+        # Apply visibility rules based on authentication and status
+        if athlete_id:
+            # Viewing a specific athlete's profile
+            if request.user.is_authenticated and hasattr(request.user, 'athlete') and request.user.athlete.id == int(athlete_id):
+                # User viewing their own profile - show all results
+                scores = base_query
+            else:
+                # User viewing someone else's profile (or unauthenticated) - only show approved results
+                scores = base_query.filter(status='approved')
+        else:
+            # Viewing current user's own results via my-profile - requires authentication
+            if not request.user.is_authenticated:
+                return Response(
+                    {'error': 'Authentication required when not specifying athlete_id'}, 
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            # User viewing their own results via my-profile - show all results
+            scores = base_query
+        
         serializer = self.get_serializer(scores, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], permission_classes=[IsAdmin])
     def pending_review(self, request):
-        """Get all scores pending admin review"""
+        """Get all scores pending admin review (individual and team)"""
         scores = CategoryAthleteScore.objects.filter(
             status='pending', 
             submitted_by_athlete=True
-        ).select_related('athlete', 'category__competition')
+        ).select_related('athlete', 'category__competition').prefetch_related('team_members')
         serializer = self.get_serializer(scores, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def my_team_results(self, request):
+        """Get all team results for the current athlete"""
+        if not hasattr(request.user, 'athlete'):
+            return Response(
+                {'error': 'User does not have an athlete profile'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get team results where user is submitter or team member
+        team_scores = CategoryAthleteScore.objects.filter(
+            models.Q(athlete=request.user.athlete, type='teams') |
+            models.Q(team_members=request.user.athlete, type='teams')
+        ).select_related('category__competition', 'reviewed_by').prefetch_related('team_members').distinct()
+        
+        serializer = self.get_serializer(team_scores, many=True)
         return Response(serializer.data)
 
 
@@ -1341,3 +1429,306 @@ class CategoryScoreActivityViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             # No access for other users
             return CategoryScoreActivity.objects.none()
+
+
+# CategoryTeamAthleteScoreViewSet deprecated - team functionality consolidated into CategoryAthleteScoreViewSet
+        """Ensure only athletes can create team scores"""
+        if not hasattr(self.request.user, 'athlete'):
+            raise ValidationError("Only athletes can submit team competition results")
+        
+        # The serializer will handle setting the submitted_by athlete
+        serializer.save()
+
+    def update(self, request, *args, **kwargs):
+        """Only allow team submitters to update their own pending/revision_required scores"""
+        instance = self.get_object()
+        
+        # Check ownership
+        if not hasattr(request.user, 'athlete') or instance.submitted_by != request.user.athlete:
+            return Response(
+                {'error': 'You can only edit team results you submitted'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check status
+        if instance.status not in ['pending', 'revision_required']:
+            return Response(
+                {'error': 'Can only edit pending or revision-required team results'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Reset status to pending if it was revision_required
+        if instance.status == 'revision_required':
+            instance.status = 'pending'
+            instance.reviewed_date = None
+            instance.reviewed_by = None
+            instance.admin_notes = ''
+            instance.save()
+        
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """Only allow submitters to delete their own pending team scores"""
+        instance = self.get_object()
+        
+        # Check ownership
+        if not hasattr(request.user, 'athlete') or instance.submitted_by != request.user.athlete:
+            return Response(
+                {'error': 'You can only delete team results you submitted'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check status
+        if instance.status != 'pending':
+            return Response(
+                {'error': 'Can only delete pending team results'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def approve(self, request, pk=None):
+        """Admin action to approve a team score"""
+        score = self.get_object()
+        serializer = CategoryScoreApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            notes = serializer.validated_data.get('notes', '')
+            score.approve()
+            if notes:
+                score.admin_notes = notes
+                score.save()
+            
+            return Response({
+                'message': 'Team result approved successfully',
+                'status': score.status
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def reject(self, request, pk=None):
+        """Admin action to reject a team score"""
+        score = self.get_object()
+        serializer = CategoryScoreApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            notes = serializer.validated_data.get('notes', '')
+            score.reject(notes)
+            
+            return Response({
+                'message': 'Team result rejected successfully',
+                'status': score.status
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # Team methods moved to CategoryAthleteScoreViewSet - filter by type='teams'
+
+
+# Notification System Views
+class NotificationViewSet(viewsets.ModelViewSet):
+    """ViewSet for user notifications"""
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return notifications for the current user"""
+        return Notification.objects.filter(recipient=self.request.user)
+    
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """Get count of unread notifications"""
+        from .notification_utils import get_unread_notification_count
+        count = get_unread_notification_count(request.user)
+        return Response({'unread_count': count})
+    
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        """Mark a specific notification as read"""
+        notification = self.get_object()
+        notification.mark_as_read()
+        return Response({'message': 'Notification marked as read'})
+    
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        """Mark all notifications as read for the current user"""
+        from .notification_utils import mark_notifications_as_read
+        updated_count = mark_notifications_as_read(request.user)
+        return Response({
+            'message': f'{updated_count} notifications marked as read',
+            'updated_count': updated_count
+        })
+    
+    @action(detail=False, methods=['post'])
+    def mark_selected_read(self, request):
+        """Mark selected notifications as read"""
+        serializer = NotificationActionSerializer(data=request.data)
+        if serializer.is_valid():
+            notification_ids = serializer.validated_data.get('notification_ids', [])
+            if notification_ids:
+                from .notification_utils import mark_notifications_as_read
+                updated_count = mark_notifications_as_read(request.user, notification_ids)
+                return Response({
+                    'message': f'{updated_count} notifications marked as read',
+                    'updated_count': updated_count
+                })
+            else:
+                return Response({'error': 'No notification IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class NotificationSettingsViewSet(viewsets.ModelViewSet):
+    """ViewSet for user notification settings"""
+    serializer_class = NotificationSettingsSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return notification settings for the current user"""
+        return NotificationSettings.objects.filter(user=self.request.user)
+    
+    def get_object(self):
+        """Get or create notification settings for the current user"""
+        settings, created = NotificationSettings.objects.get_or_create(user=self.request.user)
+        return settings
+    
+    def update(self, request, *args, **kwargs):
+        """Update notification settings"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+# Grade History Submission Views
+class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
+    """ViewSet for athlete grade history submissions with approval workflow"""
+    serializer_class = GradeHistorySubmissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return grade history for the current user if athlete, all if admin"""
+        if hasattr(self.request.user, 'athlete'):
+            return GradeHistory.objects.filter(athlete=self.request.user.athlete)
+        elif self.request.user.role == 'admin':
+            return GradeHistory.objects.all()
+        return GradeHistory.objects.none()
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def approve(self, request, pk=None):
+        """Admin action to approve a grade history"""
+        grade_history = self.get_object()
+        serializer = GradeHistoryApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            notes = serializer.validated_data.get('notes', '')
+            grade_history.approve(request.user, notes)
+            
+            return Response({
+                'message': 'Grade history approved successfully',
+                'status': grade_history.status
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def reject(self, request, pk=None):
+        """Admin action to reject a grade history"""
+        grade_history = self.get_object()
+        serializer = GradeHistoryApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            notes = serializer.validated_data.get('notes', '')
+            grade_history.reject(request.user, notes)
+            
+            return Response({
+                'message': 'Grade history rejected successfully',
+                'status': grade_history.status
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def request_revision(self, request, pk=None):
+        """Admin action to request revision of a grade history"""
+        grade_history = self.get_object()
+        serializer = GradeHistoryApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            notes = serializer.validated_data.get('notes', '')
+            grade_history.request_revision(request.user, notes)
+            
+            return Response({
+                'message': 'Revision requested successfully',
+                'status': grade_history.status
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Training Seminar Participation Views
+class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
+    """ViewSet for athlete training seminar participation submissions with approval workflow"""
+    serializer_class = TrainingSeminarParticipationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return seminar participations for the current user if athlete, all if admin"""
+        if hasattr(self.request.user, 'athlete'):
+            return TrainingSeminarParticipation.objects.filter(athlete=self.request.user.athlete)
+        elif self.request.user.role == 'admin':
+            return TrainingSeminarParticipation.objects.all()
+        return TrainingSeminarParticipation.objects.none()
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def approve(self, request, pk=None):
+        """Admin action to approve a seminar participation"""
+        participation = self.get_object()
+        serializer = TrainingSeminarParticipationApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            notes = serializer.validated_data.get('notes', '')
+            participation.approve(request.user, notes)
+            
+            return Response({
+                'message': 'Seminar participation approved successfully',
+                'status': participation.status
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def reject(self, request, pk=None):
+        """Admin action to reject a seminar participation"""
+        participation = self.get_object()
+        serializer = TrainingSeminarParticipationApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            notes = serializer.validated_data.get('notes', '')
+            participation.reject(request.user, notes)
+            
+            return Response({
+                'message': 'Seminar participation rejected successfully',
+                'status': participation.status
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def request_revision(self, request, pk=None):
+        """Admin action to request revision of a seminar participation"""
+        participation = self.get_object()
+        serializer = TrainingSeminarParticipationApprovalSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            notes = serializer.validated_data.get('notes', '')
+            participation.request_revision(request.user, notes)
+            
+            return Response({
+                'message': 'Revision requested successfully',
+                'status': participation.status
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
