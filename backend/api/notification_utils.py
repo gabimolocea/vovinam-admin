@@ -158,7 +158,7 @@ def create_result_status_notification(result, new_status, admin_user, admin_note
             'competition_name': result.category.competition.name,
             'placement_claimed': result.placement_claimed,
             'result_type': result.type,
-            'reviewed_by': admin_user.get_full_name() if admin_user else 'Admin',
+            'reviewed_by': str(admin_user) if admin_user else 'Admin',
             'admin_notes': admin_notes,
             'new_status': new_status
         }
@@ -288,7 +288,7 @@ def create_grade_status_notification(grade_history, new_status, admin_user, admi
             'exam_date': grade_history.exam_date.isoformat() if grade_history.exam_date else None,
             'exam_place': grade_history.exam_place,
             'level': grade_history.level,
-            'reviewed_by': admin_user.get_full_name() if admin_user else 'Admin',
+            'reviewed_by': str(admin_user) if admin_user else 'Admin',
             'admin_notes': admin_notes,
             'new_status': new_status
         }
@@ -377,7 +377,7 @@ def create_seminar_status_notification(participation, new_status, admin_user, ad
             'seminar_start_date': seminar.start_date.isoformat() if seminar.start_date else None,
             'seminar_end_date': seminar.end_date.isoformat() if seminar.end_date else None,
             'seminar_place': seminar.place,
-            'reviewed_by': admin_user.get_full_name() if admin_user else 'Admin',
+            'reviewed_by': str(admin_user) if admin_user else 'Admin',
             'admin_notes': admin_notes,
             'new_status': new_status
         }

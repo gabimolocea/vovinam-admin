@@ -282,9 +282,9 @@ class GradeHistorySerializer(serializers.ModelSerializer):
 class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
     """Serializer for athlete grade history submissions with approval workflow"""
     athlete = serializers.PrimaryKeyRelatedField(read_only=True)
-    athlete_name = serializers.CharField(source='athlete.get_full_name', read_only=True)
+    athlete_name = serializers.CharField(source='athlete.__str__', read_only=True)
     grade_name = serializers.CharField(source='grade.name', read_only=True)
-    reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.__str__', read_only=True)
     
     class Meta:
         model = GradeHistory
@@ -730,7 +730,7 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
         if instance.reviewed_by:
             representation['reviewed_by'] = {
                 'id': instance.reviewed_by.id,
-                'name': instance.reviewed_by.get_full_name() or instance.reviewed_by.username,
+                'name': str(instance.reviewed_by),
                 'username': instance.reviewed_by.username
             }
         
@@ -813,7 +813,7 @@ class CategoryScoreApprovalSerializer(serializers.Serializer):
 # Notification System Serializers
 class NotificationSerializer(serializers.ModelSerializer):
     """Serializer for user notifications"""
-    recipient_name = serializers.CharField(source='recipient.get_full_name', read_only=True)
+    recipient_name = serializers.CharField(source='recipient.__str__', read_only=True)
     time_since_created = serializers.SerializerMethodField()
     
     class Meta:

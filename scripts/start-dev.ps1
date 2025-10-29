@@ -71,12 +71,18 @@ if (-not (Test-Path -Path "venv\Scripts\python.exe")) {
     }
 }
 # Activate and install
-. .\venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-python manage.py makemigrations
-python manage.py migrate
-python manage.py runserver $BackendPort
+if (Test-Path ".\venv\Scripts\Activate.ps1") {
+    . .\venv\Scripts\Activate.ps1
+    `$pythonCmd = "python"
+} else {
+    Write-Host "PowerShell activation script not found, using direct python path"
+    `$pythonCmd = ".\venv\Scripts\python.exe"
+}
+& `$pythonCmd -m pip install --upgrade pip setuptools wheel
+& `$pythonCmd -m pip install -r requirements.txt
+& `$pythonCmd manage.py makemigrations
+& `$pythonCmd manage.py migrate
+& `$pythonCmd manage.py runserver $BackendPort
 "@
 
 # Prepare frontend command: install and start
@@ -106,19 +112,31 @@ if ($isVSCodeTerminal) {
     }
     
     # Activate and prepare backend
-    . .\venv\Scripts\Activate.ps1
-    python -m pip install --upgrade pip setuptools wheel
-    pip install -r requirements.txt
-    python manage.py makemigrations
-    python manage.py migrate
+    if (Test-Path ".\venv\Scripts\Activate.ps1") {
+        . .\venv\Scripts\Activate.ps1
+        $pythonCmd = "python"
+    } else {
+        Write-Host "PowerShell activation script not found, using direct python path" -ForegroundColor Yellow
+        $pythonCmd = ".\venv\Scripts\python.exe"
+    }
+    
+    & $pythonCmd -m pip install --upgrade pip setuptools wheel
+    & $pythonCmd -m pip install -r requirements.txt
+    & $pythonCmd manage.py makemigrations
+    & $pythonCmd manage.py migrate
     
     # Start backend server in background job
     Write-Host "Starting Django server on port $BackendPort..." -ForegroundColor Green
     Start-Job -Name "BackendServer" -ScriptBlock {
         param($BackendPath, $BackendPort)
         Set-Location -Path $BackendPath
-        . .\venv\Scripts\Activate.ps1
-        python manage.py runserver $BackendPort
+        if (Test-Path ".\venv\Scripts\Activate.ps1") {
+            . .\venv\Scripts\Activate.ps1
+            $pythonCmd = "python"
+        } else {
+            $pythonCmd = ".\venv\Scripts\python.exe"
+        }
+        & $pythonCmd manage.py runserver $BackendPort
     } -ArgumentList $backendPath, $BackendPort
     
     # Wait a moment then start frontend

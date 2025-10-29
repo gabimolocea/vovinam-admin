@@ -1674,6 +1674,13 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
     serializer_class = TrainingSeminarParticipationSerializer
     permission_classes = [permissions.IsAuthenticated]
     
+    def perform_create(self, serializer):
+        """Set the athlete and submitted_by_athlete flag when creating"""
+        serializer.save(
+            athlete=self.request.user.athlete,
+            submitted_by_athlete=True
+        )
+    
     def get_queryset(self):
         """Return seminar participations for the current user if athlete, all if admin"""
         if hasattr(self.request.user, 'athlete'):

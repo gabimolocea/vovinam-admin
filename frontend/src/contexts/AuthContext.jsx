@@ -12,13 +12,41 @@ export const useAuth = () => {
   return context;
 };
 
+const isTokenExpired = (token) => {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 < Date.now();
+  } catch (error) {
+    return true;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tokens, setTokens] = useState({
-    access: localStorage.getItem('access_token'),
-    refresh: localStorage.getItem('refresh_token')
-  });
+  
+  // Initialize tokens and validate them
+  const initializeTokens = () => {
+    const accessToken = localStorage.getItem('access_token');
+    const refreshToken = localStorage.getItem('refresh_token');
+    
+    // Clear expired tokens
+    if (accessToken && isTokenExpired(accessToken)) {
+      localStorage.removeItem('access_token');
+    }
+    if (refreshToken && isTokenExpired(refreshToken)) {
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('access_token'); // Clear access too if refresh is expired
+    }
+    
+    return {
+      access: isTokenExpired(accessToken) ? null : accessToken,
+      refresh: isTokenExpired(refreshToken) ? null : refreshToken
+    };
+  };
+  
+  const [tokens, setTokens] = useState(initializeTokens());
 
   // Configure axios interceptors for automatic token handling
   useEffect(() => {
@@ -37,7 +65,16 @@ export const AuthProvider = ({ children }) => {
     const responseInterceptor = AxiosInstance.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error.response?.status === 401 && tokens.refresh) {
+        const originalRequest = error.config;
+        
+        // Prevent infinite loops by checking if this is already a retry or a refresh request
+        if (error.response?.status === 401 && 
+            tokens.refresh && 
+            !originalRequest._retry && 
+            !originalRequest.url.includes('/auth/token/refresh/')) {
+          
+          originalRequest._retry = true;
+          
           try {
             const response = await AxiosInstance.post('/auth/token/refresh/', {
               refresh: tokens.refresh
@@ -47,9 +84,10 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('access_token', newAccessToken);
             
             // Retry the original request with new token
-            error.config.headers.Authorization = `Bearer ${newAccessToken}`;
-            return AxiosInstance.request(error.config);
+            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+            return AxiosInstance.request(originalRequest);
           } catch (refreshError) {
+            console.log('Token refresh failed:', refreshError);
             // Refresh failed, log out user
             logout();
             return Promise.reject(refreshError);
@@ -163,6 +201,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const clearTokens = () => {
+    setUser(null);
+    setTokens({ access: null, refresh: null });
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+  };
+
   const logout = async () => {
     try {
       // Logout from JWT
@@ -183,10 +228,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      setUser(null);
-      setTokens({ access: null, refresh: null });
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
+      clearTokens();
     }
   };
 
