@@ -1,22 +1,10 @@
 import React, { useState } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-  Box,
-  Alert,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Typography
-} from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Alert, AlertDescription } from './ui/alert';
 import axios from './Axios';
 
 const CreateGradeHistory = ({ open, onClose, onSuccess, grades = [] }) => {
@@ -77,101 +65,117 @@ const CreateGradeHistory = ({ open, onClose, onSuccess, grades = [] }) => {
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Typography variant="h6">Submit Grade Examination</Typography>
-        <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-          Submit your grade examination for admin approval
-        </Typography>
-      </DialogTitle>
-      
-      <form onSubmit={handleSubmit}>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            {error && (
-              <Alert severity="error" onClose={() => setError('')}>
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[525px]">
+        <DialogHeader>
+          <DialogTitle>Submit Grade Examination</DialogTitle>
+          <DialogDescription>
+            Submit your grade examination for admin approval
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert className="border-red-200 bg-red-50">
+              <AlertDescription className="text-red-800">
                 {error}
-              </Alert>
-            )}
+                <button
+                  onClick={() => setError('')}
+                  className="float-right text-red-600 hover:text-red-800"
+                >
+                  ×
+                </button>
+              </AlertDescription>
+            </Alert>
+          )}
 
-            <FormControl fullWidth required>
-              <InputLabel>Grade</InputLabel>
-              <Select
-                value={formData.grade}
-                onChange={(e) => handleChange('grade', e.target.value)}
-                label="Grade"
-              >
+          <div className="space-y-2">
+            <Label htmlFor="grade">Grade *</Label>
+            <Select
+              value={formData.grade}
+              onValueChange={(value) => handleChange('grade', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a grade" />
+              </SelectTrigger>
+              <SelectContent>
                 {grades.map((grade) => (
-                  <MenuItem key={grade.id} value={grade.id}>
+                  <SelectItem key={grade.id} value={grade.id.toString()}>
                     {grade.name}
-                  </MenuItem>
+                  </SelectItem>
                 ))}
-              </Select>
-            </FormControl>
+              </SelectContent>
+            </Select>
+          </div>
 
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker
-                label="Examination Date *"
-                value={formData.examination_date}
-                onChange={(date) => handleChange('examination_date', date)}
-                renderInput={(params) => (
-                  <TextField {...params} fullWidth required />
-                )}
-                maxDate={new Date()}
-              />
-            </LocalizationProvider>
+          <div className="space-y-2">
+            <Label htmlFor="examination_date">Examination Date *</Label>
+            <Input
+              id="examination_date"
+              type="date"
+              value={formData.examination_date ? formData.examination_date.toISOString().split('T')[0] : ''}
+              onChange={(e) => handleChange('examination_date', e.target.value ? new Date(e.target.value) : null)}
+              max={new Date().toISOString().split('T')[0]}
+              required
+            />
+          </div>
 
-            <TextField
-              label="Location"
+          <div className="space-y-2">
+            <Label htmlFor="location">Location *</Label>
+            <Input
+              id="location"
               value={formData.location}
               onChange={(e) => handleChange('location', e.target.value)}
-              fullWidth
-              required
               placeholder="City, Country or Venue"
+              required
             />
+          </div>
 
-            <TextField
-              label="Examiner Name"
+          <div className="space-y-2">
+            <Label htmlFor="examiner_name">Examiner Name *</Label>
+            <Input
+              id="examiner_name"
               value={formData.examiner_name}
               onChange={(e) => handleChange('examiner_name', e.target.value)}
-              fullWidth
-              required
               placeholder="Name of the examining instructor"
+              required
             />
+          </div>
 
-            <TextField
-              label="Certificate Number"
+          <div className="space-y-2">
+            <Label htmlFor="certificate_number">Certificate Number</Label>
+            <Input
+              id="certificate_number"
               value={formData.certificate_number}
               onChange={(e) => handleChange('certificate_number', e.target.value)}
-              fullWidth
               placeholder="Certificate or document number (if applicable)"
             />
+          </div>
 
-            <TextField
-              label="Additional Notes"
+          <div className="space-y-2">
+            <Label htmlFor="notes">Additional Notes</Label>
+            <textarea
+              id="notes"
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
-              fullWidth
-              multiline
-              rows={3}
               placeholder="Any additional information about the examination"
+              rows={3}
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
-          </Box>
-        </DialogContent>
-        
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={handleClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button 
-            type="submit" 
-            variant="contained" 
-            disabled={loading || !formData.grade || !formData.examination_date || !formData.location || !formData.examiner_name}
-          >
-            {loading ? 'Submitting...' : 'Submit for Approval'}
-          </Button>
-        </DialogActions>
-      </form>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              disabled={loading || !formData.grade || !formData.examination_date || !formData.location || !formData.examiner_name}
+            >
+              {loading ? 'Submitting...' : 'Submit for Approval'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 };

@@ -1,24 +1,20 @@
 import * as React from 'react';
-import Box from '@mui/material/Box';
-import TextField from '@mui/material/TextField';
-import InputAdornment from '@mui/material/InputAdornment';
-import { Typography } from '@mui/material';
+import { Alert, AlertDescription } from '../ui/alert';
 
 export default function MyMessage({messageText, messageColor}) {
-return (
-    <Box
-        sx={{
-        width: '100%', 
-        height: '100%', 
-        color: 'white', 
-        marginBottom: '20px', 
-        padding: '10px', 
-        display: 'flex',
-        backgroundColor: messageColor,
-        alignItems: 'center',
-        }}
-    >
-       <Typography>{messageText}</Typography>
-    </Box>
-);
+  // Map background colors to Alert variants
+  const getVariant = (color) => {
+    if (color === 'red' || color === '#ef4444' || color === 'error') {
+      return 'destructive';
+    }
+    return 'default';
+  };
+
+  return (
+    <Alert variant={getVariant(messageColor)} className="mb-5">
+      <AlertDescription>
+        {messageText}
+      </AlertDescription>
+    </Alert>
+  );
 } 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import TopNavbar from './navbar/TopNavbar';
+import Navbar from './navbar/NewNavbar';
 
 const AppLayout = ({ children }) => {
   const location = useLocation();
@@ -13,11 +13,15 @@ const AppLayout = ({ children }) => {
   
   // If it's an auth route, render without navigation
   if (isAuthRoute) {
-    return children;
+    return (
+      <div className="min-h-screen bg-background">
+        {children}
+      </div>
+    );
   }
   
-  // Otherwise, render with navigation
-  return <TopNavbar>{children}</TopNavbar>;
+  // Otherwise, render with the new navigation
+  return <Navbar content={children} />;
 };
 
 export default AppLayout;

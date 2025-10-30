@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { Box, CircularProgress, Alert } from '@mui/material';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { useAuth } from '../contexts/AuthContext';
 
 const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null }) => {
@@ -10,14 +10,9 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null }) 
   // Show loading spinner while checking authentication
   if (loading) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="100vh"
-      >
-        <CircularProgress />
-      </Box>
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
     );
   }
 
@@ -29,19 +24,14 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null }) 
   // If admin required but user is not admin, show access denied or redirect
   if (requireAdmin && !isAdmin) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="100vh"
-        sx={{ p: 3 }}
-      >
-        <Alert severity="error" sx={{ maxWidth: 400 }}>
-          <h3>Access Denied</h3>
-          <p>You don't have permission to access this page.</p>
-          <p>Admin privileges are required.</p>
+      <div className="flex justify-center items-center min-h-screen p-3">
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTitle>Access Denied</AlertTitle>
+          <AlertDescription>
+            You don't have permission to access this page. Admin privileges are required.
+          </AlertDescription>
         </Alert>
-      </Box>
+      </div>
     );
   }
 
@@ -54,19 +44,16 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null }) 
 
     if (!hasRequiredRole) {
       return (
-        <Box
-          display="flex"
-          justifyContent="center"
-          alignItems="center"
-          minHeight="100vh"
-          sx={{ p: 3 }}
-        >
-          <Alert severity="warning" sx={{ maxWidth: 400 }}>
-            <h3>Role Required</h3>
-            <p>You need to be registered as a {requireRole} to access this page.</p>
-            <p>Your current role: {userRole}</p>
+        <div className="flex justify-center items-center min-h-screen p-3">
+          <Alert className="max-w-md">
+            <AlertTitle>Role Required</AlertTitle>
+            <AlertDescription>
+              You need to be registered as a {requireRole} to access this page.
+              <br />
+              Your current role: {userRole}
+            </AlertDescription>
           </Alert>
-        </Box>
+        </div>
       );
     }
   }

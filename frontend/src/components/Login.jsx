@@ -1,22 +1,13 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  TextField,
-  Typography,
-  Alert,
-  Link,
-  CircularProgress,
-  Container
-} from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
+import { Alert, AlertDescription } from './ui/alert';
+import { Label } from './ui/label';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
-
 const Login = () => {
-  const theme = useTheme();
   const { login, loading } = useAuth();
   const navigate = useNavigate();
   
@@ -83,148 +74,93 @@ const Login = () => {
 
   if (loading) {
     return (
-      <Box 
-        display="flex" 
-        justifyContent="center" 
-        alignItems="center" 
-        minHeight="100vh"
-      >
-        <CircularProgress />
-      </Box>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
     );
   }
 
   return (
-    <Container component="main" maxWidth="sm">
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          py: 3
-        }}
-      >
-        <Card
-          sx={{
-            maxWidth: 400,
-            width: '100%',
-            boxShadow: theme.shadows[3],
-            borderRadius: theme.shape.borderRadius
-          }}
-        >
-          <CardContent sx={{ p: 4 }}>
-            <Typography
-              variant="h4"
-              component="h1"
-              gutterBottom
-              align="center"
-              sx={{
-                color: theme.palette.text.primary,
-                fontWeight: theme.typography.fontWeightMedium,
-                mb: 3
-              }}
-            >
-              Welcome Back
-            </Typography>
-            
-            <Typography
-              variant="body2"
-              align="center"
-              sx={{
-                color: theme.palette.text.secondary,
-                mb: 3
-              }}
-            >
-              Sign in to your account to continue
-            </Typography>
-
-            {errors.general && (
-              <Alert severity="error" sx={{ mb: 2 }}>
+    <div className="min-h-screen flex items-center justify-center py-12 px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-semibold text-center">
+            Welcome Back
+          </CardTitle>
+          <CardDescription className="text-center">
+            Sign in to your account to continue
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {errors.general && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>
                 {errors.general}
-              </Alert>
-            )}
+              </AlertDescription>
+            </Alert>
+          )}
 
-            <Box component="form" onSubmit={handleSubmit} noValidate>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input
                 id="email"
-                label="Email Address"
                 name="email"
+                type="email"
                 autoComplete="email"
                 autoFocus
                 value={formData.email}
                 onChange={handleChange}
-                error={!!errors.email}
-                helperText={errors.email}
-                sx={{ mb: 2 }}
+                className={errors.email ? "border-destructive" : ""}
               />
-              
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="password"
-                label="Password"
-                type="password"
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email}</p>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
                 id="password"
+                name="password"
+                type="password"
                 autoComplete="current-password"
                 value={formData.password}
                 onChange={handleChange}
-                error={!!errors.password}
-                helperText={errors.password}
-                sx={{ mb: 3 }}
+                className={errors.password ? "border-destructive" : ""}
               />
+              {errors.password && (
+                <p className="text-sm text-destructive">{errors.password}</p>
+              )}
+            </div>
 
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                disabled={isSubmitting}
-                sx={{
-                  mt: 3,
-                  mb: 2,
-                  py: 1.5,
-                  backgroundColor: theme.palette.primary.main,
-                  '&:hover': {
-                    backgroundColor: theme.palette.primary.dark,
-                  },
-                  '&:disabled': {
-                    backgroundColor: theme.palette.action.disabled,
-                  }
-                }}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign In'
+              )}
+            </Button>
+
+            <div className="text-center">
+              <RouterLink
+                to="/register"
+                className="text-sm text-primary hover:underline"
               >
-                {isSubmitting ? (
-                  <CircularProgress size={24} color="inherit" />
-                ) : (
-                  'Sign In'
-                )}
-              </Button>
-
-              <Box textAlign="center">
-                <Link
-                  component={RouterLink}
-                  to="/register"
-                  variant="body2"
-                  sx={{
-                    color: theme.palette.primary.main,
-                    textDecoration: 'none',
-                    '&:hover': {
-                      textDecoration: 'underline',
-                    }
-                  }}
-                >
-                  Don't have an account? Sign up here
-                </Link>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
-    </Container>
+                Don't have an account? Sign up here
+              </RouterLink>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 

@@ -1,29 +1,31 @@
 import * as React from 'react';
-import Box from '@mui/material/Box';
-import TextField from '@mui/material/TextField';
-import InputAdornment from '@mui/material/InputAdornment';
-
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 
 export default function TextForm({label, before, value, name, onChange, onBlur, error, helperText}) {
-return (
-    <Box>
-        <TextField 
-        id="outlined-basic" 
-        label={label} 
-        sx={{ width: '100%' }}
-        variant="outlined" 
-        value = {value}
-        name = {name}
-        onChange = {onChange}
-        onBlur = {onBlur}
-        error = {error}
-        helperText = {helperText}
-        slotProps={{
-            input: {
-              startAdornment: <InputAdornment position="start">{before}</InputAdornment>,
-            },
-          }}
+  return (
+    <div className="space-y-2">
+      {label && <Label htmlFor={name}>{label}</Label>}
+      <div className="relative">
+        {before && (
+          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+            {before}
+          </div>
+        )}
+        <Input
+          id={name}
+          name={name}
+          value={value}
+          onChange={onChange}
+          onBlur={onBlur}
+          className={`${error ? "border-destructive" : ""} ${before ? "pl-10" : ""}`}
         />
-    </Box>
-);
+      </div>
+      {helperText && (
+        <p className={`text-sm ${error ? "text-destructive" : "text-muted-foreground"}`}>
+          {helperText}
+        </p>
+      )}
+    </div>
+  );
 }

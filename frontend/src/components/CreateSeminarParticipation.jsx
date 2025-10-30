@@ -1,22 +1,10 @@
 import React, { useState } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-  Box,
-  Alert,
-  Typography,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem
-} from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Alert, AlertDescription } from './ui/alert';
 import axios from './Axios';
 
 const CreateSeminarParticipation = ({ open, onClose, onSuccess, trainingSeminars = [] }) => {
@@ -95,112 +83,124 @@ const CreateSeminarParticipation = ({ open, onClose, onSuccess, trainingSeminars
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        Submit Training Seminar Participation
-      </DialogTitle>
-      <form onSubmit={handleSubmit}>
-        <DialogContent>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[525px]">
+        <DialogHeader>
+          <DialogTitle>Submit Training Seminar Participation</DialogTitle>
+          <DialogDescription>
             Submit your training seminar participation for admin approval
-          </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            {error && (
-              <Alert severity="error" onClose={() => setError('')}>
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert className="border-red-200 bg-red-50">
+              <AlertDescription className="text-red-800">
                 {error}
-              </Alert>
-            )}
+                <button
+                  onClick={() => setError('')}
+                  className="float-right text-red-600 hover:text-red-800"
+                >
+                  ×
+                </button>
+              </AlertDescription>
+            </Alert>
+          )}
 
-            <FormControl fullWidth required>
-              <InputLabel>Training Seminar</InputLabel>
-              <Select
-                value={formData.seminar}
-                onChange={(e) => handleChange('seminar', e.target.value)}
-                label="Training Seminar"
-              >
+          <div className="space-y-2">
+            <Label htmlFor="seminar">Training Seminar *</Label>
+            <Select
+              value={formData.seminar}
+              onValueChange={(value) => handleChange('seminar', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a training seminar" />
+              </SelectTrigger>
+              <SelectContent>
                 {trainingSeminars && trainingSeminars.length > 0 ? (
                   trainingSeminars.map((seminar) => (
-                    <MenuItem key={seminar.id} value={seminar.id}>
+                    <SelectItem key={seminar.id} value={seminar.id.toString()}>
                       {seminar.name} - {new Date(seminar.start_date).toLocaleDateString()} to {new Date(seminar.end_date).toLocaleDateString()}
-                    </MenuItem>
+                    </SelectItem>
                   ))
                 ) : (
-                  <MenuItem disabled>No training seminars available</MenuItem>
+                  <SelectItem value="" disabled>No training seminars available</SelectItem>
                 )}
-              </Select>
-            </FormControl>
+              </SelectContent>
+            </Select>
+          </div>
 
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Participation Certificate
-              </Typography>
+          <div className="space-y-2">
+            <Label htmlFor="participation_certificate">Participation Certificate</Label>
+            <div className="space-y-1">
               <Button
-                variant="outlined"
-                component="label"
-                fullWidth
-                sx={{ mb: 1 }}
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => document.getElementById('cert-upload').click()}
               >
                 {formData.participation_certificate ? formData.participation_certificate.name : 'Upload Certificate'}
-                <input
-                  type="file"
-                  hidden
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={(e) => handleFileChange('participation_certificate', e.target.files[0])}
-                />
               </Button>
-              <Typography variant="caption" color="textSecondary">
+              <input
+                id="cert-upload"
+                type="file"
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                onChange={(e) => handleFileChange('participation_certificate', e.target.files[0])}
+              />
+              <p className="text-xs text-gray-500">
                 Upload your participation certificate (PDF, images, or documents)
-              </Typography>
-            </Box>
+              </p>
+            </div>
+          </div>
 
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Additional Documentation
-              </Typography>
+          <div className="space-y-2">
+            <Label htmlFor="participation_document">Additional Documentation (Optional)</Label>
+            <div className="space-y-1">
               <Button
-                variant="outlined"
-                component="label"
-                fullWidth
-                sx={{ mb: 1 }}
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => document.getElementById('doc-upload').click()}
               >
                 {formData.participation_document ? formData.participation_document.name : 'Upload Document (Optional)'}
-                <input
-                  type="file"
-                  hidden
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={(e) => handleFileChange('participation_document', e.target.files[0])}
-                />
               </Button>
-              <Typography variant="caption" color="textSecondary">
+              <input
+                id="doc-upload"
+                type="file"
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                onChange={(e) => handleFileChange('participation_document', e.target.files[0])}
+              />
+              <p className="text-xs text-gray-500">
                 Upload any additional documentation (Optional)
-              </Typography>
-            </Box>
+              </p>
+            </div>
+          </div>
 
-            <TextField
-              label="Notes"
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <textarea
+              id="notes"
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
-              fullWidth
-              multiline
-              rows={3}
               placeholder="Any additional information about your participation"
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
-          </Box>
-        </DialogContent>
-        
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={handleClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button 
-            type="submit" 
-            variant="contained" 
-            disabled={loading || !formData.seminar}
-          >
-            {loading ? 'Submitting...' : 'Submit for Approval'}
-          </Button>
-        </DialogActions>
-      </form>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              disabled={loading || !formData.seminar}
+            >
+              {loading ? 'Submitting...' : 'Submit for Approval'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 };

@@ -1,9 +1,6 @@
 import * as React from "react";
-import Box from "@mui/material/Box";
-import InputLabel from "@mui/material/InputLabel";
-import MenuItem from "@mui/material/MenuItem";
-import FormControl from "@mui/material/FormControl";
-import Select from "@mui/material/Select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Label } from '../ui/label';
 
 export default function SelectForm({
   label,
@@ -15,40 +12,44 @@ export default function SelectForm({
   error,
   helperText,
 }) {
+  const handleValueChange = (newValue) => {
+    // Create a synthetic event object to match Material-UI's onChange signature
+    const syntheticEvent = {
+      target: {
+        name: name,
+        value: newValue
+      }
+    };
+    onChange(syntheticEvent);
+  };
+
   return (
-    <Box>
-      <FormControl fullWidth>
-        <InputLabel>{label}</InputLabel>
-        <Select
-          label={label}
-          value={value}
-          name={name}
-          onChange={onChange}
-          onBlur={onBlur}
-          error={error}
-        >
-          {/* Default option to allow clearing the selection */}
-          <MenuItem value="">
-            None
-          </MenuItem>
+    <div className="space-y-2">
+      {label && <Label htmlFor={name}>{label}</Label>}
+      <Select value={value || ""} onValueChange={handleValueChange}>
+        <SelectTrigger className={error ? "border-destructive" : ""}>
+          <SelectValue placeholder={`Select ${label}`} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="">None</SelectItem>
           {options.length > 0 ? (
             options.map((option) => (
-              <MenuItem key={option.id} value={option.id}>
+              <SelectItem key={option.id} value={option.id.toString()}>
                 {option.name}
-              </MenuItem>
+              </SelectItem>
             ))
           ) : (
-            <MenuItem disabled value="">
+            <SelectItem disabled value="no-options">
               No options available
-            </MenuItem>
+            </SelectItem>
           )}
-        </Select>
-        {helperText && (
-          <Box sx={{ color: "error.main", fontSize: "0.75rem", marginTop: "0.25rem" }}>
-            {helperText}
-          </Box>
-        )}
-      </FormControl>
-    </Box>
+        </SelectContent>
+      </Select>
+      {helperText && (
+        <p className={`text-sm ${error ? "text-destructive" : "text-muted-foreground"}`}>
+          {helperText}
+        </p>
+      )}
+    </div>
   );
 }

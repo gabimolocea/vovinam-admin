@@ -37,10 +37,15 @@ class ClubSerializer(serializers.ModelSerializer):
         return representation
 
 class CompetitionSerializer(serializers.ModelSerializer):
+    categories = serializers.SerializerMethodField()
+    
     class Meta:
         model = Competition
         fields = '__all__'
         depth = 1  # This will include the related clubs in the output
+    
+    def get_categories(self, obj):
+        return [{'id': cat.id, 'name': cat.name, 'type': cat.type, 'gender': cat.gender} for cat in obj.categories.all()]
 
 
 class AthleteSerializer(serializers.ModelSerializer):

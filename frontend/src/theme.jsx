@@ -17,7 +17,7 @@ export function buildTheme(serverTokens = {}) {
   };
 
   const typography = {
-    fontFamily: serverTokens?.typography?.fontFamily || ['Be Vietnam Pro', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'].join(','),
+    fontFamily: serverTokens?.typography?.fontFamily || ['Inter', 'Arial', 'Helvetica', 'sans-serif'].join(','),
     fontSize: serverTokens?.typography?.fontSize?.base || 14,
     fontWeight: {
       normal: serverTokens?.typography?.fontWeight?.normal || 400,

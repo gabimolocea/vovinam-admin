@@ -1,23 +1,24 @@
 import React from 'react';
-import { ListItemButton, ListItemIcon, ListItemText } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
+import { cn } from '../../lib/utils';
 
 export default function NavListItem({ item, active }) {
   return (
-    <ListItemButton
-      component={RouterLink}
+    <RouterLink
       to={item.link}
-      selected={active}
-      sx={{
-        borderRadius: 1,
-        '&.Mui-selected': {
-          backgroundColor: (theme) => theme.palette.primary.main + '14', // 8% opacity
-          color: 'primary.main',
-        },
-      }}
+      className={cn(
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors",
+        active 
+          ? "bg-primary/10 text-primary border-r-2 border-primary" 
+          : "text-muted-foreground"
+      )}
     >
-      {item.icon && <ListItemIcon sx={{ color: 'inherit' }}>{item.icon}</ListItemIcon>}
-      <ListItemText primary={item.title} />
-    </ListItemButton>
+      {item.icon && (
+        <span className="text-inherit">
+          {item.icon}
+        </span>
+      )}
+      <span>{item.title}</span>
+    </RouterLink>
   );
 }

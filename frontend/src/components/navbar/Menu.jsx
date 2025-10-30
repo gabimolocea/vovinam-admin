@@ -1,51 +1,49 @@
 import React from 'react';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import BarChartIcon from '@mui/icons-material/BarChart';
-import DescriptionIcon from '@mui/icons-material/Description';
-import LayersIcon from '@mui/icons-material/Layers';
-import NotificationsIcon from '@mui/icons-material/Notifications';
+import { 
+  LayoutDashboard, 
+  Users, 
+  UserCheck, 
+  Trophy, 
+  Bell, 
+  ClipboardCheck 
+} from 'lucide-react';
 import {Link} from 'react-router-dom'
-import Groups2Icon from '@mui/icons-material/Groups2';
-import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
-import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
-import ApprovalIcon from '@mui/icons-material/Approval';
 
 const NAVIGATION = [
     { 
         segment: 'dashboard', 
         title: 'Dashboard', 
-        icon: <DashboardIcon />, 
+        icon: <LayoutDashboard className="h-4 w-4" />, 
         link: '/dashboard'
     },
     { 
         segment: 'clubs', 
         title: 'Clubs', 
-        icon: <Groups2Icon />, 
+        icon: <Users className="h-4 w-4" />, 
         link: '/clubs'
     },
     { 
         segment: 'athletes', 
         title: 'Athletes', 
-        icon: <AssignmentIndIcon />, 
+        icon: <UserCheck className="h-4 w-4" />, 
         link: '/athletes'
     },
     { 
         segment: 'competitions', 
         title: 'Competitions', 
-        icon: <EmojiEventsIcon />, 
+        icon: <Trophy className="h-4 w-4" />, 
         link: '/competitions'
     },
     { 
         segment: 'notifications', 
         title: 'Notifications', 
-        icon: <NotificationsIcon />, 
+        icon: <Bell className="h-4 w-4" />, 
         link: '/notifications'
     },
     { 
         segment: 'submissions', 
         title: 'Manage Submissions', 
-        icon: <ApprovalIcon />, 
+        icon: <ClipboardCheck className="h-4 w-4" />, 
         link: '/admin/submissions'
     },
 ];

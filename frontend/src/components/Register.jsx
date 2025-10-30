@@ -1,23 +1,15 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  TextField,
-  Typography,
-  Alert,
-  Link,
-  CircularProgress,
-  Container,
-  Grid
-} from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
+import { Alert, AlertDescription } from './ui/alert';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 
 const Register = () => {
-  const theme = useTheme();
   const { register, loading } = useAuth();
   const navigate = useNavigate();
   
@@ -115,233 +107,176 @@ const Register = () => {
 
   if (loading) {
     return (
-      <Box 
-        display="flex" 
-        justifyContent="center" 
-        alignItems="center" 
-        minHeight="100vh"
-      >
-        <CircularProgress />
-      </Box>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
     );
   }
 
   return (
-    <Container component="main" maxWidth="md">
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          py: 3
-        }}
-      >
-        <Card
-          sx={{
-            maxWidth: 600,
-            width: '100%',
-            boxShadow: theme.shadows[3],
-            borderRadius: theme.shape.borderRadius
-          }}
-        >
-          <CardContent sx={{ p: 4 }}>
-            <Typography
-              variant="h4"
-              component="h1"
-              gutterBottom
-              align="center"
-              sx={{
-                color: theme.palette.text.primary,
-                fontWeight: theme.typography.fontWeightMedium,
-                mb: 3
-              }}
-            >
-              Create Account
-            </Typography>
-            
-            <Typography
-              variant="body2"
-              align="center"
-              sx={{
-                color: theme.palette.text.secondary,
-                mb: 3
-              }}
-            >
-              Fill in the information below to create your account
-            </Typography>
-
-            {errors.non_field_errors && (
-              <Alert severity="error" sx={{ mb: 2 }}>
+    <div className="min-h-screen flex items-center justify-center py-12 px-4">
+      <Card className="w-full max-w-2xl">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-semibold text-center">
+            Create Account
+          </CardTitle>
+          <CardDescription className="text-center">
+            Fill in the information below to create your account
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {errors.non_field_errors && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>
                 {Array.isArray(errors.non_field_errors) 
                   ? errors.non_field_errors.join(', ')
                   : errors.non_field_errors
                 }
-              </Alert>
-            )}
+              </AlertDescription>
+            </Alert>
+          )}
 
-            <Box component="form" onSubmit={handleSubmit} noValidate>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    required
-                    fullWidth
-                    id="first_name"
-                    label="First Name"
-                    name="first_name"
-                    autoComplete="given-name"
-                    value={formData.first_name}
-                    onChange={handleChange}
-                    error={!!errors.first_name}
-                    helperText={errors.first_name}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    required
-                    fullWidth
-                    id="last_name"
-                    label="Last Name"
-                    name="last_name"
-                    autoComplete="family-name"
-                    value={formData.last_name}
-                    onChange={handleChange}
-                    error={!!errors.last_name}
-                    helperText={errors.last_name}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <TextField
-                    required
-                    fullWidth
-                    id="username"
-                    label="Username"
-                    name="username"
-                    autoComplete="username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    error={!!errors.username}
-                    helperText={errors.username}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <TextField
-                    required
-                    fullWidth
-                    id="email"
-                    label="Email Address"
-                    name="email"
-                    autoComplete="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    error={!!errors.email}
-                    helperText={errors.email}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    required
-                    fullWidth
-                    name="password"
-                    label="Password"
-                    type="password"
-                    id="password"
-                    autoComplete="new-password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    error={!!errors.password}
-                    helperText={errors.password}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    required
-                    fullWidth
-                    name="password_confirm"
-                    label="Confirm Password"
-                    type="password"
-                    id="password_confirm"
-                    autoComplete="new-password"
-                    value={formData.password_confirm}
-                    onChange={handleChange}
-                    error={!!errors.password_confirm}
-                    helperText={errors.password_confirm}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <TextField
-                    required
-                    fullWidth
-                    select
-                    name="role"
-                    label="I am registering as"
-                    value={formData.role}
-                    onChange={handleChange}
-                    error={!!errors.role}
-                    helperText={errors.role}
-                    SelectProps={{
-                      native: true,
-                    }}
-                  >
-                    <option value="supporter">Supporter/Parent</option>
-                    <option value="athlete">Athlete</option>
-                  </TextField>
-                </Grid>
-              </Grid>
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                disabled={isSubmitting}
-                sx={{
-                  mt: 3,
-                  mb: 2,
-                  py: 1.5,
-                  backgroundColor: theme.palette.primary.main,
-                  '&:hover': {
-                    backgroundColor: theme.palette.primary.dark,
-                  },
-                  '&:disabled': {
-                    backgroundColor: theme.palette.action.disabled,
-                  }
-                }}
-              >
-                {isSubmitting ? (
-                  <CircularProgress size={24} color="inherit" />
-                ) : (
-                  'Create Account'
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="first_name">First Name</Label>
+                <Input
+                  id="first_name"
+                  name="first_name"
+                  autoComplete="given-name"
+                  value={formData.first_name}
+                  onChange={handleChange}
+                  className={errors.first_name ? "border-destructive" : ""}
+                />
+                {errors.first_name && (
+                  <p className="text-sm text-destructive">{errors.first_name}</p>
                 )}
-              </Button>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="last_name">Last Name</Label>
+                <Input
+                  id="last_name"
+                  name="last_name"
+                  autoComplete="family-name"
+                  value={formData.last_name}
+                  onChange={handleChange}
+                  className={errors.last_name ? "border-destructive" : ""}
+                />
+                {errors.last_name && (
+                  <p className="text-sm text-destructive">{errors.last_name}</p>
+                )}
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                name="username"
+                autoComplete="username"
+                value={formData.username}
+                onChange={handleChange}
+                className={errors.username ? "border-destructive" : ""}
+              />
+              {errors.username && (
+                <p className="text-sm text-destructive">{errors.username}</p>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                value={formData.email}
+                onChange={handleChange}
+                className={errors.email ? "border-destructive" : ""}
+              />
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email}</p>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className={errors.password ? "border-destructive" : ""}
+                />
+                {errors.password && (
+                  <p className="text-sm text-destructive">{errors.password}</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="password_confirm">Confirm Password</Label>
+                <Input
+                  id="password_confirm"
+                  name="password_confirm"
+                  type="password"
+                  autoComplete="new-password"
+                  value={formData.password_confirm}
+                  onChange={handleChange}
+                  className={errors.password_confirm ? "border-destructive" : ""}
+                />
+                {errors.password_confirm && (
+                  <p className="text-sm text-destructive">{errors.password_confirm}</p>
+                )}
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="role">I am registering as</Label>
+              <Select value={formData.role} onValueChange={(value) => handleChange({ target: { name: 'role', value } })}>
+                <SelectTrigger className={errors.role ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select your role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="supporter">Supporter/Parent</SelectItem>
+                  <SelectItem value="athlete">Athlete</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.role && (
+                <p className="text-sm text-destructive">{errors.role}</p>
+              )}
+            </div>
 
-              <Box textAlign="center">
-                <Link
-                  component={RouterLink}
-                  to="/login"
-                  variant="body2"
-                  sx={{
-                    color: theme.palette.primary.main,
-                    textDecoration: 'none',
-                    '&:hover': {
-                      textDecoration: 'underline',
-                    }
-                  }}
-                >
-                  Already have an account? Sign in here
-                </Link>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
-    </Container>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating account...
+                </>
+              ) : (
+                'Create Account'
+              )}
+            </Button>
+
+            <div className="text-center">
+              <RouterLink
+                to="/login"
+                className="text-sm text-primary hover:underline"
+              >
+                Already have an account? Sign in here
+              </RouterLink>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
