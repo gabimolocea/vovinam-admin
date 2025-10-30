@@ -1,15 +1,22 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import NewsPost, Event, AboutSection, ContactMessage, ContactInfo
+from .models import NewsPost, Event, AboutSection, ContactMessage, ContactInfo, NewsPostGallery, NewsComment
+
+class NewsPostGalleryInline(admin.TabularInline):
+    model = NewsPostGallery
+    extra = 1
+    fields = ['image', 'alt_text', 'caption', 'order']
+    ordering = ['order']
 
 @admin.register(NewsPost)
 class NewsPostAdmin(admin.ModelAdmin):
-    list_display = ['title', 'published', 'featured', 'author', 'created_at', 'updated_at']
+    list_display = ['title', 'published', 'featured', 'author_name', 'gallery_count', 'created_at', 'updated_at']
     list_filter = ['published', 'featured', 'created_at', 'author']
-    search_fields = ['title', 'content', 'excerpt', 'author', 'tags']
+    search_fields = ['title', 'content', 'excerpt', 'tags']
     prepopulated_fields = {'slug': ('title',)}
     list_editable = ['published', 'featured']
     ordering = ['-created_at']
+    inlines = [NewsPostGalleryInline]
     
     fieldsets = (
         ('Basic Information', {
@@ -27,6 +34,26 @@ class NewsPostAdmin(admin.ModelAdmin):
             'description': 'Search Engine Optimization settings'
         }),
     )
+    
+    def author_name(self, obj):
+        return obj.author.get_full_name() if obj.author else 'No Author'
+    author_name.short_description = 'Author'
+    
+    def gallery_count(self, obj):
+        count = obj.gallery_images.count()
+        if count > 0:
+            return format_html('<span style="color: green;">{} images</span>', count)
+        return format_html('<span style="color: gray;">No images</span>')
+    gallery_count.short_description = 'Gallery'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('author').prefetch_related('gallery_images')
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "author":
+            # Only show admin users as potential authors
+            kwargs["queryset"] = db_field.related_model.objects.filter(role='admin')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
@@ -126,3 +153,47 @@ class ContactInfoAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj=None):
         return False
+
+@admin.register(NewsPostGallery)
+class NewsPostGalleryAdmin(admin.ModelAdmin):
+    list_display = ['news_post', 'image_preview', 'alt_text', 'order', 'created_at']
+    list_filter = ['news_post', 'created_at']
+    search_fields = ['news_post__title', 'alt_text', 'caption']
+    ordering = ['news_post', 'order']
+    
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />', obj.image.url)
+        return 'No image'
+    image_preview.short_description = 'Preview'
+
+
+@admin.register(NewsComment)
+class NewsCommentAdmin(admin.ModelAdmin):
+    list_display = ['content_preview', 'author', 'news_post', 'is_reply', 'is_approved', 'created_at']
+    list_filter = ['is_approved', 'created_at', 'news_post']
+    search_fields = ['content', 'author__username', 'news_post__title']
+    list_editable = ['is_approved']
+    ordering = ['-created_at']
+    raw_id_fields = ['parent', 'news_post']
+    
+    fieldsets = (
+        ('Comment Information', {
+            'fields': ('news_post', 'author', 'content', 'parent')
+        }),
+        ('Moderation', {
+            'fields': ('is_approved',)
+        }),
+    )
+    
+    def content_preview(self, obj):
+        return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
+    content_preview.short_description = 'Content'
+    
+    def is_reply(self, obj):
+        return obj.is_reply
+    is_reply.boolean = True
+    is_reply.short_description = 'Reply'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('author', 'news_post', 'parent')

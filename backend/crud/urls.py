@@ -10,7 +10,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),  # API endpoints will be at /api/
     path('health/', health),
-    path('landing/', include('landing.urls')),  # Landing app separately
+    path('api/landing/', include('landing.urls')),  # Landing app under API structure
     path("ckeditor5/", include('django_ckeditor_5.urls')),
     
     # JWT token refresh endpoint

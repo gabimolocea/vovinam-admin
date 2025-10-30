@@ -4,6 +4,7 @@ from . import views
 
 router = DefaultRouter()
 router.register(r'news', views.NewsPostViewSet)
+router.register(r'news-comments', views.NewsCommentViewSet)
 router.register(r'events', views.EventViewSet)
 router.register(r'about', views.AboutSectionViewSet)
 router.register(r'contact-messages', views.ContactMessageViewSet)

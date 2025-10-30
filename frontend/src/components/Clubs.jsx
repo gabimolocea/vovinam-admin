@@ -90,6 +90,26 @@ const Clubs = () => {
             data={myData}
             enableRowActions
             positionActionsColumn="last"
+            muiTablePaperProps={{
+              elevation: 0,
+              sx: {
+                boxShadow: 'none',
+                border: 'none',
+                backgroundColor: 'transparent'
+              }
+            }}
+            muiTopToolbarProps={{
+              sx: {
+                backgroundColor: 'transparent',
+                boxShadow: 'none'
+              }
+            }}
+            muiBottomToolbarProps={{
+              sx: {
+                backgroundColor: 'transparent',
+                boxShadow: 'none'
+              }
+            }}
             renderTopToolbarCustomActions={() => (
               isAdmin ? (
                 <Button

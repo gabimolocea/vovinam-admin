@@ -10,6 +10,7 @@ import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import CreateGradeHistory from './CreateGradeHistory';
@@ -168,6 +169,7 @@ const ViewAthleteConverted = () => {
   const [availableGrades, setAvailableGrades] = useState([]);
   const [availableTrainingSeminars, setAvailableTrainingSeminars] = useState([]);
   const [feedbackDialog, setFeedbackDialog] = useState({ open: false, success: false, message: '' });
+  const [drawerOpen, setDrawerOpen] = useState({ personal: false, contact: false });
   
   // Check if this is the user's own profile
   const isOwnProfile = useMemo(() => {
@@ -466,232 +468,372 @@ const ViewAthleteConverted = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header with Profile Image */}
-      <div className="flex items-start justify-between gap-6">
-        <div className="flex items-start gap-6">
-          {/* Profile Image */}
-          <div className="flex-shrink-0">
-            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-gray-200 bg-gray-100">
-              {athlete.profile_image ? (
-                <img
-                  src={athlete.profile_image.startsWith('http') ? athlete.profile_image : `http://127.0.0.1:8000${athlete.profile_image}`}
-                  alt={`${athlete.first_name} ${athlete.last_name}`}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIwIDIxVjE5QzIwIDE3LjkzOTEgMTkuNTc4NiAxNi45MjE3IDE4LjgyODQgMTYuMTcxNkMxOC4wNzgzIDE1LjQyMTQgMTcuMDYwOSAxNSAxNiAxNUg4QzYuOTM5MTMgMTUgNS45MjE3MiAxNS40MjE0IDUuMTcxNTcgMTYuMTcxNkM0LjQyMTQzIDE2LjkyMTcgNCAxNy45MzkxIDQgMTlWMjEiIHN0cm9rZT0iIzk0YTNiOCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPHBhdGggZD0iTTEyIDExQzE0LjIwOTEgMTEgMTYgOS4yMDkxNCAxNiA3QzE2IDQuNzkwODYgMTQuMjA5MSAzIDEyIDNDOS43OTA4NiAzIDggNC43OTA4NiA4IDdDOCA5LjIwOTE0IDkuNzkwODYgMTEgMTIgMTEiIHN0cm9rZT0iIzk0YTNiOCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
-                  }}
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <UserIcon className="h-12 w-12 text-gray-400" />
+    <div className="min-h-screen bg-[#0B1426]">
+      {/* CoinMarketCap-style Header */}
+      <div className="bg-[#1E2329] border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button onClick={() => navigate("/athletes")} variant="ghost" className="text-gray-400 hover:text-white hover:bg-gray-800">
+                <ArrowLeftIcon className="h-4 w-4 mr-2" />
+                Back to Athletes
+              </Button>
+            </div>
+            <Button onClick={() => navigate(`/athletes/edit/${id}`)} className="bg-[#FCD535] hover:bg-[#F7B500] text-black font-medium">
+              <Edit3Icon className="h-4 w-4 mr-2" />
+              Edit Athlete
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Profile Section */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Athlete Header Card */}
+        <div className="bg-[#1E2329] rounded-lg border border-gray-800 p-6 mb-6">
+          <div className="flex items-start gap-6">
+            {/* Profile Image */}
+            <div className="flex-shrink-0">
+              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-[#FCD535] bg-gray-800">
+                {athlete.profile_image ? (
+                  <img
+                    src={athlete.profile_image.startsWith('http') ? athlete.profile_image : `http://127.0.0.1:8000${athlete.profile_image}`}
+                    alt={`${athlete.first_name} ${athlete.last_name}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIwIDIxVjE5QzIwIDE3LjkzOTEgMTkuNTc4NiAxNi45MjE3IDE4LjgyODQgMTYuMTcxNkMxOC4wNzgzIDE1LjQyMTQgMTcuMDYwOSAxNSAxNiAxNUg4QzYuOTM5MTMgMTUgNS45MjE3MiAxNS40MjE0IDUuMTcxNTcgMTYuMTcxNkM0LjQyMTQzIDE2LjkyMTcgNCAxNy45MzkxIDQgMTlWMjEiIHN0cm9rZT0iIzk0YTNiOCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPHBhdGggZD0iTTEyIDExQzE0LjIwOTEgMTEgMTYgOS4yMDkxNCAxNiA3QzE2IDQuNzkwODYgMTQuMjA5MSAzIDEyIDNDOS43OTA4NiAzIDggNC43OTA4NiA4IDdDOCA5LjIwOTE0IDkuNzkwODYgMTEgMTIgMTEiIHN0cm9rZT0iIzk0YTNiOCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <UserIcon className="h-10 w-10 text-gray-400" />
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Name and Key Stats */}
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-2xl font-bold text-white">
+                  {athlete.first_name} {athlete.last_name}
+                </h1>
+                <Badge 
+                  variant={athlete.status === 'approved' ? 'default' : athlete.status === 'pending' ? 'secondary' : 'destructive'}
+                  className={`${
+                    athlete.status === 'approved' ? 'bg-green-600 hover:bg-green-700' : 
+                    athlete.status === 'pending' ? 'bg-yellow-600 hover:bg-yellow-700' : 
+                    'bg-red-600 hover:bg-red-700'
+                  } text-white`}
+                >
+                  {athlete.status?.charAt(0).toUpperCase() + athlete.status?.slice(1) || 'N/A'}
+                </Badge>
+                {athlete.is_coach && (
+                  <Badge variant="outline" className="border-[#FCD535] text-[#FCD535]">Coach</Badge>
+                )}
+                {athlete.is_referee && (
+                  <Badge variant="outline" className="border-[#FCD535] text-[#FCD535]">Referee</Badge>
+                )}
+              </div>
+              
+              <div className="text-sm text-gray-400 mb-4">
+                {athlete.club?.name || athlete.club || "No Club"} • {athlete.current_grade?.name || athlete.current_grade || "N/A"}
+              </div>
+
+              {/* Performance Stats */}
+              <div className="grid grid-cols-3 gap-6">
+                <div className="bg-[#0B1426] rounded-lg p-4 border border-gray-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">🥇</span>
+                    <span className="text-gray-400 text-sm">Gold Medals</span>
+                  </div>
+                  <div className="text-2xl font-bold text-[#FCD535]">{awardsCount.firstPlace}</div>
+                </div>
+                <div className="bg-[#0B1426] rounded-lg p-4 border border-gray-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">🥈</span>
+                    <span className="text-gray-400 text-sm">Silver Medals</span>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-300">{awardsCount.secondPlace}</div>
+                </div>
+                <div className="bg-[#0B1426] rounded-lg p-4 border border-gray-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">🥉</span>
+                    <span className="text-gray-400 text-sm">Bronze Medals</span>
+                  </div>
+                  <div className="text-2xl font-bold text-orange-400">{awardsCount.thirdPlace}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Information Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          {/* Personal Information */}
+          <div className="bg-[#1E2329] rounded-lg border border-gray-800 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <UserIcon className="h-5 w-5" />
+                Personal Information
+              </h3>
+              <Sheet open={drawerOpen.personal} onOpenChange={(open) => setDrawerOpen(prev => ({ ...prev, personal: open }))}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white">
+                    View Details
+                  </Button>
+                </SheetTrigger>
+                <SheetContent className="bg-[#1E2329] border-gray-800 text-white">
+                  <SheetHeader>
+                    <SheetTitle className="text-white flex items-center gap-2">
+                      <UserIcon className="h-5 w-5" />
+                      Personal Information
+                    </SheetTitle>
+                    <SheetDescription className="text-gray-400">
+                      Detailed personal information for {athlete.first_name} {athlete.last_name}
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-6 space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex justify-between py-2 border-b border-gray-800">
+                        <span className="text-gray-400 text-sm">Full Name</span>
+                        <span className="text-white font-medium">{athlete.first_name} {athlete.last_name}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-800">
+                        <span className="text-gray-400 text-sm">Date of Birth</span>
+                        <span className="text-white">{athlete.date_of_birth || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-800">
+                        <span className="text-gray-400 text-sm">Mobile Number</span>
+                        <span className="text-white">{athlete.mobile_number || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-800">
+                        <span className="text-gray-400 text-sm">City</span>
+                        <span className="text-white">{athlete.city?.name || athlete.city || "N/A"}</span>
+                      </div>
+                      {athlete.address && (
+                        <div className="flex justify-between py-2 border-b border-gray-800">
+                          <span className="text-gray-400 text-sm">Address</span>
+                          <span className="text-white text-right">{athlete.address}</span>
+                        </div>
+                      )}
+                      {athlete.team_place && (
+                        <div className="flex justify-between py-2 border-b border-gray-800">
+                          <span className="text-gray-400 text-sm">Team Place</span>
+                          <span className="text-white">{athlete.team_place}</span>
+                        </div>
+                      )}
+                      {athlete.cnp && (
+                        <div className="flex justify-between py-2 border-b border-gray-800">
+                          <span className="text-gray-400 text-sm">CNP</span>
+                          <span className="text-white">{athlete.cnp}</span>
+                        </div>
+                      )}
+                      {athlete.nationality && (
+                        <div className="flex justify-between py-2 border-b border-gray-800">
+                          <span className="text-gray-400 text-sm">Nationality</span>
+                          <span className="text-white">{athlete.nationality}</span>
+                        </div>
+                      )}
+                      {athlete.email && (
+                        <div className="flex justify-between py-2 border-b border-gray-800">
+                          <span className="text-gray-400 text-sm">Email</span>
+                          <span className="text-white">{athlete.email}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-400 text-sm">Full Name</span>
+                <span className="text-white font-medium">{athlete.first_name} {athlete.last_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400 text-sm">City</span>
+                <span className="text-white">{athlete.city?.name || athlete.city || "N/A"}</span>
+              </div>
+              <div className="text-center pt-2">
+                <span className="text-gray-400 text-xs">Click "View Details" for complete information</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Club & Registration */}
+          <div className="bg-[#1E2329] rounded-lg border border-gray-800 p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">Club & Registration</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-400 text-sm">Club</span>
+                <span className="text-white font-medium">{athlete.club?.name || athlete.club || "No Club"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400 text-sm">Current Grade</span>
+                <span className="text-white">{athlete.current_grade?.name || athlete.current_grade || "N/A"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400 text-sm">Registered Date</span>
+                <span className="text-white">{athlete.registered_date || "N/A"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400 text-sm">Expiration Date</span>
+                <span className="text-white">{athlete.expiration_date || "N/A"}</span></div>
+              <div className="flex justify-between">
+                <span className="text-gray-400 text-sm">Submitted Date</span>
+                <span className="text-white">{athlete.submitted_date ? new Date(athlete.submitted_date).toLocaleDateString() : "N/A"}</span>
+              </div>
+              {athlete.approved_date && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400 text-sm">Approved Date</span>
+                  <span className="text-white">{new Date(athlete.approved_date).toLocaleDateString()}</span>
                 </div>
               )}
             </div>
           </div>
-          
-          {/* Name and Medals */}
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold text-gray-900">
-              {athlete.first_name} {athlete.last_name}
-            </h1>
-            {/* Medals Display */}
-            <div className="flex items-center gap-4 py-2 px-3 bg-gray-50 rounded-lg border">
-              <span className="flex items-center gap-2">
-                🥇 <span>{awardsCount.firstPlace}</span>
-              </span>
-              <div className="h-4 w-px bg-gray-300"></div>
-              <span className="flex items-center gap-2">
-                🥈 <span>{awardsCount.secondPlace}</span>
-              </span>
-              <div className="h-4 w-px bg-gray-300"></div>
-              <span className="flex items-center gap-2">
-                🥉 <span>{awardsCount.thirdPlace}</span>
-              </span>
+
+          {/* Emergency Contact & Additional Info */}
+          <div className="bg-[#1E2329] rounded-lg border border-gray-800 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">Contact & Additional</h3>
+              <Sheet open={drawerOpen.contact} onOpenChange={(open) => setDrawerOpen(prev => ({ ...prev, contact: open }))}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white">
+                    View Details
+                  </Button>
+                </SheetTrigger>
+                <SheetContent className="bg-[#1E2329] border-gray-800 text-white">
+                  <SheetHeader>
+                    <SheetTitle className="text-white flex items-center gap-2">
+                      <HeartIcon className="h-5 w-5" />
+                      Emergency Contact & Additional Information
+                    </SheetTitle>
+                    <SheetDescription className="text-gray-400">
+                      Emergency contact and additional details for {athlete.first_name} {athlete.last_name}
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-6 space-y-6">
+                    {/* Emergency Contact Section */}
+                    {(athlete.emergency_contact_name || athlete.emergency_contact_phone) && (
+                      <div>
+                        <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                          <HeartIcon className="h-4 w-4 text-red-400" />
+                          Emergency Contact
+                        </h4>
+                        <div className="space-y-3">
+                          {athlete.emergency_contact_name && (
+                            <div className="flex justify-between py-2 border-b border-gray-800">
+                              <span className="text-gray-400 text-sm">Contact Name</span>
+                              <span className="text-white">{athlete.emergency_contact_name}</span>
+                            </div>
+                          )}
+                          {athlete.emergency_contact_phone && (
+                            <div className="flex justify-between py-2 border-b border-gray-800">
+                              <span className="text-gray-400 text-sm">Contact Phone</span>
+                              <span className="text-white">{athlete.emergency_contact_phone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Family Information */}
+                    {(athlete.father_name || athlete.mother_name) && (
+                      <div>
+                        <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                          <UserIcon className="h-4 w-4 text-blue-400" />
+                          Family Information
+                        </h4>
+                        <div className="space-y-3">
+                          {athlete.father_name && (
+                            <div className="flex justify-between py-2 border-b border-gray-800">
+                              <span className="text-gray-400 text-sm">Father Name</span>
+                              <span className="text-white">{athlete.father_name}</span>
+                            </div>
+                          )}
+                          {athlete.mother_name && (
+                            <div className="flex justify-between py-2 border-b border-gray-800">
+                              <span className="text-gray-400 text-sm">Mother Name</span>
+                              <span className="text-white">{athlete.mother_name}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Roles & Additional */}
+                    <div>
+                      <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                        <GraduationCapIcon className="h-4 w-4 text-[#FCD535]" />
+                        Roles & Additional
+                      </h4>
+                      <div className="space-y-3">
+                        <div className="flex justify-between py-2 border-b border-gray-800">
+                          <span className="text-gray-400 text-sm">Roles</span>
+                          <div className="flex gap-1">
+                            {athlete.is_coach && <Badge variant="outline" className="border-[#FCD535] text-[#FCD535] text-xs">Coach</Badge>}
+                            {athlete.is_referee && <Badge variant="outline" className="border-[#FCD535] text-[#FCD535] text-xs">Referee</Badge>}
+                            {!athlete.is_coach && !athlete.is_referee && <span className="text-white">Athlete</span>}
+                          </div>
+                        </div>
+                        {athlete.medical_certificate && (
+                          <div className="flex justify-between py-2 border-b border-gray-800">
+                            <span className="text-gray-400 text-sm">Medical Certificate</span>
+                            <span className="text-white">{athlete.medical_certificate}</span>
+                          </div>
+                        )}
+                        {athlete.insurance_policy && (
+                          <div className="flex justify-between py-2 border-b border-gray-800">
+                            <span className="text-gray-400 text-sm">Insurance Policy</span>
+                            <span className="text-white">{athlete.insurance_policy}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant={athlete.status === 'approved' ? 'default' : athlete.status === 'pending' ? 'secondary' : 'destructive'}>
-                {athlete.status?.charAt(0).toUpperCase() + athlete.status?.slice(1) || 'N/A'}
-              </Badge>
-              {athlete.is_coach && (
-                <Badge variant="outline">Coach</Badge>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-400 text-sm">Roles</span>
+                <div className="flex gap-1">
+                  {athlete.is_coach && <Badge variant="outline" className="border-[#FCD535] text-[#FCD535] text-xs">Coach</Badge>}
+                  {athlete.is_referee && <Badge variant="outline" className="border-[#FCD535] text-[#FCD535] text-xs">Referee</Badge>}
+                  {!athlete.is_coach && !athlete.is_referee && <span className="text-white">Athlete</span>}
+                </div>
+              </div>
+              {athlete.emergency_contact_name && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400 text-sm">Emergency Contact</span>
+                  <span className="text-white truncate max-w-[60%]">{athlete.emergency_contact_name}</span>
+                </div>
               )}
-              {athlete.is_referee && (
-                <Badge variant="outline">Referee</Badge>
-              )}
+              <div className="text-center pt-2">
+                <span className="text-gray-400 text-xs">Click "View Details" for complete contact information</span>
+              </div>
             </div>
           </div>
         </div>
-        
-        <div className="flex gap-2">
-          <Button onClick={() => navigate("/athletes")} variant="outline">
-            <ArrowLeftIcon className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <Button onClick={() => navigate(`/athletes/edit/${id}`)}>
-            <Edit3Icon className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
-        </div>
-      </div>
-
-      {/* Basic Information Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Personal Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserIcon className="h-5 w-5" />
-              Personal Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Full Name</p>
-              <p className="text-lg">{athlete.first_name} {athlete.last_name}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Date of Birth</p>
-              <p className="text-lg">{athlete.date_of_birth || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Mobile Number</p>
-              <p className="text-lg">{athlete.mobile_number || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">City</p>
-              <p className="text-lg">{athlete.city?.name || athlete.city || "N/A"}</p>
-            </div>
-            {athlete.address && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Address</p>
-                <p className="text-lg">{athlete.address}</p>
-              </div>
-            )}
-            {athlete.team_place && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Team Place</p>
-                <p className="text-lg">{athlete.team_place}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Club & Registration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Club & Registration</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Club</p>
-              <p className="text-lg">{athlete.club?.name || athlete.club || "No Club"}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Current Grade</p>
-              <p className="text-lg">{athlete.current_grade?.name || athlete.current_grade || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Registered Date</p>
-              <p className="text-lg">{athlete.registered_date || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Expiration Date</p>
-              <p className="text-lg">{athlete.expiration_date || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Submitted Date</p>
-              <p className="text-lg">{athlete.submitted_date ? new Date(athlete.submitted_date).toLocaleDateString() : "N/A"}</p>
-            </div>
-            {athlete.approved_date && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Approved Date</p>
-                <p className="text-lg">{new Date(athlete.approved_date).toLocaleDateString()}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Emergency Contact & Additional Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Contact & Additional</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {athlete.emergency_contact_name && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Emergency Contact</p>
-                <p className="text-lg">{athlete.emergency_contact_name}</p>
-                {athlete.emergency_contact_phone && (
-                  <p className="text-sm text-gray-600">{athlete.emergency_contact_phone}</p>
-                )}
+        {/* Additional Information Cards */}
+        {(athlete.previous_experience || athlete.admin_notes) && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {athlete.previous_experience && (
+              <div className="bg-[#1E2329] rounded-lg border border-gray-800 p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Previous Experience</h3>
+                <p className="text-gray-300 whitespace-pre-wrap text-sm leading-relaxed">{athlete.previous_experience}</p>
               </div>
             )}
             
-            {(athlete.federation_role || athlete.title) && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Additional Roles</p>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {athlete.federation_role && (
-                    <Badge variant="outline">
-                      {athlete.federation_role?.name || athlete.federation_role}
-                    </Badge>
-                  )}
-                  {athlete.title && (
-                    <Badge variant="outline">
-                      {athlete.title?.name || athlete.title}
-                    </Badge>
-                  )}
-                </div>
+            {athlete.admin_notes && (
+              <div className="bg-[#1E2329] rounded-lg border border-gray-800 p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Admin Notes</h3>
+                <p className="text-gray-300 whitespace-pre-wrap text-sm leading-relaxed">{athlete.admin_notes}</p>
               </div>
             )}
-
-            {athlete.user && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Account Email</p>
-                <p className="text-lg">{athlete.user.email || "N/A"}</p>
-              </div>
-            )}
-
-            {athlete.reviewed_by && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Reviewed By</p>
-                <p className="text-lg">{athlete.reviewed_by}</p>
-                {athlete.reviewed_date && (
-                  <p className="text-sm text-gray-600">{new Date(athlete.reviewed_date).toLocaleDateString()}</p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Previous Experience & Admin Notes */}
-      {(athlete.previous_experience || athlete.admin_notes) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {athlete.previous_experience && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Previous Experience</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-700 whitespace-pre-wrap">{athlete.previous_experience}</p>
-              </CardContent>
-            </Card>
-          )}
-          
-          {athlete.admin_notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Admin Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-700 whitespace-pre-wrap">{athlete.admin_notes}</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
       {/* Documents */}
       {athlete.medical_certificate && (
@@ -715,324 +857,253 @@ const ViewAthleteConverted = () => {
         </Card>
       )}
 
-      {/* Tabbed Content */}
-      <Card>
-        <CardContent className="p-0">
+        {/* CoinMarketCap-style Tabs */}
+        <div className="bg-[#1E2329] rounded-lg border border-gray-800">
           <Tabs defaultValue="results" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="results" className="flex items-center gap-2">
-                <TrophyIcon className="h-4 w-4" />
-                Results
-              </TabsTrigger>
-              <TabsTrigger value="seminars" className="flex items-center gap-2">
-                <GraduationCapIcon className="h-4 w-4" />
-                Seminars
-              </TabsTrigger>
-              <TabsTrigger value="grades" className="flex items-center gap-2">
-                <GraduationCapIcon className="h-4 w-4" />
-                Grades
-              </TabsTrigger>
-              <TabsTrigger value="medical" className="flex items-center gap-2">
-                <HeartIcon className="h-4 w-4" />
-                Medical
-              </TabsTrigger>
-              <TabsTrigger value="annual" className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4" />
-                Annual
-              </TabsTrigger>
-              <TabsTrigger value="matches" className="flex items-center gap-2">
-                <SwordsIcon className="h-4 w-4" />
-                Matches
-              </TabsTrigger>
-            </TabsList>
+            <div className="border-b border-gray-800">
+              <TabsList className="h-auto p-0 bg-transparent w-full justify-start">
+                <TabsTrigger value="results" className="data-[state=active]:bg-[#0B1426] data-[state=active]:text-[#FCD535] text-gray-400 hover:text-white px-6 py-4 rounded-none border-b-2 border-transparent data-[state=active]:border-[#FCD535]">
+                  <TrophyIcon className="h-4 w-4 mr-2" />
+                  Competition Results
+                </TabsTrigger>
+                <TabsTrigger value="seminars" className="data-[state=active]:bg-[#0B1426] data-[state=active]:text-[#FCD535] text-gray-400 hover:text-white px-6 py-4 rounded-none border-b-2 border-transparent data-[state=active]:border-[#FCD535]">
+                  <GraduationCapIcon className="h-4 w-4 mr-2" />
+                  Training Seminars
+                </TabsTrigger>
+                <TabsTrigger value="grades" className="data-[state=active]:bg-[#0B1426] data-[state=active]:text-[#FCD535] text-gray-400 hover:text-white px-6 py-4 rounded-none border-b-2 border-transparent data-[state=active]:border-[#FCD535]">
+                  <GraduationCapIcon className="h-4 w-4 mr-2" />
+                  Grade History
+                </TabsTrigger>
+                <TabsTrigger value="medical" className="data-[state=active]:bg-[#0B1426] data-[state=active]:text-[#FCD535] text-gray-400 hover:text-white px-6 py-4 rounded-none border-b-2 border-transparent data-[state=active]:border-[#FCD535]">
+                  <HeartIcon className="h-4 w-4 mr-2" />
+                  Medical Records
+                </TabsTrigger>
+                <TabsTrigger value="annual" className="data-[state=active]:bg-[#0B1426] data-[state=active]:text-[#FCD535] text-gray-400 hover:text-white px-6 py-4 rounded-none border-b-2 border-transparent data-[state=active]:border-[#FCD535]">
+                  <CalendarIcon className="h-4 w-4 mr-2" />
+                  Annual Visas
+                </TabsTrigger>
+                <TabsTrigger value="matches" className="data-[state=active]:bg-[#0B1426] data-[state=active]:text-[#FCD535] text-gray-400 hover:text-white px-6 py-4 rounded-none border-b-2 border-transparent data-[state=active]:border-[#FCD535]">
+                  <SwordsIcon className="h-4 w-4 mr-2" />
+                  Match History
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-            <TabsContent value="results" className="p-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Competition Results</h3>
+            <TabsContent value="results" className="p-0 border-0">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-semibold text-white">Competition Results</h3>
                   {isOwnProfile && (
-                    <Button onClick={() => handleResultDialog('add')} className="flex items-center gap-2">
-                      <PlusIcon className="h-4 w-4" />
+                    <Button onClick={() => handleResultDialog('add')} className="bg-[#FCD535] hover:bg-[#F7B500] text-black font-medium">
+                      <PlusIcon className="h-4 w-4 mr-2" />
                       Submit Result
                     </Button>
                   )}
                 </div>
                 {allResults.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Competition</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Group</TableHead>
-                        <TableHead>Placement</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {allResults.map((result) => (
-                        <TableRow key={result.id}>
-                          <TableCell>{result.competition_name}</TableCell>
-                          <TableCell>{result.category_name}</TableCell>
-                          <TableCell>{result.group_name || "N/A"}</TableCell>
-                          <TableCell>
-                            <span>{result.placement}</span>
-                            {result.team_name && (
-                              <div className="text-sm text-gray-600 mt-1">
-                                Team: {result.team_name}
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Competition</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Category</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Group</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Placement</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Type</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Source</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Status</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allResults.map((result, index) => (
+                          <tr key={result.id} className={`border-b border-gray-800 hover:bg-[#0B1426] transition-colors ${index % 2 === 0 ? 'bg-[#0B1426]/20' : ''}`}>
+                            <td className="py-4 px-4 text-white font-medium">{result.competition_name}</td>
+                            <td className="py-4 px-4 text-gray-300">{result.category_name}</td>
+                            <td className="py-4 px-4 text-gray-300">{result.group_name || "N/A"}</td>
+                            <td className="py-4 px-4">
+                              <div>
+                                <span className="text-white font-medium">{result.placement}</span>
+                                {result.team_name && (
+                                  <div className="text-sm text-gray-400 mt-1">
+                                    Team: {result.team_name}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={result.type === 'Team' ? 'default' : 'secondary'}>
-                              {result.type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {result.source}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {result.statusChip && (
-                              <Badge 
-                                variant={
-                                  result.status === 'approved' ? 'default' : 
-                                  result.status === 'pending' ? 'secondary' : 
-                                  'destructive'
-                                }
-                              >
-                                {result.status}
+                            </td>
+                            <td className="py-4 px-4">
+                              <Badge variant={result.type === 'Team' ? 'default' : 'secondary'} className={result.type === 'Team' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'}>
+                                {result.type}
                               </Badge>
-                            )}
-                            {!result.statusChip && (
-                              <Badge variant="default">Official</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>{result.submitted_date || "N/A"}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                            </td>
+                            <td className="py-4 px-4">
+                              <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
+                                {result.source}
+                              </Badge>
+                            </td>
+                            <td className="py-4 px-4">
+                              {result.statusChip && (
+                                <Badge 
+                                  variant={
+                                    result.status === 'approved' ? 'default' : 
+                                    result.status === 'pending' ? 'secondary' : 
+                                    'destructive'
+                                  }
+                                  className={
+                                    result.status === 'approved' ? 'bg-green-600 hover:bg-green-700' : 
+                                    result.status === 'pending' ? 'bg-yellow-600 hover:bg-yellow-700' : 
+                                    'bg-red-600 hover:bg-red-700'
+                                  }
+                                >
+                                  {result.status}
+                                </Badge>
+                              )}
+                              {!result.statusChip && (
+                                <Badge className="bg-green-600 hover:bg-green-700">Official</Badge>
+                              )}
+                            </td>
+                            <td className="py-4 px-4 text-gray-300">{result.submitted_date || "N/A"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
-                  <p className="text-gray-500 text-center py-8">No competition results found.</p>
+                  <div className="text-center py-12">
+                    <TrophyIcon className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                    <p className="text-gray-400">No competition results found.</p>
+                  </div>
                 )}
               </div>
             </TabsContent>
 
-            <TabsContent value="seminars" className="p-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Training Seminars</h3>
+            <TabsContent value="seminars" className="p-0 border-0">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-semibold text-white">Training Seminars</h3>
                   {isOwnProfile && (
-                    <Button onClick={() => setCreateSeminarDialogOpen(true)} className="flex items-center gap-2">
-                      <PlusIcon className="h-4 w-4" />
+                    <Button onClick={() => setCreateSeminarDialogOpen(true)} className="bg-[#FCD535] hover:bg-[#F7B500] text-black font-medium">
+                      <PlusIcon className="h-4 w-4 mr-2" />
                       Add Seminar
                     </Button>
                   )}
                 </div>
                 {trainingSeminars.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Seminar</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Location</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {trainingSeminars.map((seminar, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{seminar.name || "N/A"}</TableCell>
-                          <TableCell>{seminar.date || "N/A"}</TableCell>
-                          <TableCell>{seminar.location || "N/A"}</TableCell>
-                          <TableCell>
-                            <Badge variant={seminar.completed ? "default" : "secondary"}>
-                              {seminar.completed ? "Completed" : "Pending"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Seminar</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Date</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Location</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trainingSeminars.map((seminar, index) => (
+                          <tr key={index} className={`border-b border-gray-800 hover:bg-[#0B1426] transition-colors ${index % 2 === 0 ? 'bg-[#0B1426]/20' : ''}`}>
+                            <td className="py-4 px-4 text-white font-medium">{seminar.name || "N/A"}</td>
+                            <td className="py-4 px-4 text-gray-300">{seminar.date || "N/A"}</td>
+                            <td className="py-4 px-4 text-gray-300">{seminar.location || "N/A"}</td>
+                            <td className="py-4 px-4">
+                              <Badge variant={seminar.completed ? "default" : "secondary"} className={seminar.completed ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}>
+                                {seminar.completed ? "Completed" : "Pending"}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
-                  <p className="text-gray-500 text-center py-8">No training seminars found.</p>
+                  <div className="text-center py-12">
+                    <GraduationCapIcon className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                    <p className="text-gray-400">No training seminars found.</p>
+                  </div>
                 )}
               </div>
             </TabsContent>
 
-            <TabsContent value="grades" className="p-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Grade History</h3>
+            <TabsContent value="grades" className="p-0 border-0">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-semibold text-white">Grade History</h3>
                   {isOwnProfile && (
-                    <Button onClick={() => setCreateGradeDialogOpen(true)} className="flex items-center gap-2">
-                      <PlusIcon className="h-4 w-4" />
+                    <Button onClick={() => setCreateGradeDialogOpen(true)} className="bg-[#FCD535] hover:bg-[#F7B500] text-black font-medium">
+                      <PlusIcon className="h-4 w-4 mr-2" />
                       Add Grade
                     </Button>
                   )}
                 </div>
                 {gradeHistory.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Grade</TableHead>
-                        <TableHead>Date Achieved</TableHead>
-                        <TableHead>Examiner</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {gradeHistory.map((grade, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{grade.grade_name || "N/A"}</TableCell>
-                          <TableCell>{grade.date_achieved || "N/A"}</TableCell>
-                          <TableCell>{grade.examiner || "N/A"}</TableCell>
-                          <TableCell>{grade.notes || "N/A"}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <div className="text-center py-12">
+                    <p className="text-gray-400">Grade history implementation pending...</p>
+                  </div>
                 ) : (
-                  <p className="text-gray-500 text-center py-8">No grade history found.</p>
+                  <div className="text-center py-12">
+                    <GraduationCapIcon className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                    <p className="text-gray-400">No grade history found.</p>
+                  </div>
                 )}
               </div>
             </TabsContent>
 
-            <TabsContent value="medical" className="p-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Medical Visa</h3>
+            <TabsContent value="medical" className="p-0 border-0">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-semibold text-white">Medical Records</h3>
                   {isOwnProfile && (
-                    <Button onClick={() => handleMedicalVisaDialog('add')} className="flex items-center gap-2">
-                      <PlusIcon className="h-4 w-4" />
+                    <Button onClick={() => handleMedicalVisaDialog('add')} className="bg-[#FCD535] hover:bg-[#F7B500] text-black font-medium">
+                      <PlusIcon className="h-4 w-4 mr-2" />
                       Add Medical
                     </Button>
                   )}
                 </div>
-                {medicalVisa.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Issue Date</TableHead>
-                        <TableHead>Expiry Date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Doctor</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {medicalVisa.map((visa, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{visa.issue_date || "N/A"}</TableCell>
-                          <TableCell>{visa.expiry_date || "N/A"}</TableCell>
-                          <TableCell>
-                            <Badge variant={visa.is_valid ? "default" : "destructive"}>
-                              {visa.is_valid ? "Valid" : "Expired"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{visa.doctor_name || "N/A"}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <p className="text-gray-500 text-center py-8">No medical visa records found.</p>
-                )}
+                <div className="text-center py-12">
+                  <HeartIcon className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400">Medical records implementation pending...</p>
+                </div>
               </div>
             </TabsContent>
 
-            <TabsContent value="annual" className="p-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Annual Visa</h3>
+            <TabsContent value="annual" className="p-0 border-0">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-semibold text-white">Annual Visas</h3>
                   {isOwnProfile && (
-                    <Button onClick={() => handleAnnualVisaDialog('add')} className="flex items-center gap-2">
-                      <PlusIcon className="h-4 w-4" />
+                    <Button onClick={() => handleAnnualVisaDialog('add')} className="bg-[#FCD535] hover:bg-[#F7B500] text-black font-medium">
+                      <PlusIcon className="h-4 w-4 mr-2" />
                       Add Annual
                     </Button>
                   )}
                 </div>
-                {annualVisa.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Year</TableHead>
-                        <TableHead>Issue Date</TableHead>
-                        <TableHead>Expiry Date</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {annualVisa.map((visa, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{visa.year || "N/A"}</TableCell>
-                          <TableCell>{visa.issue_date || "N/A"}</TableCell>
-                          <TableCell>{visa.expiry_date || "N/A"}</TableCell>
-                          <TableCell>
-                            <Badge variant={visa.is_active ? "default" : "secondary"}>
-                              {visa.is_active ? "Active" : "Inactive"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <p className="text-gray-500 text-center py-8">No annual visa records found.</p>
-                )}
+                <div className="text-center py-12">
+                  <CalendarIcon className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400">Annual visas implementation pending...</p>
+                </div>
               </div>
             </TabsContent>
 
-            <TabsContent value="matches" className="p-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Matches</h3>
+            <TabsContent value="matches" className="p-0 border-0">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-semibold text-white">Match History</h3>
                   {isOwnProfile && (
-                    <Button onClick={() => handleMatchDialog('add')} className="flex items-center gap-2">
-                      <PlusIcon className="h-4 w-4" />
+                    <Button onClick={() => handleMatchDialog('add')} className="bg-[#FCD535] hover:bg-[#F7B500] text-black font-medium">
+                      <PlusIcon className="h-4 w-4 mr-2" />
                       Add Match
                     </Button>
                   )}
                 </div>
-                {matches.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Competition</TableHead>
-                        <TableHead>Opponent</TableHead>
-                        <TableHead>Result</TableHead>
-                        <TableHead>Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {matches.map((match, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{match.competition_name || "N/A"}</TableCell>
-                          <TableCell>{match.opponent_name || "N/A"}</TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              match.result === "win" ? "default" : 
-                              match.result === "loss" ? "destructive" : "secondary"
-                            }>
-                              {match.result?.toUpperCase() || "N/A"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{match.date || "N/A"}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <p className="text-gray-500 text-center py-8">No matches found.</p>
-                )}
+                <div className="text-center py-12">
+                  <SwordsIcon className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400">Match history implementation pending...</p>
+                </div>
               </div>
             </TabsContent>
           </Tabs>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Dialog Components */}
       <SimpleResultDialog

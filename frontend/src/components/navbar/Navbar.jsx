@@ -49,6 +49,8 @@ export default function Navbar({ content }) {
     '/integrations': 'Integrations',
     '/athletes': 'Athletes',
     '/create-athlete': 'Create Athlete',
+    '/news': 'News Feed',
+    '/news/create': 'Create News Article',
   };
 
   // Determine the page title based on the current route
@@ -76,6 +78,11 @@ export default function Navbar({ content }) {
       // Fetch competition data based on the ID (mocked for now)
       const competitionData = { name: 'Spring Championship' }; // Replace with actual API call or data lookup
       pageTitle = null;
+    }
+
+    if (location.pathname.startsWith('/news/') && location.pathname !== '/news/create') {
+      const slug = location.pathname.split('/')[2]; // Extract the news slug from the URL
+      pageTitle = null; // Hide the title for individual news articles
     }
 
    

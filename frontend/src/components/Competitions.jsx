@@ -90,6 +90,14 @@ const Competitions = () => {
         enableTopToolbar={false} // Disable top toolbar
         enableRowSelection={false} // Disable row selection
         enableColumnActions={false} // Disable column actions
+        muiTablePaperProps={{
+          elevation: 0,
+          sx: {
+            boxShadow: 'none',
+            border: 'none',
+            backgroundColor: 'transparent'
+          }
+        }}
         muiTableBodyCellProps={({ cell }) => ({
           sx: {
             fontWeight: cell.column.id === "name" ? "bold" : "normal",

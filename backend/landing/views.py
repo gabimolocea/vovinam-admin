@@ -1,20 +1,38 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, BasePermission
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
-from .models import NewsPost, Event, AboutSection, ContactMessage, ContactInfo
+from .models import NewsPost, Event, AboutSection, ContactMessage, ContactInfo, NewsPostGallery, NewsComment
 from .serializers import (
-    NewsPostSerializer, NewsPostListSerializer,
+    NewsPostSerializer, NewsPostListSerializer, NewsPostGallerySerializer,
     EventSerializer, EventListSerializer,
     AboutSectionSerializer, ContactMessageSerializer,
-    ContactMessageCreateSerializer, ContactInfoSerializer
+    ContactMessageCreateSerializer, ContactInfoSerializer,
+    NewsCommentSerializer, NewsCommentCreateSerializer
 )
 
+class IsAdminOrReadOnly(BasePermission):
+    """
+    Custom permission to only allow admin users to create, edit, or delete news posts.
+    Regular users and anonymous users can only read.
+    """
+    def has_permission(self, request, view):
+        # Read permissions for any request (GET, HEAD, OPTIONS)
+        if request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return True
+        
+        # Write permissions only for admin users
+        return request.user.is_authenticated and (
+            request.user.is_admin or 
+            request.user.is_superuser or 
+            request.user.is_staff
+        )
+
 class NewsPostViewSet(viewsets.ModelViewSet):
-    queryset = NewsPost.objects.all()
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    queryset = NewsPost.objects.select_related('author').prefetch_related('gallery_images').all()
+    permission_classes = [IsAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['published', 'featured', 'author']
     search_fields = ['title', 'content', 'excerpt', 'tags']
@@ -27,26 +45,48 @@ class NewsPostViewSet(viewsets.ModelViewSet):
         return NewsPostSerializer
 
     def get_queryset(self):
-        queryset = NewsPost.objects.all()
+        queryset = NewsPost.objects.select_related('author').prefetch_related('gallery_images').all()
         
-        # Filter published posts for non-authenticated users
-        if not self.request.user.is_authenticated:
+        # Filter published posts for non-admin users
+        if not (self.request.user.is_authenticated and self.request.user.is_admin):
             queryset = queryset.filter(published=True)
             
         return queryset
+
+    def perform_create(self, serializer):
+        """Automatically set the author to current user when creating a news post"""
+        serializer.save(author=self.request.user)
 
     @action(detail=False, methods=['get'])
     def featured(self, request):
         """Get featured news posts"""
         featured_posts = self.get_queryset().filter(featured=True, published=True)
-        serializer = NewsPostListSerializer(featured_posts, many=True)
+        serializer = NewsPostListSerializer(featured_posts, many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def recent(self, request):
         """Get recent news posts"""
         recent_posts = self.get_queryset().filter(published=True)[:5]
-        serializer = NewsPostListSerializer(recent_posts, many=True)
+        serializer = NewsPostListSerializer(recent_posts, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrReadOnly])
+    def add_gallery_image(self, request, pk=None):
+        """Add an image to the news post gallery"""
+        news_post = self.get_object()
+        serializer = NewsPostGallerySerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save(news_post=news_post)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'])
+    def gallery(self, request, pk=None):
+        """Get all gallery images for a news post"""
+        news_post = self.get_object()
+        gallery_images = news_post.gallery_images.all()
+        serializer = NewsPostGallerySerializer(gallery_images, many=True, context={'request': request})
         return Response(serializer.data)
 
 class EventViewSet(viewsets.ModelViewSet):
@@ -144,3 +184,51 @@ def submit_contact_form(request):
             status=status.HTTP_201_CREATED
         )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class NewsCommentViewSet(viewsets.ModelViewSet):
+    """ViewSet for news comments - allows authenticated users to comment"""
+    queryset = NewsComment.objects.all()
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['news_post', 'parent']
+    ordering_fields = ['created_at']
+    ordering = ['created_at']
+    
+    def get_queryset(self):
+        # Only show approved comments for non-admin users
+        queryset = NewsComment.objects.select_related('author', 'news_post', 'parent').prefetch_related('replies')
+        
+        if not (self.request.user.is_authenticated and (self.request.user.is_staff or self.request.user.is_admin)):
+            queryset = queryset.filter(is_approved=True)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return NewsCommentCreateSerializer
+        return NewsCommentSerializer
+    
+    def perform_create(self, serializer):
+        """Automatically approve comments from staff/admin users"""
+        comment = serializer.save(author=self.request.user)
+        
+        # Auto-approve comments from staff/admin users
+        if self.request.user.is_staff or self.request.user.is_admin:
+            comment.is_approved = True
+            comment.save()
+    
+    def perform_update(self, serializer):
+        """Only allow users to edit their own comments"""
+        comment = self.get_object()
+        if comment.author != self.request.user and not self.request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only edit your own comments.")
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        """Only allow users to delete their own comments or admins to delete any"""
+        if instance.author != self.request.user and not self.request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only delete your own comments.")
+        instance.delete()

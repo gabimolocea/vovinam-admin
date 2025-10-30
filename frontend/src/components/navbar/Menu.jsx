@@ -5,7 +5,8 @@ import {
   UserCheck, 
   Trophy, 
   Bell, 
-  ClipboardCheck 
+  ClipboardCheck,
+  Newspaper
 } from 'lucide-react';
 import {Link} from 'react-router-dom'
 
@@ -27,6 +28,12 @@ const NAVIGATION = [
         title: 'Athletes', 
         icon: <UserCheck className="h-4 w-4" />, 
         link: '/athletes'
+    },
+    { 
+        segment: 'news', 
+        title: 'News Feed', 
+        icon: <Newspaper className="h-4 w-4" />, 
+        link: '/news'
     },
     { 
         segment: 'competitions', 

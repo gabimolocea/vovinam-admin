@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from django.urls import reverse
+from django.conf import settings
 from django_ckeditor_5.fields import CKEditor5Field  # Updated import
 
 class SEOModel(models.Model):
@@ -57,7 +58,12 @@ class NewsPost(SEOModel):
     )
     published = models.BooleanField(default=False)
     featured = models.BooleanField(default=False, help_text="Show on homepage")
-    author = models.CharField(max_length=100, blank=True)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE,
+        limit_choices_to={'role': 'admin'},
+        help_text="Only admin users can be authors"
+    )
     tags = models.CharField(
         max_length=255, 
         blank=True, 
@@ -182,3 +188,81 @@ class ContactInfo(models.Model):
     
     def __str__(self):
         return self.organization_name
+
+class NewsPostGallery(models.Model):
+    """Gallery images for news posts"""
+    news_post = models.ForeignKey(
+        NewsPost, 
+        related_name='gallery_images', 
+        on_delete=models.CASCADE
+    )
+    image = models.ImageField(upload_to='news/gallery/')
+    alt_text = models.CharField(
+        max_length=100, 
+        blank=True, 
+        help_text="Alt text for the image (SEO)"
+    )
+    caption = models.CharField(
+        max_length=200, 
+        blank=True, 
+        help_text="Optional caption for the image"
+    )
+    order = models.IntegerField(
+        default=0, 
+        help_text="Order in which images appear in gallery"
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    class Meta:
+        ordering = ['order', 'created_at']
+        verbose_name = "News Gallery Image"
+        verbose_name_plural = "News Gallery Images"
+    
+    def __str__(self):
+        return f"{self.news_post.title} - Image {self.order}"
+
+
+class NewsComment(models.Model):
+    """Comments on news posts"""
+    news_post = models.ForeignKey(
+        NewsPost, 
+        related_name='comments', 
+        on_delete=models.CASCADE
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE
+    )
+    content = models.TextField(
+        max_length=1000,
+        help_text="Comment content (1000 chars max)"
+    )
+    parent = models.ForeignKey(
+        'self', 
+        null=True, 
+        blank=True, 
+        related_name='replies', 
+        on_delete=models.CASCADE,
+        help_text="Parent comment for threaded replies"
+    )
+    is_approved = models.BooleanField(
+        default=True,
+        help_text="Whether the comment is approved for display"
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = "News Comment"
+        verbose_name_plural = "News Comments"
+    
+    def __str__(self):
+        return f"Comment by {self.author.username} on {self.news_post.title}"
+    
+    @property
+    def is_reply(self):
+        return self.parent is not None
+    
+    def get_replies(self):
+        return self.replies.filter(is_approved=True)

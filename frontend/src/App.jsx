@@ -13,6 +13,9 @@ import EditAthleteConverted from './components/EditAthleteConverted'
 import EditClubConverted from './components/EditClubConverted'
 import ViewAthleteTable from './components/ViewAthleteTable'
 import ViewClubConverted from './components/ViewClubConverted'
+import NewsFeed from './components/NewsFeed'
+import CreateNews from './components/CreateNews'
+import NewsDetail from './components/NewsDetail'
 // Temporarily commented out components with Material-UI imports
 // import EnhancedRegister from './components/EnhancedRegister'
 // import CreateClub from './components/CreateClub'
@@ -123,6 +126,15 @@ function App() {
             <TestAthletes />
           </ProtectedRoute>
         } />
+        
+        {/* News routes - Public access for reading, admin-only for creating */}
+        <Route path="/news" element={<NewsFeed />} />
+        <Route path="/news/create" element={
+          <ProtectedRoute requireAdmin={true}>
+            <CreateNews />
+          </ProtectedRoute>
+        } />
+        <Route path="/news/:slug" element={<NewsDetail />} />
         
         {/* Temporarily commented out all routes with Material-UI dependencies */}
         {/* We'll re-enable these as we convert each component to shadcn/ui */}
