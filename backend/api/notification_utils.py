@@ -80,16 +80,24 @@ def create_result_submitted_notification(result):
     """Create notification when an athlete submits a result"""
     athlete = result.athlete
     
+    # Prepare event/competition compatibility info
+    entity = getattr(result.category, 'event_or_competition', None) or result.category.competition
+    entity_name = getattr(entity, 'name', None) or getattr(entity, 'title', None) or 'N/A'
+    entity_date = getattr(entity, 'date', None) or getattr(entity, 'start_date', None) or None
+
     # Notification for the athlete (confirmation)
     create_notification(
         recipient=athlete.user,
         notification_type='result_submitted',
         title='Result Submitted Successfully',
-        message=f'Your result for {result.category.name} in {result.category.competition.name} has been submitted and is pending review.',
+        message=f'Your result for {result.category.name} in {entity_name} has been submitted and is pending review.',
         related_result=result,
         action_data={
             'category_name': result.category.name,
-            'competition_name': result.category.competition.name,
+            'competition_name': getattr(result.category.competition, 'name', None) if getattr(result.category, 'competition', None) else None,
+            'event_id': getattr(result.category.event, 'id', None) if getattr(result.category, 'event', None) else None,
+            'event_name': getattr(result.category.event, 'title', None) or getattr(result.category.event, 'name', None) if getattr(result.category, 'event', None) else None,
+            'event_start': entity_date.isoformat() if entity_date else None,
             'placement_claimed': result.placement_claimed,
             'result_type': result.type
         }
@@ -102,12 +110,15 @@ def create_result_submitted_notification(result):
             recipient=admin,
             notification_type='result_submitted',
             title='New Result Submitted for Review',
-            message=f'{athlete.first_name} {athlete.last_name} submitted a result for {result.category.name} in {result.category.competition.name}.',
+            message=f'{athlete.first_name} {athlete.last_name} submitted a result for {result.category.name} in {entity_name}.',
             related_result=result,
             action_data={
                 'athlete_name': f'{athlete.first_name} {athlete.last_name}',
                 'category_name': result.category.name,
-                'competition_name': result.category.competition.name,
+                'competition_name': getattr(result.category.competition, 'name', None) if getattr(result.category, 'competition', None) else None,
+                'event_id': getattr(result.category.event, 'id', None) if getattr(result.category, 'event', None) else None,
+                'event_name': getattr(result.category.event, 'title', None) or getattr(result.category.event, 'name', None) if getattr(result.category, 'event', None) else None,
+                'event_start': entity_date.isoformat() if entity_date else None,
                 'placement_claimed': result.placement_claimed,
                 'result_type': result.type
             }
@@ -146,6 +157,11 @@ def create_result_status_notification(result, new_status, admin_user, admin_note
     if admin_notes:
         message += f'\n\nAdmin notes: {admin_notes}'
     
+    # Prefer event when available for richer payloads
+    entity = getattr(result.category, 'event_or_competition', None) or result.category.competition
+    entity_name = getattr(entity, 'name', None) or getattr(entity, 'title', None) or 'N/A'
+    entity_date = getattr(entity, 'date', None) or getattr(entity, 'start_date', None) or None
+
     # Create notification for the athlete
     create_notification(
         recipient=athlete.user,
@@ -155,7 +171,10 @@ def create_result_status_notification(result, new_status, admin_user, admin_note
         related_result=result,
         action_data={
             'category_name': result.category.name,
-            'competition_name': result.category.competition.name,
+            'competition_name': getattr(result.category.competition, 'name', None) if getattr(result.category, 'competition', None) else None,
+            'event_id': getattr(result.category.event, 'id', None) if getattr(result.category, 'event', None) else None,
+            'event_name': getattr(result.category.event, 'title', None) or getattr(result.category.event, 'name', None) if getattr(result.category, 'event', None) else None,
+            'event_start': entity_date.isoformat() if entity_date else None,
             'placement_claimed': result.placement_claimed,
             'result_type': result.type,
             'reviewed_by': str(admin_user) if admin_user else 'Admin',
@@ -221,8 +240,9 @@ def create_grade_submitted_notification(grade_history):
         message=f'Your grade exam submission for {grade_history.grade.name} has been submitted and is pending review.',
         action_data={
             'grade_name': grade_history.grade.name,
-            'exam_date': grade_history.exam_date.isoformat() if grade_history.exam_date else None,
-            'exam_place': grade_history.exam_place,
+                'event': grade_history.event.id if getattr(grade_history, 'event', None) else None,
+                'event_name': grade_history.event.title if getattr(grade_history, 'event', None) else None,
+                'event_start': grade_history.event.start_date.isoformat() if getattr(grade_history, 'event', None) and getattr(grade_history.event, 'start_date', None) else None,
             'level': grade_history.level
         }
     )
@@ -238,8 +258,9 @@ def create_grade_submitted_notification(grade_history):
             action_data={
                 'athlete_name': f'{athlete.first_name} {athlete.last_name}',
                 'grade_name': grade_history.grade.name,
-                'exam_date': grade_history.exam_date.isoformat() if grade_history.exam_date else None,
-                'exam_place': grade_history.exam_place,
+                    'event': grade_history.event.id if getattr(grade_history, 'event', None) else None,
+                    'event_name': grade_history.event.title if getattr(grade_history, 'event', None) else None,
+                    'event_start': grade_history.event.start_date.isoformat() if getattr(grade_history, 'event', None) and getattr(grade_history.event, 'start_date', None) else None,
                 'level': grade_history.level
             }
         )
@@ -285,8 +306,9 @@ def create_grade_status_notification(grade_history, new_status, admin_user, admi
         message=message,
         action_data={
             'grade_name': grade_history.grade.name,
-            'exam_date': grade_history.exam_date.isoformat() if grade_history.exam_date else None,
-            'exam_place': grade_history.exam_place,
+                'event': grade_history.event.id if getattr(grade_history, 'event', None) else None,
+                'event_name': grade_history.event.title if getattr(grade_history, 'event', None) else None,
+                'event_start': grade_history.event.start_date.isoformat() if getattr(grade_history, 'event', None) and getattr(grade_history.event, 'start_date', None) else None,
             'level': grade_history.level,
             'reviewed_by': str(admin_user) if admin_user else 'Admin',
             'admin_notes': admin_notes,
@@ -299,21 +321,38 @@ def create_grade_status_notification(grade_history, new_status, admin_user, admi
 def create_seminar_submitted_notification(participation):
     """Create notification when an athlete submits seminar participation"""
     athlete = participation.athlete
-    seminar = participation.seminar
+    seminar = getattr(participation, 'seminar', None)
+    event = getattr(participation, 'event', None)
     
     # Notification for the athlete (confirmation)
-    create_notification(
-        recipient=athlete.user,
-        notification_type='seminar_submitted',
-        title='Seminar Participation Submitted Successfully',
-        message=f'Your participation submission for "{seminar.name}" has been submitted and is pending review.',
-        action_data={
-            'seminar_name': seminar.name,
-            'seminar_start_date': seminar.start_date.isoformat() if seminar.start_date else None,
-            'seminar_end_date': seminar.end_date.isoformat() if seminar.end_date else None,
-            'seminar_place': seminar.place
-        }
-    )
+    # Prefer event when available
+    if event:
+        create_notification(
+            recipient=athlete.user,
+            notification_type='seminar_submitted',
+            title='Seminar Participation Submitted Successfully',
+            message=f'Your participation submission for "{event.title}" has been submitted and is pending review.',
+            action_data={
+                'event_id': event.pk,
+                'event_name': event.title,
+                'event_start_date': event.start_date.isoformat() if getattr(event, 'start_date', None) else None,
+                'event_end_date': event.end_date.isoformat() if getattr(event, 'end_date', None) else None,
+                'event_place': getattr(event, 'address', None) or (event.city.name if getattr(event, 'city', None) else None),
+            }
+        )
+    else:
+        create_notification(
+            recipient=athlete.user,
+            notification_type='seminar_submitted',
+            title='Seminar Participation Submitted Successfully',
+            message=f'Your participation submission for "{seminar.name}" has been submitted and is pending review.' if seminar else 'Your participation submission has been submitted and is pending review.',
+            action_data={
+                'seminar_name': seminar.name if seminar else None,
+                'seminar_start_date': seminar.start_date.isoformat() if seminar and seminar.start_date else None,
+                'seminar_end_date': seminar.end_date.isoformat() if seminar and seminar.end_date else None,
+                'seminar_place': seminar.place if seminar else None,
+            }
+        )
     
     # Notification for admin users
     admin_users = User.objects.filter(role='admin')
@@ -322,21 +361,31 @@ def create_seminar_submitted_notification(participation):
             recipient=admin,
             notification_type='seminar_submitted',
             title='New Seminar Participation Submitted for Review',
-            message=f'{athlete.first_name} {athlete.last_name} submitted participation for "{seminar.name}".',
-            action_data={
-                'athlete_name': f'{athlete.first_name} {athlete.last_name}',
-                'seminar_name': seminar.name,
-                'seminar_start_date': seminar.start_date.isoformat() if seminar.start_date else None,
-                'seminar_end_date': seminar.end_date.isoformat() if seminar.end_date else None,
-                'seminar_place': seminar.place
-            }
+            message=(f'{athlete.first_name} {athlete.last_name} submitted participation for "{event.title}".' if event else f'{athlete.first_name} {athlete.last_name} submitted participation for "{seminar.name}".'),
+            action_data=(
+                {
+                    'athlete_name': f'{athlete.first_name} {athlete.last_name}',
+                    'event_id': event.pk,
+                    'event_name': event.title,
+                    'event_start_date': event.start_date.isoformat() if getattr(event, 'start_date', None) else None,
+                    'event_end_date': event.end_date.isoformat() if getattr(event, 'end_date', None) else None,
+                    'event_place': getattr(event, 'address', None) or (event.city.name if getattr(event, 'city', None) else None),
+                } if event else {
+                    'athlete_name': f'{athlete.first_name} {athlete.last_name}',
+                    'seminar_name': seminar.name if seminar else None,
+                    'seminar_start_date': seminar.start_date.isoformat() if seminar and seminar.start_date else None,
+                    'seminar_end_date': seminar.end_date.isoformat() if seminar and seminar.end_date else None,
+                    'seminar_place': seminar.place if seminar else None,
+                }
+            )
         )
 
 
 def create_seminar_status_notification(participation, new_status, admin_user, admin_notes=''):
     """Create notification when seminar participation status changes"""
     athlete = participation.athlete
-    seminar = participation.seminar
+    seminar = getattr(participation, 'seminar', None)
+    event = getattr(participation, 'event', None)
     
     # Map status to notification type and messages
     status_mapping = {
@@ -367,18 +416,37 @@ def create_seminar_status_notification(participation, new_status, admin_user, ad
         message += f'\n\nAdmin notes: {admin_notes}'
     
     # Create notification for the athlete
-    create_notification(
-        recipient=athlete.user,
-        notification_type=status_info['type'],
-        title=status_info['title'],
-        message=message,
-        action_data={
-            'seminar_name': seminar.name,
-            'seminar_start_date': seminar.start_date.isoformat() if seminar.start_date else None,
-            'seminar_end_date': seminar.end_date.isoformat() if seminar.end_date else None,
-            'seminar_place': seminar.place,
-            'reviewed_by': str(admin_user) if admin_user else 'Admin',
-            'admin_notes': admin_notes,
-            'new_status': new_status
-        }
-    )
+    # Prefer event when available
+    if event:
+        create_notification(
+            recipient=athlete.user,
+            notification_type=status_info['type'],
+            title=status_info['title'],
+            message=message,
+            action_data={
+                'event_id': event.pk,
+                'event_name': event.title,
+                'event_start_date': event.start_date.isoformat() if getattr(event, 'start_date', None) else None,
+                'event_end_date': event.end_date.isoformat() if getattr(event, 'end_date', None) else None,
+                'event_place': getattr(event, 'address', None) or (event.city.name if getattr(event, 'city', None) else None),
+                'reviewed_by': str(admin_user) if admin_user else 'Admin',
+                'admin_notes': admin_notes,
+                'new_status': new_status
+            }
+        )
+    else:
+        create_notification(
+            recipient=athlete.user,
+            notification_type=status_info['type'],
+            title=status_info['title'],
+            message=message,
+            action_data={
+                'seminar_name': seminar.name if seminar else None,
+                'seminar_start_date': seminar.start_date.isoformat() if seminar and seminar.start_date else None,
+                'seminar_end_date': seminar.end_date.isoformat() if seminar and seminar.end_date else None,
+                'seminar_place': seminar.place if seminar else None,
+                'reviewed_by': str(admin_user) if admin_user else 'Admin',
+                'admin_notes': admin_notes,
+                'new_status': new_status
+            }
+        )

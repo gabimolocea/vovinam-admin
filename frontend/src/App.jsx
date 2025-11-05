@@ -1,6 +1,7 @@
 import {Routes, Route, Navigate} from 'react-router-dom'
 import './App.css'
 import ProtectedRoute from './components/ProtectedRoute'
+import Navbar from './components/navbar/Navbar'
 import Login from './components/Login'
 import Register from './components/Register'
 import TestDashboard from './components/TestDashboard'
@@ -16,6 +17,7 @@ import ViewClubConverted from './components/ViewClubConverted'
 import NewsFeed from './components/NewsFeed'
 import CreateNews from './components/CreateNews'
 import NewsDetail from './components/NewsDetail'
+import NotificationsPage from './pages/NotificationsPage'
 // Temporarily commented out components with Material-UI imports
 // import EnhancedRegister from './components/EnhancedRegister'
 // import CreateClub from './components/CreateClub'
@@ -48,7 +50,8 @@ import NewsDetail from './components/NewsDetail'
 
 function App() {
   return (
-    <Routes>
+    <Navbar content={
+      <Routes>
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -63,12 +66,12 @@ function App() {
         {/* Protected routes */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={
-          <ProtectedRoute>
+          <ProtectedRoute allowPublicBrowsing={true}>
             <DashboardConverted />
           </ProtectedRoute>
         } />
         <Route path="/test-dashboard" element={
-          <ProtectedRoute>
+          <ProtectedRoute allowPublicBrowsing={true}>
             <TestDashboard />
           </ProtectedRoute>
         } />
@@ -83,12 +86,12 @@ function App() {
         
         {/* Converted components with shadcn/ui */}
         <Route path="/athletes" element={
-          <ProtectedRoute>
+          <ProtectedRoute allowPublicBrowsing={true}>
             <AthletesConverted />
           </ProtectedRoute>
         } />
         <Route path="/clubs" element={
-          <ProtectedRoute>
+          <ProtectedRoute allowPublicBrowsing={true}>
             <ClubsConverted />
           </ProtectedRoute>
         } />
@@ -110,19 +113,19 @@ function App() {
         
         {/* View routes */}
         <Route path="/athletes/:id" element={
-          <ProtectedRoute>
+          <ProtectedRoute allowPublicBrowsing={true}>
             <ViewAthleteTable />
           </ProtectedRoute>
         } />
         <Route path="/clubs/:id" element={
-          <ProtectedRoute>
+          <ProtectedRoute allowPublicBrowsing={true}>
             <ViewClubConverted />
           </ProtectedRoute>
         } />
         
         {/* Test routes */}
         <Route path="/athletes-test" element={
-          <ProtectedRoute>
+          <ProtectedRoute allowPublicBrowsing={true}>
             <TestAthletes />
           </ProtectedRoute>
         } />
@@ -135,6 +138,13 @@ function App() {
           </ProtectedRoute>
         } />
         <Route path="/news/:slug" element={<NewsDetail />} />
+
+        {/* Notifications route */}
+        <Route path="/notifications" element={
+          <ProtectedRoute>
+            <NotificationsPage />
+          </ProtectedRoute>
+        } />
         
         {/* Temporarily commented out all routes with Material-UI dependencies */}
         {/* We'll re-enable these as we convert each component to shadcn/ui */}
@@ -250,6 +260,7 @@ function App() {
         </Route>
         */}
       </Routes>
+    } />
   );
 }
 

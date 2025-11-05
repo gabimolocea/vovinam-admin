@@ -2,8 +2,9 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { useAuth } from '../contexts/AuthContext';
+import AccessRequired from './AccessRequired';
 
-const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null }) => {
+const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null, allowPublicBrowsing = false }) => {
   const { user, isAuthenticated, isAdmin, isAthlete, isSupporter, userRole, loading } = useAuth();
   const location = useLocation();
 
@@ -16,7 +17,12 @@ const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null }) 
     );
   }
 
-  // If not authenticated, redirect to login
+  // If not authenticated and public browsing is allowed, show access required message
+  if (!isAuthenticated && allowPublicBrowsing) {
+    return <AccessRequired />;
+  }
+
+  // If not authenticated and public browsing is not allowed, redirect to login
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }

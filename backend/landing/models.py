@@ -74,8 +74,8 @@ class NewsPost(SEOModel):
     
     class Meta:
         ordering = ['-created_at']
-        verbose_name = "News Post"
-        verbose_name_plural = "News Posts"
+        verbose_name = "Post"
+        verbose_name_plural = "Posts"
     
     def __str__(self):
         return self.title
@@ -86,8 +86,16 @@ class Event(SEOModel):
     description = CKEditor5Field('Description', config_name='extends')  # Updated field
     start_date = models.DateTimeField()
     end_date = models.DateTimeField(blank=True, null=True)
-    location = models.CharField(max_length=200)
     address = models.TextField(blank=True, help_text="Full address of the event")
+    # Use City model (from api app) as a selector instead of free-text 'location'
+    city = models.ForeignKey(
+        'api.City',
+        on_delete=models.SET_NULL,
+        related_name='events',
+        blank=True,
+        null=True,
+        help_text='Select a city for this event'
+    )
     featured_image = models.ImageField(upload_to='events/', blank=True, null=True)
     featured_image_alt = models.CharField(
         max_length=100, 
@@ -95,9 +103,14 @@ class Event(SEOModel):
         help_text="Alt text for featured image (SEO)"
     )
     is_featured = models.BooleanField(default=False, help_text="Show on homepage")
-    registration_required = models.BooleanField(default=False)
-    registration_link = models.URLField(blank=True, help_text="External registration link")
-    max_participants = models.IntegerField(blank=True, null=True)
+    # Type of event: competition, examination, training seminar, etc.
+    EVENT_TYPE_CHOICES = [
+        ('competition', 'Competition'),
+        ('examination', 'Examination'),
+        ('training_seminar', 'Training Seminar'),
+    ]
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES, default='competition', help_text='Type of event')
+    # registration fields removed (deprecated)
     price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     tags = models.CharField(
         max_length=255, 
@@ -215,8 +228,8 @@ class NewsPostGallery(models.Model):
     
     class Meta:
         ordering = ['order', 'created_at']
-        verbose_name = "News Gallery Image"
-        verbose_name_plural = "News Gallery Images"
+        verbose_name = "Gallery Image"
+        verbose_name_plural = "Gallery Images"
     
     def __str__(self):
         return f"{self.news_post.title} - Image {self.order}"
@@ -254,8 +267,8 @@ class NewsComment(models.Model):
     
     class Meta:
         ordering = ['created_at']
-        verbose_name = "News Comment"
-        verbose_name_plural = "News Comments"
+        verbose_name = "Comment"
+        verbose_name_plural = "Comments"
     
     def __str__(self):
         return f"Comment by {self.author.username} on {self.news_post.title}"
@@ -266,3 +279,25 @@ class NewsComment(models.Model):
     
     def get_replies(self):
         return self.replies.filter(is_approved=True)
+
+
+# Proxy models to create a separate admin "Contact" section without moving
+# the underlying models or changing database tables. These proxies will be
+# registered under the `contact` app label so the admin shows a separate
+# heading for contact-related models.
+class ContactInfoProxy(ContactInfo):
+    class Meta:
+        proxy = True
+        # Now that we have a dedicated contact app, show these proxies under
+        # the 'contact' app label so they appear as their own top-level admin app.
+        app_label = 'contact'
+        verbose_name = 'Contact Information'
+        verbose_name_plural = 'Contact Information'
+
+
+class ContactMessageProxy(ContactMessage):
+    class Meta:
+        proxy = True
+        app_label = 'contact'
+        verbose_name = 'Contact Message'
+        verbose_name_plural = 'Contact Messages'

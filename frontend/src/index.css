@@ -3,6 +3,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Overlay scrollbars - no layout space, appears on top with z-index */
+html {
+  overflow: overlay; /* Use overlay scrollbars when supported */
+  scrollbar-width: thin; /* Firefox - thin scrollbar */
+}
+
+body {
+  overflow: overlay; /* Use overlay scrollbars when supported */
+  scrollbar-width: thin; /* Firefox - thin scrollbar */
+}
+
+/* Webkit browsers - overlay scrollbar styling */
+::-webkit-scrollbar {
+  width: 12px; /* Thinner for overlay */
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; /* Transparent track for overlay */
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3); /* Semi-transparent */
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5); /* Darker on hover */
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Fallback for browsers that don't support overlay */
+@supports not (overflow: overlay) {
+  html, body {
+    scrollbar-gutter: stable;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

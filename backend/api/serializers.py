@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import *
+from landing.models import Event
 
 class CitySerializer(serializers.ModelSerializer):
     class Meta:
@@ -106,6 +107,18 @@ class GradeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Grade
         fields = ['id', 'name']
+
+
+class CoachSimpleSerializer(serializers.ModelSerializer):
+    """Minimal serializer used by the frontend when populating coach/examiner selects."""
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Athlete
+        fields = ['id', 'first_name', 'last_name', 'full_name']
+
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
 
 class GradeHistorySerializer(serializers.ModelSerializer):
     athlete = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all())  # Accept athlete ID only
@@ -247,7 +260,9 @@ class CategoryAthleteSerializer(serializers.ModelSerializer):
         fields = ('athlete', 'weight')  # Include the athlete and additional fields like weight
 
 class CategorySerializer(serializers.ModelSerializer):
-    competition_name = serializers.CharField(source='competition.name', read_only=True)
+    # Prefer event when available; keep event_name for compatibility
+    competition_name = serializers.SerializerMethodField()
+    event_name = serializers.CharField(source='event.title', read_only=True)
     enrolled_athletes = CategoryAthleteSerializer(many=True, read_only=True)  # Include enrolled athletes
     teams = TeamSerializer(many=True, read_only=True)  # Use the existing TeamSerializer for teams
     first_place_name = serializers.CharField(source='first_place.first_name', read_only=True, allow_null=True)
@@ -264,23 +279,41 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'competition', 'competition_name', 'group', 'group_name', 'type', 'gender',
+            'id', 'name', 'competition', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
             'enrolled_athletes', 'teams', 'first_place', 'second_place', 'third_place',
             'first_place_name', 'second_place_name', 'third_place_name',
             'first_place_team', 'second_place_team', 'third_place_team',
         ]
 
+    def get_competition_name(self, obj):
+        """Return the associated Event title or legacy Competition name for compatibility."""
+        ent = getattr(obj, 'event_or_competition', None) or getattr(obj, 'competition', None)
+        if not ent:
+            return None
+        return getattr(ent, 'title', None) or getattr(ent, 'name', None)
+
 # Basic GradeHistory serializer for admin use
 class GradeHistorySerializer(serializers.ModelSerializer):
     athlete_name = serializers.CharField(source='athlete.first_name', read_only=True)
     grade_name = serializers.CharField(source='grade.name', read_only=True)
+    # technical_director removed; use examiner_1/examiner_2 instead
+    examiner_1 = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.filter(is_coach=True), allow_null=True, required=False)
+    examiner_1_name = serializers.CharField(source='examiner_1.__str__', read_only=True)
+    examiner_2 = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.filter(is_coach=True), allow_null=True, required=False)
+    examiner_2_name = serializers.CharField(source='examiner_2.__str__', read_only=True)
+
+    # Event linked to the grade exam (optional)
+    event = serializers.PrimaryKeyRelatedField(queryset=Event.objects.all(), allow_null=True, required=False)
+    event_name = serializers.CharField(source='event.__str__', read_only=True)
 
     class Meta:
         model = GradeHistory
         fields = [
             'id', 'athlete', 'athlete_name', 'grade', 'grade_name', 'obtained_date',
-            'level', 'exam_date', 'exam_place', 'technical_director', 'president',
+            'level', 'event', 'event_name', 'examiner_1', 'examiner_1_name', 'examiner_2', 'examiner_2_name',
         ]
+
+    # get_technical_director removed
 
 
 # Enhanced GradeHistory serializer with approval workflow
@@ -291,12 +324,21 @@ class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
     grade_name = serializers.CharField(source='grade.name', read_only=True)
     reviewed_by_name = serializers.CharField(source='reviewed_by.__str__', read_only=True)
     
+    # legacy technical_director removed; frontend should post examiner_1/examiner_2
+
+    examiner_1 = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.filter(is_coach=True), allow_null=True, required=False)
+    examiner_1_name = serializers.CharField(source='examiner_1.__str__', read_only=True)
+    examiner_2 = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.filter(is_coach=True), allow_null=True, required=False)
+    examiner_2_name = serializers.CharField(source='examiner_2.__str__', read_only=True)
+
+    event = serializers.PrimaryKeyRelatedField(queryset=Event.objects.all(), allow_null=True, required=False)
+    event_name = serializers.CharField(source='event.__str__', read_only=True)
+
     class Meta:
         model = GradeHistory
         fields = [
             'id', 'athlete', 'athlete_name', 'grade', 'grade_name', 'obtained_date',
-            'level', 'exam_date', 'exam_place', 'technical_director', 'president',
-            'submitted_by_athlete', 'certificate_image', 'result_document', 'notes',
+            'level', 'event', 'event_name', 'examiner_1', 'examiner_1_name', 'examiner_2', 'examiner_2_name', 'submitted_by_athlete', 'certificate_image', 'result_document', 'notes',
             'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name', 'admin_notes'
         ]
         read_only_fields = ['athlete', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name']
@@ -307,7 +349,14 @@ class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
         if request and hasattr(request.user, 'athlete'):
             validated_data['athlete'] = request.user.athlete
             validated_data['submitted_by_athlete'] = True
-            
+            # Prevent duplicate submissions at API level with a friendly error
+            from .models import GradeHistory
+            existing = GradeHistory.objects.filter(athlete=validated_data['athlete'], grade=validated_data.get('grade'))
+            if existing.exists():
+                # Prefer returning a field-specific error for the grade
+                from rest_framework.exceptions import ValidationError as DRFValidationError
+                raise DRFValidationError({'grade': ['An entry for this athlete and grade already exists.']})
+
             # Create the grade history
             grade_history = super().create(validated_data)
             
@@ -326,7 +375,14 @@ class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
             
             # Create notification for grade submission
             from .notification_utils import create_grade_submitted_notification
-            create_grade_submitted_notification(grade_history)
+            try:
+                create_grade_submitted_notification(grade_history)
+            except Exception as e:
+                # Don't allow notification failures to break the submission flow
+                # Log to console in DEBUG or ignore silently in production
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.exception('Failed to create grade submitted notification: %s', e)
             
             return grade_history
         else:
@@ -353,10 +409,68 @@ class MedicalVisaSerializer(serializers.ModelSerializer):
 # Basic TrainingSeminar serializer for admin use
 class TrainingSeminarSerializer(serializers.ModelSerializer):
     athletes_names = serializers.StringRelatedField(many=True, source='athletes')  # Display athlete names
+    is_submitted = serializers.SerializerMethodField(read_only=True)
+    submission_status = serializers.SerializerMethodField(read_only=True)
+    submission_id = serializers.SerializerMethodField(read_only=True)
+    submission_date = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = TrainingSeminar
-        fields = ['id', 'name', 'start_date', 'end_date', 'place', 'athletes', 'athletes_names']
+        fields = [
+            'id', 'name', 'start_date', 'end_date', 'place', 'athletes', 'athletes_names', 'is_submitted',
+            'submission_status', 'submission_id', 'submission_date'
+        ]
+
+    def get_is_submitted(self, obj):
+        """Return True if the current request user (when an athlete) has submitted participation for this seminar.
+
+        This helps the frontend disable or mark seminars the athlete already submitted for.
+        """
+        request = self.context.get('request') if self.context else None
+        if not request or not getattr(request.user, 'is_authenticated', False):
+            return False
+
+        # Only meaningful for users who have an Athlete profile
+        if not hasattr(request.user, 'athlete') or request.user.athlete is None:
+            return False
+
+        try:
+            from .models import TrainingSeminarParticipation
+            return TrainingSeminarParticipation.objects.filter(
+                athlete=request.user.athlete,
+                seminar=obj
+            ).exists()
+        except Exception:
+            # On any unexpected error (e.g., DB unavailable), return False so UI remains usable
+            return False
+
+    def _get_participation_for_user(self, obj):
+        """Helper: return the participation instance for request.user.athlete and seminar=obj if any."""
+        request = self.context.get('request') if self.context else None
+        if not request or not getattr(request.user, 'is_authenticated', False):
+            return None
+        if not hasattr(request.user, 'athlete') or request.user.athlete is None:
+            return None
+        try:
+            from .models import TrainingSeminarParticipation
+            return TrainingSeminarParticipation.objects.filter(athlete=request.user.athlete, seminar=obj).first()
+        except Exception:
+            return None
+
+    def get_submission_status(self, obj):
+        part = self._get_participation_for_user(obj)
+        return part.status if part else None
+
+    def get_submission_id(self, obj):
+        part = self._get_participation_for_user(obj)
+        return part.id if part else None
+
+    def get_submission_date(self, obj):
+        part = self._get_participation_for_user(obj)
+        if not part or not part.submitted_date:
+            return None
+        # ISO format is safe for JSON; frontend can format as needed
+        return part.submitted_date.isoformat()
 
 
 # TrainingSeminarParticipation serializer with approval workflow
@@ -365,13 +479,15 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
     athlete = serializers.PrimaryKeyRelatedField(read_only=True)
     athlete_name = serializers.CharField(source='athlete.__str__', read_only=True)
     seminar_name = serializers.CharField(source='seminar.name', read_only=True)
+    event = serializers.PrimaryKeyRelatedField(read_only=True)
+    event_name = serializers.SerializerMethodField(read_only=True)
     seminar_details = serializers.SerializerMethodField()
     reviewed_by_name = serializers.CharField(source='reviewed_by.__str__', read_only=True)
     
     class Meta:
         model = TrainingSeminarParticipation
         fields = [
-            'id', 'athlete', 'athlete_name', 'seminar', 'seminar_name', 'seminar_details',
+            'id', 'athlete', 'athlete_name', 'seminar', 'seminar_name', 'event', 'event_name', 'seminar_details',
             'submitted_by_athlete', 'participation_certificate', 'participation_document', 'notes',
             'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name', 'admin_notes'
         ]
@@ -379,12 +495,48 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
     
     def get_seminar_details(self, obj):
         """Get detailed seminar information"""
+        # Prefer migrated Event when available
+        if getattr(obj, 'event', None):
+            ev = obj.event
+            return {
+                'id': ev.pk,
+                'name': ev.title,
+                'start_date': ev.start_date,
+                'end_date': ev.end_date,
+                'address': getattr(ev, 'address', None),
+                'city': ev.city.name if ev.city else None,
+                'event_type': getattr(ev, 'event_type', None),
+            }
+        # Fallback to legacy TrainingSeminar
         return {
             'name': obj.seminar.name,
             'start_date': obj.seminar.start_date,
             'end_date': obj.seminar.end_date,
             'place': obj.seminar.place
         }
+
+    def get_event_name(self, obj):
+        if getattr(obj, 'event', None):
+            return obj.event.title
+        return None
+    
+    def validate(self, attrs):
+        """Prevent duplicate submissions for the same athlete+seminar.
+
+        This returns a 400 with a clear message instead of letting the DB
+        raise an IntegrityError (which bubbled up as a 500).
+        """
+        request = self.context.get('request')
+        seminar = attrs.get('seminar')
+        # Only validate for authenticated users with an athlete profile
+        if request and hasattr(request.user, 'athlete') and seminar:
+            athlete = request.user.athlete
+            from .models import TrainingSeminarParticipation
+            if TrainingSeminarParticipation.objects.filter(athlete=athlete, seminar=seminar).exists():
+                raise serializers.ValidationError(
+                    {'seminar': 'You have already submitted participation for this seminar.'}
+                )
+        return attrs
     
     def create(self, validated_data):
         """Auto-assign current user's athlete profile and set submission flag"""
@@ -417,20 +569,7 @@ class GroupSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
-class FrontendThemeSerializer(serializers.ModelSerializer):
-    tokens = serializers.ReadOnlyField()  # Use the property method from the model
-    
-    class Meta:
-        model = FrontendTheme
-        fields = [
-            'id', 'name', 'is_active', 'tokens',
-            'primary_color', 'primary_light', 'primary_dark', 'secondary_color',
-            'background_default', 'background_paper', 'text_primary', 'text_secondary',
-            'font_family', 'font_size_base', 'font_weight_normal', 'font_weight_medium', 'font_weight_bold',
-            'border_radius', 'spacing_unit', 'button_border_radius', 'card_elevation', 'table_row_hover',
-            'custom_tokens', 'created', 'modified'
-        ]
-        read_only_fields = ['created', 'modified', 'tokens']
+# FrontendThemeSerializer removed — frontend theme API is no longer provided.
 
 
 # Authentication Serializers
@@ -691,8 +830,9 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
     athlete = serializers.PrimaryKeyRelatedField(read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     group_name = serializers.CharField(source='category.group.name', read_only=True, allow_null=True)
-    competition_name = serializers.CharField(source='category.competition.name', read_only=True)
-    competition_date = serializers.DateField(source='category.competition.date', read_only=True)
+    # Prefer event information when available; fall back to legacy Competition fields
+    competition_name = serializers.SerializerMethodField()
+    competition_date = serializers.SerializerMethodField()
     reviewed_by = serializers.StringRelatedField(read_only=True)
     team_members = serializers.PrimaryKeyRelatedField(many=True, queryset=Athlete.objects.all(), required=False)
     
@@ -738,8 +878,28 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
                 'name': str(instance.reviewed_by),
                 'username': instance.reviewed_by.username
             }
-        
+
         return representation
+
+    def get_competition_name(self, instance):
+        cat = getattr(instance, 'category', None)
+        if not cat:
+            return None
+        ent = getattr(cat, 'event_or_competition', None) or getattr(cat, 'competition', None)
+        if not ent:
+            return None
+        return getattr(ent, 'title', None) or getattr(ent, 'name', None)
+
+    def get_competition_date(self, instance):
+        cat = getattr(instance, 'category', None)
+        if not cat:
+            return None
+        ent = getattr(cat, 'event_or_competition', None) or getattr(cat, 'competition', None)
+        if not ent:
+            return None
+        # support both Competition.date and Event.start_date
+        date = getattr(ent, 'date', None) or getattr(ent, 'start_date', None)
+        return date
 
     def validate(self, data):
         """Custom validation for CategoryAthleteScore"""

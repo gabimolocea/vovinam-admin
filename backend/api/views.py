@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.utils import timezone
 from django.db import models
-from rest_framework.decorators import api_view, action
+from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
@@ -12,7 +12,25 @@ from .permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
+from django.db import IntegrityError
 # Create your views here.
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def athlete_detail(request, pk):
+    """Public-facing athlete detail endpoint used by the frontend.
+
+    This complements the ViewSet detail route which may not always be available
+    during dynamic registrations in development. Returning this as a plain
+    function-based view ensures a stable URL for public athlete pages.
+    """
+    try:
+        athlete = Athlete.objects.get(pk=pk)
+    except Athlete.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=404)
+    serializer = AthleteSerializer(athlete, context={'request': request})
+    return Response(serializer.data)
 
 
 @api_view(["GET"])
@@ -48,36 +66,59 @@ class CityViewSet(viewsets.ViewSet):
         queryset = City.objects.all()
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        """Return a single athlete by PK."""
+        try:
+            instance = self.queryset.get(pk=pk)
+        except Athlete.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        serializer = self.serializer_class(instance)
+        return Response(serializer.data)
     
 class CompetitionViewSet(viewsets.ViewSet):
+    """
+    Compatibility viewset: expose Events marked as competition under the legacy /competitions/ endpoint.
+    This returns a list of competitions with nested categories like the old Competition model used to provide.
+    """
     permission_classes = [IsAdminOrReadOnly]
-    queryset = Competition.objects.all()
-    serializer_class = CompetitionSerializer
+
     def list(self, request):
-        queryset = Competition.objects.all()
-        serializer = self.serializer_class(queryset, many=True)
-        return Response(serializer.data)
-    def create(self, request):
-        serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+        from landing.models import Event
+        events = Event.objects.filter(event_type='competition')
+        data = []
+        for ev in events:
+            cats = []
+            for cat in Category.objects.filter(event=ev):
+                cats.append({'id': cat.id, 'name': cat.name, 'type': cat.type, 'gender': cat.gender})
+            data.append({
+                'id': ev.id,
+                'name': ev.title,
+                'place': ev.address,
+                'start_date': ev.start_date,
+                'end_date': ev.end_date,
+                'categories': cats
+            })
+        return Response(data)
+
     def retrieve(self, request, pk=None):
-        queryset = self.queryset.get(pk=pk)
-        serializer = self.serializer_class(queryset)
-        return Response(serializer.data)
-    def update(self, request, pk=None):
-        instance = self.queryset.get(pk=pk)
-        serializer = self.serializer_class(instance, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=400)
-    def destroy(self, request, pk=None):
-        instance = self.queryset.get(pk=pk)
-        instance.delete()
-        return Response(status=204)
+        from landing.models import Event
+        try:
+            ev = Event.objects.get(pk=pk, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        cats = []
+        for cat in Category.objects.filter(event=ev):
+            cats.append({'id': cat.id, 'name': cat.name, 'type': cat.type, 'gender': cat.gender})
+        data = {
+            'id': ev.id,
+            'name': ev.title,
+            'place': ev.address,
+            'start_date': ev.start_date,
+            'end_date': ev.end_date,
+            'categories': cats
+        }
+        return Response(data)
     
 
 class ClubViewSet(viewsets.ViewSet):
@@ -116,13 +157,46 @@ class ClubViewSet(viewsets.ViewSet):
         return Response(status=204)
 
 class AthleteViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    # Allow public read access to athlete records (profile pages are public-facing).
+    # Use AllowAny so the frontend can fetch athlete details without an authenticated session.
+    permission_classes = [AllowAny]
     queryset = Athlete.objects.all()
     serializer_class = AthleteSerializer
 
     def list(self, request):
+        # Support optional filtering by coach status for use by frontend (e.g. examiner selection)
+        is_coach = request.query_params.get('is_coach')
         queryset = Athlete.objects.all()
+        if is_coach is not None:
+            # Treat any truthy value ("1", "true", "yes") as True
+            if str(is_coach).lower() in ('1', 'true', 'yes'):
+                queryset = queryset.filter(is_coach=True)
+            else:
+                queryset = queryset.filter(is_coach=False)
+
+        # Optional simple search by name (q) to help the frontend narrow down results
+        q = request.query_params.get('q')
+        if q:
+            queryset = queryset.filter(models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q))
+
         serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
+
+
+class CoachesViewSet(viewsets.ViewSet):
+    """Lightweight endpoint that returns a compact list of coach-athletes for frontend selects.
+
+    GET /api/coaches/?q=<name>
+    """
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        queryset = Athlete.objects.filter(is_coach=True)
+        q = request.query_params.get('q')
+        if q:
+            queryset = queryset.filter(models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q))
+        # Use a minimal serializer to keep payload small
+        serializer = CoachSimpleSerializer(queryset, many=True)
         return Response(serializer.data)
 
     def create(self, request):
@@ -416,82 +490,7 @@ class CategoryViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
 
-class FrontendThemeViewSet(viewsets.ViewSet):
-    """Enhanced viewset to expose frontend theme tokens with active theme support."""
-    permission_classes = [IsAdminOrReadOnly]
-    queryset = FrontendTheme.objects.all()
-    serializer_class = FrontendThemeSerializer
-
-    def list(self, request):
-        queryset = self.queryset.order_by('-is_active', 'name')
-        serializer = self.serializer_class(queryset, many=True)
-        return Response(serializer.data)
-
-    def retrieve(self, request, pk=None):
-        instance = self.queryset.get(pk=pk)
-        serializer = self.serializer_class(instance)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=['get'])
-    def active(self, request):
-        """Get the currently active theme"""
-        active_theme = FrontendTheme.get_active_theme()
-        if not active_theme:
-            return Response({'detail': 'No active theme found'}, status=404)
-        serializer = self.serializer_class(active_theme)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=['get'])
-    def active_tokens(self, request):
-        """Get only the theme tokens from the active theme"""
-        active_theme = FrontendTheme.get_active_theme()
-        if not active_theme:
-            # Return default tokens if no theme is active
-            default_tokens = {
-                'colors': {
-                    'primary': '#0d47a1',
-                    'primaryLight': '#5e7ce2',
-                    'primaryDark': '#002171',
-                    'secondary': '#f50057',
-                    'neutral': {100: '#f5f5f5', 0: '#ffffff'},
-                    'text': {'primary': '#212121', 'secondary': '#757575'}
-                },
-                'typography': {
-                    'fontFamily': 'BeVietnam, Roboto, Helvetica, Arial, sans-serif',
-                    'fontSize': {'base': 14},
-                    'fontWeight': {'normal': 400, 'medium': 500, 'bold': 700}
-                },
-                'layout': {'borderRadius': 8, 'spacing': 8},
-                'components': {
-                    'button': {'borderRadius': 8},
-                    'card': {'elevation': 2},
-                    'table': {'rowHover': '#f5f5f5'}
-                },
-                'custom': {}
-            }
-            return Response(default_tokens)
-        return Response(active_theme.tokens)
-
-    def latest(self, request):
-        instance = self.queryset.order_by('-modified').first()
-        if not instance:
-            return Response({'detail': 'not found'}, status=404)
-        serializer = self.serializer_class(instance)
-        return Response(serializer.data)
-
-    def update(self, request, pk=None):
-        instance = self.get_queryset().get(pk=pk)
-        serializer = self.serializer_class(instance, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=400)
-
-    def destroy(self, request, pk=None):
-        instance = self.get_queryset().get(pk=pk)
-        instance.delete()
-        return Response(status=204)
-    
+# FrontendTheme API removed — this viewset was intentionally deleted to disable theme management via the API.
 
 
 class GradeHistoryViewSet(viewsets.ViewSet):
@@ -1615,6 +1614,36 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
         elif self.request.user.role == 'admin':
             return GradeHistory.objects.all()
         return GradeHistory.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        """Robust create handler: ensure any unexpected post-save failures
+        do not leave the client with an unclear 500 when the record was
+        actually persisted. Returns serialized object on success.
+        """
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        try:
+            instance = serializer.save()
+        except Exception as e:
+            # If save raised, attempt to detect if an instance was created and
+            # return a helpful error payload including the traceback so the
+            # frontend can surface it during development.
+            import logging, traceback
+            logger = logging.getLogger(__name__)
+            tb = traceback.format_exc()
+            logger.error('Unhandled exception during GradeHistorySubmission create: %s\n%s', e, tb)
+            # Try to return a serialized instance if serializer.instance is set
+            try:
+                inst = getattr(serializer, 'instance', None)
+                if inst is not None:
+                    out_serializer = self.get_serializer(inst)
+                    return Response(out_serializer.data, status=status.HTTP_201_CREATED)
+            except Exception:
+                pass
+            return Response({'detail': 'Failed to process submission, please contact support.', 'error': str(e), 'traceback': tb}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        out_serializer = self.get_serializer(instance)
+        return Response(out_serializer.data, status=status.HTTP_201_CREATED)
     
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
@@ -1672,21 +1701,49 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
 class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
     """ViewSet for athlete training seminar participation submissions with approval workflow"""
     serializer_class = TrainingSeminarParticipationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    # Allow unauthenticated GETs (read-only) so approved participations can be shown publicly;
+    # require authentication for write actions (create/update/delete)
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
     def perform_create(self, serializer):
         """Set the athlete and submitted_by_athlete flag when creating"""
-        serializer.save(
-            athlete=self.request.user.athlete,
-            submitted_by_athlete=True
-        )
+        try:
+            serializer.save(
+                athlete=self.request.user.athlete,
+                submitted_by_athlete=True
+            )
+        except IntegrityError:
+            # In case of a race or missed validation, return a friendly 400
+            raise ValidationError({'seminar': 'You have already submitted participation for this seminar.'})
     
     def get_queryset(self):
         """Return seminar participations for the current user if athlete, all if admin"""
+        # Allow filtering by athlete via query param when the requester is admin
+        athlete_param = self.request.query_params.get('athlete')
+        # If an athlete query param is provided and requester is admin, return that athlete's participations
+        if athlete_param:
+            try:
+                athlete_id = int(athlete_param)
+            except (TypeError, ValueError):
+                return TrainingSeminarParticipation.objects.none()
+
+            # If the requester is admin, return everything for that athlete
+            if self.request.user.is_authenticated and getattr(self.request.user, 'role', None) == 'admin':
+                return TrainingSeminarParticipation.objects.filter(athlete__id=athlete_id)
+
+            # If the requester is the athlete themself, allow access to their participations
+            if hasattr(self.request.user, 'athlete') and getattr(self.request.user.athlete, 'id', None) == athlete_id:
+                return TrainingSeminarParticipation.objects.filter(athlete=self.request.user.athlete)
+
+            # Public access: allow anonymous viewers to see only approved participations for the athlete
+            return TrainingSeminarParticipation.objects.filter(athlete__id=athlete_id, status='approved')
+
+        # Default behaviour: if the user has an athlete profile, return their participations.
         if hasattr(self.request.user, 'athlete'):
-            return TrainingSeminarParticipation.objects.filter(athlete=self.request.user.athlete)
-        elif self.request.user.role == 'admin':
-            return TrainingSeminarParticipation.objects.all()
+            return TrainingSeminarParticipation.objects.filter(athlete=self.request.user.athlete).select_related('event', 'seminar')
+        # Admins who didn't specify an athlete get all participations
+        if self.request.user.is_authenticated and getattr(self.request.user, 'role', None) == 'admin':
+            return TrainingSeminarParticipation.objects.all().select_related('event', 'seminar', 'athlete')
         return TrainingSeminarParticipation.objects.none()
     
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])

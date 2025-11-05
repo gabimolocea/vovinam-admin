@@ -1,210 +1,410 @@
 import * as React from 'react';
-import { AppProvider } from '@toolpad/core/AppProvider';
-import { DashboardLayout } from '@toolpad/core/DashboardLayout';
-import { PageContainer } from '@toolpad/core/PageContainer';
-import NAVIGATION from './Menu'; // Import the menu
-import NavListItem from './NavListItem';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import NotificationBell from '../NotificationBell';
-import { MenuItem, Divider, IconButton, Avatar, Menu, Box } from '@mui/material';
-import { Person, Logout } from '@mui/icons-material';
+import { Button } from '@/components/ui/button';
+import { User, LogOut, Menu, X, Bell } from 'lucide-react';
 
 export default function Navbar({ content }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAdmin, logout } = useAuth();
-  const [anchorEl, setAnchorEl] = React.useState(null);
+  const { user, isAdmin, logout, loading } = useAuth();
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  const [notificationsOpen, setNotificationsOpen] = React.useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
-  const handleMenuOpen = (event) => {
-    setAnchorEl(event.currentTarget);
+  const handleUserMenuToggle = () => {
+    setUserMenuOpen(!userMenuOpen);
+    setNotificationsOpen(false); // Close notifications when opening user menu
   };
 
-  const handleMenuClose = () => {
-    setAnchorEl(null);
+  const handleNotificationsToggle = () => {
+    setNotificationsOpen(!notificationsOpen);
+    setUserMenuOpen(false); // Close user menu when opening notifications
   };
-  
 
-
-  // Handler for My Account link
   const handleMyAccount = () => {
-    setAnchorEl(null);
+    setUserMenuOpen(false);
     navigate('/profile');
   };
 
   const handleLogout = async () => {
-    setAnchorEl(null);
+    setUserMenuOpen(false);
     await logout();
     navigate('/login');
   };
 
-  // Map routes to page titles
-  const pageTitles = {
-    '/dashboard': 'Dashboard', // Updated path
-    '/create-club': 'Create Club',
-    '/clubs': 'Clubs',
-    '/orders': 'Orders',
-    '/reports/sales': 'Sales Reports',
-    '/reports/traffic': 'Traffic Reports',
-    '/integrations': 'Integrations',
-    '/athletes': 'Athletes',
-    '/create-athlete': 'Create Athlete',
-    '/news': 'News Feed',
-    '/news/create': 'Create News Article',
+  const closeAllDropdowns = () => {
+    setUserMenuOpen(false);
+    setNotificationsOpen(false);
   };
 
-  // Determine the page title based on the current route
-  let pageTitle = pageTitles[location.pathname] || 'FRVV Admin';
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
 
-  // Handle dynamic routes like /clubs/edit/:id
-  if (location.pathname.startsWith('/clubs/edit')) {
-    pageTitle = 'Edit Club';
-  }
+  const handleMobileNavigation = (path) => {
+    navigate(path);
+    setMobileMenuOpen(false);
+  };
 
-    // Handle dynamic routes like /clubs/edit/:id
-    if (location.pathname.startsWith('/athletes/edit')) {
-      pageTitle = 'Edit Athlete';
-    }
-    // Handle dynamic routes like /athletes/:id
-    if (location.pathname.startsWith('/athletes/')) {
-      const athleteId = location.pathname.split('/')[2]; // Extract the athlete ID from the URL
-      // Fetch athlete data based on the ID (mocked for now)
-      const athleteData = { first_name: 'John', last_name: 'Doe' }; // Replace with actual API call or data lookup
-      pageTitle = null; // Hide the title for this type of page
-    }
+  const handleMobileLogout = async () => {
+    setMobileMenuOpen(false);
+    await logout();
+    navigate('/login');
+  };
 
-    if (location.pathname.startsWith('/competition/')) {
-      const competitionId = location.pathname.split('/')[2]; // Extract the competition ID from the URL
-      // Fetch competition data based on the ID (mocked for now)
-      const competitionData = { name: 'Spring Championship' }; // Replace with actual API call or data lookup
-      pageTitle = null;
-    }
+  // Navigation menu items
+  const navigationItems = [
+    { title: 'Dashboard', path: '/dashboard' },
+    { title: 'News', path: '/news' },
+    { title: 'Athletes', path: '/athletes' },
+    { title: 'Clubs', path: '/clubs' },
+    { title: 'Competitions', path: '/competitions' },
+  ];
 
-    if (location.pathname.startsWith('/news/') && location.pathname !== '/news/create') {
-      const slug = location.pathname.split('/')[2]; // Extract the news slug from the URL
-      pageTitle = null; // Hide the title for individual news articles
-    }
+  // Add admin-only items
+  const adminItems = [
+    { title: 'Create Club', path: '/create-club' },
+    { title: 'Create Athlete', path: '/create-athlete' },
+  ];
 
-   
-
-    if (location.pathname === '/competitions') {
-      pageTitle = 'Competitions'; // Set the title for the competitions page
-    }
-
-    if (location.pathname.startsWith('/clubs/')) {
-      pageTitle = null; // Hide the title for this type of page
-    }
-
-
-  // Filter navigation based on user role and highlight active menu item
-  const filteredNavigation = NAVIGATION.filter((item) => {
-    // Show all items to admins, restrict creation items for regular users
-    if (!isAdmin && (item.title === 'Create Club' || item.title === 'Create Athlete')) {
-      return false;
-    }
-    return true;
-  });
-
-  const updatedNavigation = filteredNavigation.map((item) => {
-    const itemPath = item.link?.props?.to || ''; // Extract the path from the link
-    const isActive = location.pathname === item.link; // Check if the current route matches the menu item's path
-
-    return {
-      ...item,
-      active: isActive, // Add an active property to the menu item
-    };
-  });
-
-
+  const allItems = isAdmin ? [...navigationItems, ...adminItems] : navigationItems;
 
   return (
-      <AppProvider
-        navigation={updatedNavigation}
-        breadcrumbs={false} // Disable breadcrumbs
-        branding={{
-          title: 'FRVV Admin',
-          homeUrl: '/dashboard', // Updated home URL
-        }}
-      >
-        <DashboardLayout
-          slots={{
-            toolbarActions: () => (
-              user && (
-                <>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <NotificationBell />
-                    <IconButton
-                      onClick={handleMenuOpen}
-                      size="small"
-                      aria-controls={Boolean(anchorEl) ? 'account-menu' : undefined}
-                      aria-haspopup="true"
-                      aria-expanded={Boolean(anchorEl) ? 'true' : undefined}
-                      sx={{ mr: 1 }}
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Navigation */}
+      <nav className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50 w-full">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo/Brand */}
+            <div className="flex items-center">
+              <h1 className="text-xl font-semibold text-gray-900 whitespace-nowrap">FRVV Admin</h1>
+            </div>
+
+            {/* Desktop Navigation Links - Hidden on mobile */}
+            <div className="hidden md:flex items-center space-x-6 flex-1 justify-center">
+              {allItems.map((item) => (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                    location.pathname === item.path
+                      ? 'text-blue-600 bg-blue-50'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  {item.title}
+                </button>
+              ))}
+            </div>
+
+            {/* Desktop Authentication Section - Hidden on mobile */}
+            <div className="hidden md:flex items-center">
+              {loading ? (
+                // Show loading state with fixed dimensions to prevent shift
+                <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse"></div>
+              ) : user ? (
+                <div className="flex items-center gap-3">
+                  {/* Notifications Bell with Dropdown */}
+                  <div className="relative">
+                    <button
+                      className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
+                      onClick={handleNotificationsToggle}
+                      aria-label="Notifications"
                     >
-                      <Avatar sx={{ width: 32, height: 32, fontSize: '0.875rem' }}>
-                        {`${(user.first_name || 'U').charAt(0).toUpperCase()}${(user.last_name || 'S').charAt(0).toUpperCase()}`}
-                      </Avatar>
-                    </IconButton>
-                  </Box>
-                  
-                  <Menu
-                    anchorEl={anchorEl}
-                    id="account-menu"
-                    open={Boolean(anchorEl)}
-                    onClose={handleMenuClose}
-                    PaperProps={{
-                      elevation: 0,
-                      sx: {
-                        overflow: 'visible',
-                        filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
-                        mt: 1.5,
-                        minWidth: 180,
-                        position: 'fixed !important',
-                        top: '48px !important',
-                        right: '16px !important',
-                        left: 'unset !important',
-                        '& .MuiAvatar-root': {
-                          width: 32,
-                          height: 32,
-                          ml: -0.5,
-                          mr: 1,
-                        },
-                        '&:before': {
-                          content: '""',
-                          display: 'block',
-                          position: 'absolute',
-                          top: 0,
-                          right: 14,
-                          width: 10,
-                          height: 10,
-                          bgcolor: 'background.paper',
-                          transform: 'translateY(-50%) rotate(45deg)',
-                          zIndex: 0,
-                        },
-                      },
-                    }}
-                    transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-                    anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                      <Bell className="w-5 h-5" />
+                      {/* Notification badge - uncomment when you have notification count */}
+                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
+                        3
+                      </span>
+                    </button>
+
+                    {/* Notifications Dropdown */}
+                    {notificationsOpen && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-40" 
+                          onClick={closeAllDropdowns}
+                        />
+                        <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-md shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto">
+                          <div className="py-2">
+                            <div className="px-4 py-2 border-b border-gray-200">
+                              <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
+                            </div>
+                            
+                            {/* Sample notifications - replace with real data */}
+                            <div className="divide-y divide-gray-100">
+                              <div className="px-4 py-3 hover:bg-gray-50 cursor-pointer">
+                                <div className="flex items-start">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                                  <div className="flex-1">
+                                    <p className="text-sm text-gray-900">New athlete registration</p>
+                                    <p className="text-xs text-gray-500 mt-1">John Doe has registered as an athlete</p>
+                                    <p className="text-xs text-gray-400 mt-1">2 minutes ago</p>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="px-4 py-3 hover:bg-gray-50 cursor-pointer">
+                                <div className="flex items-start">
+                                  <div className="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                                  <div className="flex-1">
+                                    <p className="text-sm text-gray-900">Competition results updated</p>
+                                    <p className="text-xs text-gray-500 mt-1">Spring Championship results are now available</p>
+                                    <p className="text-xs text-gray-400 mt-1">1 hour ago</p>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="px-4 py-3 hover:bg-gray-50 cursor-pointer">
+                                <div className="flex items-start">
+                                  <div className="w-2 h-2 bg-yellow-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                                  <div className="flex-1">
+                                    <p className="text-sm text-gray-900">Club approval pending</p>
+                                    <p className="text-xs text-gray-500 mt-1">New club registration needs your review</p>
+                                    <p className="text-xs text-gray-400 mt-1">3 hours ago</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="border-t border-gray-200 px-4 py-2">
+                              <button
+                                onClick={() => {
+                                  navigate('/notifications');
+                                  closeAllDropdowns();
+                                }}
+                                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                              >
+                                View all notifications
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* User Avatar Dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={handleUserMenuToggle}
+                      className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
+                      aria-expanded={userMenuOpen}
+                    >
+                      {`${(user.first_name || 'U').charAt(0).toUpperCase()}${(user.last_name || 'S').charAt(0).toUpperCase()}`}
+                    </button>
+                    
+                    {/* User Menu Dropdown */}
+                    {userMenuOpen && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-40" 
+                          onClick={closeAllDropdowns}
+                        />
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                          <div className="py-1">
+                            <div className="px-4 py-2 border-b border-gray-200">
+                              <p className="text-sm font-medium text-gray-900">{user.first_name} {user.last_name}</p>
+                              <p className="text-xs text-gray-500">{user.email}</p>
+                            </div>
+                            <button
+                              onClick={handleMyAccount}
+                              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <User className="w-4 h-4 mr-2" />
+                              My Account
+                            </button>
+                            <hr className="my-1 border-gray-200" />
+                            <button
+                              onClick={handleLogout}
+                              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <LogOut className="w-4 h-4 mr-2" />
+                              Log out
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/login')}
+                    className="text-sm"
                   >
-                    <MenuItem onClick={handleMyAccount}>
-                      <Person fontSize="small" sx={{ mr: 1 }} />
-                      My Account
-                    </MenuItem>
-                    <Divider />
-                    <MenuItem onClick={handleLogout}>
-                      <Logout fontSize="small" sx={{ mr: 1 }} />
-                      Log out
-                    </MenuItem>
-                  </Menu>
-                </>
-              )
-            ),
-          }}
-        >
-          <PageContainer breadcrumbs={false} title={pageTitle}>
-            {content}
-          </PageContainer>
-        </DashboardLayout>
-      </AppProvider>
+                    Log In
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => navigate('/register')}
+                    className="text-sm"
+                  >
+                    Register
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile Hamburger Menu Button */}
+            <div className="md:hidden flex items-center">
+              <button
+                onClick={toggleMobileMenu}
+                className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors"
+                aria-label="Toggle mobile menu"
+              >
+                {mobileMenuOpen ? (
+                  <X className="h-6 w-6" />
+                ) : (
+                  <Menu className="h-6 w-6" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Menu - Slides down when open */}
+          {mobileMenuOpen && (
+            <div className="md:hidden border-t border-gray-200 bg-white w-full">
+              <div className="px-4 py-3 space-y-1">
+                {/* Mobile Navigation Links */}
+                {allItems.map((item) => (
+                  <button
+                    key={item.path}
+                    onClick={() => handleMobileNavigation(item.path)}
+                    className={`w-full text-left px-3 py-2 rounded-md text-base font-medium transition-colors ${
+                      location.pathname === item.path
+                        ? 'text-blue-600 bg-blue-50'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    {item.title}
+                  </button>
+                ))}
+                
+                {/* Mobile Authentication Section */}
+                <div className="pt-3 mt-3 border-t border-gray-200">
+                  {loading ? (
+                    <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse mx-3"></div>
+                  ) : user ? (
+                    <div className="space-y-1">
+                      <div className="px-3 py-2 text-sm text-gray-500">
+                        Signed in as {user.first_name} {user.last_name}
+                      </div>
+                      <button
+                        onClick={handleNotificationsToggle}
+                        className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center"
+                      >
+                        <Bell className="w-4 h-4 mr-2" />
+                        Notifications
+                        {/* Mobile notification badge */}
+                        <span className="ml-auto w-5 h-5 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
+                          3
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          navigate('/profile');
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center"
+                      >
+                        <User className="w-4 h-4 mr-2" />
+                        My Account
+                      </button>
+                      <button
+                        onClick={handleMobileLogout}
+                        className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors flex items-center"
+                      >
+                        <LogOut className="w-4 h-4 mr-2" />
+                        Log out
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          navigate('/login');
+                        }}
+                        className="w-full"
+                      >
+                        Log In
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          navigate('/register');
+                        }}
+                        className="w-full"
+                      >
+                        Register
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Mobile Notifications Dropdown */}
+                  {notificationsOpen && user && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <div className="bg-gray-50 rounded-md p-3">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-2">Notifications</h3>
+                        
+                        <div className="space-y-3 max-h-48 overflow-y-auto">
+                          <div className="flex items-start text-sm">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                            <div className="flex-1">
+                              <p className="text-gray-900">New athlete registration</p>
+                              <p className="text-xs text-gray-500 mt-1">John Doe has registered as an athlete</p>
+                              <p className="text-xs text-gray-400 mt-1">2 minutes ago</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start text-sm">
+                            <div className="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                            <div className="flex-1">
+                              <p className="text-gray-900">Competition results updated</p>
+                              <p className="text-xs text-gray-500 mt-1">Spring Championship results are now available</p>
+                              <p className="text-xs text-gray-400 mt-1">1 hour ago</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start text-sm">
+                            <div className="w-2 h-2 bg-yellow-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                            <div className="flex-1">
+                              <p className="text-gray-900">Club approval pending</p>
+                              <p className="text-xs text-gray-500 mt-1">New club registration needs your review</p>
+                              <p className="text-xs text-gray-400 mt-1">3 hours ago</p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <button
+                          onClick={() => {
+                            navigate('/notifications');
+                            closeAllDropdowns();
+                          }}
+                          className="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          View all notifications
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        {content}
+      </main>
+    </div>
   );
 }

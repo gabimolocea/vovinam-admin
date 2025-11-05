@@ -277,19 +277,44 @@ const ViewAthleteConverted = () => {
           gradeHistoryResponse,
           medicalVisaResponse,
           annualVisaResponse,
-          matchesResponse
+          matchesResponse,
+          trainingSeminarsAllResponse
         ] = await Promise.all([
           AxiosInstance.get(`athletes/${id}/`),
-          AxiosInstance.get(`training-seminars/?athlete=${id}`).catch(() => ({ data: [] })),
+          // Fetch seminar participation submissions for this athlete (backend will authorize/admin-filter)
+          AxiosInstance.get(`seminar-submissions/?athlete=${id}`).catch(() => ({ data: [] })),
           AxiosInstance.get(`grade-histories/?athlete=${id}`).catch(() => ({ data: [] })),
           AxiosInstance.get(`medical-visas/?athlete=${id}`).catch(() => ({ data: [] })),
           AxiosInstance.get(`annual-visas/?athlete=${id}`).catch(() => ({ data: [] })),
-          AxiosInstance.get(`matches/?athlete=${id}`).catch(() => ({ data: [] }))
+          AxiosInstance.get(`matches/?athlete=${id}`).catch(() => ({ data: [] })),
+          // Fetch all available training seminars for the Add Seminar dialog
+          AxiosInstance.get(`training-seminars/`).catch(() => ({ data: [] }))
         ]);
 
         setAthlete(athleteResponse.data);
         setRelatedData(athleteResponse.data); // Store related data including categories
-        setTrainingSeminars(seminarsResponse.data);
+        // seminarsResponse contains participation records (seminar submissions).
+        // Filter by athlete id and map to a seminar-like object for the UI table.
+        const athleteId = parseInt(id);
+        const participationItems = Array.isArray(seminarsResponse.data) ?
+          seminarsResponse.data.filter(item => item.athlete === athleteId || item.athlete?.id === athleteId)
+          : [];
+
+        const seminarRows = participationItems.map(p => ({
+          id: p.seminar || (p.seminar?.id),
+          name: p.seminar_name || (p.seminar?.name),
+          start_date: p.seminar_details?.start_date || null,
+          end_date: p.seminar_details?.end_date || null,
+          place: p.seminar_details?.place || (p.seminar?.place) || null,
+          status: p.status,
+          participation_id: p.id,
+          submitted_by_athlete: p.submitted_by_athlete,
+          raw: p
+        }));
+
+        setTrainingSeminars(seminarRows);
+  // Populate the available training seminars used by the CreateSeminarParticipation dialog
+  setAvailableTrainingSeminars(Array.isArray(trainingSeminarsAllResponse?.data) ? trainingSeminarsAllResponse.data : []);
         setGradeHistory(gradeHistoryResponse.data);
         setMedicalVisa(medicalVisaResponse.data);
         setAnnualVisa(annualVisaResponse.data);
@@ -517,6 +542,9 @@ const ViewAthleteConverted = () => {
               <div className="flex items-center gap-3 mb-2">
                 <h1 className="text-2xl font-bold text-white">
                   {athlete.first_name} {athlete.last_name}
+                  {(athlete?.club?.name || athlete?.club) && (
+                    <span className="text-sm text-gray-400 ml-2 inline-block pl-1">&#40;{athlete?.club?.name || athlete?.club}&#41;</span>
+                  )}
                 </h1>
                 <Badge 
                   variant={athlete.status === 'approved' ? 'default' : athlete.status === 'pending' ? 'secondary' : 'destructive'}
@@ -583,7 +611,7 @@ const ViewAthleteConverted = () => {
                     View Details
                   </Button>
                 </SheetTrigger>
-                <SheetContent className="bg-[#1E2329] border-gray-800 text-white">
+                <SheetContent hideOverlay className="bg-[#1E2329] border-gray-800 text-white">
                   <SheetHeader>
                     <SheetTitle className="text-white flex items-center gap-2">
                       <UserIcon className="h-5 w-5" />
@@ -703,7 +731,7 @@ const ViewAthleteConverted = () => {
                     View Details
                   </Button>
                 </SheetTrigger>
-                <SheetContent className="bg-[#1E2329] border-gray-800 text-white">
+                <SheetContent hideOverlay className="bg-[#1E2329] border-gray-800 text-white">
                   <SheetHeader>
                     <SheetTitle className="text-white flex items-center gap-2">
                       <HeartIcon className="h-5 w-5" />
@@ -909,10 +937,8 @@ const ViewAthleteConverted = () => {
                           <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Category</th>
                           <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Group</th>
                           <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Placement</th>
-                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Type</th>
                           <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Source</th>
                           <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Status</th>
-                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Date</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -930,11 +956,6 @@ const ViewAthleteConverted = () => {
                                   </div>
                                 )}
                               </div>
-                            </td>
-                            <td className="py-4 px-4">
-                              <Badge variant={result.type === 'Team' ? 'default' : 'secondary'} className={result.type === 'Team' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'}>
-                                {result.type}
-                              </Badge>
                             </td>
                             <td className="py-4 px-4">
                               <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
@@ -962,7 +983,7 @@ const ViewAthleteConverted = () => {
                                 <Badge className="bg-green-600 hover:bg-green-700">Official</Badge>
                               )}
                             </td>
-                            <td className="py-4 px-4 text-gray-300">{result.submitted_date || "N/A"}</td>
+                            
                           </tr>
                         ))}
                       </tbody>
@@ -995,7 +1016,7 @@ const ViewAthleteConverted = () => {
                         <tr className="border-b border-gray-800">
                           <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Seminar</th>
                           <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Date</th>
-                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Location</th>
+                          <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">City</th>
                           <th className="text-left py-3 px-4 text-gray-400 text-sm font-medium">Status</th>
                         </tr>
                       </thead>
@@ -1003,12 +1024,38 @@ const ViewAthleteConverted = () => {
                         {trainingSeminars.map((seminar, index) => (
                           <tr key={index} className={`border-b border-gray-800 hover:bg-[#0B1426] transition-colors ${index % 2 === 0 ? 'bg-[#0B1426]/20' : ''}`}>
                             <td className="py-4 px-4 text-white font-medium">{seminar.name || "N/A"}</td>
-                            <td className="py-4 px-4 text-gray-300">{seminar.date || "N/A"}</td>
-                            <td className="py-4 px-4 text-gray-300">{seminar.location || "N/A"}</td>
+                            <td className="py-4 px-4 text-gray-300">{seminar.start_date ? `${new Date(seminar.start_date).toLocaleDateString()} to ${seminar.end_date ? new Date(seminar.end_date).toLocaleDateString() : ''}` : 'N/A'}</td>
+                            <td className="py-4 px-4 text-gray-300">{seminar.city_name || (seminar.city && seminar.city.name) || seminar.place || "N/A"}</td>
                             <td className="py-4 px-4">
-                              <Badge variant={seminar.completed ? "default" : "secondary"} className={seminar.completed ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}>
-                                {seminar.completed ? "Completed" : "Pending"}
-                              </Badge>
+                              {(() => {
+                                // If this row represents a participation record, prefer showing its approval status
+                                const status = seminar.status;
+                                if (status) {
+                                  const cls = status === 'approved' ? 'bg-green-600 hover:bg-green-700' :
+                                              status === 'pending' ? 'bg-yellow-600 hover:bg-yellow-700' :
+                                              status === 'rejected' ? 'bg-red-600 hover:bg-red-700' :
+                                              'bg-orange-600 hover:bg-orange-700';
+                                  return (
+                                    <div>
+                                      <Badge className={cls}>{status}</Badge>
+                                      {seminar.submitted_by_athlete && (
+                                        <div className="text-xs text-gray-400 mt-1">Self-submitted</div>
+                                      )}
+                                    </div>
+                                  );
+                                }
+
+                                // Fallback: determine status based on dates for pure seminar entries
+                                if (!seminar.start_date) return <Badge className="bg-gray-600">Unknown</Badge>;
+                                const end = seminar.end_date ? new Date(seminar.end_date) : null;
+                                const now = new Date();
+                                const isCompleted = end ? end < now : false;
+                                return (
+                                  <Badge variant={isCompleted ? 'default' : 'secondary'} className={isCompleted ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}>
+                                    {isCompleted ? 'Completed' : 'Upcoming'}
+                                  </Badge>
+                                );
+                              })()}
                             </td>
                           </tr>
                         ))}

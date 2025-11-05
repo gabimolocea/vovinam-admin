@@ -8,3 +8,4 @@ django-cors-headers==4.0.0
 django-debug-toolbar==5.2
 # Pillow bumped to satisfy pillow-heif and to avoid building older wheels
 Pillow==11.3.0
+requests==2.32.5

@@ -6,7 +6,7 @@ const Table = React.forwardRef(({ className, ...props }, ref) => (
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
+      className={cn("w-full table-auto caption-bottom text-sm", className)}
       {...props}
     />
   </div>
@@ -51,16 +51,37 @@ const TableRow = React.forwardRef(({ className, ...props }, ref) => (
 ))
 TableRow.displayName = "TableRow"
 
-const TableHead = React.forwardRef(({ className, ...props }, ref) => (
-  <th
-    ref={ref}
-    className={cn(
-      "h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-      className
-    )}
-    {...props}
-  />
-))
+const TableHead = React.forwardRef(({ className, sortable, sortDirection, onClick, children, ...props }, ref) => {
+  const content = (
+    <div className="inline-flex items-center gap-2">
+      <span>{children}</span>
+      {sortable && (
+        <span aria-hidden className="text-xs text-muted-foreground">
+          {sortDirection === 'asc' ? '▲' : sortDirection === 'desc' ? '▼' : '▾'}
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <th
+      ref={ref}
+      className={cn(
+        "h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        className
+      )}
+      {...props}
+    >
+      {onClick ? (
+        <button onClick={onClick} className="flex items-center gap-2 text-left w-full cursor-pointer" aria-sort={sortDirection || 'none'}>
+          {content}
+        </button>
+      ) : (
+        content
+      )}
+    </th>
+  );
+})
 TableHead.displayName = "TableHead"
 
 const TableCell = React.forwardRef(({ className, ...props }, ref) => (

@@ -16,6 +16,7 @@ const CreateSeminarParticipation = ({ open, onClose, onSuccess, trainingSeminars
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showInfo, setShowInfo] = useState(false);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({
@@ -53,11 +54,8 @@ const CreateSeminarParticipation = ({ open, onClose, onSuccess, trainingSeminars
         submitFormData.append('participation_document', formData.participation_document);
       }
 
-      await axios.post('seminar-submissions/', submitFormData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // Let the browser/axios set the Content-Type (including the multipart boundary).
+      await axios.post('seminar-submissions/', submitFormData);
       
       onSuccess('Seminar participation submitted successfully and is pending admin approval');
       onClose();
@@ -70,8 +68,37 @@ const CreateSeminarParticipation = ({ open, onClose, onSuccess, trainingSeminars
         notes: ''
       });
     } catch (err) {
-      console.error('Error submitting seminar participation:', err);
-      setError(err.response?.data?.detail || 'Failed to submit seminar participation');
+      // Improve logging so we can see server error payloads during debugging
+      console.error('Error submitting seminar participation:', err, err.response?.data);
+
+      // Parse common DRF error shapes to surface a human-friendly message
+      const resp = err.response?.data;
+      let friendly = null;
+
+      if (resp) {
+        // If DRF returned a dict of field errors like { "seminar": ["..."] }
+        if (typeof resp === 'object' && !Array.isArray(resp)) {
+          // Prefer non_field_errors or detail
+          if (resp.detail) {
+            friendly = resp.detail;
+          } else if (resp.non_field_errors) {
+            friendly = Array.isArray(resp.non_field_errors) ? resp.non_field_errors.join(' ') : String(resp.non_field_errors);
+          } else if (resp.seminar) {
+            // seminar may be an array of messages
+            friendly = Array.isArray(resp.seminar) ? resp.seminar.join(' ') : String(resp.seminar);
+          } else {
+            // Fallback: join first field's messages
+            const firstKey = Object.keys(resp)[0];
+            const val = resp[firstKey];
+            friendly = Array.isArray(val) ? val.join(' ') : String(val);
+          }
+        } else {
+          friendly = String(resp);
+        }
+      }
+
+      const serverMsg = friendly || err.message || 'An unknown error occurred';
+      setError(serverMsg);
     } finally {
       setLoading(false);
     }
@@ -118,8 +145,26 @@ const CreateSeminarParticipation = ({ open, onClose, onSuccess, trainingSeminars
               <SelectContent>
                 {trainingSeminars && trainingSeminars.length > 0 ? (
                   trainingSeminars.map((seminar) => (
-                    <SelectItem key={seminar.id} value={seminar.id.toString()}>
-                      {seminar.name} - {new Date(seminar.start_date).toLocaleDateString()} to {new Date(seminar.end_date).toLocaleDateString()}
+                    <SelectItem
+                      key={seminar.id}
+                      value={seminar.id.toString()}
+                      disabled={Boolean(seminar.is_submitted)}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="truncate">
+                          {seminar.name} - {new Date(seminar.start_date).toLocaleDateString()} to {new Date(seminar.end_date).toLocaleDateString()}
+                        </div>
+                        {seminar.is_submitted && (
+                          <div className="ml-2 flex items-center space-x-2">
+                            <span className="text-xs rounded-full px-2 py-0.5 bg-yellow-100 text-yellow-800">
+                              {seminar.submission_status ? seminar.submission_status : 'submitted'}
+                            </span>
+                            {seminar.submission_date && (
+                              <span className="text-xs text-muted-foreground">{new Date(seminar.submission_date).toLocaleDateString()}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </SelectItem>
                   ))
                 ) : (
@@ -127,6 +172,22 @@ const CreateSeminarParticipation = ({ open, onClose, onSuccess, trainingSeminars
                 )}
               </SelectContent>
             </Select>
+            <div className="flex items-center justify-between mt-1">
+              <button
+                type="button"
+                className="text-sm text-muted-foreground underline"
+                onClick={() => setShowInfo((s) => !s)}
+              >
+                Why are some seminars disabled?
+              </button>
+            </div>
+            {showInfo && (
+              <p className="text-xs text-gray-500 mt-1">
+                Items marked "(already submitted)" are disabled because you've already submitted participation
+                for them. If you need to change or withdraw a submission, view your seminar participation list in your
+                profile or contact an admin.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

@@ -7,6 +7,9 @@ class ApiRootSmokeTest(TestCase):
         self.client = APIClient()
 
     def test_api_root_returns_200_and_contains_endpoints(self):
-        response = self.client.get('/')
+        # API is mounted under /api/ in this project
+        response = self.client.get('/api/')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('club', response.json())
+        # Expect at least one known endpoint key in the JSON response
+        # API exposes 'clubs' (plural) as the endpoint name
+        self.assertIn('clubs', response.json())

@@ -21,7 +21,8 @@ import {
   User,
   Menu,
   X,
-  Building
+  Building,
+  Newspaper
 } from 'lucide-react';
 import AxiosInstance from '../Axios';
 import NotificationBellConverted from '../NotificationBellConverted';
@@ -50,6 +51,11 @@ const TopNavbar = ({ children }) => {
       title: 'Athletes',
       href: '/athletes',
       icon: Users,
+    },
+    {
+      title: 'News',
+      href: '/news',
+      icon: Newspaper,
     },
     {
       title: 'Competitions',
@@ -88,93 +94,92 @@ const TopNavbar = ({ children }) => {
     );
   }
 
-  return (
+return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top Navigation Bar */}
-      <nav className="bg-white shadow-sm border-b border-gray-200">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            {/* Logo and Navigation */}
-            <div className="flex items-center">
-              {/* Logo */}
-              <div className="flex-shrink-0 flex items-center">
-                <Link to="/dashboard" className="text-xl font-bold text-blue-600">
-                  FRVV Admin
-                </Link>
-              </div>
+        {/* Top Navigation Bar */}
+        <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+            <div className="mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex justify-between h-16">
+                    {/* Logo and Navigation */}
+                    <div className="flex items-center">
+                        {/* Logo */}
+                        <div className="flex-shrink-0">
+                            <Link to="/dashboard" className="flex items-center">
+                                <span className="text-2xl font-bold text-blue-600">FRVV</span>
+                                <span className="ml-2 text-sm font-medium text-gray-600">Admin</span>
+                            </Link>
+                        </div>
 
-              {/* Desktop Navigation */}
-              <div className="hidden md:ml-8 md:flex md:space-x-1">
-                {navigationItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = isActivePath(item.href);
-                  
-                  return (
-                    <Link
-                      key={item.href}
-                      to={item.href}
-                      className={`inline-flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 mr-2" />
-                      {item.title}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Right side - Notifications, User menu and mobile menu button */}
-            <div className="flex items-center space-x-4">
-              {/* Notification Bell */}
-              <NotificationBellConverted />
-              
-              {/* User Menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={user?.avatar} />
-                      <AvatarFallback className="bg-blue-600 text-white text-xs">
-                        {getUserInitials(user)}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end">
-                  <div className="flex items-center justify-start gap-2 p-2">
-                    <div className="flex flex-col space-y-1 leading-none">
-                      {user?.first_name && user?.last_name ? (
-                        <p className="font-medium">{user.first_name} {user.last_name}</p>
-                      ) : (
-                        <p className="font-medium">{user?.username}</p>
-                      )}
-                      <p className="w-[200px] truncate text-sm text-muted-foreground">
-                        {user?.email}
-                      </p>
-                      {user?.is_staff && (
-                        <Badge variant="secondary" className="w-fit text-xs">
-                          Admin
-                        </Badge>
-                      )}
+                        {/* Desktop Navigation */}
+                        <div className="hidden md:ml-10 md:flex md:space-x-8">
+                            {navigationItems.map((item) => {
+                                const Icon = item.icon;
+                                const isActive = isActivePath(item.href);
+                                
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        to={item.href}
+                                        className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-all duration-200 ${
+                                            isActive
+                                                ? 'border-blue-500 text-blue-600'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        <Icon className="w-4 h-4 mr-2" />
+                                        {item.title}
+                                    </Link>
+                                );
+                            })}
+                        </div>
                     </div>
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to="/profile" className="cursor-pointer">
-                      <User className="mr-2 h-4 w-4" />
-                      Profile
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/settings" className="cursor-pointer">
-                      <Settings className="mr-2 h-4 w-4" />
-                      Settings
-                    </Link>
-                  </DropdownMenuItem>
+
+                    {/* Right side - Notifications and User menu */}
+                    <div className="flex items-center space-x-4">
+                        {/* Notification Bell */}
+                        <div className="relative">
+                            <NotificationBellConverted />
+                        </div>
+                        
+                        {/* User Menu */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="relative h-10 w-10 rounded-full hover:ring-2 hover:ring-blue-500 hover:ring-offset-2 transition-all">
+                                    <Avatar className="h-9 w-9">
+                                        <AvatarImage src={user?.avatar} />
+                                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white text-sm font-semibold">
+                                            {getUserInitials(user)}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="w-64" align="end" sideOffset={5}>
+                                <div className="flex items-center justify-start gap-3 p-4">
+                                    <Avatar className="h-12 w-12">
+                                        <AvatarImage src={user?.avatar} />
+                                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                                            {getUserInitials(user)}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex flex-col space-y-1">
+                                        {user?.first_name && user?.last_name ? (
+                                            <p className="font-semibold text-gray-900">{user.first_name} {user.last_name}</p>
+                                        ) : (
+                                            <p className="font-semibold text-gray-900">{user?.username}</p>
+                                        )}
+                                        <p className="text-sm text-gray-500 truncate max-w-[180px]">
+                                            {user?.email}
+                                        </p>
+                                        {user?.is_staff && (
+                                            <Badge variant="secondary" className="w-fit text-xs mt-1">
+                                                Administrator
+                                            </Badge>
+                                        )}
+                                    </div>
+                                </div>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild></DropdownMenuItem>
+                                    <Link to="/profile" className="cursor-pointer flex items-center py-2 px-3 hover:bg-gray-50"></Link>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="cursor-pointer text-red-600 focus:text-red-600"
@@ -234,8 +239,8 @@ const TopNavbar = ({ children }) => {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1">
-        <div className="mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 px-8 sm:px-4 py-4">
+        <div className="mx-auto">
           {children}
         </div>
       </main>

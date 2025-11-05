@@ -1301,20 +1301,17 @@ const ViewAthlete = () => {
                     header: 'Level',
                   },
                   {
-                    accessorKey: 'exam_date',
-                    header: 'Exam Date',
+                    accessorKey: 'event_name',
+                    header: 'Event',
+                  },
+                  // exam_place removed
+                  {
+                    accessorKey: 'examiner_1_name',
+                    header: 'Examiner 1',
                   },
                   {
-                    accessorKey: 'exam_place',
-                    header: 'Exam Place',
-                  },
-                  {
-                    accessorKey: 'technical_director',
-                    header: 'Technical Director',
-                  },
-                  {
-                    accessorKey: 'president',
-                    header: 'President',
+                    accessorKey: 'examiner_2_name',
+                    header: 'Examiner 2',
                   },
                 ]}
                 data={gradeHistory.length > 0 ? gradeHistory : []}

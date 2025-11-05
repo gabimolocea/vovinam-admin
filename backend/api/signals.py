@@ -109,5 +109,6 @@ def update_team_name(sender, instance, **kwargs):
     member_names = [f"{member.athlete.first_name} {member.athlete.last_name}" for member in team.members.all()]
     team.name = " + ".join(member_names)
     team.save(update_fields=['name'])  # Save only the updated name field
+    
 
 

@@ -35,7 +35,7 @@ class NewsPostViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['published', 'featured', 'author']
-    search_fields = ['title', 'content', 'excerpt', 'tags']
+    search_fields = ['title', 'content', 'excerpt', 'tags', 'slug']
     ordering_fields = ['created_at', 'updated_at', 'title']
     ordering = ['-created_at']
 
@@ -93,8 +93,8 @@ class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
     permission_classes = [IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_featured', 'registration_required']
-    search_fields = ['title', 'description', 'location', 'tags']
+    filterset_fields = ['is_featured', 'event_type']
+    search_fields = ['title', 'description', 'city__name', 'tags']
     ordering_fields = ['start_date', 'created_at', 'title']
     ordering = ['start_date']
 

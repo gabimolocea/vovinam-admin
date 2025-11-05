@@ -1,6 +1,16 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import NewsPost, Event, AboutSection, ContactMessage, ContactInfo, NewsPostGallery, NewsComment
+from .models import (
+    NewsPost,
+    Event,
+    AboutSection,
+    ContactMessage,
+    ContactInfo,
+    NewsPostGallery,
+    NewsComment,
+    ContactInfoProxy,
+    ContactMessageProxy,
+)
 
 class NewsPostGalleryInline(admin.TabularInline):
     model = NewsPostGallery
@@ -55,11 +65,11 @@ class NewsPostAdmin(admin.ModelAdmin):
             kwargs["queryset"] = db_field.related_model.objects.filter(role='admin')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
-@admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ['title', 'start_date', 'location', 'is_featured', 'registration_required', 'event_status']
-    list_filter = ['is_featured', 'registration_required', 'start_date']
-    search_fields = ['title', 'description', 'location', 'tags']
+    list_display = ['title', 'start_date', 'city', 'event_type', 'is_featured', 'event_status']
+    list_filter = ['is_featured', 'start_date']
+    search_fields = ['title', 'description', 'city__name', 'tags']
+    autocomplete_fields = ('city',)
     prepopulated_fields = {'slug': ('title',)}
     list_editable = ['is_featured']
     ordering = ['start_date']
@@ -69,10 +79,7 @@ class EventAdmin(admin.ModelAdmin):
             'fields': ('title', 'slug', 'description', 'featured_image', 'featured_image_alt', 'tags')
         }),
         ('Date & Location', {
-            'fields': ('start_date', 'end_date', 'location', 'address')
-        }),
-        ('Registration', {
-            'fields': ('registration_required', 'registration_link', 'max_participants', 'price')
+            'fields': ('start_date', 'end_date', 'city', 'address', 'price', 'event_type')
         }),
         ('Display Settings', {
             'fields': ('is_featured',)
@@ -91,7 +98,6 @@ class EventAdmin(admin.ModelAdmin):
             return format_html('<span style="color: red;">Past</span>')
     event_status.short_description = 'Status'
 
-@admin.register(AboutSection)
 class AboutSectionAdmin(admin.ModelAdmin):
     list_display = ['section_title', 'order', 'is_active', 'created_at']
     list_filter = ['is_active', 'created_at']
@@ -109,7 +115,6 @@ class AboutSectionAdmin(admin.ModelAdmin):
     )
 
 # Keep the existing ContactMessage and ContactInfo admin classes...
-@admin.register(ContactMessage)
 class ContactMessageAdmin(admin.ModelAdmin):
     list_display = ['name', 'email', 'subject', 'priority', 'is_read', 'is_replied', 'created_at']
     list_filter = ['priority', 'is_read', 'is_replied', 'created_at']
@@ -131,7 +136,6 @@ class ContactMessageAdmin(admin.ModelAdmin):
         }),
     )
 
-@admin.register(ContactInfo)
 class ContactInfoAdmin(admin.ModelAdmin):
     list_display = ['organization_name', 'email', 'phone', 'is_active']
     list_editable = ['is_active']
@@ -153,6 +157,19 @@ class ContactInfoAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+# Register the contact proxies under a separate "contact" app section so they
+# appear grouped as their own section in the admin index.
+try:
+    admin.site.register(ContactInfoProxy, ContactInfoAdmin)
+except Exception:
+    pass
+
+try:
+    admin.site.register(ContactMessageProxy, ContactMessageAdmin)
+except Exception:
+    pass
 
 @admin.register(NewsPostGallery)
 class NewsPostGalleryAdmin(admin.ModelAdmin):

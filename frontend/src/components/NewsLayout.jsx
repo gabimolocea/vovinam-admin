@@ -13,7 +13,7 @@ const NewsLayout = () => {
           transition: 'margin-left 0.3s ease',
         }}
       >
-        <Container maxWidth="xl" sx={{ py: 3 }}>
+        <Container>
           <Outlet />
         </Container>
       </Box>

@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models import F
+from django.core.exceptions import ValidationError
 from django.contrib import admin
 from django.contrib.auth.models import AbstractUser
 from datetime import date, timedelta
@@ -50,6 +52,15 @@ class User(AbstractUser):
     @property
     def is_supporter(self):
         return self.role == 'supporter'
+
+
+# Proxy model so the custom User appears under Django's 'auth' app section in admin
+class UserProxy(User):
+    class Meta:
+        proxy = True
+        app_label = 'auth'
+        verbose_name = 'User'
+        verbose_name_plural = 'Users'
     
     @property
     def has_pending_athlete_profile(self):
@@ -58,6 +69,23 @@ class User(AbstractUser):
     @property
     def has_approved_athlete_profile(self):
         return hasattr(self, 'athlete') and self.athlete is not None
+
+
+# Proxy model to show the landing Event under the API section in Django admin
+try:
+    # Import here to avoid circular import issues during migrations
+    from landing.models import Event as LandingEvent
+
+    class EventProxy(LandingEvent):
+        class Meta:
+            proxy = True
+            app_label = 'api'
+            verbose_name = 'Event'
+            verbose_name_plural = 'Events'
+except Exception:
+    # During some migration or import-time operations the landing app
+    # may not be fully importable; silently skip proxy creation in that case.
+    pass
 
 class City(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -400,10 +428,32 @@ class GradeHistory(models.Model):
     grade = models.ForeignKey(Grade, on_delete=models.CASCADE)
     obtained_date = models.DateField(auto_now_add=True)  # Date when the grade was obtained
     level = models.CharField(max_length=10, choices=LEVEL_CHOICES, default='good')  # Dropdown for level
-    exam_date = models.DateField(blank=True, null=True)  # Date of the exam
-    exam_place = models.CharField(max_length=100, blank=True, null=True)  # Place of the exam
-    technical_director = models.CharField(max_length=100, blank=True, null=True)  # Technical director of the exam
-    president = models.CharField(max_length=100, blank=True, null=True)  # President of the exam
+    # Link GradeHistory to an Event (optional). Use landing.Event model which is part of the landing app.
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='grade_histories',
+        help_text='Optional event associated with this grade exam'
+    )
+    # exam_place removed
+    # New explicit examiners: allow selecting from all athletes
+    examiner_1 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='grades_as_examiner1'
+    )
+    examiner_2 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='grades_as_examiner2'
+    )
+    # President field removed; not used anymore
     
     # Athlete self-submission fields
     submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
@@ -431,6 +481,52 @@ class GradeHistory(models.Model):
         elif not self.submitted_by_athlete:
             self.status = 'approved'
         super().save(*args, **kwargs)
+
+        # Ensure the seminar M2M stays in sync: add athlete to seminar.athletes when a participation exists
+        try:
+            if self.seminar and self.athlete:
+                # Use add() which is safe if already present
+                self.seminar.athletes.add(self.athlete)
+        except Exception:
+            # Don't let auxiliary M2M sync failures block the main save
+            pass
+
+    def clean(self):
+        """Validate that examiners (if provided) are marked as coaches."""
+        errors = {}
+        if self.examiner_1 is not None and not getattr(self.examiner_1, 'is_coach', False):
+            errors['examiner_1'] = 'Examiner 1 must be an athlete with is_coach=True.'
+        if self.examiner_2 is not None and not getattr(self.examiner_2, 'is_coach', False):
+            errors['examiner_2'] = 'Examiner 2 must be an athlete with is_coach=True.'
+        # Prevent duplicate grade submissions for same athlete+grade
+        try:
+            if getattr(self, 'athlete', None) and getattr(self, 'grade', None):
+                qs = GradeHistory.objects.filter(athlete=self.athlete, grade=self.grade)
+                if self.pk:
+                    qs = qs.exclude(pk=self.pk)
+                if qs.exists():
+                    errors['grade'] = 'An entry for this athlete and grade already exists.'
+        except Exception:
+            # If GradeHistory isn't fully available yet (migration timings), skip duplicate check
+            pass
+        if errors:
+            raise ValidationError(errors)
+
+    def delete(self, *args, **kwargs):
+        """When a participation is removed, remove the athlete from the seminar M2M
+        only if there are no other participation records linking them to the seminar.
+        """
+        seminar = self.seminar
+        athlete = self.athlete
+        super().delete(*args, **kwargs)
+        try:
+            if seminar and athlete:
+                exists = TrainingSeminarParticipation.objects.filter(athlete=athlete, seminar=seminar).exists()
+                if not exists:
+                    seminar.athletes.remove(athlete)
+        except Exception:
+            # Ignore M2M cleanup errors
+            pass
     
     def approve(self, admin_user, notes=''):
         """Approve the athlete-submitted grade"""
@@ -702,6 +798,15 @@ class TrainingSeminarParticipation(models.Model):
     reviewed_date = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_seminar_participations')
     admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
+    # New nullable FK to Landing.Event for staged migration to Events
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='seminar_participations',
+        help_text='Linked Event after migration (nullable, added for staged migration)'
+    )
     
     class Meta:
         unique_together = ('athlete', 'seminar')
@@ -848,6 +953,8 @@ class Category(models.Model):
 
     name = models.CharField(max_length=100)
     competition = models.ForeignKey('Competition', on_delete=models.CASCADE, related_name='categories')
+    # New: link category to landing.Event (migrate data from Competition -> Event)
+    event = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='categories', null=True, blank=True)
     type = models.CharField(max_length=20, choices=CATEGORY_TYPE_CHOICES, default='solo')
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixt')
     athletes = models.ManyToManyField('Athlete', through='CategoryAthlete', related_name='categories', blank=True)
@@ -926,7 +1033,20 @@ class Category(models.Model):
 
 
     def __str__(self):
-        return f"{self.name} ({self.competition.name})"
+        # Prefer an associated Event (new model) if present; fall back to legacy Competition
+        associated = getattr(self, 'event', None) or getattr(self, 'competition', None)
+        assoc_name = None
+        if associated is not None:
+            assoc_name = getattr(associated, 'name', None) or getattr(associated, 'title', None)
+        return f"{self.name} ({assoc_name or 'N/A'})"
+
+    @property
+    def event_or_competition(self):
+        """
+        Compatibility helper: return the linked Event if present, otherwise the legacy Competition.
+        Callers should use this to avoid repeatedly checking both fields while we migrate data.
+        """
+        return self.event if getattr(self, 'event', None) else self.competition
 
 
 class Match(models.Model):
@@ -1035,6 +1155,22 @@ class CategoryAthleteScore(models.Model):
     )
     team_members = models.ManyToManyField('Athlete', blank=True, related_name='team_results', help_text='Team members (including submitter for team results)')
     team_name = models.CharField(max_length=200, blank=True, null=True, help_text='Optional team name')
+
+    # Backwards-compatibility: some scripts/tests use `result_type` as the field name.
+    # Provide a manager that annotates `result_type` and accept `result_type` in __init__.
+    class _CompatManager(models.Manager):
+        def get_queryset(self):
+            # annotate a virtual `result_type` column equal to the `type` field so filters like
+            # .filter(result_type='teams') work in legacy scripts/tests
+            return super().get_queryset().annotate(result_type=F('type'))
+
+    objects = _CompatManager()
+
+    def __init__(self, *args, **kwargs):
+        # map legacy kwarg `result_type` to the actual `type` field
+        if 'result_type' in kwargs and 'type' not in kwargs:
+            kwargs['type'] = kwargs.pop('result_type')
+        super().__init__(*args, **kwargs)
     
     # Athlete self-submission fields
     submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
@@ -1386,122 +1522,10 @@ class Group(models.Model):
     def __str__(self):
         return f"{self.name} ({self.competition.name})"
 
-
-
-class FrontendTheme(models.Model):
-    """
-    Frontend theme configuration for managing design tokens from Django admin.
-    Stores comprehensive theme settings including colors, typography, spacing, and component styles.
-    """
-    name = models.CharField(max_length=100, default='default', unique=True, help_text="Theme name (e.g., 'default', 'dark', 'light')")
-    is_active = models.BooleanField(default=False, help_text="Set as the active theme for the frontend")
-    
-    # Color Settings
-    primary_color = models.CharField(max_length=7, default='#0d47a1', help_text="Primary brand color (hex)")
-    primary_light = models.CharField(max_length=7, default='#5e7ce2', help_text="Light variant of primary color")
-    primary_dark = models.CharField(max_length=7, default='#002171', help_text="Dark variant of primary color")
-    secondary_color = models.CharField(max_length=7, default='#f50057', help_text="Secondary accent color")
-    background_default = models.CharField(max_length=7, default='#f5f5f5', help_text="Default background color")
-    background_paper = models.CharField(max_length=7, default='#ffffff', help_text="Paper/card background color")
-    text_primary = models.CharField(max_length=7, default='#212121', help_text="Primary text color")
-    text_secondary = models.CharField(max_length=7, default='#757575', help_text="Secondary text color")
-    
-    # Typography Settings
-    font_family = models.CharField(max_length=200, default='BeVietnam, Roboto, Helvetica, Arial, sans-serif', help_text="Font family stack")
-    font_size_base = models.IntegerField(default=14, help_text="Base font size in pixels")
-    font_weight_normal = models.IntegerField(default=400, help_text="Normal font weight")
-    font_weight_medium = models.IntegerField(default=500, help_text="Medium font weight")
-    font_weight_bold = models.IntegerField(default=700, help_text="Bold font weight")
-    
-    # Layout Settings
-    border_radius = models.IntegerField(default=8, help_text="Default border radius in pixels")
-    spacing_unit = models.IntegerField(default=8, help_text="Base spacing unit in pixels")
-    
-    # Component Settings
-    button_border_radius = models.IntegerField(default=8, help_text="Button border radius")
-    card_elevation = models.IntegerField(default=2, help_text="Card shadow elevation")
-    table_row_hover = models.CharField(max_length=7, default='#f5f5f5', help_text="Table row hover color")
-    
-    # Advanced JSON settings for complex customizations
-    custom_tokens = models.JSONField(default=dict, blank=True, help_text="Advanced custom theme tokens (JSON format)")
-    
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-is_active', 'name']
-        verbose_name = "Frontend Theme"
-        verbose_name_plural = "Frontend Themes"
-
-    def __str__(self):
-        active_indicator = " (Active)" if self.is_active else ""
-        return f"{self.name}{active_indicator}"
-    
-    def save(self, *args, **kwargs):
-        # Ensure only one theme is active at a time
-        if self.is_active:
-            FrontendTheme.objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
-        super().save(*args, **kwargs)
-    
-    @property
-    def tokens(self):
-        """Generate theme tokens dictionary for frontend consumption"""
-        return {
-            'colors': {
-                'primary': self.primary_color,
-                'primaryLight': self.primary_light,
-                'primaryDark': self.primary_dark,
-                'secondary': self.secondary_color,
-                'neutral': {
-                    100: self.background_default,
-                    0: self.background_paper,
-                },
-                'text': {
-                    'primary': self.text_primary,
-                    'secondary': self.text_secondary,
-                }
-            },
-            'typography': {
-                'fontFamily': self.font_family,
-                'fontSize': {
-                    'base': self.font_size_base,
-                },
-                'fontWeight': {
-                    'normal': self.font_weight_normal,
-                    'medium': self.font_weight_medium,
-                    'bold': self.font_weight_bold,
-                }
-            },
-            'layout': {
-                'borderRadius': self.border_radius,
-                'spacing': self.spacing_unit,
-            },
-            'components': {
-                'button': {
-                    'borderRadius': self.button_border_radius,
-                },
-                'card': {
-                    'elevation': self.card_elevation,
-                },
-                'table': {
-                    'rowHover': self.table_row_hover,
-                }
-            },
-            'custom': self.custom_tokens,
-        }
-    
-    @classmethod
-    def get_active_theme(cls):
-        """Get the currently active theme"""
-        return cls.objects.filter(is_active=True).first()
-    
-    @classmethod
-    def get_active_tokens(cls):
-        """Get tokens from the active theme"""
-        active_theme = cls.get_active_theme()
-        if active_theme:
-            return active_theme.tokens
-        return {}
+ 
+# FrontendTheme model removed — dynamic theme management has been deleted.
+# The database migration that originally created the model remains; a
+# subsequent migration will drop the table when applied.
 
 # AthleteProfile and AthleteProfileActivity models removed - functionality consolidated into Athlete and AthleteActivity models
 

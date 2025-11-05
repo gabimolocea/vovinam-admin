@@ -23,13 +23,13 @@ router.register('grade-histories', GradeHistoryViewSet, basename='grade-history'
 router.register('medical-visas', MedicalVisaViewSet, basename='medical-visa')
 router.register('training-seminars', TrainingSeminarViewSet, basename='training-seminar')
 router.register('groups', GroupViewSet, basename='group')
-router.register('frontend-themes', FrontendThemeViewSet, basename='frontend-theme')
 router.register('category-athlete-score', CategoryAthleteScoreViewSet, basename='category-athlete-score')
 router.register('category-score-activity', CategoryScoreActivityViewSet, basename='category-score-activity')
 router.register('notifications', NotificationViewSet, basename='notification')
 router.register('notification-settings', NotificationSettingsViewSet, basename='notification-settings')
 router.register('grade-submissions', GradeHistorySubmissionViewSet, basename='grade-submission')
 router.register('seminar-submissions', TrainingSeminarParticipationViewSet, basename='seminar-submission')
+router.register('coaches', CoachesViewSet, basename='coach')
 # team-scores endpoint deprecated - use category-athlete-score with type='teams' filter
 
 
@@ -48,6 +48,8 @@ urlpatterns = [
     path('auth/profile-enhanced/', views.UserProfileView.as_view(), name='profile-enhanced'),
     path('athlete-profile/my-profile/', MyAthleteProfileView.as_view(), name='my-athlete-profile'),
     path('admin-approvals/pending/', PendingApprovalsView.as_view(), name='pending-approvals'),
+    # Simple public athlete detail endpoint (stable URL for frontend)
+    path('athletes/<int:pk>/', views.athlete_detail, name='athlete-detail-public'),
     
     # Reference data endpoints (non-conflicting with router)
     path('sports/', views.sports_list, name='sports-list'),

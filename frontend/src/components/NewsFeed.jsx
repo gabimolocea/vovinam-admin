@@ -7,22 +7,21 @@ import {
   PlusIcon,
   ImageIcon,
   TagIcon,
-  StarIcon,
-  SearchIcon
+  StarIcon
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader } from './ui/card';
 import AxiosInstance from './Axios';
 import { useAuth } from '../contexts/AuthContext';
+import NewsCarousel from './NewsCarousel';
+import NewsSidebar from './NewsSidebar';
 
 const NewsFeed = () => {
   const [news, setNews] = useState([]);
+  const [featuredNews, setFeaturedNews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredNews, setFilteredNews] = useState([]);
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -30,23 +29,16 @@ const NewsFeed = () => {
     fetchNews();
   }, []);
 
-  useEffect(() => {
-    if (searchTerm) {
-      const filtered = news.filter(post =>
-        post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        post.excerpt.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (post.tags && post.tags.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-      setFilteredNews(filtered);
-    } else {
-      setFilteredNews(news);
-    }
-  }, [searchTerm, news]);
-
   const fetchNews = async () => {
     try {
       const response = await AxiosInstance.get('landing/news/');
-      setNews(response.data.results || response.data);
+      const allNews = response.data.results || response.data;
+      
+      // Separate featured news for carousel, but keep all news in main feed
+      const featured = allNews.filter(post => post.featured);
+      
+      setFeaturedNews(featured);
+      setNews(allNews); // Show ALL news in the main feed
       setLoading(false);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to fetch news');
@@ -102,7 +94,7 @@ const NewsFeed = () => {
         <div className="max-w-7xl mx-auto">
           <div className="animate-pulse space-y-6">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
+              <div key={i} className="bg-white rounded-lg p-6 border border-gray-800 shadow-sm">
                 <div className="h-6 bg-gray-200 rounded mb-4"></div>
                 <div className="h-4 bg-gray-200 rounded mb-2"></div>
                 <div className="h-4 bg-gray-200 rounded w-3/4"></div>
@@ -117,7 +109,7 @@ const NewsFeed = () => {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-8xl mx-auto">
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <div className="text-red-700 text-center">
               <p className="text-lg font-medium mb-2">Error Loading News</p>
@@ -136,65 +128,35 @@ const NewsFeed = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header - Reddit style */}
-      <div className="bg-white border-b border-gray-300">
-        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 sm:w-8 sm:h-8 bg-orange-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-xs sm:text-sm">N</span>
-                </div>
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900">r/News</h1>
-              </div>
-            </div>
-            {user?.is_admin && (
-              <Button 
-                onClick={handleCreateNews}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-medium text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-full"
-              >
-                <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                <span className="hidden sm:inline">Create Post</span>
-                <span className="sm:hidden">Post</span>
-              </Button>
-            )}
-          </div>
+    <div className="max-w-7xl mx-auto">
+      {/* Featured News Carousel - Full Width */}
+      {featuredNews.length > 0 && (
+        <div className="mb-6">
+          <NewsCarousel 
+            featuredNews={featuredNews}
+            onNewsClick={handleViewNews}
+          />
         </div>
-      </div>
+      )}
 
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4">
-        {/* Search Bar - Reddit style */}
-        <div className="mb-4">
-          <div className="relative">
-            <SearchIcon className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
-            <Input
-              placeholder="Search r/News"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 sm:pl-12 pr-4 py-2 sm:py-3 w-full bg-gray-50 border border-gray-300 rounded-full text-sm sm:text-base text-gray-900 placeholder-gray-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:bg-white"
-            />
-          </div>
-        </div>
+        {/* Two Column Layout */}
+        <div className="flex gap-6">
+          {/* Main Content */}
+          <div className="flex-1">
 
         {/* News Grid */}
-        {filteredNews.length === 0 ? (
+        {news.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-gray-600 mb-4">
               <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
               </svg>
             </div>
             <p className="text-gray-600 text-lg">No news articles found</p>
-            {searchTerm && (
-              <p className="text-gray-500 text-sm mt-2">
-                Try adjusting your search terms
-              </p>
-            )}
           </div>
         ) : (
           <div className="space-y-2">
-            {filteredNews.map((post) => (
+            {news.map((post) => (
               <div key={post.id} className="bg-white border border-gray-300 rounded-md hover:border-gray-400 transition-colors cursor-pointer overflow-hidden">
                 <div className="flex flex-col sm:flex-row">
                   {/* Vote Section - Hidden on mobile, visible on desktop */}
@@ -336,8 +298,14 @@ const NewsFeed = () => {
             </div>
           )
         }
+          </div>
+
+          {/* Right Sidebar */}
+          <div className="hidden lg:block">
+            <NewsSidebar />
+          </div>
+        </div>
       </div>
-    </div>
   );
 };
 

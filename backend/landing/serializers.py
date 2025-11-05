@@ -53,14 +53,15 @@ class NewsPostListSerializer(serializers.ModelSerializer):
 class EventSerializer(serializers.ModelSerializer):
     is_upcoming = serializers.ReadOnlyField()
     is_past = serializers.ReadOnlyField()
+    city_name = serializers.CharField(source='city.name', read_only=True)
+    event_type = serializers.CharField(read_only=False)
     
     class Meta:
         model = Event
         fields = [
             'id', 'title', 'slug', 'description', 'start_date', 'end_date',
-            'location', 'address', 'featured_image', 'featured_image_alt',
-            'is_featured', 'registration_required', 'registration_link',
-            'max_participants', 'price', 'tags', 'created_at', 'is_upcoming',
+            'city', 'city_name', 'event_type', 'address', 'featured_image', 'featured_image_alt',
+            'is_featured', 'price', 'tags', 'created_at', 'is_upcoming',
             'is_past', 'meta_title', 'meta_description', 'meta_keywords',
             'canonical_url', 'robots_index', 'robots_follow'
         ]
@@ -70,13 +71,14 @@ class EventListSerializer(serializers.ModelSerializer):
     """Lighter serializer for list views"""
     is_upcoming = serializers.ReadOnlyField()
     is_past = serializers.ReadOnlyField()
+    city_name = serializers.CharField(source='city.name', read_only=True)
     
     class Meta:
         model = Event
         fields = [
-            'id', 'title', 'slug', 'start_date', 'end_date', 'location',
+            'id', 'title', 'slug', 'start_date', 'end_date',
             'featured_image', 'featured_image_alt', 'is_featured',
-            'registration_required', 'price', 'tags', 'is_upcoming', 'is_past'
+            'city', 'city_name', 'event_type', 'price', 'tags', 'is_upcoming', 'is_past'
         ]
 
 class AboutSectionSerializer(serializers.ModelSerializer):
