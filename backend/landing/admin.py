@@ -18,13 +18,14 @@ class NewsPostGalleryInline(admin.TabularInline):
     fields = ['image', 'alt_text', 'caption', 'order']
     ordering = ['order']
 
-@admin.register(NewsPost)
 class NewsPostAdmin(admin.ModelAdmin):
     list_display = ['title', 'published', 'featured', 'author_name', 'gallery_count', 'created_at', 'updated_at']
     list_filter = ['published', 'featured', 'created_at', 'author']
     search_fields = ['title', 'content', 'excerpt', 'tags']
     prepopulated_fields = {'slug': ('title',)}
-    list_editable = ['published', 'featured']
+    # Inline editing on the changelist was removed to avoid the global
+    # "Save" button. Moderation and publication should be done via the
+    # object change form or admin actions instead of list_editable.
     ordering = ['-created_at']
     inlines = [NewsPostGalleryInline]
     
@@ -71,7 +72,9 @@ class EventAdmin(admin.ModelAdmin):
     search_fields = ['title', 'description', 'city__name', 'tags']
     autocomplete_fields = ('city',)
     prepopulated_fields = {'slug': ('title',)}
-    list_editable = ['is_featured']
+    # Removed inline editing for `is_featured` to avoid the changelist-wide
+    # "Save" button. Use the object change form or admin actions to toggle
+    # featured status instead.
     ordering = ['start_date']
     
     fieldsets = (
@@ -171,7 +174,6 @@ try:
 except Exception:
     pass
 
-@admin.register(NewsPostGallery)
 class NewsPostGalleryAdmin(admin.ModelAdmin):
     list_display = ['news_post', 'image_preview', 'alt_text', 'order', 'created_at']
     list_filter = ['news_post', 'created_at']
@@ -185,14 +187,16 @@ class NewsPostGalleryAdmin(admin.ModelAdmin):
     image_preview.short_description = 'Preview'
 
 
-@admin.register(NewsComment)
 class NewsCommentAdmin(admin.ModelAdmin):
     list_display = ['content_preview', 'author', 'news_post', 'is_reply', 'is_approved', 'created_at']
     list_filter = ['is_approved', 'created_at', 'news_post']
     search_fields = ['content', 'author__username', 'news_post__title']
-    list_editable = ['is_approved']
     ordering = ['-created_at']
     raw_id_fields = ['parent', 'news_post']
+    # Use admin actions for moderation instead of inline editable fields on
+    # the changelist (which require the Save button). Moderators can select
+    # rows and run the actions below.
+    actions = ['approve_comments', 'disapprove_comments']
     
     fieldsets = (
         ('Comment Information', {
@@ -214,3 +218,15 @@ class NewsCommentAdmin(admin.ModelAdmin):
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('author', 'news_post', 'parent')
+
+    def approve_comments(self, request, queryset):
+        """Mark selected comments as approved."""
+        updated = queryset.update(is_approved=True)
+        self.message_user(request, f"{updated} comment(s) approved.")
+    approve_comments.short_description = "Approve selected comments"
+
+    def disapprove_comments(self, request, queryset):
+        """Mark selected comments as not approved."""
+        updated = queryset.update(is_approved=False)
+        self.message_user(request, f"{updated} comment(s) disapproved.")
+    disapprove_comments.short_description = "Disapprove selected comments"

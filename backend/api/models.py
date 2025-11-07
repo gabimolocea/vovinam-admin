@@ -76,7 +76,7 @@ try:
     # Import here to avoid circular import issues during migrations
     from landing.models import Event as LandingEvent
 
-    class EventProxy(LandingEvent):
+    class Event(LandingEvent):
         class Meta:
             proxy = True
             app_label = 'api'
@@ -572,12 +572,16 @@ class GradeHistory(models.Model):
 
 
 # Yearly Medical Visa
-class MedicalVisa(models.Model):
-    HEALTH_STATUS_CHOICES = [
-        ('approved', 'Approved'),
-        ('denied', 'Denied'),
+
+
+
+# Unified Visa model (new) - covers both medical and annual visas.
+class Visa(models.Model):
+    VISA_TYPE_CHOICES = [
+        ('medical', 'Medical'),
+        ('annual', 'Annual'),
     ]
-    
+
     STATUS_CHOICES = [
         ('pending', 'Pending Approval'),
         ('approved', 'Approved'),
@@ -585,179 +589,60 @@ class MedicalVisa(models.Model):
         ('revision_required', 'Revision Required'),
     ]
 
-    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='medical_visas')
-    issued_date = models.DateField(blank=True, null=True)  # Renamed from 'date' to 'issued_date'
-    health_status = models.CharField(max_length=10, choices=HEALTH_STATUS_CHOICES, default='denied')  # Dropdown for health status
-    
-    # Athlete self-submission fields
-    submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
-    medical_document = models.FileField(upload_to='medical_documents/', null=True, blank=True, help_text='Medical examination document')
-    medical_image = models.ImageField(upload_to='medical_images/', null=True, blank=True, help_text='Medical certificate photo')
-    notes = models.TextField(blank=True, null=True, help_text='Additional notes about the medical examination')
-    
-    # Approval workflow fields
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved', help_text='Approval status (defaults to approved for admin submissions)')
+    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='visas')
+    visa_type = models.CharField(max_length=10, choices=VISA_TYPE_CHOICES)
+    issued_date = models.DateField(blank=True, null=True)
+
+    # Fields that may be used for either type
+    document = models.FileField(upload_to='visa_documents/', null=True, blank=True)
+    image = models.ImageField(upload_to='visa_images/', null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+
+    # Medical-specific status (optional)
+    health_status = models.CharField(max_length=10, choices=[('approved','Approved'),('denied','Denied')], null=True, blank=True)
+    # Annual-specific cached status
+    visa_status = models.CharField(max_length=15, blank=True, null=True)
+
+    # Approval workflow
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved')
     submitted_date = models.DateTimeField(auto_now_add=True)
     reviewed_date = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_medical_visas')
-    admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
-    
-    @property
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_visas')
+    admin_notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = 'Visa'
+        verbose_name_plural = 'Visas'
+
     def is_valid(self):
-        """
-        Determine if the medical visa is valid (within 6 months of the issued date).
-        """
-        if self.issued_date is None:  # Handle case where issued_date is None
+        """Return whether the visa is currently valid depending on type."""
+        if not self.issued_date:
             return False
-        expiration_date = self.issued_date + timedelta(days=180)  # 6 months validity
-        return date.today() <= expiration_date
-
-    def __str__(self):
-        status = "Available" if self.is_valid else "Expired"
-        health_status = dict(self.HEALTH_STATUS_CHOICES).get(self.health_status, "Unknown")
-        if self.submitted_by_athlete:
-            return f"Medical Visa for {self.athlete.first_name} {self.athlete.last_name} (Self-submitted: {self.status}) - {status} ({health_status})"
-        return f"Medical Visa for {self.athlete.first_name} {self.athlete.last_name} - {status} ({health_status})"
-    
-    def save(self, *args, **kwargs):
-        # If submitted by athlete, set status to pending
-        if self.submitted_by_athlete and not self.pk:
-            self.status = 'pending'
-        # If submitted by admin, set status to approved
-        elif not self.submitted_by_athlete:
-            self.status = 'approved'
-        super().save(*args, **kwargs)
-    
-    def approve(self, admin_user, notes=''):
-        """Approve the athlete-submitted medical visa"""
-        from django.utils import timezone
-        
-        self.status = 'approved'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-    
-    def reject(self, admin_user, notes=''):
-        """Reject the athlete-submitted medical visa"""
-        from django.utils import timezone
-        
-        self.status = 'rejected'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-    
-    def request_revision(self, admin_user, notes=''):
-        """Request revision of the athlete-submitted medical visa"""
-        from django.utils import timezone
-        
-        self.status = 'revision_required'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-
-
-# Annual Visa
-class AnnualVisa(models.Model):
-    VISA_STATUS_CHOICES = [
-        ('available', 'Available'),
-        ('expired', 'Expired'),
-        ('not_available', 'Not Available'),  # Default status
-    ]
-    
-    STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('revision_required', 'Revision Required'),
-    ]
-
-    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='annual_visas')
-    issued_date = models.DateField(blank=True, null=True)  # Date when the visa was issued
-    visa_status = models.CharField(max_length=15, choices=VISA_STATUS_CHOICES, default='not_available')  # Default status
-    
-    # Athlete self-submission fields
-    submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
-    visa_document = models.FileField(upload_to='visa_documents/', null=True, blank=True, help_text='Annual visa document')
-    visa_image = models.ImageField(upload_to='visa_images/', null=True, blank=True, help_text='Annual visa certificate photo')
-    notes = models.TextField(blank=True, null=True, help_text='Additional notes about the annual visa')
-    
-    # Approval workflow fields
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved', help_text='Approval status (defaults to approved for admin submissions)')
-    submitted_date = models.DateTimeField(auto_now_add=True)
-    reviewed_date = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_annual_visas')
-    admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
-
-    @property
-    def is_valid(self):
-        """
-        Determine if the annual visa is valid (within 12 months of the issued date).
-        """
-        if self.issued_date is None:  # Handle case where issued_date is None
-            return False
-        expiration_date = self.issued_date + timedelta(days=365)  # 12 months validity
-        return date.today() <= expiration_date
-
-    def update_visa_status(self):
-        """
-        Automatically update the visa status based on the issued date.
-        """
-        if self.issued_date:
-            self.visa_status = 'available' if self.is_valid else 'expired'
+        if self.visa_type == 'medical':
+            expiration = self.issued_date + timedelta(days=180)
         else:
-            self.visa_status = 'not_available'
+            expiration = self.issued_date + timedelta(days=365)
+        return date.today() <= expiration
 
     def save(self, *args, **kwargs):
-        """
-        Override save to automatically update the visa status before saving.
-        """
-        # If submitted by athlete, set status to pending
-        if self.submitted_by_athlete and not self.pk:
+        # Set default status based on submission origin
+        if getattr(self, 'submitted_by_athlete', False) and not self.pk:
             self.status = 'pending'
-        # If submitted by admin, set status to approved
-        elif not self.submitted_by_athlete:
+        elif not getattr(self, 'submitted_by_athlete', False):
             self.status = 'approved'
-            
-        self.update_visa_status()
+
+        # Update visa_status for annual visas
+        if self.visa_type == 'annual':
+            if self.issued_date:
+                self.visa_status = 'available' if self.is_valid() else 'expired'
+            else:
+                self.visa_status = 'not_available'
+
         super().save(*args, **kwargs)
 
     def __str__(self):
-        if self.submitted_by_athlete:
-            return f"Annual Visa for {self.athlete.first_name} {self.athlete.last_name} (Self-submitted: {self.status}) - {self.visa_status.capitalize()}"
-        return f"Annual Visa for {self.athlete.first_name} {self.athlete.last_name} - {self.visa_status.capitalize()}"
-    
-    def approve(self, admin_user, notes=''):
-        """Approve the athlete-submitted annual visa"""
-        from django.utils import timezone
-        
-        self.status = 'approved'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-    
-    def reject(self, admin_user, notes=''):
-        """Reject the athlete-submitted annual visa"""
-        from django.utils import timezone
-        
-        self.status = 'rejected'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-    
-    def request_revision(self, admin_user, notes=''):
-        """Request revision of the athlete-submitted annual visa"""
-        from django.utils import timezone
-        
-        self.status = 'revision_required'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
+        status = 'Valid' if self.is_valid() else 'Expired'
+        return f"{self.get_visa_type_display()} Visa for {self.athlete} - {status}"
 
 
 # Training Seminars
@@ -810,11 +695,28 @@ class TrainingSeminarParticipation(models.Model):
     
     class Meta:
         unique_together = ('athlete', 'seminar')
+        verbose_name = 'Event participation'
+        verbose_name_plural = 'Event participations'
     
     def __str__(self):
+        # Prefer to describe the participation by the linked Event if present;
+        # fall back to the legacy TrainingSeminar name if `event` is not set.
+        target_name = None
+        try:
+            if getattr(self, 'event', None):
+                # landing.Event uses `title` for the human-readable name
+                target_name = getattr(self.event, 'title', None)
+        except Exception:
+            target_name = None
+        if not target_name:
+            try:
+                target_name = getattr(self.seminar, 'name', None)
+            except Exception:
+                target_name = 'Unknown Event'
+
         if self.submitted_by_athlete:
-            return f"{self.athlete.first_name} {self.athlete.last_name} - {self.seminar.name} (Self-submitted: {self.status})"
-        return f"{self.athlete.first_name} {self.athlete.last_name} - {self.seminar.name}"
+            return f"{self.athlete.first_name} {self.athlete.last_name} - {target_name} (Self-submitted: {self.status})"
+        return f"{self.athlete.first_name} {self.athlete.last_name} - {target_name}"
     
     def save(self, *args, **kwargs):
         # If submitted by athlete, set status to pending
@@ -866,6 +768,15 @@ class TrainingSeminarParticipation(models.Model):
         # Create notification for seminar participation revision request
         from .notification_utils import create_seminar_status_notification
         create_seminar_status_notification(self, 'revision_required', admin_user, notes)
+
+
+# Proxy model to present TrainingSeminarParticipation as EventParticipation
+# in the admin and API surface without changing the underlying table.
+class EventParticipation(TrainingSeminarParticipation):
+    class Meta:
+        proxy = True
+        verbose_name = 'Event participation'
+        verbose_name_plural = 'Event participations'
 
 class CategoryAthlete(models.Model):
     """

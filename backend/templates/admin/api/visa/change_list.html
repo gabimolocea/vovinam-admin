@@ -1,0 +1,31 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block object-tools %}
+        {{ block.super }}
+        <style>
+            /* Small layout-only styles for the Visa add-button group.
+               We intentionally do not override .addlink/.button colors so the
+               admin's default button styling is preserved. */
+            .visa-add-group {
+                display: inline-flex;
+                gap: 0.5rem;
+                align-items: center;
+                margin-left: 0.5rem;
+            }
+            /* Reduce visual noise on very small screens */
+            @media (max-width: 520px) {
+                .visa-add-group { flex-direction: column; gap: 0.25rem; }
+            }
+            /* Hide the default admin Add button on this changelist so our two
+               specialized Add buttons are the primary affordance. */
+            .change-list .object-tools .addlink:not(.medical):not(.annual) { display: none !important; }
+        </style>
+
+        <div class="object-tools">
+            <div class="visa-add-group" role="group" aria-label="Add visa shortcuts">
+                <a href="{% url 'admin:api_visa_add' %}?visa_type=medical" class="addlink medical button">{% trans "Add medical visa" %}</a>
+                <a href="{% url 'admin:api_visa_add' %}?visa_type=annual" class="addlink annual button">{% trans "Add annual visa" %}</a>
+            </div>
+        </div>
+{% endblock %}

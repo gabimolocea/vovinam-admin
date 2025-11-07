@@ -62,37 +62,6 @@ def reorder_app_list(app_list):
 
     app_list: an iterable of app objects from the admin context.
     """
-    from django.conf import settings
-
-    try:
-        preferred = list(getattr(settings, 'ADMIN_APP_ORDER', []))
-    except Exception:
-        preferred = []
-
-    # Build a mapping from app_label -> app object for quick lookup
-    mapping = {}
-    result = []
-    for app in app_list:
-        try:
-            key = getattr(app, 'app_label', None) or app.get('app_label')
-        except Exception:
-            key = None
-        mapping[key] = app
-
-    # Add apps in preferred order when present
-    added = set()
-    for label in preferred:
-        app = mapping.get(label)
-        if app:
-            result.append(app)
-            added.add(app)
-
-    # Add remaining apps sorted by display name
-    leftovers = [a for a in app_list if a not in added]
-    try:
-        leftovers_sorted = sorted(leftovers, key=lambda a: getattr(a, 'name', a.get('name')))
-    except Exception:
-        leftovers_sorted = leftovers
-
-    result.extend(leftovers_sorted)
-    return result
+    # No-op: custom ADMIN_APP_ORDER removed. Return the incoming app_list so
+    # Django's default ordering is used by the admin templates.
+    return app_list

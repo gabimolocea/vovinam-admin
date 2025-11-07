@@ -428,10 +428,22 @@ class MatchViewSet(viewsets.ViewSet):
     
 class AnnualVisaViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminOrReadOnly]
-    serializer_class = AnnualVisaSerializer
+    # Use the unified Visa model under the hood (filter by type) so the
+    # endpoint continues to work while we migrate data into Visa.
+    serializer_class = None  # set in __init__ below
 
     def get_queryset(self):
-        return AnnualVisa.objects.all()
+        from .models import Visa
+        return Visa.objects.filter(visa_type='annual')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Dynamically set serializer to VisaSerializer to avoid circular imports on startup
+        try:
+            from .serializers import VisaSerializer
+            self.serializer_class = VisaSerializer
+        except Exception:
+            self.serializer_class = AnnualVisaSerializer
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -533,10 +545,20 @@ class GradeHistoryViewSet(viewsets.ViewSet):
 
 class MedicalVisaViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminOrReadOnly]
-    serializer_class = MedicalVisaSerializer
+    # Proxy to the unified Visa model using visa_type='medical'
+    serializer_class = None
 
     def get_queryset(self):
-        return MedicalVisa.objects.all()
+        from .models import Visa
+        return Visa.objects.filter(visa_type='medical')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        try:
+            from .serializers import VisaSerializer
+            self.serializer_class = VisaSerializer
+        except Exception:
+            self.serializer_class = MedicalVisaSerializer
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -1714,7 +1736,8 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
             )
         except IntegrityError:
             # In case of a race or missed validation, return a friendly 400
-            raise ValidationError({'seminar': 'You have already submitted participation for this seminar.'})
+            # Use 'event' key as the canonical target now that we prefer events.
+            raise ValidationError({'event': 'You have already submitted participation for this event.'})
     
     def get_queryset(self):
         """Return seminar participations for the current user if athlete, all if admin"""
@@ -1740,10 +1763,10 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
 
         # Default behaviour: if the user has an athlete profile, return their participations.
         if hasattr(self.request.user, 'athlete'):
-            return TrainingSeminarParticipation.objects.filter(athlete=self.request.user.athlete).select_related('event', 'seminar')
+            return TrainingSeminarParticipation.objects.filter(athlete=self.request.user.athlete).select_related('event')
         # Admins who didn't specify an athlete get all participations
         if self.request.user.is_authenticated and getattr(self.request.user, 'role', None) == 'admin':
-            return TrainingSeminarParticipation.objects.all().select_related('event', 'seminar', 'athlete')
+            return TrainingSeminarParticipation.objects.all().select_related('event', 'athlete')
         return TrainingSeminarParticipation.objects.none()
     
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])

@@ -248,9 +248,24 @@ class AnnualVisaSerializer(serializers.ModelSerializer):
     is_valid = serializers.ReadOnlyField()   # Include the computed property
 
     class Meta:
-        model = AnnualVisa
+        # Use unified Visa model for admin/API compatibility
+        model = Visa
         fields = ['id', 'athlete', 'issued_date', 'visa_status', 'is_valid']
         read_only_fields = ['is_valid']
+
+
+class VisaSerializer(serializers.ModelSerializer):
+    is_valid = serializers.SerializerMethodField()
+
+    class Meta:
+        model = None  # set dynamically where used
+        fields = ['id', 'athlete', 'visa_type', 'issued_date', 'document', 'image', 'health_status', 'visa_status', 'is_valid', 'status', 'submitted_date']
+
+    def get_is_valid(self, obj):
+        try:
+            return obj.is_valid() if hasattr(obj, 'is_valid') else False
+        except Exception:
+            return False
 
 class CategoryAthleteSerializer(serializers.ModelSerializer):
     athlete = AthleteSerializer(read_only=True)  # Serialize the related Athlete object
@@ -402,7 +417,8 @@ class MedicalVisaSerializer(serializers.ModelSerializer):
     is_valid = serializers.BooleanField(read_only=True)  # Include the computed property
 
     class Meta:
-        model = MedicalVisa
+        # Use unified Visa model for admin/API compatibility
+        model = Visa
         fields = ['id', 'athlete', 'issued_date', 'health_status', 'is_valid']
         read_only_fields = ['is_valid']
 
@@ -478,7 +494,7 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
     """Serializer for athlete training seminar participation submissions with approval workflow"""
     athlete = serializers.PrimaryKeyRelatedField(read_only=True)
     athlete_name = serializers.CharField(source='athlete.__str__', read_only=True)
-    seminar_name = serializers.CharField(source='seminar.name', read_only=True)
+    seminar_name = serializers.SerializerMethodField(read_only=True)
     event = serializers.PrimaryKeyRelatedField(read_only=True)
     event_name = serializers.SerializerMethodField(read_only=True)
     seminar_details = serializers.SerializerMethodField()
@@ -487,7 +503,7 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
     class Meta:
         model = TrainingSeminarParticipation
         fields = [
-            'id', 'athlete', 'athlete_name', 'seminar', 'seminar_name', 'event', 'event_name', 'seminar_details',
+            'id', 'athlete', 'athlete_name', 'seminar_name', 'event', 'event_name', 'seminar_details',
             'submitted_by_athlete', 'participation_certificate', 'participation_document', 'notes',
             'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name', 'admin_notes'
         ]
@@ -496,8 +512,8 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
     def get_seminar_details(self, obj):
         """Get detailed seminar information"""
         # Prefer migrated Event when available
-        if getattr(obj, 'event', None):
-            ev = obj.event
+        ev = getattr(obj, 'event', None)
+        if ev:
             return {
                 'id': ev.pk,
                 'name': ev.title,
@@ -507,17 +523,27 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
                 'city': ev.city.name if ev.city else None,
                 'event_type': getattr(ev, 'event_type', None),
             }
-        # Fallback to legacy TrainingSeminar
-        return {
-            'name': obj.seminar.name,
-            'start_date': obj.seminar.start_date,
-            'end_date': obj.seminar.end_date,
-            'place': obj.seminar.place
-        }
+        # Fallback to legacy TrainingSeminar when present
+        ts = getattr(obj, 'seminar', None)
+        if ts:
+            return {
+                'name': getattr(ts, 'name', None),
+                'start_date': getattr(ts, 'start_date', None),
+                'end_date': getattr(ts, 'end_date', None),
+                'place': getattr(ts, 'place', None),
+            }
+        return None
 
     def get_event_name(self, obj):
         if getattr(obj, 'event', None):
             return obj.event.title
+        return None
+
+    def get_seminar_name(self, obj):
+        # keep helper for backward compatibility: prefer legacy seminar name if present
+        ts = getattr(obj, 'seminar', None)
+        if ts:
+            return getattr(ts, 'name', None)
         return None
     
     def validate(self, attrs):

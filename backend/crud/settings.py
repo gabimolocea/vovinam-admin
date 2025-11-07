@@ -28,9 +28,6 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-# Admin app ordering used by the admin index override. Adjust to customize
-# app placement. Example: ['landing', 'api', 'auth']
-ADMIN_APP_ORDER = ['landing', 'api', 'auth', 'contact']
 
 
 # Application definition
@@ -48,6 +45,7 @@ INSTALLED_APPS = [
     'django_filters',
     'rest_framework',
     'rest_framework_simplejwt',
+    'news',
     'landing',
     'contact',
     'debug_toolbar',

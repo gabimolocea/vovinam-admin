@@ -13,7 +13,6 @@ from .models import (
     AthleteActivity,
     CategoryScoreActivity,
     SupporterAthleteRelation,
-    MedicalVisa,
     TrainingSeminar,
     TrainingSeminarParticipation,
     Grade,
@@ -21,7 +20,6 @@ from .models import (
     Title,
     FederationRole,
     Competition,
-    AnnualVisa,
     Category,
     Team,
     CategoryTeam,
@@ -43,31 +41,8 @@ ADMIN_MODEL_GROUPS = {
     'Events & Content': ['Event', 'NewsPost'],
     'Administration': ['City', 'Title', 'FederationRole'],
 }
-# Move landing.Event into the API admin section by using a proxy model.
-try:
-    from landing.models import Event as LandingEvent
-    from landing.admin import EventAdmin as LandingEventAdmin
-    from .models import EventProxy
-
-    # If the landing Event was already registered, unregister it so we don't show
-    # it twice in the admin. Then register the proxy under the `api` app label.
-    try:
-        admin.site.unregister(LandingEvent)
-    except Exception:
-        # Not registered yet or already unregistered - ignore
-        pass
-
-    try:
-        admin.site.register(EventProxy, LandingEventAdmin)
-    except Exception:
-        # If registration fails for any reason, fail silently here; admin
-        # autodiscovery or migrations may import at times when registration
-        # is not possible. This keeps startup stable.
-        pass
-except Exception:
-    # If landing isn't importable at module import time (migrations, tests),
-    # just skip moving the admin registration.
-    pass
+# NOTE: Event proxy registration moved further down after inlines are defined
+# so we can inject participation inlines into the Event admin. See below.
 
 
 class AthleteInline(admin.TabularInline):
@@ -138,10 +113,20 @@ class GradeHistoryInline(admin.TabularInline):
     model = GradeHistory
     fk_name = 'athlete'  # There are two FKs to Athlete on GradeHistory; ensure inline uses the athlete FK
     extra = 0  # Display only existing entries
-    readonly_fields = ('obtained_date',)  # Make obtained_date read-only
-    show_change_link = True  # Enable link to open the GradeHistory add/edit page
-    # Enable autocomplete for examiner fields in the inline and restrict to coaches
-    autocomplete_fields = ('examiner_1', 'examiner_2')
+    # Make the inline read-only when displayed on the Athlete page. Editing
+    # grade history should be done in the dedicated GradeHistory admin page.
+    fields = ('grade', 'obtained_date', 'level', 'event', 'examiner_1', 'examiner_2', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by')
+    readonly_fields = ('grade', 'obtained_date', 'level', 'event', 'examiner_1', 'examiner_2', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by')
+    show_change_link = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """
@@ -182,33 +167,131 @@ class GradeHistoryAdminForm(forms.ModelForm):
                 raise ValidationError({'grade': message})
         return cleaned
 
-# Inline MedicalVisa for Athlete
-class MedicalVisaInline(admin.TabularInline):
-    model = MedicalVisa
-    extra = 0  # Display only existing entries
-    fields = ('issued_date', 'health_status', 'medical_document', 'medical_image', 'notes', 'visa_status')  # Include medical certificate fields
-    readonly_fields = ('visa_status',)  # Make visa status read-only
+
+# Register unified Visa model admin
+try:
+    from .models import Visa
+
+    class VisaAdminForm(forms.ModelForm):
+        class Meta:
+            model = Visa
+            fields = '__all__'
+
+        def clean(self):
+            cleaned = super().clean()
+            visa_type = cleaned.get('visa_type')
+            health = cleaned.get('health_status')
+            # If not a medical visa, clear any provided health_status to avoid accidental data retention
+            if visa_type != 'medical' and health:
+                cleaned['health_status'] = None
+            # If medical visa, require health_status
+            if visa_type == 'medical' and not cleaned.get('health_status'):
+                raise ValidationError({'health_status': 'Health status is required for medical visas.'})
+            return cleaned
+    @admin.register(Visa)
+    class VisaAdmin(admin.ModelAdmin):
+        form = VisaAdminForm
+        list_display = ('athlete', 'visa_type', 'issued_date', 'visa_status', 'status', 'submitted_date')
+        # Use a custom change list template so we can expose two dedicated
+        # "Add" buttons: one for Medical and one for Annual visas. These
+        # buttons link to the add form with ?visa_type=<type> so the form
+        # is pre-configured.
+        change_list_template = 'admin/api/visa/change_list.html'
+        search_fields = ('athlete__first_name', 'athlete__last_name')
+        list_filter = ('visa_type', 'status')
+        readonly_fields = ('visa_status',)
+
+        class Media:
+            # Include a tiny admin JS to show/hide the medical-only field `health_status`
+            js = ('/static/api/js/visa_admin.js',)
+
+        def visa_status(self, obj):
+            try:
+                return obj.visa_status if obj.visa_type == 'annual' else (obj.health_status or '')
+            except Exception:
+                return ''
+        visa_status.short_description = 'Status'
+
+        def get_changeform_initial_data(self, request):
+            """Prefill visa_type (and optionally athlete) from query params.
+
+            This allows links such as
+            /admin/api/visa/add/?visa_type=medical&athlete=123 to prefill fields.
+            """
+            initial = super().get_changeform_initial_data(request) or {}
+            visa_type = request.GET.get('visa_type')
+            athlete_id = request.GET.get('athlete')
+            if visa_type:
+                initial['visa_type'] = visa_type
+            if athlete_id:
+                initial['athlete'] = athlete_id
+            return initial
+
+        def get_form(self, request, obj=None, **kwargs):
+            """Return a ModelForm class with visa_type disabled when the add
+            form is opened via the quick-add buttons (i.e. ?visa_type=...).
+            Disabling the field makes it read-only in the UI; we ensure the
+            value is saved in save_model (disabled fields aren't POSTed).
+            """
+            form = super().get_form(request, obj, **kwargs)
+            # Only apply on the add form (obj is None)
+            if obj is None:
+                visa_type = request.GET.get('visa_type')
+                try:
+                    # Validate the provided type against model choices
+                    valid_choices = [c[0] for c in Visa.VISA_TYPE_CHOICES]
+                except Exception:
+                    valid_choices = []
+                if visa_type and visa_type in valid_choices:
+                    if 'visa_type' in getattr(form, 'base_fields', {}):
+                        # Set initial and disable the widget so it's read-only
+                        form.base_fields['visa_type'].initial = visa_type
+                        try:
+                            form.base_fields['visa_type'].disabled = True
+                        except Exception:
+                            form.base_fields['visa_type'].widget.attrs['disabled'] = 'disabled'
+            return form
+
+        def save_model(self, request, obj, form, change):
+            """Ensure visa_type from the querystring is preserved on save
+            when the field was rendered disabled (and therefore omitted from
+            POST data).
+            """
+            if not change:
+                visa_type = request.GET.get('visa_type')
+                try:
+                    valid_choices = [c[0] for c in Visa.VISA_TYPE_CHOICES]
+                except Exception:
+                    valid_choices = []
+                if visa_type and visa_type in valid_choices:
+                    obj.visa_type = visa_type
+            super().save_model(request, obj, form, change)
+except Exception:
+    # Skip registering Visa admin during migrations/import-time errors
+    pass
+
+# Legacy MedicalVisa/AnnualVisa inlines and admin unregistration removed — use unified Visa instead.
+
+
+# Unified Visa inline to replace MedicalVisaInline and AnnualVisaInline
+class VisaInline(admin.TabularInline):
+    try:
+        from .models import Visa
+    except Exception:
+        Visa = None
+    model = Visa
+    extra = 0
+    fields = ('visa_type', 'issued_date', 'visa_status', 'document', 'image', 'notes')
+    readonly_fields = ('visa_status',)
+    verbose_name = 'Visa'
+    verbose_name_plural = 'Visas'
 
     def visa_status(self, obj):
-        """
-        Display visa status as 'Available' or 'Expired'.
-        """
-        return "Available" if obj.is_valid else "Expired"
-    visa_status.short_description = "Visa Status"
-
-# Inline AnnualVisa for Athlete
-class AnnualVisaInline(admin.TabularInline):
-    model = AnnualVisa
-    extra = 0  # Display only existing entries
-    fields = ('issued_date', 'visa_status', 'visa_status_display')  # Include visa status
-    readonly_fields = ('visa_status_display',)  # Make visa status read-only
-
-    def visa_status_display(self, obj):
-        """
-        Display visa status as 'Available' or 'Expired'.
-        """
-        return "Available" if obj.is_valid else "Expired"
-    visa_status_display.short_description = "Visa Status"
+        try:
+            return obj.visa_status if obj.visa_type == 'annual' else (obj.health_status or '')
+        except Exception:
+            return ''
+    visa_status.short_description = 'Status'
 
 # Inline TrainingSeminar for Athlete
 class TrainingSeminarInline(admin.TabularInline):
@@ -220,53 +303,288 @@ class TrainingSeminarInline(admin.TabularInline):
 
 
 class TrainingSeminarParticipationInline(admin.TabularInline):
-    """Show approved participation (enrolled) athletes on the TrainingSeminar admin page."""
+    """Show approved participation (enrolled) athletes on the TrainingSeminar admin page.
+
+    Use a StackedInline instead of TabularInline to avoid wide table columns that
+    cause horizontal scrolling in the admin change form. StackedInline displays
+    each enrollment vertically so all fields are visible without horizontal scroll.
+    """
     model = TrainingSeminarParticipation
     extra = 0
     show_change_link = True
-    verbose_name = 'Enrolled Athlete'
-    verbose_name_plural = 'Enrolled Athletes'
-    # Expose fields so admins can add/remove enrollments directly via the inline
-    fields = ('athlete', 'status', 'submitted_by_athlete', 'participation_certificate', 'participation_document', 'admin_notes', 'reviewed_date', 'reviewed_by')
-    readonly_fields = ('reviewed_date', 'reviewed_by')
+    verbose_name = 'Event Participation'
+    verbose_name_plural = 'Event Participations'
+    # Show a compact set of fields to keep the inline small and readable.
+    # Use the `athlete_link` read-only method instead of the full athlete FK
+    # to keep the UI compact (click through to the athlete page to edit).
+    fields = ('athlete_link', 'status', 'reviewed_date', 'reviewed_by')
+    readonly_fields = ('athlete_link', 'reviewed_date', 'reviewed_by')
     can_delete = True
+
+    def athlete_link(self, obj):
+        """Link to the athlete change page when available."""
+        try:
+            return format_html('<a href="/admin/api/athlete/{}/change/">{} {}</a>', obj.athlete.pk, obj.athlete.first_name, obj.athlete.last_name)
+        except Exception:
+            return str(getattr(obj, 'athlete', ''))
+    athlete_link.short_description = 'Athlete'
 
 class AthleteTrainingSeminarParticipationInline(admin.TabularInline):
     """Inline on Athlete admin to show the athlete's approved seminar enrollments."""
     model = TrainingSeminarParticipation
     fk_name = 'athlete'
-    extra = 0
+    extra = 1
     show_change_link = True
-    verbose_name = 'Enrolled Seminar'
-    verbose_name_plural = 'Enrolled Seminars'
-    fields = ('seminar_link', 'status', 'submitted_by_athlete', 'reviewed_date', 'reviewed_by')
-    readonly_fields = ('seminar_link', 'status', 'submitted_by_athlete', 'reviewed_date', 'reviewed_by')
+    verbose_name = 'Enrolled Event'
+    verbose_name_plural = 'Enrolled Events'
+    # Make the inline read-only on the Athlete page: we show existing enrollments
+    # but don't allow adding/editing inline here. To add a new enrollment the
+    # admin will be redirected to the dedicated add form with the athlete
+    # prefilled (see `TrainingSeminarParticipationAdmin` below).
+    fields = ('event', 'status', 'submitted_by_athlete', 'reviewed_date', 'reviewed_by')
+    readonly_fields = ('event', 'status', 'submitted_by_athlete', 'reviewed_date', 'reviewed_by')
+    show_change_link = False
     can_delete = False
 
-    def seminar_link(self, obj):
-        # Prefer linked Event when available (created by migration). If present, link to the
-        # Landing > Event admin page; otherwise, show the legacy seminar name without a link.
-        try:
-            if getattr(obj, 'event', None):
-                ev = obj.event
-                return format_html('<a href="/admin/landing/event/{}/change/">{}</a>', ev.pk, ev.title)
-            # Fall back to legacy TrainingSeminar display
-            return obj.seminar.name
-        except Exception:
-            return str(getattr(obj, 'seminar', obj))
-    seminar_link.short_description = 'Seminar'
+    def has_add_permission(self, request, obj=None):
+        # Disable adding inline from Athlete admin; use the dedicated add form instead.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # Prevent editing inline from Athlete admin
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Prevent deletion inline from Athlete admin
+        return False
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
+        # Return only approved participation by default
         return qs.filter(status='approved')
 
-    def athlete_link(self, obj):
-        return format_html('<a href="/admin/api/athlete/{}/change/">{} {}</a>', obj.athlete.pk, obj.athlete.first_name, obj.athlete.last_name)
-    athlete_link.short_description = 'Athlete'
-    # Use the GradeHistoryAdminForm for any GradeHistory inlines if present
-    # (No-op here but ensures consistent validation if used)
-    # Note: this inline is for TrainingSeminarParticipation; GradeHistory inlines are separate.
+# Register landing.Event under the API admin using the proxy model defined in
+# `api.models.Event`. We create a small subclass of the Landing EventAdmin and
+# inject the TrainingSeminarParticipationInline so enrolled athletes are visible
+# on the Event change page.
+try:
+    from landing.models import Event as LandingEvent
+    from landing.admin import EventAdmin as LandingEventAdmin
+    from .models import Event
+    # Unregister any existing registrations for the landing Event or the API proxy
+    for _m in (Event, LandingEvent):
+        try:
+            admin.site.unregister(_m)
+        except Exception:
+            pass
+
+    # Create an API-specific EventAdmin that appends the participation inline.
+    # Be careful with types: LandingEventAdmin.inlines may be a tuple, so coerce to list.
+    try:
+        base_inlines = list(getattr(LandingEventAdmin, 'inlines', []) or [])
+        new_inlines = base_inlines + [TrainingSeminarParticipationInline]
+        APILandingEventAdmin = type(
+            'APILandingEventAdmin',
+            (LandingEventAdmin,),
+            {'inlines': new_inlines}
+        )
+        admin.site.register(Event, APILandingEventAdmin)
+        try:
+            # Also register the concrete LandingEvent with its admin so that
+            # autocomplete_fields referencing 'landing.Event' can pass system checks.
+            # If LandingEvent is already registered this will raise and be ignored.
+            admin.site.register(LandingEvent, LandingEventAdmin)
+        except Exception:
+            pass
+        # If registration succeeded, enable autocomplete on the Athlete inline's
+        # `event` field so the inline shows a dropdown/autocomplete for Events.
+        try:
+            # Prefer autocomplete (type-ahead) for a better UX. Remove raw_id_fields
+            # if present and set autocomplete_fields. Guard in case of migrations.
+            if hasattr(AthleteTrainingSeminarParticipationInline, 'raw_id_fields'):
+                try:
+                    delattr(AthleteTrainingSeminarParticipationInline, 'raw_id_fields')
+                except Exception:
+                    pass
+            AthleteTrainingSeminarParticipationInline.autocomplete_fields = ('event',)
+        except Exception:
+            # Don't let this block admin registration during migrations
+            pass
+    except Exception:
+        # Fall back to registering using the original LandingEventAdmin; keep startup stable
+        try:
+            admin.site.register(Event, LandingEventAdmin)
+            try:
+                # Ensure the concrete LandingEvent is registered too (fallback path)
+                admin.site.register(LandingEvent, LandingEventAdmin)
+            except Exception:
+                pass
+            try:
+                # Also enable autocomplete when registering via the fallback.
+                if hasattr(AthleteTrainingSeminarParticipationInline, 'raw_id_fields'):
+                    try:
+                        delattr(AthleteTrainingSeminarParticipationInline, 'raw_id_fields')
+                    except Exception:
+                        pass
+                AthleteTrainingSeminarParticipationInline.autocomplete_fields = ('event',)
+            except Exception:
+                pass
+        except Exception:
+            pass
+except Exception:
+    # If landing or the proxy model isn't importable at module import time
+    # (e.g., during migrations), skip registration.
+    pass
     
+# Register a dedicated ModelAdmin for TrainingSeminarParticipation so the
+# "Add enrolled event" button on the Athlete page can open the add form with
+# the athlete prefilled via ?athlete=<id>.
+try:
+    class TrainingSeminarParticipationAdmin(admin.ModelAdmin):
+        # Prefer showing the linked Event rather than the legacy Seminar
+        list_display = ('athlete', 'event', 'status', 'submitted_date')
+        # Event model uses `title` for its human readable field
+        search_fields = ('athlete__first_name', 'athlete__last_name', 'event__title')
+
+        class TrainingSeminarParticipationAdminForm(forms.ModelForm):
+            class Meta:
+                model = TrainingSeminarParticipation
+                fields = '__all__'
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                # Hide the legacy `seminar` field in the admin form for both add
+                # and change pages so the `event` field is the primary control.
+                # We keep the model field in place but render it hidden to avoid
+                # import/migration-time KeyErrors that occurred when removing the
+                # field from forms entirely.
+                if 'seminar' in self.fields:
+                    try:
+                        self.fields['seminar'].widget = forms.HiddenInput()
+                        self.fields['seminar'].required = False
+                    except Exception:
+                        # Best-effort: ensure it's not required so admin doesn't error
+                        self.fields['seminar'].required = False
+                    # Ensure no accidental value is posted
+                    self.fields['seminar'].initial = None
+
+            def clean(self):
+                """Ensure a valid legacy `seminar` value exists for DB integrity.
+
+                The project uses `event` as the canonical link but the DB still
+                requires `seminar` (non-null). For add forms we accept `event`
+                and attempt to resolve or create a matching TrainingSeminar so
+                the model save does not fail.
+                """
+                cleaned = super().clean()
+                seminar = cleaned.get('seminar')
+                event = cleaned.get('event')
+
+                if not seminar and event:
+                    # Try to infer the original TrainingSeminar id from the
+                    # Event.tags that were set during migration: tags start with
+                    # 'migrated_from_trainingseminar:<id>' when present.
+                    ts = None
+                    try:
+                        tags = (getattr(event, 'tags', None) or '')
+                        if tags.startswith('migrated_from_trainingseminar:'):
+                            try:
+                                ts_pk = int(tags.split(':', 1)[1])
+                                from .models import TrainingSeminar
+                                ts = TrainingSeminar.objects.filter(pk=ts_pk).first()
+                            except Exception:
+                                ts = None
+                    except Exception:
+                        ts = None
+
+                    # Fallback: try to match by name
+                    if not ts:
+                        try:
+                            from .models import TrainingSeminar
+                            ts = TrainingSeminar.objects.filter(name__iexact=getattr(event, 'title', '')).first()
+                        except Exception:
+                            ts = None
+
+                    # As a last resort, create a lightweight TrainingSeminar so
+                    # the DB FK constraint is satisfied. This keeps the admin
+                    # UX smooth and preserves a traceable Seminar row.
+                    if not ts:
+                        try:
+                            from .models import TrainingSeminar
+                            ev_start = getattr(event, 'start_date', None)
+                            ev_end = getattr(event, 'end_date', None)
+                            ev_place = getattr(event, 'address', '') or ''
+                            ts = TrainingSeminar.objects.create(
+                                name=(getattr(event, 'title', None) or f"Migrated from Event {event.pk}"),
+                                start_date=(ev_start.date() if hasattr(ev_start, 'date') else ev_start),
+                                end_date=(ev_end.date() if hasattr(ev_end, 'date') else ev_end),
+                                place=ev_place,
+                            )
+                        except Exception:
+                            ts = None
+
+                    if ts:
+                        cleaned['seminar'] = ts
+
+                # If we still don't have a seminar, raise a validation error so
+                # the admin user can correct the form rather than triggering a
+                # DB IntegrityError on save.
+                # If mapping/creation failed but we're editing an existing
+                # instance that already had a seminar, preserve it so the
+                # change form can save without forcing destructive updates.
+                if not cleaned.get('seminar'):
+                    try:
+                        instance = getattr(self, 'instance', None)
+                        if instance and getattr(instance, 'seminar', None):
+                            cleaned['seminar'] = instance.seminar
+                    except Exception:
+                        pass
+
+                if not cleaned.get('seminar'):
+                    raise ValidationError({'seminar': 'Seminar could not be determined from the selected event. Please select a seminar.'})
+
+                return cleaned
+
+        form = TrainingSeminarParticipationAdminForm
+
+        def get_changeform_initial_data(self, request):
+            # Allow prefilling either athlete or event (or both) via query params
+            initial = super().get_changeform_initial_data(request) or {}
+            athlete_id = request.GET.get('athlete')
+            event_id = request.GET.get('event') or request.GET.get('seminar')
+            if athlete_id:
+                initial['athlete'] = athlete_id
+            if event_id:
+                # accept both ?event= and legacy ?seminar=
+                initial['event'] = event_id
+            return initial
+
+    try:
+        # Unregister legacy registration if present so we can expose the
+        # proxy `EventParticipation` as the admin resource with a nicer URL
+        try:
+            admin.site.unregister(TrainingSeminarParticipation)
+        except Exception:
+            pass
+
+        # Import proxy model and register it under the admin so the URL
+        # becomes /admin/api/eventparticipation/ instead of the legacy
+        # /admin/api/trainingseminarparticipation/.
+        try:
+            from .models import EventParticipation
+            admin.site.register(EventParticipation, TrainingSeminarParticipationAdmin)
+        except Exception:
+            # If proxy import fails (during migrations), fall back to
+            # registering the original model to avoid admin breakage.
+            try:
+                admin.site.register(TrainingSeminarParticipation, TrainingSeminarParticipationAdmin)
+            except Exception:
+                pass
+    except Exception:
+        # Ignore registration errors during migration/import time
+        pass
+except Exception:
+    pass
 
 class MatchInline(admin.TabularInline):
     model = Match
@@ -386,6 +704,61 @@ class AthleteSoloResultsInline(admin.TabularInline):
     results.short_description = "Place Obtained"
 
 
+class AthleteTeamResultsInline(admin.TabularInline):
+    """Compact tabular inline to show team results related to this athlete.
+
+    Uses CategoryAthleteScore (team results model) filtered to type='teams'.
+    Displayed as a single inline on the Athlete change form so there are no
+    nested or duplicate inlines.
+    """
+    model = CategoryAthleteScore
+    extra = 0
+    verbose_name = 'Team Result'
+    verbose_name_plural = 'Team Results'
+    can_add = False
+    can_delete = False
+    show_change_link = True
+    fields = ('competition_name', 'category_name', 'team_name', 'team_members_display', 'placement_claimed', 'status')
+    readonly_fields = ('competition_name', 'category_name', 'team_name', 'team_members_display', 'placement_claimed', 'status')
+
+    fk_name = 'athlete'
+
+    def get_formset(self, request, obj=None, **kwargs):
+        """Wrap the formset so its queryset includes team entries where this
+        athlete is a team member (team_members M2M) in addition to rows where
+        they are the primary `athlete` FK.
+        """
+        FormSet = super().get_formset(request, obj, **kwargs)
+
+        class WrappedFormSet(FormSet):
+            def __init__(self, *args, **kw):
+                super().__init__(*args, **kw)
+                try:
+                    # self.queryset is already limited to athlete=<parent>
+                    qs = self.queryset
+                    if obj is not None:
+                        from .models import CategoryAthleteScore
+                        extra = CategoryAthleteScore.objects.filter(type='teams', team_members=obj)
+                        # Combine and deduplicate
+                        self.queryset = (qs | extra).distinct().select_related('category__competition').prefetch_related('team_members')
+                except Exception:
+                    pass
+
+        return WrappedFormSet
+
+    def competition_name(self, obj):
+        return obj.category.competition.name if obj.category and obj.category.competition else 'N/A'
+    competition_name.short_description = 'Competition'
+
+    def category_name(self, obj):
+        return obj.category.name if obj.category else 'N/A'
+    category_name.short_description = 'Category'
+
+    def team_members_display(self, obj):
+        return ', '.join([f"{m.first_name} {m.last_name}" for m in obj.team_members.all()])
+    team_members_display.short_description = 'Team Members'
+
+
 class AthleteFightResultsInline(admin.TabularInline):
     """
     Inline to display results for fight categories.
@@ -465,35 +838,7 @@ class ClubAdmin(admin.ModelAdmin):
 
 # Original Athlete admin removed - using consolidated AthleteAdmin below
 
-# Register MedicalVisa model
-@admin.register(MedicalVisa)
-class MedicalVisaAdmin(admin.ModelAdmin):
-    list_display = ('athlete', 'issued_date', 'health_status', 'visa_status')  # Display visa status
-    search_fields = ('athlete__first_name', 'athlete__last_name')
-    list_filter = ('health_status',)  # Add a filter for health status
-    readonly_fields = ('visa_status',)  # Make visa status read-only
-
-    def visa_status(self, obj):
-        """
-        Display visa status as 'Available' or 'Expired'.
-        """
-        return "Available" if obj.is_valid else "Expired"
-    visa_status.short_description = "Visa Status"
-
-# Register AnnualVisa model
-@admin.register(AnnualVisa)
-class AnnualVisaAdmin(admin.ModelAdmin):
-    list_display = ('athlete', 'issued_date', 'visa_status', 'visa_status_display')  # Display visa status
-    search_fields = ('athlete__first_name', 'athlete__last_name', 'visa_status')
-    list_filter = ('visa_status',)  # Add a filter for visa status
-    readonly_fields = ('visa_status_display',)  # Make visa status read-only
-
-    def visa_status_display(self, obj):
-        """
-        Display visa status as 'Available' or 'Expired'.
-        """
-        return "Available" if obj.is_valid else "Expired"
-    visa_status_display.short_description = "Visa Status"
+# Legacy MedicalVisa and AnnualVisa admin classes removed — use unified Visa admin instead.
 
 
 # Provide the TrainingSeminarAdmin class for programmatic use (tests and callers)
@@ -578,6 +923,14 @@ class GradeHistoryAdmin(admin.ModelAdmin):
         if db_field.name in ('examiner_1', 'examiner_2'):
             kwargs['queryset'] = Athlete.objects.filter(is_coach=True)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_changeform_initial_data(self, request):
+        # Prefill the athlete field when ?athlete=<id> is provided in the URL
+        initial = super().get_changeform_initial_data(request) or {}
+        athlete_id = request.GET.get('athlete')
+        if athlete_id:
+            initial['athlete'] = athlete_id
+        return initial
 
     # Do not use readonly_fields here to allow editing in the standalone GradeHistory admin panel
 
@@ -912,18 +1265,18 @@ class AthleteAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
-    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'get_team_results_display']
+    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'add_enrolled_event_link', 'add_grade_history_link']
     ordering = ['-submitted_date']
     inlines = [
         AthleteActivityInline,
-        GradeHistoryInline,
-        MedicalVisaInline,
-        AnnualVisaInline,
+    GradeHistoryInline,
+    VisaInline,
         AthleteTrainingSeminarParticipationInline,
         AthleteSoloResultsInline,
         AthleteFightResultsInline,
+        AthleteTeamResultsInline,
         # Team results displayed via custom method in fieldsets instead of inline
-        # due to Django admin limitations with ManyToMany relationships
+        # (team results are now shown via AthleteTeamResultsInline)
     ]
     
     fieldsets = (
@@ -936,12 +1289,9 @@ class AthleteAdmin(admin.ModelAdmin):
         ('Emergency Contact', {
             'fields': ('emergency_contact_name', 'emergency_contact_phone')
         }),
-        ('Team Results', {
-            'fields': ('get_team_results_display',),
-            'description': 'Team results where this athlete is involved (as submitter or team member)'
-        }),
+        # Team results are shown via the AthleteTeamResultsInline instead of a custom field
         ('Approval Workflow', {
-            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by')
+            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'add_enrolled_event_link', 'add_grade_history_link')
         }),
     )
     
@@ -972,92 +1322,7 @@ class AthleteAdmin(admin.ModelAdmin):
         return ''
     get_action_buttons.short_description = 'Actions'
     
-    def get_team_results_display(self, obj):
-        """Display team results where this athlete is involved"""
-        from django.db import models
-        
-        # Get all team results where athlete is involved (as main athlete or team member)
-        team_results = CategoryAthleteScore.objects.filter(
-            type='teams'
-        ).filter(
-            models.Q(athlete=obj) | models.Q(team_members=obj)
-        ).distinct().select_related('category__competition').prefetch_related('team_members')
-        
-        if not team_results.exists():
-            return format_html('<div class="inline-group" style="margin: 0;"><div class="tabular inline-related"><h2>Team Results (0)</h2><div style="padding: 10px; font-style: italic; color: #666;">No team results found</div></div></div>')
-        
-        html_parts = []
-        # Start with Django admin inline-like styling
-        html_parts.append('<div class="inline-group" style="margin: 0;">')
-        html_parts.append(f'<div class="tabular inline-related">')
-        html_parts.append(f'<h2>Team Results ({team_results.count()})</h2>')
-        html_parts.append('<table>')
-        html_parts.append('<thead>')
-        html_parts.append('<tr>')
-        html_parts.append('<th class="original">Competition</th>')
-        html_parts.append('<th class="original">Category</th>')
-        html_parts.append('<th class="original">Placement</th>')
-        html_parts.append('<th class="original">Team Name</th>')
-        html_parts.append('<th class="original">Team Members</th>')
-        html_parts.append('<th class="original">Status</th>')
-        html_parts.append('<th class="original">Role</th>')
-        html_parts.append('</tr>')
-        html_parts.append('</thead>')
-        html_parts.append('<tbody>')
-        
-        for i, result in enumerate(team_results):
-            # Determine placement with medal emojis
-            placement = result.placement_claimed or "N/A"
-            if placement == '1st':
-                placement_display = "🥇 1st Place"
-            elif placement == '2nd':
-                placement_display = "🥈 2nd Place"
-            elif placement == '3rd':
-                placement_display = "🥉 3rd Place"
-            else:
-                placement_display = placement
-            
-            # Get team members
-            team_members = ', '.join([
-                f"{member.first_name} {member.last_name}" 
-                for member in result.team_members.all()
-            ])
-            
-            # Determine role
-            role = "Team Member"
-            if result.athlete == obj:
-                role = "Submitter" if result.submitted_by_athlete else "Main Athlete"
-            
-            # Status with colors
-            status = result.status
-            if status == 'approved':
-                status_display = '<span style="color: green;">✅ Approved</span>'
-            elif status == 'pending':
-                status_display = '<span style="color: orange;">⏳ Pending</span>'
-            elif status == 'rejected':
-                status_display = '<span style="color: red;">❌ Rejected</span>'
-            else:
-                status_display = status
-            
-            # Use Django admin row styles
-            row_class = 'row1' if i % 2 == 0 else 'row2'
-            html_parts.append(f'<tr class="{row_class}">')
-            html_parts.append(f'<td>{result.category.competition.name}</td>')
-            html_parts.append(f'<td>{result.category.name}</td>')
-            html_parts.append(f'<td>{placement_display}</td>')
-            html_parts.append(f'<td>{result.team_name or "Auto-generated"}</td>')
-            html_parts.append(f'<td style="font-size: 0.9em;">{team_members}</td>')
-            html_parts.append(f'<td>{status_display}</td>')
-            html_parts.append(f'<td><strong>{role}</strong></td>')
-            html_parts.append('</tr>')
-        
-        html_parts.append('</tbody>')
-        html_parts.append('</table>')
-        html_parts.append('</div>')
-        html_parts.append('</div>')
-        return format_html(''.join(html_parts))
-    
-    get_team_results_display.short_description = 'Team Results'
+    # Team results are now displayed via AthleteTeamResultsInline above.
 
     def get_search_results(self, request, queryset, search_term):
         """
@@ -1090,6 +1355,28 @@ class AthleteAdmin(admin.ModelAdmin):
             path('<int:pk>/request_revision/', self.admin_site.admin_view(self.request_revision), name='api_athlete_request_revision'),
         ]
         return custom_urls + urls
+
+    def add_enrolled_event_link(self, obj):
+        """Render a button that opens the TrainingSeminarParticipation add form with this athlete pre-filled."""
+        if not obj or not obj.pk:
+            return ''
+        try:
+            url = reverse('admin:api_trainingseminarparticipation_add') + f'?athlete={obj.pk}'
+            return format_html('<a class="button" href="{}">Add enrolled event</a>', url)
+        except Exception:
+            return ''
+    add_enrolled_event_link.short_description = 'Add Enrollment'
+
+    def add_grade_history_link(self, obj):
+        """Render a button that opens the GradeHistory add form with this athlete pre-filled."""
+        if not obj or not obj.pk:
+            return ''
+        try:
+            url = reverse('admin:api_gradehistory_add') + f'?athlete={obj.pk}'
+            return format_html('<a class="button" href="{}">Add grade history</a>', url)
+        except Exception:
+            return ''
+    add_grade_history_link.short_description = 'Add Grade'
     
     def approve_profile(self, request, pk):
         from django.shortcuts import get_object_or_404, redirect

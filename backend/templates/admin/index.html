@@ -1,5 +1,5 @@
-{% load i18n admin_urls admin_groups %}
 {% extends "admin/base_site.html" %}
+{% load i18n admin_urls admin_groups %}
 
 {% block content %}
   <div id="content-main">
@@ -10,7 +10,7 @@
     {% for app in ordered_apps %}
       <div class="app-{{ app.app_label }} module">
         <h2>{{ app.name }}</h2>
-        {% with groups=app_groups app %}
+        {% app_groups app as groups %}
           {% if groups %}
             {% for group in groups %}
               <div class="module-group">
@@ -41,7 +41,7 @@
               {% endfor %}
             </ul>
           {% endif %}
-        {% endwith %}
+        
       </div>
     {% endfor %}
   </div>

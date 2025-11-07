@@ -1,0 +1,60 @@
+{% extends "admin/base.html" %}
+{% load i18n admin_urls admin_groups %}
+
+{# Override the sidebar block to provide a sticky, reordered navigation that
+   uses ADMIN_APP_ORDER and the app grouping tag. We guard against missing
+   `app_list` in contexts where the admin does not provide it.
+#}
+
+{% block sidebar %}
+  <style>
+    /* Minimal styling to make the sidebar sticky and scrollable */
+    #custom-admin-sidebar {
+      position: sticky;
+      top: 1rem;
+      max-height: calc(100vh - 2rem);
+      overflow: auto;
+      padding-right: 0.5rem;
+    }
+    #custom-admin-sidebar .app-heading {
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+    #custom-admin-sidebar ul.model-list { list-style: none; padding-left: 0.5rem; }
+    #custom-admin-sidebar ul.model-list li { margin: 0.2rem 0; }
+  </style>
+
+  <div id="custom-admin-sidebar">
+    {% if app_list %}
+      {% reorder_app_list app_list as ordered_apps %}
+      {% for app in ordered_apps %}
+        <div class="app-{{ app.app_label }}">
+          <div class="app-heading">{{ app.name }}</div>
+          {% app_groups app as groups %}
+          {% if groups %}
+            {% for group in groups %}
+              <div class="module-group">
+                <div class="group-heading">{{ group.group_name }}</div>
+                <ul class="model-list">
+                  {% for model in group.models %}
+                    <li>
+                      {% if model.admin_url %}<a href="{{ model.admin_url }}">{{ model.name }}</a>{% else %}{{ model.name }}{% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endfor %}
+          {% else %}
+            <ul class="model-list">
+              {% for model in app.models %}
+                <li>{% if model.admin_url %}<a href="{{ model.admin_url }}">{{ model.name }}</a>{% else %}{{ model.name }}{% endif %}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      {# Fallback: nothing to render if app_list isn't available in context #}
+    {% endif %}
+  </div>
+{% endblock %}
