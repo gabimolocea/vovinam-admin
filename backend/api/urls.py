@@ -10,7 +10,7 @@ router.register(r'cities', CityViewSet, basename='city')
 router.register('clubs', ClubViewSet, basename='club')
 router.register('competitions', CompetitionViewSet, basename='competition')
 router.register('athletes', AthleteViewSet, basename='athlete')
-router.register('athlete-profiles', AthleteProfileViewSet, basename='athlete-profile')
+# 'athlete-profiles' was consolidated into 'athletes' (profile actions moved to AthleteViewSet)
 router.register('supporter-athlete-relations', SupporterAthleteRelationViewSet, basename='supporter-athlete-relation')
 router.register('titles', TitleViewSet, basename='title')
 router.register('federation-roles', FederationRoleViewSet, basename='federation-role')
@@ -32,6 +32,14 @@ router.register('seminar-submissions', TrainingSeminarParticipationViewSet, base
 router.register('coaches', CoachesViewSet, basename='coach')
 # team-scores endpoint deprecated - use category-athlete-score with type='teams' filter
 
+# Compatibility shim: keep responding to old athlete-profiles paths with a deprecation/redirect
+from . import views as _views
+urlpatterns = [
+    path('athlete-profiles/', _views.athlete_profiles_compat, name='athlete-profiles-compat-root'),
+    path('athlete-profiles/<path:subpath>/', _views.athlete_profiles_compat, name='athlete-profiles-compat'),
+]
+
+# then append the rest of the urlpatterns below
 
 urlpatterns = [
     # Authentication URLs (existing)
@@ -46,7 +54,7 @@ urlpatterns = [
     # New athlete workflow URLs (must come before router.urls for specific endpoints)
     path('auth/register-enhanced/', UserRegistrationView.as_view(), name='register-enhanced'),
     path('auth/profile-enhanced/', views.UserProfileView.as_view(), name='profile-enhanced'),
-    path('athlete-profile/my-profile/', MyAthleteProfileView.as_view(), name='my-athlete-profile'),
+    # legacy route removed: use /api/athletes/my-profile/ (provided by AthleteViewSet.my_profile)
     path('admin-approvals/pending/', PendingApprovalsView.as_view(), name='pending-approvals'),
     # Simple public athlete detail endpoint (stable URL for frontend)
     path('athletes/<int:pk>/', views.athlete_detail, name='athlete-detail-public'),

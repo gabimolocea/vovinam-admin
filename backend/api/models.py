@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
+from django.db.models.signals import post_delete
 
 # Create your models here.
 
@@ -631,12 +632,20 @@ class Visa(models.Model):
         elif not getattr(self, 'submitted_by_athlete', False):
             self.status = 'approved'
 
-        # Update visa_status for annual visas
+        # Update visa_status depending on visa type
         if self.visa_type == 'annual':
             if self.issued_date:
-                self.visa_status = 'available' if self.is_valid() else 'expired'
+                self.visa_status = 'Valid' if self.is_valid() else 'Expired'
             else:
-                self.visa_status = 'not_available'
+                self.visa_status = 'Not available'
+        elif self.visa_type == 'medical':
+            # If health_status explicitly approved, mark as Valid regardless
+            if self.health_status == 'approved':
+                self.visa_status = 'Valid'
+            elif self.issued_date:
+                self.visa_status = 'Valid' if self.is_valid() else 'Expired'
+            else:
+                self.visa_status = 'Not available'
 
         super().save(*args, **kwargs)
 
@@ -972,6 +981,7 @@ class Match(models.Model):
     red_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='red_corner_matches')
     blue_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='blue_corner_matches')
     referees = models.ManyToManyField('Athlete', related_name='refereed_matches', limit_choices_to={'is_referee': True})
+    central_referee = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='central_for_matches', limit_choices_to={'is_referee': True})
     winner = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='won_matches')
     name = models.CharField(max_length=255, blank=True)  # Automatically generated match name
 
@@ -1023,6 +1033,58 @@ class RefereeScore(models.Model):
 
     def __str__(self):
         return f"Referee: {self.referee.first_name} {self.referee.last_name} - Match: {self.match}"
+
+
+class RefereePointEvent(models.Model):
+    """Append-only events created by referees (or admins) describing points/penalties.
+
+    These are the raw inputs that the aggregation job consumes to produce
+    per-referee `RefereeScore` rows and the final `Match` winner.
+    """
+    EVENT_TYPE_CHOICES = [
+        ('score', 'Score'),
+        ('penalty', 'Penalty'),
+        ('deduction', 'Deduction'),
+        ('other', 'Other'),
+    ]
+
+    match = models.ForeignKey('Match', on_delete=models.CASCADE, related_name='point_events')
+    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True})
+    timestamp = models.DateTimeField(auto_now_add=True)
+    side = models.CharField(max_length=10, choices=[('red', 'Red Corner'), ('blue', 'Blue Corner')])
+    points = models.IntegerField(default=0)
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPE_CHOICES, default='score')
+    processed = models.BooleanField(default=False, db_index=True)
+    external_id = models.CharField(max_length=200, blank=True, null=True)
+    metadata = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=(
+            "Optional JSON object for extra event data. Common keys: 'round' (int), "
+            "'central' (bool), 'reason' (string), 'origin' (string). Example: "
+            "{'round': 2, 'central': true, 'reason': 'excessive contact'}"
+        )
+    )
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['timestamp']
+
+    def __str__(self):
+        return f"Event {self.pk} - Match {self.match_id} - Referee {self.referee_id} - {self.side} ({self.points})"
+
+    def clean(self):
+        """Validate metadata using the shared validator so invalid shapes are rejected early."""
+        super().clean()
+        try:
+            from .validators import validate_referee_point_event_metadata
+            validate_referee_point_event_metadata(self.metadata)
+        except Exception as e:
+            # If it's already a Django ValidationError raise it, otherwise convert
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            if isinstance(e, DjangoValidationError):
+                raise
+            raise DjangoValidationError(str(e))
 
 
 class CategoryAthleteScore(models.Model):

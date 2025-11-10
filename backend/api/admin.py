@@ -1,11 +1,18 @@
 from django.contrib import admin, messages
 from django.utils.html import format_html
+from django.utils.translation import gettext_lazy as _
 from django.forms import ModelForm
 from django.core.exceptions import ValidationError
 from django import forms
 from django.urls import path, reverse
 from django.shortcuts import render
+from django.http import JsonResponse
 from django.db.models import Count
+from django.db.models.functions import TruncMonth
+import datetime
+import json
+import urllib.parse
+from django.utils.safestring import mark_safe
 from .models import (
     City,
     Club,
@@ -26,6 +33,7 @@ from .models import (
     CategoryAthlete,
     Match,
     RefereeScore,
+    RefereePointEvent,
     CategoryAthleteScore,
     CategoryTeamScore,
     # CategoryTeamAthleteScore, # deprecated - consolidated into CategoryAthleteScore
@@ -47,10 +55,41 @@ ADMIN_MODEL_GROUPS = {
 
 class AthleteInline(admin.TabularInline):
     model = Athlete
-    fields = ('first_name', 'last_name', 'club', 'city')
+    # Read-only inline: show Name (first + last), Grade and Registered date.
+    # Removing the `select_existing` column per request.
+    fields = ('name', 'grade', 'registered_date_display')
+    readonly_fields = ('name', 'grade', 'registered_date_display')
     extra = 0
     verbose_name = "Athlete"
     verbose_name_plural = "Athletes"
+    can_delete = False
+
+    def name(self, obj):
+        try:
+            # Link to the athlete change page in the admin so clicking the name opens the profile
+            url = reverse('admin:api_athlete_change', args=(obj.pk,))
+            return format_html('<a href="{}">{} {}</a>', url, obj.first_name, obj.last_name)
+        except Exception:
+            return ''
+    name.short_description = 'Name'
+
+    def grade(self, obj):
+        try:
+            return str(obj.current_grade) if obj.current_grade else ''
+        except Exception:
+            return ''
+    grade.short_description = 'Grade'
+
+    def registered_date_display(self, obj):
+        try:
+            return obj.registered_date.strftime('%Y-%m-%d') if obj and obj.registered_date else ''
+        except Exception:
+            return ''
+    registered_date_display.short_description = 'Registered date'
+
+    def has_add_permission(self, request, obj=None):
+        # Disable adding athletes inline from the Club page. Use the Athlete add form.
+        return False
 
 class CategoryAthleteInline(admin.TabularInline):
     model = CategoryAthlete
@@ -207,7 +246,7 @@ try:
 
         def visa_status(self, obj):
             try:
-                return obj.visa_status if obj.visa_type == 'annual' else (obj.health_status or '')
+                return obj.visa_status or ''
             except Exception:
                 return ''
         visa_status.short_description = 'Status'
@@ -234,22 +273,54 @@ try:
             value is saved in save_model (disabled fields aren't POSTed).
             """
             form = super().get_form(request, obj, **kwargs)
-            # Only apply on the add form (obj is None)
+            # Determine the visa_type to tailor the form. Prefer existing object's
+            # type when editing, otherwise look for ?visa_type=... on the add form.
             if obj is None:
                 visa_type = request.GET.get('visa_type')
-                try:
-                    # Validate the provided type against model choices
-                    valid_choices = [c[0] for c in Visa.VISA_TYPE_CHOICES]
-                except Exception:
-                    valid_choices = []
-                if visa_type and visa_type in valid_choices:
-                    if 'visa_type' in getattr(form, 'base_fields', {}):
-                        # Set initial and disable the widget so it's read-only
-                        form.base_fields['visa_type'].initial = visa_type
-                        try:
-                            form.base_fields['visa_type'].disabled = True
-                        except Exception:
-                            form.base_fields['visa_type'].widget.attrs['disabled'] = 'disabled'
+            else:
+                visa_type = getattr(obj, 'visa_type', None)
+
+            try:
+                # Validate the provided type against model choices
+                valid_choices = [c[0] for c in Visa.VISA_TYPE_CHOICES]
+            except Exception:
+                valid_choices = []
+
+            if visa_type and visa_type in valid_choices:
+                if 'visa_type' in getattr(form, 'base_fields', {}):
+                    # Set initial and disable the widget so it's read-only
+                    form.base_fields['visa_type'].initial = visa_type
+                    try:
+                        form.base_fields['visa_type'].disabled = True
+                    except Exception:
+                        form.base_fields['visa_type'].widget.attrs['disabled'] = 'disabled'
+            else:
+                # No explicit visa_type provided; still make the field read-only
+                # per request. Default to 'annual' to ensure a sensible initial
+                # value on the add form so save_model can persist it.
+                if 'visa_type' in getattr(form, 'base_fields', {}):
+                    try:
+                        form.base_fields['visa_type'].initial = 'annual'
+                        form.base_fields['visa_type'].disabled = True
+                    except Exception:
+                        form.base_fields['visa_type'].widget.attrs['disabled'] = 'disabled'
+            # Hide or show medical-only fields depending on the selected type
+            try:
+                if visa_type != 'medical' and 'health_status' in getattr(form, 'base_fields', {}):
+                    # Hide the field and ensure it's not required in the UI
+                    form.base_fields['health_status'].widget = forms.HiddenInput()
+                    form.base_fields['health_status'].required = False
+                elif visa_type == 'medical' and 'health_status' in getattr(form, 'base_fields', {}):
+                    # Ensure visible and required for medical visas
+                    try:
+                        # If widget was previously HiddenInput, replace with default
+                        from django.forms import fields as django_fields
+                        form.base_fields['health_status'].widget = django_fields.ChoiceField(choices=form.base_fields['health_status'].choices).widget
+                    except Exception:
+                        pass
+                    form.base_fields['health_status'].required = True
+            except Exception:
+                pass
             return form
 
         def save_model(self, request, obj, form, change):
@@ -265,6 +336,16 @@ try:
                     valid_choices = []
                 if visa_type and visa_type in valid_choices:
                     obj.visa_type = visa_type
+                else:
+                    # If no query param, try to read the form field initial value
+                    try:
+                        initial = None
+                        if 'visa_type' in getattr(form, 'base_fields', {}):
+                            initial = form.base_fields['visa_type'].initial
+                        if initial and initial in valid_choices:
+                            obj.visa_type = initial
+                    except Exception:
+                        pass
             super().save_model(request, obj, form, change)
 except Exception:
     # Skip registering Visa admin during migrations/import-time errors
@@ -287,10 +368,10 @@ class VisaInline(admin.TabularInline):
     verbose_name_plural = 'Visas'
 
     def visa_status(self, obj):
-        try:
-            return obj.visa_status if obj.visa_type == 'annual' else (obj.health_status or '')
-        except Exception:
-            return ''
+            try:
+                return obj.visa_status or ''
+            except Exception:
+                return ''
     visa_status.short_description = 'Status'
 
 # Inline TrainingSeminar for Athlete
@@ -395,6 +476,24 @@ try:
             # If LandingEvent is already registered this will raise and be ignored.
             admin.site.register(LandingEvent, LandingEventAdmin)
         except Exception:
+            pass
+        # Keep the concrete LandingEvent admin registered for autocomplete/lookups
+        # but hide it from the admin index so admins manage Events via the API
+        # proxy only. We register a lightweight subclass that returns False for
+        # has_module_perms which prevents the model from appearing in the app index.
+        try:
+            class _HiddenLandingEventAdmin(LandingEventAdmin):
+                def has_module_perms(self, request):
+                    return False
+
+            # Re-register with hidden admin; if already registered this may fail
+            try:
+                admin.site.unregister(LandingEvent)
+            except Exception:
+                pass
+            admin.site.register(LandingEvent, _HiddenLandingEventAdmin)
+        except Exception:
+            # If anything goes wrong, leave the existing registration as-is
             pass
         # If registration succeeded, enable autocomplete on the Athlete inline's
         # `event` field so the inline shows a dropdown/autocomplete for Events.
@@ -590,8 +689,11 @@ class MatchInline(admin.TabularInline):
     model = Match
     extra = 0
     autocomplete_fields = ['red_corner', 'blue_corner', 'winner']  # Enable autocomplete for these fields
-    fields = ('match_type', 'red_corner', 'blue_corner', 'winner')  # Do not show referees
-    readonly_fields = ('winner',)
+    # Show a quick link to open the full Match change page so admins can view/edit
+    # the match details directly from the Category change form.
+    fields = ('match_type', 'red_corner', 'blue_corner', 'winner', 'match_link')  # Do not show referees
+    readonly_fields = ('winner', 'match_link')
+    show_change_link = False
     verbose_name = "Match"
     verbose_name_plural = "Matches"
 
@@ -607,11 +709,273 @@ class MatchInline(admin.TabularInline):
                     kwargs['queryset'] = Athlete.objects.filter(categories__id=category_id)  # Filter athletes by category
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+    def match_link(self, obj):
+        """Render a small 'View' link to the match change page for this inline row."""
+        try:
+            if not obj or not getattr(obj, 'pk', None):
+                return ''
+            url = reverse('admin:api_match_change', args=(obj.pk,))
+            return format_html('<a href="{}" class="related-link" target="_blank">View</a>', url)
+        except Exception:
+            return ''
+    match_link.short_description = 'Match details'
+
 class RefereeScoreInline(admin.TabularInline):
     model = RefereeScore
     extra = 0
     autocomplete_fields = ['referee']
-    fields = ('referee', 'red_corner_score', 'blue_corner_score', 'winner')
+    # Show per-round columns (3 rounds default) plus totals and adjusted totals
+    # Use a custom form so per-round fields are editable and saved as events.
+    class RefereeScoreForm(forms.ModelForm):
+        red_round_1 = forms.IntegerField(required=False, min_value=0, label='Red R1')
+        red_round_2 = forms.IntegerField(required=False, min_value=0, label='Red R2')
+        red_round_3 = forms.IntegerField(required=False, min_value=0, label='Red R3')
+        blue_round_1 = forms.IntegerField(required=False, min_value=0, label='Blue R1')
+        blue_round_2 = forms.IntegerField(required=False, min_value=0, label='Blue R2')
+        blue_round_3 = forms.IntegerField(required=False, min_value=0, label='Blue R3')
+
+        class Meta:
+            model = RefereeScore
+            # Make total fields read-only in the form; per-round inputs are provided separately
+            fields = ('referee', 'winner')
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            try:
+                # Populate per-round initial values from existing score events
+                inst = getattr(self, 'instance', None)
+                if inst and getattr(inst, 'pk', None):
+                    from .models import RefereePointEvent
+                    evs = RefereePointEvent.objects.filter(match=inst.match, referee=inst.referee, event_type='score')
+                    # Prefer metadata stored round, default 1
+                    by_round = {}
+                    for e in evs:
+                        try:
+                            rd = int(e.metadata.get('round')) if isinstance(e.metadata, dict) and e.metadata.get('round') is not None else 1
+                        except Exception:
+                            rd = 1
+                        by_round.setdefault(rd, {'red': 0, 'blue': 0})
+                        by_round[rd][e.side] = (by_round[rd].get(e.side, 0) or 0) + (e.points or 0)
+
+                    for rd in (1, 2, 3):
+                        r = by_round.get(rd)
+                        if r:
+                            self.fields.get(f'red_round_{rd}').initial = r.get('red')
+                            self.fields.get(f'blue_round_{rd}').initial = r.get('blue')
+            except Exception:
+                pass
+
+    form = RefereeScoreForm
+    fields = (
+        'referee',
+        'red_round_1', 'red_round_2', 'red_round_3', 'red_total',
+        'blue_round_1', 'blue_round_2', 'blue_round_3', 'blue_total',
+        'winner_combined',
+    )
+    # per-round inputs are editable on the form; totals and computed displays are read-only
+    readonly_fields = ('red_total', 'blue_total', 'winner_combined')
+
+    class Media:
+        css = {
+            'all': ('admin/css/referee_rounds_narrow.css',)
+        }
+
+    def red_total(self, obj):
+        """Computed RED TOTAL: sum of round scores minus central penalties (read-only)."""
+        if obj is None:
+            return ''
+        try:
+            from api.scoring import compute_match_results
+            res = compute_match_results(obj.match)
+            per = res.get('per_ref', {})
+            p = per.get(obj.referee_id)
+            if not p:
+                return obj.red_corner_score or ''
+            return p.get('adj_red', '')
+        except Exception:
+            return obj.red_corner_score or ''
+    red_total.short_description = 'RED TOTAL'
+
+    def red_round_1(self, obj):
+        return self._red_round(obj, 1)
+    red_round_1.short_description = 'Red R1'
+
+    def red_round_2(self, obj):
+        return self._red_round(obj, 2)
+    red_round_2.short_description = 'Red R2'
+
+    def red_round_3(self, obj):
+        return self._red_round(obj, 3)
+    red_round_3.short_description = 'Red R3'
+
+    def _red_round(self, obj, rd):
+        try:
+            from api.scoring import compute_match_results
+            res = compute_match_results(obj.match)
+            per = res.get('per_ref', {})
+            p = per.get(obj.referee_id, {})
+            rounds = p.get('rounds', {}) or {}
+            r = rounds.get(rd)
+            if not r:
+                return ''
+            return r.get('red', '')
+        except Exception:
+            return ''
+
+    def blue_total(self, obj):
+        """Computed BLUE TOTAL: sum of round scores minus central penalties (read-only)."""
+        if obj is None:
+            return ''
+        try:
+            from api.scoring import compute_match_results
+            res = compute_match_results(obj.match)
+            per = res.get('per_ref', {})
+            p = per.get(obj.referee_id)
+            if not p:
+                return obj.blue_corner_score or ''
+            return p.get('adj_blue', '')
+        except Exception:
+            return obj.blue_corner_score or ''
+    blue_total.short_description = 'BLUE TOTAL'
+
+    def blue_round_1(self, obj):
+        return self._blue_round(obj, 1)
+    blue_round_1.short_description = 'Blue R1'
+
+    def blue_round_2(self, obj):
+        return self._blue_round(obj, 2)
+    blue_round_2.short_description = 'Blue R2'
+
+    def blue_round_3(self, obj):
+        return self._blue_round(obj, 3)
+    blue_round_3.short_description = 'Blue R3'
+
+    def _blue_round(self, obj, rd):
+        try:
+            from api.scoring import compute_match_results
+            res = compute_match_results(obj.match)
+            per = res.get('per_ref', {})
+            p = per.get(obj.referee_id, {})
+            rounds = p.get('rounds', {}) or {}
+            r = rounds.get(rd)
+            if not r:
+                return ''
+            return r.get('blue', '')
+        except Exception:
+            return ''
+
+    def winner_display(self, obj):
+        """Display the computed winner based on adjusted scores (Red (adj) vs Blue (adj))."""
+        if obj is None:
+            return ''
+        try:
+            from api.scoring import compute_match_results
+            res = compute_match_results(obj.match)
+            per = res.get('per_ref', {})
+            p = per.get(obj.referee_id)
+            if not p:
+                return ''
+            w = p.get('winner')
+            if w == 'red':
+                return 'Red'
+            elif w == 'blue':
+                return 'Blue'
+            return ''
+        except Exception:
+            return ''
+    winner_display.short_description = 'Winner (adj)'
+
+    def winner_combined(self, obj):
+        """Single read-only Winner column.
+
+        Prefer an explicitly stored winner on the RefereeScore row; if not
+        present, fall back to the computed (adjusted) winner from scoring.
+        """
+        try:
+            # Prefer the persisted winner if present
+            if obj is not None:
+                w = getattr(obj, 'winner', None)
+                if w == 'red':
+                    return 'Red'
+                elif w == 'blue':
+                    return 'Blue'
+
+            # Otherwise compute adjusted winner
+            from api.scoring import compute_match_results
+            res = compute_match_results(obj.match)
+            per = res.get('per_ref', {})
+            p = per.get(obj.referee_id)
+            if not p:
+                return ''
+            w = p.get('winner')
+            if w == 'red':
+                return 'Red'
+            elif w == 'blue':
+                return 'Blue'
+            return ''
+        except Exception:
+            return ''
+    winner_combined.short_description = 'Winner'
+
+
+class CentralPenaltyInlineFormSet(forms.models.BaseInlineFormSet):
+    """Custom formset to enforce penalty semantics for inline-created events.
+
+    Ensures event_type is set to 'penalty' and metadata['central']=True
+    for both new and existing inline objects saved from the admin.
+    """
+    def save_new(self, form, commit=True):
+        obj = super().save_new(form, commit=False)
+        try:
+            obj.event_type = 'penalty'
+            md = obj.metadata or {}
+            if isinstance(md, dict):
+                md['central'] = True
+            else:
+                # best-effort: if metadata stored as string, leave as-is
+                md = {'central': True}
+            obj.metadata = md
+        except Exception:
+            pass
+        if commit:
+            obj.save()
+        return obj
+
+    def save_existing(self, form, obj, commit=True):
+        try:
+            obj.event_type = 'penalty'
+            md = obj.metadata or {}
+            if isinstance(md, dict):
+                md['central'] = True
+            else:
+                md = {'central': True}
+            obj.metadata = md
+        except Exception:
+            pass
+        return super().save_existing(form, obj, commit=commit)
+
+
+class CentralPenaltyInline(admin.TabularInline):
+    """Editable inline on Match for creating and editing central penalty events.
+
+    Inline enforces that saved rows are penalty events and marks them as
+    central in metadata so the scoring helper treats them accordingly.
+    """
+    model = RefereePointEvent
+    extra = 1
+    fields = ('referee', 'side', 'points', 'metadata', 'created_by', 'timestamp')
+    readonly_fields = ('created_by', 'timestamp')
+    formset = CentralPenaltyInlineFormSet
+    can_delete = True
+    verbose_name = 'Central penalty'
+    verbose_name_plural = 'Central penalties'
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        try:
+            return qs.filter(event_type='penalty').order_by('-timestamp')
+        except Exception:
+            return qs.none()
 
 class CategoryAthleteScoreInline(admin.TabularInline):
     model = CategoryAthleteScore  # Ensure this model exists in your models.py
@@ -813,6 +1177,14 @@ class AthleteFightResultsInline(admin.TabularInline):
 class CityAdmin(admin.ModelAdmin):
     list_display = ('name', 'created', 'modified')
     search_fields = ('name',)
+    
+    def has_module_permission(self, request):
+        """Hide City from the admin app index/sidebar while keeping it registered for lookups/autocompletes."""
+        return False
+
+    # Backwards-compatible alias in case older Django versions call this method name
+    def has_module_perms(self, request):
+        return False
 
 # Register Club model
 @admin.register(Club)
@@ -820,6 +1192,7 @@ class ClubAdmin(admin.ModelAdmin):
     list_display = ('name', 'city', 'address', 'mobile_number', 'website', 'created', 'modified')
     search_fields = ('name', 'city__name')
     filter_horizontal = ('coaches',)  # Add horizontal filter for ManyToManyField
+    inlines = [AthleteInline]
 
     # Organize fields in the admin form
     fieldsets = (
@@ -832,6 +1205,134 @@ class ClubAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = ('created', 'modified')  # Mark non-editable fields as read-only
+
+
+# ---- Admin dashboard view -------------------------------------------------
+def get_dashboard_context():
+    """Return a dict with dashboard data for templates (JSON-ready strings)."""
+    # Top clubs by athlete count
+    clubs = Club.objects.annotate(num_athletes=Count('athletes')).order_by('-num_athletes')[:10]
+    club_labels = [c.name for c in clubs]
+    club_counts = [c.num_athletes for c in clubs]
+
+    # Visa stats: annual visas valid vs expired
+    from .models import Visa
+    annual_visas = Visa.objects.filter(visa_type='annual')
+    # Use case-insensitive matching to tolerate capitalization changes
+    expired_count = annual_visas.filter(visa_status__iexact='expired').count()
+    valid_count = annual_visas.filter(visa_status__iexact='valid').count()
+    not_available = annual_visas.filter(visa_status__iregex=r'not\s*available|not_available').count()
+
+    # New athletes per month (last 6 months)
+    now = datetime.date.today()
+
+    # Build a simple timeseries (last 6 months)
+    series_labels = []
+    series_counts = []
+    athlete_months = (
+        Athlete.objects
+        .annotate(month=TruncMonth('submitted_date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    for i in range(5, -1, -1):
+        month = (now.replace(day=1) - datetime.timedelta(days=30 * i)).replace(day=1)
+        label = month.strftime('%Y-%m')
+        series_labels.append(label)
+        found = next((a['count'] for a in athlete_months if a['month'] and a['month'].strftime('%Y-%m') == label), 0)
+        series_counts.append(found)
+
+    # Clubs by city (top 8)
+    clubs_by_city_qs = (
+        Club.objects.values('city__name')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:8]
+    )
+    city_labels = [c['city__name'] or 'Unknown' for c in clubs_by_city_qs]
+    city_counts = [c['count'] for c in clubs_by_city_qs]
+
+    context = {
+        'club_labels': mark_safe(json.dumps(club_labels)),
+        'club_counts': mark_safe(json.dumps(club_counts)),
+        'visa_stats': mark_safe(json.dumps({'expired': expired_count, 'valid': valid_count, 'not_available': not_available})),
+        'new_athlete_labels': mark_safe(json.dumps(series_labels)),
+        'new_athlete_counts': mark_safe(json.dumps(series_counts)),
+        'city_labels': mark_safe(json.dumps(city_labels)),
+        'city_counts': mark_safe(json.dumps(city_counts)),
+    }
+    # Ensure templates that iterate over app lists won't render modules in the
+    # content area. Provide empty structures as a defensive measure.
+    context['app_list'] = []
+    context['ordered_apps'] = []
+    context['available_apps'] = []
+    return context
+
+
+def dashboard_view(request):
+    """Dashboard route kept for direct access; renders template with context."""
+    context = get_dashboard_context()
+    return render(request, 'admin/api/dashboard.html', context)
+
+
+# Register the dashboard URL on the admin site
+def _get_admin_urls(original_get_urls):
+    def get_urls():
+        urls = original_get_urls()
+        my_urls = [
+            path('api-dashboard/', admin.site.admin_view(dashboard_view), name='api-dashboard'),
+        ]
+        return my_urls + urls
+    return get_urls
+
+# Patch admin site urls once
+admin.site.get_urls = _get_admin_urls(admin.site.get_urls)
+# Replace the default admin index template with our dashboard so /admin/ shows charts
+try:
+    admin.site.index_template = 'admin/api/dashboard.html'
+except Exception:
+    # Older Django versions may not support index_template assignment; ignore safely
+    pass
+
+
+# Provide a custom admin index view that supplies our dashboard context so
+# the template has the JSON variables it expects when Django renders /admin/.
+def _admin_index_with_dashboard(request, extra_context=None):
+    """Admin index replacement that injects the dashboard context."""
+    context = get_dashboard_context()
+    # Merge standard admin context (site header/title, etc.) so the template
+    # can render the usual admin chrome (and app list for the sidebar).
+    try:
+        std = admin.site.each_context(request)
+        context.update(std)
+    except Exception:
+        pass
+
+    # Provide the app_list (models grouped by app) like the default index view
+    try:
+        # Provide a separate app list for the sidebar to avoid rendering the
+        # same modules inside the content area. `app_list` is intentionally
+        # set empty so default index content doesn't render module blocks.
+        context['sidebar_app_list'] = admin.site.get_app_list(request)
+        context['app_list'] = []
+    except Exception:
+        context['sidebar_app_list'] = []
+        context['app_list'] = []
+
+    if extra_context:
+        try:
+            context.update(extra_context)
+        except Exception:
+            pass
+    return render(request, 'admin/api/dashboard.html', context)
+
+# Register the custom index view on the admin site (wrapped with admin_view)
+try:
+    admin.site.index = admin.site.admin_view(_admin_index_with_dashboard)
+except Exception:
+    # If assignment fails for some Django versions, the index_template fallback
+    # remains and the /admin/api-dashboard/ route still works.
+    pass
 
 
 # FrontendTheme admin removed — frontend theme management has been disabled.
@@ -1150,21 +1651,202 @@ class TeamAdmin(admin.ModelAdmin):
             if team_members == existing_team_members:
                 raise ValueError("A team with the same members already exists.")
 
+class RefereePointEventInline(admin.TabularInline):
+    from .models import RefereePointEvent
+    model = RefereePointEvent
+    extra = 0
+    # Allow creating/editing penalty events inline using a friendly form
+    extra = 1
+    fields = ('referee', 'side', 'points', 'reason')
+    readonly_fields = ()
+    verbose_name = 'Central referee penalty'
+    verbose_name_plural = 'Central referee penalties'
+    can_delete = True
+
+    # No custom Media for metadata editor — keep plain textarea behavior
+
+    class RefereePointEventForm(forms.ModelForm):
+        # Provide a structured JSON editor widget for the metadata field so admins
+        # can see and insert the expected keys (round, central, reason, origin)
+        reason = forms.CharField(required=False, label='Reason (optional)')
+        round = forms.IntegerField(min_value=1, required=False, initial=1, label='Round')
+
+        # metadata remains stored on the model; we don't expose a guided widget here
+
+        class Meta:
+            model = RefereePointEvent
+            fields = ('referee', 'side', 'points')
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            # Make side a choice select and ensure choices match model
+            try:
+                self.fields['side'].widget = forms.Select(choices=getattr(self.fields['side'], 'choices', []))
+            except Exception:
+                pass
+            # reason and round are optional form helpers; keep them present for admin convenience
+
+        def clean(self):
+            """Validate the composed metadata (round, reason, central) against the schema
+            so admins see immediate errors on the inline form instead of at model save time.
+            """
+            cleaned = super().clean()
+            rd = cleaned.get('round')
+            reason = cleaned.get('reason')
+            meta = {}
+            if rd is not None and rd != '':
+                try:
+                    meta['round'] = int(rd)
+                except Exception:
+                    # let schema/validator catch type errors
+                    meta['round'] = rd
+            if reason:
+                meta['reason'] = reason
+            # Inline-created penalties are treated as central by save(), validate accordingly
+            meta['central'] = True
+            try:
+                from .validators import validate_referee_point_event_metadata
+                validate_referee_point_event_metadata(meta)
+            except Exception as e:
+                from django.core.exceptions import ValidationError as DjangoValidationError
+                if isinstance(e, DjangoValidationError):
+                    raise forms.ValidationError(e.messages)
+                raise forms.ValidationError(str(e))
+            return cleaned
+            # no custom widget setup for metadata
+
+        def save(self, commit=True):
+            inst = super().save(commit=False)
+            # Always mark this event as a penalty when created through this inline
+            inst.event_type = 'penalty'
+            # Map reason and round into metadata JSON
+            reason = self.cleaned_data.get('reason')
+            rd = self.cleaned_data.get('round')
+            inst.metadata = inst.metadata or {}
+            if reason:
+                try:
+                    inst.metadata['reason'] = reason
+                except Exception:
+                    inst.metadata = {'reason': reason}
+            if rd:
+                try:
+                    inst.metadata['round'] = int(rd)
+                except Exception:
+                    pass
+            # Mark events created through this inline as central penalties so the
+            # scoring helper treats them as central even if the referee field
+            # was not set to the match.central_referee (admin convenience).
+            try:
+                inst.metadata['central'] = True
+            except Exception:
+                inst.metadata = (inst.metadata or {})
+                inst.metadata['central'] = True
+            if commit:
+                inst.save()
+                # If the match doesn't have a central_referee yet, set it to this referee
+                try:
+                    m = getattr(inst, 'match', None)
+                    if m is not None and not getattr(m, 'central_referee_id', None):
+                        m.central_referee = inst.referee
+                        m.save(update_fields=['central_referee'])
+                except Exception:
+                    pass
+            return inst
+
+    def has_add_permission(self, request, obj=None):
+        # Allow staff/superusers to add penalties. Non-staff may add only if they are
+        # the athlete linked to the match.central_referee.
+        try:
+            if request.user.is_staff or request.user.is_superuser:
+                return True
+            if obj is None:
+                return False
+            central = getattr(obj, 'central_referee', None)
+            if not central:
+                return False
+            from .models import Athlete
+            athlete = Athlete.objects.filter(user=request.user).first()
+            return athlete is not None and athlete.pk == central.pk
+        except Exception:
+            return False
+
+    def has_change_permission(self, request, obj=None):
+        return self.has_add_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return self.has_add_permission(request, obj)
+
+    form = RefereePointEventForm
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        try:
+            object_id = request.resolver_match.kwargs.get('object_id')
+        except Exception:
+            object_id = None
+
+        # Show only penalty events; prefer those linked to the match central referee
+        if object_id:
+            try:
+                match = Match.objects.filter(pk=object_id).first()
+                if match and getattr(match, 'central_referee_id', None):
+                    return qs.filter(event_type='penalty')
+            except Exception:
+                pass
+        return qs.filter(event_type='penalty')
+
+    def get_formset(self, request, obj=None, **kwargs):
+        """Prefill new inline forms with the match.central_referee when available."""
+        FormSet = super().get_formset(request, obj, **kwargs)
+
+        class PrefilledFormSet(FormSet):
+            def __init__(self, *a, **kw):
+                super().__init__(*a, **kw)
+                try:
+                    if obj is not None and getattr(obj, 'central_referee_id', None):
+                        # For empty forms, set initial referee to the central referee
+                        for form in self.forms:
+                            if not form.initial and not form.instance.pk:
+                                form.initial.setdefault('referee', obj.central_referee_id)
+                except Exception:
+                    pass
+
+        return PrefilledFormSet
+
+
+class CentralPenaltyForm(forms.Form):
+    SIDE_CHOICES = [('red', 'Red Corner'), ('blue', 'Blue Corner')]
+    side = forms.ChoiceField(choices=SIDE_CHOICES, label='Penalty side')
+    points = forms.IntegerField(min_value=1, initial=1, label='Penalty points')
+    reason = forms.CharField(required=False, widget=forms.Textarea, label='Reason (optional)')
+
+
 @admin.register(Match)
 class MatchAdmin(admin.ModelAdmin):
     list_display = ('name_with_corners', 'match_type', 'get_winner', 'category_link', 'competition')
     search_fields = ('name', 'red_corner__first_name', 'red_corner__last_name', 'blue_corner__first_name', 'blue_corner__last_name', 'winner__first_name', 'category__name', 'category__competition__name', 'category__event__title')
     list_filter = ('match_type', 'category__competition')
 
+    # Use a custom change form template so we can add a quick 'Add central penalty' button
+    change_form_template = 'admin/api/match/change_form.html'
+
     fieldsets = (
         ('MATCH DETAILS', {
-            'fields': ('category', 'match_type', 'red_corner', 'blue_corner', 'winner')  # Added winner field
-        }),
+            # Place central_referee near the top so admins can set it before adding penalties
+            # Winner is read-only and computed from referee scores/penalties
+            'fields': ('category', 'match_type', 'red_corner', 'blue_corner', 'central_referee', 'winner_display')
+        } ),
     )
 
-    autocomplete_fields = ['red_corner', 'blue_corner', 'winner']  # Enable autocomplete for these fields
+    autocomplete_fields = ['red_corner', 'blue_corner', 'central_referee']  # Winner is computed and read-only
 
-    inlines = [RefereeScoreInline]
+    readonly_fields = ('winner_display',)
+
+    # Show per-referee score inline and a read-only list of central penalties
+    inlines = [RefereeScoreInline, CentralPenaltyInline]
+
+    class Media:
+        js = ('/static/api/js/referee_inline_winner.js', '/static/api/js/recompute_match_results.js',)
 
     def name_with_corners(self, obj):
         """
@@ -1172,6 +1854,15 @@ class MatchAdmin(admin.ModelAdmin):
         """
         return f"{obj.red_corner.first_name} {obj.red_corner.last_name} (Red Corner) vs {obj.blue_corner.first_name} {obj.blue_corner.last_name} (Blue Corner)"
     name_with_corners.short_description = "Match Name"
+
+    def central_referee_display(self, obj):
+        """
+        Display the central referee in the change list.
+        """
+        if obj.central_referee:
+            return f"{obj.central_referee.first_name} {obj.central_referee.last_name}"
+        return "TBD"
+    central_referee_display.short_description = "Central Referee"
 
     def competition(self, obj):
         """
@@ -1191,8 +1882,41 @@ class MatchAdmin(admin.ModelAdmin):
         """
         Display the full name of the winner in the admin interface.
         """
+        try:
+            # Prefer the computed winner from referee aggregates so the change-list
+            # reflects the same logic as the change form.
+            from api.scoring import compute_match_results
+            results = compute_match_results(obj)
+            mw = results.get('match_winner')
+            if mw:
+                return f"{mw.first_name} {mw.last_name}"
+        except Exception:
+            # fall back to stored winner
+            pass
         return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else "TBD"
     get_winner.short_description = "Winner"
+
+    def winner_display(self, obj):
+        """Computed winner display for the change form.
+
+        Uses the shared scoring helper to determine the match winner based on
+        referee scores and central penalties. Returns the athlete's full name
+        or 'TBD' when no winner can be determined.
+        """
+        try:
+            from api.scoring import compute_match_results
+            results = compute_match_results(obj)
+            mw = results.get('match_winner')
+            if mw:
+                return f"{mw.first_name} {mw.last_name}"
+            return 'TBD'
+        except Exception:
+            # Fall back to stored winner if compute fails
+            try:
+                return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else 'TBD'
+            except Exception:
+                return 'TBD'
+    winner_display.short_description = 'Winner'
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """
@@ -1204,7 +1928,444 @@ class MatchAdmin(admin.ModelAdmin):
         elif db_field.name == 'winner':
             if hasattr(request, 'obj') and isinstance(request.obj, Match):
                 kwargs['queryset'] = Athlete.objects.filter(pk__in=[request.obj.red_corner.pk, request.obj.blue_corner.pk])
+        elif db_field.name == 'central_referee':
+            # Prefer central referee choices from the match.referees if the match exists
+            try:
+                if hasattr(request, 'obj') and isinstance(request.obj, Match) and getattr(request.obj, 'pk', None):
+                    kwargs['queryset'] = request.obj.referees.all()
+                else:
+                    kwargs['queryset'] = Athlete.objects.filter(is_referee=True)
+            except Exception:
+                kwargs['queryset'] = Athlete.objects.filter(is_referee=True)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<path:object_id>/add-central-penalty/',
+                self.admin_site.admin_view(self.add_central_penalty_view),
+                name='api_match_add_central_penalty',
+            ),
+            path(
+                '<path:object_id>/recompute-results/',
+                self.admin_site.admin_view(self.recompute_results_view),
+                name='api_match_recompute_results',
+            ),
+        ]
+        return custom_urls + urls
+
+    def add_central_penalty_view(self, request, object_id, *args, **kwargs):
+        """Admin view to create a central-referee penalty for the given match.
+
+        The form pre-fills referee to the match.central_referee and requires side and points.
+        """
+        from django.shortcuts import get_object_or_404, redirect
+        from .models import RefereePointEvent
+
+        match = get_object_or_404(Match, pk=object_id)
+        central = getattr(match, 'central_referee', None)
+
+        if central is None:
+            # For AJAX, return JSON error; for normal requests redirect back with a message
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                return JsonResponse({'ok': False, 'error': 'No central referee set'}, status=400)
+            messages.error(request, 'This match does not have a central referee set.')
+            return redirect(reverse('admin:api_match_change', args=[object_id]))
+
+        if request.method == 'POST':
+            form = CentralPenaltyForm(request.POST)
+            if form.is_valid():
+                side = form.cleaned_data['side']
+                points = form.cleaned_data['points']
+                reason = form.cleaned_data.get('reason')
+
+                # Create the penalty event attributed to the central referee
+                ev = RefereePointEvent.objects.create(
+                    match=match,
+                    referee=central,
+                    side=side,
+                    points=points,
+                    event_type='penalty',
+                    created_by=request.user if request.user.is_authenticated else None,
+                    metadata={'reason': reason} if reason else None,
+                )
+                # After creating the event, run a best-effort recompute (non-blocking)
+                try:
+                    from django.db import transaction
+                    from .models import RefereeScore
+
+                    with transaction.atomic():
+                        # Recompute totals using all events for this match
+                        events_all = list(RefereePointEvent.objects.filter(match=match).order_by('timestamp'))
+                        per_ref = {}
+                        central_penalties = {'red': 0, 'blue': 0}
+                        central_id = getattr(match, 'central_referee_id', None)
+                        for e in events_all:
+                            rid = e.referee_id
+                            if rid not in per_ref:
+                                per_ref[rid] = {'red': 0, 'blue': 0}
+                            per_ref[rid][e.side] = per_ref[rid].get(e.side, 0) + (e.points or 0)
+                            if central_id and e.referee_id == central_id and e.event_type == 'penalty':
+                                central_penalties[e.side] = central_penalties.get(e.side, 0) + (e.points or 0)
+
+                        referee_scores = []
+                        for rid, sums in per_ref.items():
+                            red = sums.get('red', 0)
+                            blue = sums.get('blue', 0)
+                            adj_red = red - central_penalties.get('red', 0)
+                            adj_blue = blue - central_penalties.get('blue', 0)
+                            if adj_red > adj_blue:
+                                winner = 'red'
+                            elif adj_blue > adj_red:
+                                winner = 'blue'
+                            else:
+                                winner = None
+                            rs, _ = RefereeScore.objects.update_or_create(
+                                match=match,
+                                referee_id=rid,
+                                defaults={'red_corner_score': red, 'blue_corner_score': blue, 'winner': winner}
+                            )
+                            referee_scores.append(rs)
+
+                        # Determine match winner by majority votes
+                        votes_red = sum(1 for r in referee_scores if r.winner == 'red')
+                        votes_blue = sum(1 for r in referee_scores if r.winner == 'blue')
+                        chosen_winner = None
+                        if votes_red >= 3 and votes_red > votes_blue:
+                            chosen_winner = match.red_corner
+                        elif votes_blue >= 3 and votes_blue > votes_red:
+                            chosen_winner = match.blue_corner
+                        else:
+                            total_red = sum(r.red_corner_score for r in referee_scores) - (central_penalties.get('red', 0) * len(referee_scores))
+                            total_blue = sum(r.blue_corner_score for r in referee_scores) - (central_penalties.get('blue', 0) * len(referee_scores))
+                            if total_red > total_blue:
+                                chosen_winner = match.red_corner
+                            elif total_blue > total_red:
+                                chosen_winner = match.blue_corner
+                            else:
+                                chosen_winner = None
+
+                        if match.winner != chosen_winner:
+                            match.winner = chosen_winner
+                            match.save()
+                except Exception:
+                    # Best-effort: don't crash the admin UI if recompute fails
+                    pass
+
+                # Build a compact match_winner summary for AJAX responses
+                mv = None
+                try:
+                    if match.winner:
+                        mv = {'id': match.winner.pk, 'name': f"{match.winner.first_name} {match.winner.last_name}"}
+                except Exception:
+                    mv = None
+
+                # If this is an AJAX request, return JSON so client-side can update in-place
+                if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                    return JsonResponse({'ok': True, 'id': ev.pk, 'match_winner': mv})
+
+                messages.success(request, f'Created central penalty (id={ev.pk}) for {central}.')
+                return redirect(reverse('admin:api_match_change', args=[object_id]))
+        else:
+            form = CentralPenaltyForm(initial={'points': 1})
+
+        context = dict(
+            self.admin_site.each_context(request),
+            title='Add central referee penalty',
+            match=match,
+            central_referee=central,
+            form=form,
+            opts=self.model._meta,
+        )
+        return render(request, 'admin/api/match/add_central_penalty.html', context)
+
+    def save_formset(self, request, form, formset, change):
+        """Handle saving of RefereeScore inline plus create/update per-round score events.
+
+        We let Django save the inline instances first, then we translate any
+        per-round form fields (red_round_X / blue_round_X) into RefereePointEvent
+        rows of type 'score' so the shared aggregator can compute adjusted
+        totals consistently in save_related.
+        """
+        # Let Django save the inlines first
+        super().save_formset(request, form, formset, change)
+
+        # If this was the RefereeScore inline, map per-round fields into score events
+        from .models import RefereePointEvent
+        if formset.model == RefereeScore:
+            match = getattr(form, 'instance', None)
+            if not match:
+                return
+
+            # Iterate through forms to read per-round inputs and persist score events
+            for f in formset.forms:
+                # Skip deleted forms
+                try:
+                    if f.cleaned_data.get('DELETE'):
+                        continue
+                except Exception:
+                    # If cleaned_data isn't present (unlikely), skip
+                    pass
+
+                # Ensure the instance/referee exists
+                inst = getattr(f, 'instance', None)
+                if not inst or not getattr(inst, 'referee_id', None):
+                    continue
+                rid = inst.referee_id
+
+                # For rounds 1..3, handle red and blue per-round scores
+                # Use POST data as a robust source (fallback to cleaned_data) so
+                # inline custom fields are persisted even if cleaned_data is
+                # unexpectedly missing in some admin flows.
+                for rd in (1, 2, 3):
+                    # Red
+                    field_name = f'red_round_{rd}'
+                    val = None
+                    try:
+                        # Prefer explicit POST value using the form prefix
+                        pref = getattr(f, 'prefix', None)
+                        if pref:
+                            raw = request.POST.get(f"{pref}-{field_name}")
+                            if raw is not None and raw != '':
+                                try:
+                                    val = int(raw)
+                                except Exception:
+                                    val = raw
+                        # Fallback to validated cleaned_data when available
+                        if val is None and hasattr(f, 'cleaned_data'):
+                            val = f.cleaned_data.get(field_name)
+                    except Exception:
+                        val = None
+                    try:
+                        existing_qs = RefereePointEvent.objects.filter(match=match, referee_id=rid, event_type='score', side='red')
+                        # Try to filter by metadata.round when supported
+                        try:
+                            existing_qs = existing_qs.filter(metadata__round=rd)
+                        except Exception:
+                            # metadata lookup may not be supported; fall back to metadata__contains
+                            try:
+                                existing_qs = existing_qs.filter(metadata__contains={'round': rd})
+                            except Exception:
+                                pass
+                    except Exception:
+                        existing_qs = None
+
+                    if val is None:
+                        # delete any existing score events for this round
+                        try:
+                            if existing_qs is not None:
+                                existing_qs.delete()
+                        except Exception:
+                            pass
+                    else:
+                        # replace existing events with the provided value
+                        try:
+                            if existing_qs is not None and existing_qs.exists():
+                                existing_qs.delete()
+                            RefereePointEvent.objects.create(
+                                match=match,
+                                referee_id=rid,
+                                side='red',
+                                points=int(val),
+                                event_type='score',
+                                metadata={'round': rd},
+                                created_by=request.user if request.user.is_authenticated else None,
+                            )
+                        except Exception:
+                            pass
+
+                    # Blue
+                    field_name_b = f'blue_round_{rd}'
+                    valb = None
+                    try:
+                        if pref:
+                            rawb = request.POST.get(f"{pref}-{field_name_b}")
+                            if rawb is not None and rawb != '':
+                                try:
+                                    valb = int(rawb)
+                                except Exception:
+                                    valb = rawb
+                        if valb is None and hasattr(f, 'cleaned_data'):
+                            valb = f.cleaned_data.get(field_name_b)
+                    except Exception:
+                        valb = None
+                    try:
+                        existing_qs_b = RefereePointEvent.objects.filter(match=match, referee_id=rid, event_type='score', side='blue')
+                        try:
+                            existing_qs_b = existing_qs_b.filter(metadata__round=rd)
+                        except Exception:
+                            try:
+                                existing_qs_b = existing_qs_b.filter(metadata__contains={'round': rd})
+                            except Exception:
+                                pass
+                    except Exception:
+                        existing_qs_b = None
+
+                    if valb is None:
+                        try:
+                            if existing_qs_b is not None:
+                                existing_qs_b.delete()
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            if existing_qs_b is not None and existing_qs_b.exists():
+                                existing_qs_b.delete()
+                            RefereePointEvent.objects.create(
+                                match=match,
+                                referee_id=rid,
+                                side='blue',
+                                points=int(valb),
+                                event_type='score',
+                                metadata={'round': rd},
+                                created_by=request.user if request.user.is_authenticated else None,
+                            )
+                        except Exception:
+                            pass
+
+            # After creating/deleting score events for this formset, run a local
+            # recompute so that the inline winner fields reflect the new values
+            # immediately after saving. This mirrors the authoritative recompute
+            # done in save_related but gives faster feedback in the same save
+            # operation (the full recompute still runs in save_related).
+            try:
+                from api.scoring import compute_match_results
+                results = compute_match_results(match)
+                for (rid, red, blue, winner) in results.get('referee_scores_data', []):
+                    try:
+                        existing = RefereeScore.objects.filter(match=match, referee_id=rid).first()
+                        if existing and existing.winner:
+                            RefereeScore.objects.update_or_create(
+                                match=match,
+                                referee_id=rid,
+                                defaults={'red_corner_score': red, 'blue_corner_score': blue, 'winner': existing.winner}
+                            )
+                        else:
+                            RefereeScore.objects.update_or_create(
+                                match=match,
+                                referee_id=rid,
+                                defaults={'red_corner_score': red, 'blue_corner_score': blue, 'winner': winner}
+                            )
+                    except Exception:
+                        try:
+                            RefereeScore.objects.update_or_create(
+                                match=match,
+                                referee_id=rid,
+                                defaults={'red_corner_score': red, 'blue_corner_score': blue, 'winner': winner}
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+    def save_related(self, request, form, formsets, change):
+        """After all inlines are saved, run a single recompute to persist winners.
+
+        This ensures that when admins save the match change form (including any
+        combination of RefereeScore and RefereePointEvent inlines), the
+        authoritative computation runs once using the fully persisted state,
+        avoiding the need to save multiple times.
+        """
+        # First let Django save all related inlines as usual
+        super().save_related(request, form, formsets, change)
+
+        # Then run the shared helper and persist winners based on the saved DB state
+        try:
+            from .models import RefereePointEvent, RefereeScore
+            from api.scoring import compute_match_results
+            match = form.instance
+            events_qs = RefereePointEvent.objects.filter(match=match)
+            results = compute_match_results(match, events_qs)
+
+            # Persist per-referee winners/scores. Do not overwrite an explicit
+            # referee winner that was provided via the inline form: prefer the
+            # existing stored winner if present.
+            for (rid, red, blue, winner) in results.get('referee_scores_data', []):
+                try:
+                    existing = RefereeScore.objects.filter(match=match, referee_id=rid).first()
+                    if existing and existing.winner:
+                        # Preserve the explicitly set winner
+                        RefereeScore.objects.update_or_create(
+                            match=match,
+                            referee_id=rid,
+                            defaults={'red_corner_score': red, 'blue_corner_score': blue, 'winner': existing.winner}
+                        )
+                    else:
+                        RefereeScore.objects.update_or_create(
+                            match=match,
+                            referee_id=rid,
+                            defaults={'red_corner_score': red, 'blue_corner_score': blue, 'winner': winner}
+                        )
+                except Exception:
+                    # Best-effort per-row persistence
+                    try:
+                        RefereeScore.objects.update_or_create(
+                            match=match,
+                            referee_id=rid,
+                            defaults={'red_corner_score': red, 'blue_corner_score': blue, 'winner': winner}
+                        )
+                    except Exception:
+                        pass
+
+            # Persist match winner
+            match_winner = results.get('match_winner')
+            if match.winner != match_winner:
+                match.winner = match_winner
+                match.save()
+        except Exception:
+            # Best-effort: don't block saving if recompute fails
+            pass
+
+    def recompute_results_view(self, request, object_id, *args, **kwargs):
+        """Admin AJAX view to recompute match results and persist winners.
+
+        This can be triggered from the admin UI to sync stored winners without
+        requiring the admin to save inlines. Returns JSON with a brief summary.
+        """
+        from django.shortcuts import get_object_or_404
+        from django.views.decorators.http import require_POST
+        from .models import RefereePointEvent, RefereeScore
+
+        match = get_object_or_404(Match, pk=object_id)
+
+        # Check permissions: only allow users who can change the match
+        if not self.has_change_permission(request, match):
+            return JsonResponse({'ok': False, 'error': 'Permission denied'}, status=403)
+
+        # Only accept POST for side-effecting operation
+        if request.method != 'POST':
+            return JsonResponse({'ok': False, 'error': 'Invalid method'}, status=405)
+
+        try:
+            # Recompute using the shared helper and persist per-referee winners
+            from api.scoring import compute_match_results
+            events_qs = RefereePointEvent.objects.filter(match=match)
+            results = compute_match_results(match, events_qs)
+
+            persisted = []
+            for (rid, red, blue, winner) in results.get('referee_scores_data', []):
+                rs, _ = RefereeScore.objects.update_or_create(
+                    match=match,
+                    referee_id=rid,
+                    defaults={'red_corner_score': red, 'blue_corner_score': blue, 'winner': winner}
+                )
+                persisted.append({'referee_id': rid, 'winner': winner})
+
+            # Persist match winner
+            match_winner = results.get('match_winner')
+            if match.winner != match_winner:
+                match.winner = match_winner
+                match.save()
+
+            # Return a compact summary for the admin UI to render
+            mv = None
+            if match.winner:
+                mv = {'id': match.winner.pk, 'name': f"{match.winner.first_name} {match.winner.last_name}"}
+
+            return JsonResponse({'ok': True, 'match_winner': mv, 'per_ref': persisted})
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
 
 @admin.register(Group)
 class GroupAdmin(admin.ModelAdmin):
@@ -1259,9 +2420,10 @@ class AthleteActivityInline(admin.TabularInline):
 
 @admin.register(Athlete)
 class AthleteAdmin(admin.ModelAdmin):
+    # Merge photo and name into a single narrow column (no header label).
+    # Also show referee/coach flags, compact grade name, club, and action buttons on the far right.
     list_display = [
-        'get_full_name', 'user_email', 'status', 'current_grade', 'club', 'city', 
-        'date_of_birth', 'is_coach', 'is_referee', 'submitted_date', 'get_action_buttons'
+        'photo_and_name', 'status', 'is_referee', 'is_coach', 'grade_display', 'club', 'get_action_buttons'
     ]
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
@@ -1297,8 +2459,124 @@ class AthleteAdmin(admin.ModelAdmin):
     
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
-    get_full_name.short_description = 'Name'
+    get_full_name.short_description = _('Name')
     get_full_name.admin_order_field = 'first_name'
+
+    def photo_and_name(self, obj):
+        """Render a small photo (or initials SVG) next to the athlete name.
+
+        The column intentionally has an empty header (short_description='') so
+        the table header remains compact and the photo doesn't add an extra
+        labelled column.
+        """
+        try:
+            url = reverse('admin:api_athlete_change', args=(obj.pk,))
+        except Exception:
+            url = '#'
+
+        # Determine if the profile_image is the default placeholder
+        img_html = ''
+        try:
+            img_name = getattr(obj.profile_image, 'name', '') or ''
+            is_default = img_name.endswith('default.png') or img_name.endswith('/default.png')
+            if obj.profile_image and hasattr(obj.profile_image, 'url') and not is_default:
+                img_html = format_html(
+                    '<img src="{}" style="width:28px; height:28px; object-fit:cover; border-radius:4px; margin-right:8px; vertical-align:middle;" />',
+                    obj.profile_image.url
+                )
+            else:
+                # Render initials SVG inline
+                fn = (obj.first_name or '').strip()
+                ln = (obj.last_name or '').strip()
+                initials = ''
+                if fn and ln:
+                    initials = (fn[0] + ln[0]).upper()
+                elif fn:
+                    initials = fn[0].upper()
+                elif ln:
+                    initials = ln[0].upper()
+                svg = (
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" '
+                    'style="width:28px; height:28px; display:inline-block; vertical-align:middle; border-radius:4px; overflow:hidden; margin-right:8px;">'
+                    '<rect width="100%" height="100%" fill="#e0e0e0" rx="4"/>'
+                    '<text x="50%" y="50%" dy="0.35em" text-anchor="middle" '
+                    'font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" '
+                    'font-size="12" fill="#424242">'
+                    f'{initials}'
+                    '</text>'
+                    '</svg>'
+                )
+                img_html = mark_safe(svg)
+        except Exception:
+            img_html = mark_safe('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" style="width:28px; height:28px; display:inline-block; vertical-align:middle; border-radius:4px; overflow:hidden; margin-right:8px;"></svg>')
+
+        name_html = format_html('<span style="vertical-align:middle">{}</span>', f"{obj.first_name} {obj.last_name}")
+        return format_html('<a href="{}" style="display:inline-flex; align-items:center;">{} {}</a>', url, img_html, name_html)
+    photo_and_name.short_description = ''
+    photo_and_name.admin_order_field = 'first_name'
+
+    def grade_display(self, obj):
+        """Show only the grade name (avoid verbose Grade.__str__ with Rank/Type)."""
+        try:
+            return obj.current_grade.name if obj.current_grade else ''
+        except Exception:
+            return ''
+    grade_display.short_description = 'Grade'
+    # Order by the underlying grade rank if available
+    grade_display.admin_order_field = 'current_grade__rank_order'
+
+    def profile_image_thumbnail(self, obj):
+        try:
+            if obj.profile_image and hasattr(obj.profile_image, 'url'):
+                return format_html('<img src="{}" style="width:40px; height:40px; object-fit:cover; border-radius:20%" />', obj.profile_image.url)
+        except Exception:
+            pass
+        # Render a small inline SVG avatar with initials (computed from first/last name)
+        try:
+            fn = (obj.first_name or '').strip()
+            ln = (obj.last_name or '').strip()
+            initials = ''
+            if fn and ln:
+                initials = (fn[0] + ln[0]).upper()
+            elif fn:
+                initials = fn[0].upper()
+            elif ln:
+                initials = ln[0].upper()
+            else:
+                initials = ''
+            # Keep SVG small and legible for 40x40 thumb
+            svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">'
+                '<rect width="100%" height="100%" fill="#e0e0e0" rx="6"/>'
+                '<text x="50%" y="50%" dy="0.35em" text-anchor="middle" '
+                'font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" '
+                'font-size="14" fill="#616161">'
+                f'{initials}'
+                '</text>'
+                '</svg>'
+            )
+        except Exception:
+            svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">'
+                '<rect width="100%" height="100%" fill="#e0e0e0" rx="6"/>'
+                '</svg>'
+            )
+        # Embed the SVG directly into the HTML instead of using a data: URI.
+        # Some environments or CSP rules may block data: URIs; inline SVG avoids that.
+        try:
+            svg_el = svg.replace('<svg ', '<svg style="width:40px; height:40px; display:block; border-radius:6px; overflow:hidden;" ')
+            return mark_safe(svg_el)
+        except Exception:
+            # Fallback to a plain gray rectangle if something unexpected happens
+            fallback = (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" '
+                'style="width:40px; height:40px; display:block; border-radius:6px; overflow:hidden;"'>
+                '<rect width="100%" height="100%" fill="#e0e0e0" rx="6"/>'
+                '</svg>'
+            )
+            return mark_safe(fallback)
+    profile_image_thumbnail.short_description = _('Photo')
+    profile_image_thumbnail.allow_tags = True
     
     def user_email(self, obj):
         return obj.user.email if obj.user else 'No user'
@@ -1308,10 +2586,10 @@ class AthleteAdmin(admin.ModelAdmin):
     def get_action_buttons(self, obj):
         if obj.status == 'pending':
             return format_html(
-                '<a class="button" href="{}approve/">Approve</a> '
-                '<a class="button" href="{}reject/">Reject</a> '
-                '<a class="button" href="{}request_revision/">Request Revision</a>',
-                obj.pk, obj.pk, obj.pk
+                '<a class="button" href="{}approve/">{}</a> '
+                '<a class="button" href="{}reject/">{}</a> '
+                '<a class="button" href="{}request_revision/">{}</a>',
+                obj.pk, _('Approve'), obj.pk, _('Reject'), obj.pk, _('Request Revision')
             )
         elif obj.status == 'approved':
             return format_html('<span style="color: green;">✓ Approved</span>')
@@ -1320,7 +2598,7 @@ class AthleteAdmin(admin.ModelAdmin):
         elif obj.status == 'revision_required':
             return format_html('<span style="color: orange;">⚠ Revision Required</span>')
         return ''
-    get_action_buttons.short_description = 'Actions'
+    get_action_buttons.short_description = _('Actions')
     
     # Team results are now displayed via AthleteTeamResultsInline above.
 

@@ -1,0 +1,150 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}API Dashboard{% endblock %}
+
+{% block content %}
+ 
+<style>
+  /* Keep the native admin sidebar visible and hide the duplicate
+    content-area aside that renders module blocks below the dashboard.
+    This is page-scoped (only on the dashboard template). */
+  #content > div:nth-child(2) > aside { display: none !important; }
+</style>
+
+<div style="display:flex; gap:1rem;">
+  <aside style="width: 250px;">
+    {# Render the default Django admin app-list so styling and behavior remain unchanged #}
+    {% include "admin/app_list.html" with app_list=sidebar_app_list %}
+  </aside>
+
+  <main style="flex:1;">
+    <h1>Admin Dashboard</h1>
+    <p>Overview charts for Clubs and Annual Visas.</p>
+    <style>
+      /* Two-column responsive grid for charts */
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        align-items: start;
+      }
+      .dashboard-panel {
+        background: #fff;
+        border: 1px solid #e1e1e1;
+        padding: 0.75rem;
+        border-radius: 4px;
+        box-sizing: border-box;
+        /* ensure panels don't force horizontal scroll */
+        max-width: 100%;
+        overflow: hidden;
+      }
+      @media (max-width: 900px) {
+        .dashboard-grid { grid-template-columns: 1fr; }
+      }
+      .chart-header { margin: 0 0 0.5rem 0; font-size: 1rem; }
+      /* Make canvases responsive and slightly shorter to avoid horizontal scroll */
+      .chart-canvas { width: 100% !important; height: 240px !important; display:block; }
+    </style>
+
+    <div class="dashboard-grid">
+      <div class="dashboard-panel">
+        <h3 class="chart-header">Top Clubs by Athlete Count</h3>
+        <canvas id="clubsChart" class="chart-canvas"></canvas>
+      </div>
+
+      <div class="dashboard-panel">
+        <h3 class="chart-header">Annual Visa Status</h3>
+        <canvas id="visaChart" class="chart-canvas"></canvas>
+      </div>
+
+      <div class="dashboard-panel">
+        <h3 class="chart-header">New Athletes (last 6 months)</h3>
+        <canvas id="newAthletesChart" class="chart-canvas"></canvas>
+      </div>
+
+      <div class="dashboard-panel">
+        <h3 class="chart-header">Clubs by City (top)</h3>
+        <canvas id="cityChart" class="chart-canvas"></canvas>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Load Chart.js from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const clubLabels = {{ club_labels|safe }};
+  const clubCounts = {{ club_counts|safe }};
+  const visaStats = {{ visa_stats|safe }};
+  const newAthleteLabels = {{ new_athlete_labels|default:'[]'|safe }};
+  const newAthleteCounts = {{ new_athlete_counts|default:'[]'|safe }};
+  const cityLabels = {{ city_labels|default:'[]'|safe }};
+  const cityCounts = {{ city_counts|default:'[]'|safe }};
+
+  const ctx = document.getElementById('clubsChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: clubLabels,
+      datasets: [{
+        label: 'Athletes',
+        data: clubCounts,
+        backgroundColor: 'rgba(54, 162, 235, 0.6)'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true }
+      }
+    }
+  });
+
+  const ctx2 = document.getElementById('visaChart').getContext('2d');
+  new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: ['Expired', 'Valid', 'Not available'],
+      datasets: [{
+        data: [visaStats.expired, visaStats.valid, visaStats.not_available],
+        backgroundColor: ['#e74c3c', '#2ecc71', '#95a5a6']
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+
+  // New athletes time series
+  const ctx3 = document.getElementById('newAthletesChart').getContext('2d');
+  new Chart(ctx3, {
+    type: 'line',
+    data: {
+      labels: newAthleteLabels,
+      datasets: [{
+        label: 'New athletes',
+        data: newAthleteCounts,
+        fill: true,
+        borderColor: 'rgba(75, 192, 192, 0.8)',
+        backgroundColor: 'rgba(75, 192, 192, 0.2)'
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+
+  // Clubs by city
+  const ctx4 = document.getElementById('cityChart').getContext('2d');
+  new Chart(ctx4, {
+    type: 'pie',
+    data: {
+      labels: cityLabels,
+      datasets: [{
+        data: cityCounts,
+        backgroundColor: ['#3498db','#9b59b6','#f1c40f','#e67e22','#e74c3c','#2ecc71','#95a5a6','#34495e']
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+</script>
+
+{% endblock %}

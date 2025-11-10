@@ -156,31 +156,184 @@ class ClubViewSet(viewsets.ViewSet):
         instance.delete()
         return Response(status=204)
 
-class AthleteViewSet(viewsets.ViewSet):
-    # Allow public read access to athlete records (profile pages are public-facing).
-    # Use AllowAny so the frontend can fetch athlete details without an authenticated session.
-    permission_classes = [AllowAny]
+    @action(detail=True, methods=['get', 'post'], permission_classes=[IsAdminOrReadOnly])
+    def point_events(self, request, pk=None):
+        """List or create referee point events for a match (async mode).
+
+        GET returns the audit trail. POST creates a RefereePointEvent (processed=false)
+        which can later be consumed by the aggregation command.
+        """
+        from .serializers import RefereePointEventSerializer
+        try:
+            match = Match.objects.get(pk=pk)
+        except Match.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        if request.method == 'GET':
+            events = match.point_events.all().order_by('timestamp')
+            serializer = RefereePointEventSerializer(events, many=True)
+            return Response(serializer.data)
+
+        # POST: create event
+        data = request.data.copy()
+        data['match'] = pk
+        serializer = RefereePointEventSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            ev = serializer.save(created_by=(request.user if getattr(request, 'user', None) and request.user.is_authenticated else None))
+            return Response(RefereePointEventSerializer(ev).data, status=201)
+        return Response(serializer.errors, status=400)
+
+class AthleteViewSet(viewsets.ModelViewSet):
+    """Public athlete endpoints plus profile creation and admin actions.
+
+    - list/retrieve: public (AllowAny)
+    - create/update: authenticated users (profile creation uses AthleteProfileSerializer)
+    - admin-only actions: approve/process_application
+    """
     queryset = Athlete.objects.all()
     serializer_class = AthleteSerializer
+    permission_classes = [AllowAny]
 
     def list(self, request):
-        # Support optional filtering by coach status for use by frontend (e.g. examiner selection)
+        # Support optional filtering by coach status and simple search
         is_coach = request.query_params.get('is_coach')
         queryset = Athlete.objects.all()
         if is_coach is not None:
-            # Treat any truthy value ("1", "true", "yes") as True
             if str(is_coach).lower() in ('1', 'true', 'yes'):
                 queryset = queryset.filter(is_coach=True)
             else:
                 queryset = queryset.filter(is_coach=False)
 
-        # Optional simple search by name (q) to help the frontend narrow down results
         q = request.query_params.get('q')
         if q:
             queryset = queryset.filter(models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q))
 
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        athlete = self.get_object()
+        serializer = self.serializer_class(athlete)
+        return Response(serializer.data)
+
+    def create(self, request):
+        """Create athlete profile for the current user (uses profile serializer semantics)."""
+        if not request.user or not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Prevent creating more than one profile per user
+        if hasattr(request.user, 'athlete') and request.user.athlete:
+            return Response({'error': 'You already have an athlete profile.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AthleteProfileSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            athlete = serializer.save(user=request.user, status='pending')
+            AthleteActivity.objects.create(athlete=athlete, action='submitted', performed_by=request.user)
+            return Response(AthleteProfileSerializer(athlete).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, pk=None):
+        # Allow partial updates via AthleteProfileSerializer when editing own profile
+        athlete = self.get_object()
+        # Only allow owner or admin to update
+        if athlete.user != request.user and not (request.user and request.user.is_admin):
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = AthleteProfileSerializer(athlete, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            updated = serializer.save()
+            return Response(AthleteProfileSerializer(updated).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def approve(self, request, pk=None):
+        athlete = self.get_object()
+        if athlete.status != 'pending':
+            return Response({'error': 'Athlete profile is not pending approval'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            athlete.approve(request.user)
+            return Response({'message': 'Athlete profile approved successfully', 'athlete_id': athlete.id})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def process_application(self, request, pk=None):
+        athlete = self.get_object()
+        serializer = AthleteProfileApprovalSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        action = serializer.validated_data['action']
+        notes = serializer.validated_data.get('notes', '')
+        if athlete.status != 'pending':
+            return Response({'error': 'Athlete profile is not pending approval'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            if action == 'approve':
+                athlete.approve(request.user)
+                result_message = 'Athlete profile approved successfully'
+            elif action == 'reject':
+                athlete.reject(request.user, notes)
+                result_message = 'Athlete profile rejected'
+            elif action == 'request_revision':
+                athlete.request_revision(request.user, notes)
+                result_message = 'Revision requested'
+            return Response({'message': result_message})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'])
+    def activity_log(self, request, pk=None):
+        athlete = self.get_object()
+        activities = athlete.activity_log.all()
+        serializer = AthleteActivitySerializer(activities, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get', 'post', 'put'], permission_classes=[permissions.IsAuthenticated], url_path='my-profile')
+    def my_profile(self, request):
+        """Convenience endpoint for the current user's athlete profile.
+
+        - GET /api/athletes/my-profile/ -> returns current user's profile
+        - POST -> create a new profile for current user (if none)
+        - PUT -> update current user's profile (if owner)
+        """
+        user = request.user
+        if request.method == 'GET':
+            try:
+                athlete = Athlete.objects.get(user=user)
+                serializer = AthleteProfileSerializer(athlete)
+                return Response(serializer.data)
+            except Athlete.DoesNotExist:
+                return Response({'error': 'No athlete profile found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'POST':
+            # create profile for current user
+            if hasattr(user, 'athlete') and user.athlete:
+                return Response({'error': 'You already have an athlete profile'}, status=status.HTTP_400_BAD_REQUEST)
+            serializer = AthleteProfileSerializer(data=request.data, context={'request': request})
+            if serializer.is_valid():
+                athlete = serializer.save(user=user, status='pending')
+                AthleteActivity.objects.create(athlete=athlete, action='submitted', performed_by=user)
+                return Response(AthleteProfileSerializer(athlete).data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.method == 'PUT':
+            try:
+                athlete = Athlete.objects.get(user=user)
+            except Athlete.DoesNotExist:
+                return Response({'error': 'No athlete profile found'}, status=status.HTTP_404_NOT_FOUND)
+
+            if athlete.user != user and not user.is_admin:
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+            serializer = AthleteProfileSerializer(athlete, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                updated = serializer.save()
+                # If the athlete was in revision_required and user updated, resubmit
+                if updated.status == 'revision_required':
+                    updated.resubmit()
+                else:
+                    AthleteActivity.objects.create(athlete=updated, action='updated', performed_by=user)
+                return Response(AthleteProfileSerializer(updated).data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CoachesViewSet(viewsets.ViewSet):
@@ -835,104 +988,6 @@ class SessionLogoutView(APIView):
 # ATHLETE WORKFLOW VIEWS
 # =====================================
 
-class AthleteProfileViewSet(viewsets.ModelViewSet):
-    """ViewSet for athlete profile registration and management"""
-    serializer_class = AthleteProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_admin:
-            # Admins can see all athlete profiles
-            return Athlete.objects.all()
-        else:
-            # Users can only see their own profile
-            return Athlete.objects.filter(user=user)
-    
-    def perform_create(self, serializer):
-        """Create athlete profile for current user"""
-        # Check if user already has an athlete profile
-        if hasattr(self.request.user, 'athlete') and self.request.user.athlete:
-            raise ValidationError("You already have an athlete profile.")
-        
-        serializer.save(user=self.request.user, status='pending')
-        
-        # Log the submission
-        AthleteActivity.objects.create(
-            athlete=serializer.instance,
-            action='submitted',
-            performed_by=self.request.user
-        )
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
-    def approve(self, request, pk=None):
-        """Admin action to approve athlete profile"""
-        athlete = self.get_object()
-        
-        if athlete.status != 'pending':
-            return Response(
-                {'error': 'Athlete profile is not pending approval'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            athlete.approve(request.user)
-            
-            return Response({
-                'message': 'Athlete profile approved successfully',
-                'athlete_id': athlete.id
-            })
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
-    def process_application(self, request, pk=None):
-        """Admin action to approve, reject, or request revision"""
-        athlete = self.get_object()
-        serializer = AthleteProfileApprovalSerializer(data=request.data)
-        
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        action = serializer.validated_data['action']
-        notes = serializer.validated_data.get('notes', '')
-        
-        if athlete.status != 'pending':
-            return Response(
-                {'error': 'Athlete profile is not pending approval'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            if action == 'approve':
-                athlete.approve(request.user)
-                result_message = f'Athlete profile approved successfully'
-            elif action == 'reject':
-                athlete.reject(request.user, notes)
-                result_message = 'Athlete profile rejected'
-            elif action == 'request_revision':
-                athlete.request_revision(request.user, notes)
-                result_message = 'Revision requested'
-            
-            return Response({'message': result_message})
-            
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=True, methods=['get'])
-    def activity_log(self, request, pk=None):
-        """Get activity log for an athlete"""
-        athlete = self.get_object()
-        activities = athlete.activity_log.all()
-        serializer = AthleteActivitySerializer(activities, many=True)
-        return Response(serializer.data)
-
 
 class SupporterAthleteRelationViewSet(viewsets.ModelViewSet):
     """ViewSet for managing supporter-athlete relationships"""
@@ -1074,6 +1129,33 @@ class MyAthleteProfileView(APIView):
                 {'error': 'No athlete profile found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+    
+def athlete_profiles_compat(request, subpath=''):
+    """Compatibility shim: redirect any /api/athlete-profiles/* requests to /api/athletes/*.
+
+    Returns a 307 Temporary Redirect with Deprecation and Link headers so clients
+    can migrate. The Location header points to the replacement URL.
+    """
+    try:
+        # Build the new absolute URL by replacing the path segment
+        original = request.get_full_path()
+        new_path = original.replace('/api/athlete-profiles', '/api/athletes')
+        new_url = request.build_absolute_uri(new_path)
+    except Exception:
+        # Fallback to site-root replacement
+        new_url = request.build_absolute_uri('/api/athletes/')
+
+    body = {
+        'detail': 'This endpoint has moved. See Location header for the replacement URL.',
+        'replacement': new_url,
+        'deprecated': True
+    }
+
+    resp = JsonResponse(body, status=307)
+    resp['Location'] = new_url
+    resp['Deprecation'] = 'true'
+    resp['Link'] = f'<{new_url}>; rel="replacement"'
+    return resp
     
     def post(self, request):
         """Create athlete profile for current user"""

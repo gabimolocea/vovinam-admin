@@ -1,0 +1,43 @@
+.inline-related th.column-red_round_1,
+.inline-related th.column-red_round_2,
+.inline-related th.column-red_round_3,
+.inline-related th.column-blue_round_1,
+.inline-related th.column-blue_round_2,
+.inline-related th.column-blue_round_3,
+.inline-related td.field-red_round_1,
+.inline-related td.field-red_round_2,
+.inline-related td.field-red_round_3,
+.inline-related td.field-blue_round_1,
+.inline-related td.field-blue_round_2,
+.inline-related td.field-blue_round_3 {
+    /* Narrow the column overall */
+    width: 4.2em;
+    min-width: 4.2em;
+    max-width: 4.2em;
+    padding-left: 0.4em;
+    padding-right: 0.4em;
+}
+
+/* Make the input controls themselves small and centered */
+.inline-related td.field-red_round_1 input,
+.inline-related td.field-red_round_2 input,
+.inline-related td.field-red_round_3 input,
+.inline-related td.field-blue_round_1 input,
+.inline-related td.field-blue_round_2 input,
+.inline-related td.field-blue_round_3 input {
+    width: 3.0em !important;
+    box-sizing: border-box;
+    text-align: center;
+    padding: 2px 4px;
+}
+
+/* For readonly/displayed totals (non-input) keep them compact too */
+.inline-related td.field-red_total,
+.inline-related td.field-blue_total,
+.inline-related th.column-red_total,
+.inline-related th.column-blue_total {
+    width: 5.0em;
+    min-width: 5.0em;
+    max-width: 5.0em;
+    text-align: center;
+}

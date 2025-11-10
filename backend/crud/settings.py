@@ -254,6 +254,19 @@ USE_I18N = True
 
 USE_TZ = True
 
+# Supported languages for the site. Add Romanian (ro) so the admin and project
+# can be translated. Use short language names; full translations will be
+# created under the project's `locale/` directory by running makemessages.
+LANGUAGES = [
+    ('en', 'English'),
+    ('ro', 'Română'),
+]
+
+# Directory for project-level .po/.mo files
+LOCALE_PATHS = [
+    os.path.join(BASE_DIR, 'locale'),
+]
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/

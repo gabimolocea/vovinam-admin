@@ -185,6 +185,7 @@ class MatchSerializer(serializers.ModelSerializer):
     blue_corner_full_name = serializers.SerializerMethodField()  # Full name for blue corner
     red_corner_club_name = serializers.CharField(source='red_corner.club.name', read_only=True, allow_null=True)  # Include red corner club name
     blue_corner_club_name = serializers.CharField(source='blue_corner.club.name', read_only=True, allow_null=True)  # Include blue corner club name
+    central_referee_name = serializers.SerializerMethodField()
     winner_name = serializers.SerializerMethodField()  # Dynamically determine the winner name
     referees = serializers.StringRelatedField(many=True)  # Display referees as strings
 
@@ -203,6 +204,8 @@ class MatchSerializer(serializers.ModelSerializer):
             'blue_corner_full_name',  # Added full name for blue corner
             'blue_corner_club_name',
             'referees',
+            'central_referee',
+            'central_referee_name',
             'winner',
             'winner_name',  # Dynamically determine the winner name
         ]
@@ -228,6 +231,13 @@ class MatchSerializer(serializers.ModelSerializer):
             return self.get_blue_corner_full_name(obj)
         return None  # No winner
 
+    def get_central_referee_name(self, obj):
+        """Return the central referee full name if present."""
+        if getattr(obj, 'central_referee', None):
+            cr = obj.central_referee
+            return f"{cr.first_name} {cr.last_name}"
+        return None
+
     def validate(self, data):
         """
         Custom validation to ensure red_corner and blue_corner are enrolled in the category.
@@ -242,6 +252,22 @@ class MatchSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Blue corner athlete '{blue_corner}' must be enrolled in the category.")
 
         return data
+
+
+class RefereePointEventSerializer(serializers.ModelSerializer):
+    """Serializer for append-only referee point events (async mode)."""
+    class Meta:
+        model = None
+        fields = ['id', 'match', 'referee', 'timestamp', 'side', 'points', 'event_type', 'processed', 'external_id', 'metadata', 'created_by']
+
+    def __init__(self, *args, **kwargs):
+        # late-bind the model to avoid circular imports at module load time
+        try:
+            from .models import RefereePointEvent
+            self.Meta.model = RefereePointEvent
+        except Exception:
+            self.Meta.model = None
+        super().__init__(*args, **kwargs)
     
 
 class AnnualVisaSerializer(serializers.ModelSerializer):

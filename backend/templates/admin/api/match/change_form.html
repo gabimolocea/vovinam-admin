@@ -1,0 +1,223 @@
+{% extends "admin/change_form.html" %}
+
+{% load i18n admin_urls %}
+
+{% block object-tools %}
+    {{ block.super }}
+    {# central penalty action moved to a prominent button in the page content; remove duplicate object-tools link #}
+{% endblock %}
+
+{# Add a prominent button near the top of the change form that opens the
+   "Add central penalty" view in a small popup window. This is clearer than
+   hiding the action in the object-tools menu for admins who frequently add
+   penalties. #}
+{% block content %}
+    {{ block.super }}
+
+        {% if original %}
+        <style>
+            /* Modal styling to match Django admin look-and-feel */
+            .central-penalty-modal div {
+                box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+            }
+            .central-penalty-modal .central-penalty-modal-content {
+                padding: 1.25rem;
+                max-width: 640px;
+                margin: 0 auto;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            }
+            .central-penalty-modal h2 {
+                margin-top: 0;
+                font-size: 1.25rem;
+            }
+            .central-penalty-modal .submit-row {
+                margin-top: 1rem;
+            }
+            .central-penalty-modal input[type="submit"], .central-penalty-modal button {
+                margin-right: 0.5rem;
+            }
+        </style>
+
+        <script type="text/javascript">
+        (function(){
+            document.addEventListener('DOMContentLoaded', function(){
+                try {
+                    // URL to the dedicated add-central-penalty admin view for this match
+                    var addUrl = "{% url 'admin:api_match_add_central_penalty' original.pk %}";
+
+                    // Look for inline groups and find the one that corresponds to
+                    // the CentralPenaltyInline (verbose_name_plural: "Central penalties").
+                    var groups = document.querySelectorAll('.inline-group, .inline-related');
+                    Array.prototype.forEach.call(groups, function(group){
+                        var heading = group.querySelector('h2, h3');
+                        var title = heading && heading.textContent ? heading.textContent.trim() : '';
+                        if(!title) title = group.textContent.trim().slice(0, 200);
+                        if(title.indexOf('Central penalties') === -1 && title.indexOf('Central penalty') === -1) return;
+
+                        // Find any "Add another" controls inside this inline and repoint them
+                        // to the dedicated add view. Django admin typically renders an
+                        // <a class="add-row"> or similar; be permissive in selecting it.
+                        var addLinks = group.querySelectorAll('a.add-row, a.addlink, a.add-row a, a.inline-related, a[href="#"]');
+                        if(!addLinks || addLinks.length === 0) {
+                            // Fallback: try to find elements with the 'add-row' text
+                            addLinks = Array.prototype.filter.call(group.querySelectorAll('a'), function(a){
+                                return /Add another/i.test(a.textContent || '');
+                            });
+                        }
+
+                            Array.prototype.forEach.call(addLinks, function(a){
+                                try {
+                                    var hasCentral = {{ original.central_referee_id|default:'0'|yesno:'true,false' }};
+                                    // Prevent default nav and open modal instead
+                                    a.addEventListener('click', function(ev){
+                                        ev.preventDefault();
+                                        if(!hasCentral) {
+                                            alert("Please set the match's Central Referee before adding central penalties.");
+                                            return;
+                                        }
+
+                                        // Build and show modal
+                                        fetch(addUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+                                            .then(function(resp){
+                                                if(!resp.ok) throw new Error('Failed to load form');
+                                                return resp.text();
+                                            })
+                                            .then(function(html){
+                                                var modal = document.createElement('div');
+                                                modal.className = 'central-penalty-modal';
+                                                modal.style.position = 'fixed';
+                                                modal.style.left = '0';
+                                                modal.style.top = '0';
+                                                modal.style.width = '100%';
+                                                modal.style.height = '100%';
+                                                modal.style.background = 'rgba(0,0,0,0.5)';
+                                                modal.style.zIndex = 10000;
+                                                modal.innerHTML = '<div class="central-penalty-modal-content" style="background:#fff;border-radius:4px;">' + html + '</div>';
+                                                document.body.appendChild(modal);
+
+                                                // Wire up cancel and submit handlers inside modal
+                                                var form = modal.querySelector('#central-penalty-form');
+                                                var cancel = modal.querySelector('#central-penalty-cancel');
+                                                if(cancel) cancel.addEventListener('click', function(){ document.body.removeChild(modal); });
+
+                                                if(form) {
+                                                    form.addEventListener('submit', function(se){
+                                                        se.preventDefault();
+                                                        var fd = new FormData(form);
+                                                        fetch(addUrl, {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+                                                            .then(function(r){ return r.json(); })
+                                                            .then(function(data){
+                                                                if(data && data.ok) {
+                                                                    // If server returned the computed match winner, populate the
+                                                                    // parent 'winner' field on the change form so the admin sees it.
+                                                                    try {
+                                                                        if(data.match_winner && data.match_winner.id) {
+                                                                            var winnerId = String(data.match_winner.id);
+                                                                            var winnerName = data.match_winner.name || '';
+                                                                            var winnerEl = document.getElementById('id_winner');
+                                                                            try {
+                                                                                if(winnerEl) {
+                                                                                    var tag = winnerEl.tagName && winnerEl.tagName.toLowerCase();
+                                                                                    if(tag === 'select') {
+                                                                                        // If option exists, select it; otherwise add it
+                                                                                        var opt = winnerEl.querySelector('option[value="' + winnerId + '"]');
+                                                                                        if(!opt) {
+                                                                                            opt = document.createElement('option');
+                                                                                            opt.value = winnerId;
+                                                                                            opt.text = winnerName || winnerId;
+                                                                                            winnerEl.appendChild(opt);
+                                                                                        }
+                                                                                        winnerEl.value = winnerId;
+                                                                                        winnerEl.selectedIndex = Array.prototype.indexOf.call(winnerEl.options, opt);
+                                                                                        winnerEl.dispatchEvent(new Event('change', {bubbles: true}));
+                                                                                    } else {
+                                                                                        // Raw id/text input: set the value and try to update the lookup link label
+                                                                                        winnerEl.value = winnerId;
+                                                                                        winnerEl.dispatchEvent(new Event('change', {bubbles: true}));
+                                                                                        // Update lookup element if present (admin uses id 'lookup_id_<field>')
+                                                                                        var lookup = document.getElementById('lookup_id_winner') || document.querySelector('a.related-lookup[aria-label]');
+                                                                                        if(lookup) {
+                                                                                            try {
+                                                                                                // If it's an <a>, set href to existing pattern if possible and update text
+                                                                                                if(lookup.tagName.toLowerCase() === 'a') {
+                                                                                                    if(winnerId) {
+                                                                                                        // Try to replace trailing digits in href with the new id
+                                                                                                        try {
+                                                                                                            var href = lookup.getAttribute('href') || '';
+                                                                                                            var newHref = href.replace(/(\/)\d+(\/change\/)?$/, '$1' + winnerId + '/change/');
+                                                                                                            lookup.setAttribute('href', newHref);
+                                                                                                        } catch (e) {}
+                                                                                                    }
+                                                                                                    if(winnerName) {
+                                                                                                        lookup.textContent = winnerName;
+                                                                                                    }
+                                                                                                }
+                                                                                            } catch (e) {}
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            } catch (e) {
+                                                                                // best-effort: ignore
+                                                                            }
+                                                                        }
+                                                                    } catch (e) {}
+
+                                                                    // Close modal
+                                                                    try { document.body.removeChild(modal); } catch (e) {}
+                                                                    // Refresh the Central penalties inline by fetching the change form
+                                                                    fetch(window.location.href, {credentials: 'same-origin'})
+                                                                        .then(function(r){ return r.text(); })
+                                                                        .then(function(pageHtml){
+                                                                            try {
+                                                                                var parser = new DOMParser();
+                                                                                var doc = parser.parseFromString(pageHtml, 'text/html');
+                                                                                var newGroups = doc.querySelectorAll('.inline-group, .inline-related');
+                                                                                var oldGroups = document.querySelectorAll('.inline-group, .inline-related');
+                                                                                // Find the Central penalties group in new doc and replace the old one
+                                                                                for(var i=0;i<newGroups.length;i++){
+                                                                                    var h = newGroups[i].querySelector('h2, h3');
+                                                                                    var t = h && h.textContent ? h.textContent.trim() : '';
+                                                                                    if(!t) t = newGroups[i].textContent.trim().slice(0,200);
+                                                                                    if(t.indexOf('Central penalties')!==-1 || t.indexOf('Central penalty')!==-1){
+                                                                                        // Find matching old group and replace
+                                                                                        for(var j=0;j<oldGroups.length;j++){
+                                                                                            var oh = oldGroups[j].querySelector('h2, h3');
+                                                                                            var ot = oh && oh.textContent ? oh.textContent.trim() : '';
+                                                                                            if(!ot) ot = oldGroups[j].textContent.trim().slice(0,200);
+                                                                                            if(ot.indexOf('Central penalties')!==-1 || ot.indexOf('Central penalty')!==-1){
+                                                                                                oldGroups[j].parentNode.replaceChild(newGroups[i].cloneNode(true), oldGroups[j]);
+                                                                                                break;
+                                                                                            }
+                                                                                        }
+                                                                                        break;
+                                                                                    }
+                                                                                }
+                                                                            } catch (ex) {
+                                                                                // Fallback to full reload if replacement fails
+                                                                                window.location.reload();
+                                                                            }
+                                                                } else {
+                                                                    alert('Failed to create penalty: ' + (data && data.error ? data.error : 'Unknown'));
+                                                                }
+                                                            }).catch(function(err){
+                                                                alert('Error creating penalty: ' + err.message);
+                                                            });
+                                                    });
+                                                }
+                                            }).catch(function(err){
+                                                alert('Error loading form: ' + err.message);
+                                            });
+                                    });
+                                } catch (inner) {
+                                    // ignore errors for individual links
+                                }
+                            });
+                    });
+                } catch (e) {
+                    // no-op
+                }
+            });
+        })();
+    </script>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,15 @@
+<div class="central-penalty-modal-content">
+  <h2>Add central referee penalty</h2>
+  <p>Match: <strong>{{ match.name }}</strong></p>
+  <p>Central referee: <strong>{{ central_referee.first_name }} {{ central_referee.last_name }}</strong></p>
+  <form method="post" novalidate id="central-penalty-form">
+    {% csrf_token %}
+    <table>
+      {{ form.as_table }}
+    </table>
+    <div class="submit-row">
+      <input type="submit" value="Create penalty" class="default" />
+      <button type="button" id="central-penalty-cancel">Cancel</button>
+    </div>
+  </form>
+</div>

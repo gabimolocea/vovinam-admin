@@ -9,3 +9,4 @@ django-debug-toolbar==5.2
 # Pillow bumped to satisfy pillow-heif and to avoid building older wheels
 Pillow==11.3.0
 requests==2.32.5
+jsonschema==4.19.1

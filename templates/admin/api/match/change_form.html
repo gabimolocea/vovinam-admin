@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+
+{% load i18n admin_urls %}
+
+{% block object-tools %}
+    {{ block.super }}
+    {% if original %}
+    <li>
+        <a class="addlink" href="{{ original.pk }}/add-central-penalty/">{% trans "Add central penalty" %}</a>
+    </li>
+    {% endif %}
+{% endblock %}

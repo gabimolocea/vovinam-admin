@@ -1,0 +1,8 @@
+.json-meta-editor{border:1px solid #ddd;padding:8px;margin-bottom:8px;background:#fafafa}
+.json-meta-editor .json-meta-header label{display:inline-block;margin-right:8px;font-size:12px}
+.json-meta-editor input[type="text"], .json-meta-editor input[type="number"]{font-size:12px}
+.json-meta-customs .json-meta-custom-pair{margin-top:6px}
+.json-meta-custom-pair input{margin-right:6px}
+.json-meta-custom-del{margin-left:6px}
+.json-meta-pretty{background:#fff;border:1px solid #eee;padding:8px;max-height:160px;overflow:auto;font-size:12px}
+.json-meta-addcustom{margin-top:8px}
