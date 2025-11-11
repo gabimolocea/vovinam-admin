@@ -1,0 +1,23 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{# Add a small language switcher to the admin global nav. It posts to the built-in
+   set_language view so users can change the active language for the session. #}
+
+{% block nav-global %}
+  {{ block.super }}
+  <div style="display:inline-block; margin-left: 1rem;">
+    <form action="{% url 'set_language' %}" method="post" style="display:inline;margin:0;">
+      {% csrf_token %}
+      {% get_current_language as LANGUAGE_CODE %}
+      {% get_available_languages as LANGUAGES %}
+      <label for="language_select" style="margin-right:4px;">{% trans "Lang" %}:</label>
+      <select id="language_select" name="language" onchange="this.form.submit()" style="vertical-align:middle;">
+        {% for lang in LANGUAGES %}
+          <option value="{{ lang.0 }}" {% if lang.0 == LANGUAGE_CODE %}selected{% endif %}>{{ lang.1 }}</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+    </form>
+  </div>
+{% endblock %}

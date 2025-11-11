@@ -8,6 +8,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('i18n/', include('django.conf.urls.i18n')),
     path('api/', include('api.urls')),  # API endpoints will be at /api/
     path('health/', health),
     path('api/landing/', include('landing.urls')),  # Landing app under API structure

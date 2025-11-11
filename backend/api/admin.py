@@ -60,8 +60,8 @@ class AthleteInline(admin.TabularInline):
     fields = ('name', 'grade', 'registered_date_display')
     readonly_fields = ('name', 'grade', 'registered_date_display')
     extra = 0
-    verbose_name = "Athlete"
-    verbose_name_plural = "Athletes"
+    verbose_name = _('Athlete')
+    verbose_name_plural = _('Athletes')
     can_delete = False
 
     def name(self, obj):
@@ -71,21 +71,21 @@ class AthleteInline(admin.TabularInline):
             return format_html('<a href="{}">{} {}</a>', url, obj.first_name, obj.last_name)
         except Exception:
             return ''
-    name.short_description = 'Name'
+    name.short_description = _('Name')
 
     def grade(self, obj):
         try:
             return str(obj.current_grade) if obj.current_grade else ''
         except Exception:
             return ''
-    grade.short_description = 'Grade'
+    grade.short_description = _('Grade')
 
     def registered_date_display(self, obj):
         try:
             return obj.registered_date.strftime('%Y-%m-%d') if obj and obj.registered_date else ''
         except Exception:
             return ''
-    registered_date_display.short_description = 'Registered date'
+    registered_date_display.short_description = _('Registered date')
 
     def has_add_permission(self, request, obj=None):
         # Disable adding athletes inline from the Club page. Use the Athlete add form.
@@ -95,8 +95,8 @@ class CategoryAthleteInline(admin.TabularInline):
     model = CategoryAthlete
     extra = 0
     autocomplete_fields = ['athlete']  # Enable autocomplete for the athlete field
-    verbose_name = "Athlete"
-    verbose_name_plural = "Athletes"
+    verbose_name = _('Athlete')
+    verbose_name_plural = _('Athletes')
 
     def get_formset(self, request, obj=None, **kwargs):
         """
@@ -104,17 +104,17 @@ class CategoryAthleteInline(admin.TabularInline):
         """
         if isinstance(obj, Category):
             if obj.type == 'fight':
-                self.verbose_name = "Athlete"
-                self.verbose_name_plural = "ENROLLED ATHLETES"
+                self.verbose_name = _('Athlete')
+                self.verbose_name_plural = _('ENROLLED ATHLETES')
                 self.fields = ('athlete', 'weight')  # Only include actual fields from the model
                 self.readonly_fields = ('category_with_competition', 'category_type')  # Computed fields are read-only
             elif obj.type == 'solo':
-                self.verbose_name = "Enrolled Athlete"
-                self.verbose_name_plural = "Enrolled Athletes"
+                self.verbose_name = _('Enrolled Athlete')
+                self.verbose_name_plural = _('Enrolled Athletes')
 
             else:
-                self.verbose_name = "Competition History"
-                self.verbose_name_plural = "Add another Competition History"
+                self.verbose_name = _('Competition History')
+                self.verbose_name_plural = _('Add another Competition History')
                 self.fields = ('category_with_competition', 'category_type', 'weight')  # Only include actual fields from the model
                 self.readonly_fields = ('athlete_with_club', 'category_with_competition', 'category_type', 'weight')  # Computed fields are read-only
         return super().get_formset(request, obj, **kwargs)
@@ -126,21 +126,21 @@ class CategoryAthleteInline(admin.TabularInline):
         if obj.athlete.club:
             return f"{obj.athlete.first_name} {obj.athlete.last_name} ({obj.athlete.club.name})"
         return f"{obj.athlete.first_name} {obj.athlete.last_name}"
-    athlete_with_club.short_description = "Athlete (Club)"
+    athlete_with_club.short_description = _('Athlete (Club)')
 
     def category_with_competition(self, obj):
         """
         Display the category name along with its competition.
         """
         return f"{obj.category.name} ({obj.category.competition.name})"
-    category_with_competition.short_description = "Category (Competition)"
+    category_with_competition.short_description = _('Category (Competition)')
 
     def category_type(self, obj):
         """
         Display the type of the category.
         """
         return obj.category.type.capitalize()
-    category_type.short_description = "Category Type"
+    category_type.short_description = _('Category Type')
 
 
 # Custom Team Results display - using the improved approach from before
@@ -249,7 +249,7 @@ try:
                 return obj.visa_status or ''
             except Exception:
                 return ''
-        visa_status.short_description = 'Status'
+        visa_status.short_description = _('Status')
 
         def get_changeform_initial_data(self, request):
             """Prefill visa_type (and optionally athlete) from query params.
@@ -364,23 +364,23 @@ class VisaInline(admin.TabularInline):
     extra = 0
     fields = ('visa_type', 'issued_date', 'visa_status', 'document', 'image', 'notes')
     readonly_fields = ('visa_status',)
-    verbose_name = 'Visa'
-    verbose_name_plural = 'Visas'
+    verbose_name = _('Visa')
+    verbose_name_plural = _('Visas')
 
     def visa_status(self, obj):
             try:
                 return obj.visa_status or ''
             except Exception:
                 return ''
-    visa_status.short_description = 'Status'
+    visa_status.short_description = _('Status')
 
 # Inline TrainingSeminar for Athlete
 class TrainingSeminarInline(admin.TabularInline):
     model = TrainingSeminar.athletes.through  # Use the through table for the Many-to-Many relationship
     extra = 0  # Display only existing entries
     show_change_link = False  # Do not show change link because seminars are managed via Event
-    verbose_name = "TRAINING SEMINAR"
-    verbose_name_plural = "TRAINING SEMINARS"
+    verbose_name = _('TRAINING SEMINAR')
+    verbose_name_plural = _('TRAINING SEMINARS')
 
 
 class TrainingSeminarParticipationInline(admin.TabularInline):
@@ -393,8 +393,8 @@ class TrainingSeminarParticipationInline(admin.TabularInline):
     model = TrainingSeminarParticipation
     extra = 0
     show_change_link = True
-    verbose_name = 'Event Participation'
-    verbose_name_plural = 'Event Participations'
+    verbose_name = _('Event Participation')
+    verbose_name_plural = _('Event Participations')
     # Show a compact set of fields to keep the inline small and readable.
     # Use the `athlete_link` read-only method instead of the full athlete FK
     # to keep the UI compact (click through to the athlete page to edit).
@@ -408,7 +408,7 @@ class TrainingSeminarParticipationInline(admin.TabularInline):
             return format_html('<a href="/admin/api/athlete/{}/change/">{} {}</a>', obj.athlete.pk, obj.athlete.first_name, obj.athlete.last_name)
         except Exception:
             return str(getattr(obj, 'athlete', ''))
-    athlete_link.short_description = 'Athlete'
+    athlete_link.short_description = _('Athlete')
 
 class AthleteTrainingSeminarParticipationInline(admin.TabularInline):
     """Inline on Athlete admin to show the athlete's approved seminar enrollments."""
@@ -416,8 +416,8 @@ class AthleteTrainingSeminarParticipationInline(admin.TabularInline):
     fk_name = 'athlete'
     extra = 1
     show_change_link = True
-    verbose_name = 'Enrolled Event'
-    verbose_name_plural = 'Enrolled Events'
+    verbose_name = _('Enrolled Event')
+    verbose_name_plural = _('Enrolled Events')
     # Make the inline read-only on the Athlete page: we show existing enrollments
     # but don't allow adding/editing inline here. To add a new enrollment the
     # admin will be redirected to the dedicated add form with the athlete
@@ -718,7 +718,7 @@ class MatchInline(admin.TabularInline):
             return format_html('<a href="{}" class="related-link" target="_blank">View</a>', url)
         except Exception:
             return ''
-    match_link.short_description = 'Match details'
+    match_link.short_description = _('Match details')
 
 class RefereeScoreInline(admin.TabularInline):
     model = RefereeScore
@@ -794,19 +794,19 @@ class RefereeScoreInline(admin.TabularInline):
             return p.get('adj_red', '')
         except Exception:
             return obj.red_corner_score or ''
-    red_total.short_description = 'RED TOTAL'
+    red_total.short_description = _('RED TOTAL')
 
     def red_round_1(self, obj):
         return self._red_round(obj, 1)
-    red_round_1.short_description = 'Red R1'
+    red_round_1.short_description = _('Red R1')
 
     def red_round_2(self, obj):
         return self._red_round(obj, 2)
-    red_round_2.short_description = 'Red R2'
+    red_round_2.short_description = _('Red R2')
 
     def red_round_3(self, obj):
         return self._red_round(obj, 3)
-    red_round_3.short_description = 'Red R3'
+    red_round_3.short_description = _('Red R3')
 
     def _red_round(self, obj, rd):
         try:
@@ -836,19 +836,19 @@ class RefereeScoreInline(admin.TabularInline):
             return p.get('adj_blue', '')
         except Exception:
             return obj.blue_corner_score or ''
-    blue_total.short_description = 'BLUE TOTAL'
+    blue_total.short_description = _('BLUE TOTAL')
 
     def blue_round_1(self, obj):
         return self._blue_round(obj, 1)
-    blue_round_1.short_description = 'Blue R1'
+    blue_round_1.short_description = _('Blue R1')
 
     def blue_round_2(self, obj):
         return self._blue_round(obj, 2)
-    blue_round_2.short_description = 'Blue R2'
+    blue_round_2.short_description = _('Blue R2')
 
     def blue_round_3(self, obj):
         return self._blue_round(obj, 3)
-    blue_round_3.short_description = 'Blue R3'
+    blue_round_3.short_description = _('Blue R3')
 
     def _blue_round(self, obj, rd):
         try:
@@ -883,7 +883,7 @@ class RefereeScoreInline(admin.TabularInline):
             return ''
         except Exception:
             return ''
-    winner_display.short_description = 'Winner (adj)'
+    winner_display.short_description = _('Winner (adj)')
 
     def winner_combined(self, obj):
         """Single read-only Winner column.
@@ -915,7 +915,7 @@ class RefereeScoreInline(admin.TabularInline):
             return ''
         except Exception:
             return ''
-    winner_combined.short_description = 'Winner'
+    winner_combined.short_description = _('Winner')
 
 
 class CentralPenaltyInlineFormSet(forms.models.BaseInlineFormSet):
@@ -967,8 +967,8 @@ class CentralPenaltyInline(admin.TabularInline):
     readonly_fields = ('created_by', 'timestamp')
     formset = CentralPenaltyInlineFormSet
     can_delete = True
-    verbose_name = 'Central penalty'
-    verbose_name_plural = 'Central penalties'
+    verbose_name = _('Central penalty')
+    verbose_name_plural = _('Central penalties')
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -982,42 +982,42 @@ class CategoryAthleteScoreInline(admin.TabularInline):
     extra = 0
     autocomplete_fields = ['athlete', 'referee']  # Enable autocomplete for athlete and referee fields
     fields = ('athlete', 'referee', 'score')  # Display athlete, referee, and score fields
-    verbose_name = "Athlete Score"
-    verbose_name_plural = "Athlete Scores"
+    verbose_name = _('Athlete Score')
+    verbose_name_plural = _('Athlete Scores')
 
 class CategoryTeamScoreInline(admin.TabularInline):
     model = CategoryTeamScore  # Ensure this model exists in your models.py
     extra = 0
     autocomplete_fields = ['team', 'referee']  # Enable autocomplete for team and referee fields
     fields = ('team', 'referee', 'score')  # Display team, referee, and score fields
-    verbose_name = "Team Score"
-    verbose_name_plural = "Team Scores"
+    verbose_name = _('Team Score')
+    verbose_name_plural = _('Team Scores')
 
 class TeamMemberInline(admin.TabularInline):
     model = TeamMember
     extra = 1  # Allow adding new athletes to the team
-    verbose_name = "Team Member"
-    verbose_name_plural = "Team Members"
+    verbose_name = _('Team Member')
+    verbose_name_plural = _('Team Members')
 
 class EnrolledTeamsInline(admin.TabularInline):
     model = CategoryTeam
     extra = 1  # Allow adding new teams
     fields = ('team', 'place_obtained')
     readonly_fields = ('place_obtained',)
-    verbose_name_plural = "TEAMS ENROLLED"  # Rename the section title
+    verbose_name_plural = _('TEAMS ENROLLED')  # Rename the section title
 
     def place_obtained(self, obj):
         """
         Display the place obtained by the team in the category.
         """
         if obj.category.first_place_team == obj.team:
-            return "1st Place"
+            return _('1st Place')
         elif obj.category.second_place_team == obj.team:
-            return "2nd Place"
+            return _('2nd Place')
         elif obj.category.third_place_team == obj.team:
-            return "3rd Place"
-        return "No Placement"
-    place_obtained.short_description = "Place Obtained"
+            return _('3rd Place')
+        return _('No Placement')
+    place_obtained.short_description = _('Place Obtained')
 
 class AthleteSoloResultsInline(admin.TabularInline):
     """
@@ -1025,8 +1025,8 @@ class AthleteSoloResultsInline(admin.TabularInline):
     """
     model = CategoryAthlete
     extra = 0
-    verbose_name = "Solo Results"
-    verbose_name_plural = "Solo Results"
+    verbose_name = _('Solo Results')
+    verbose_name_plural = _('Solo Results')
     can_add = False  # Disable the "Add another" button
     can_delete = False  # Disable the "Delete" button
     show_change_link = False  # Hide the "Change" link
@@ -1045,27 +1045,27 @@ class AthleteSoloResultsInline(admin.TabularInline):
         Display the category name.
         """
         return obj.category.name
-    category_name.short_description = "Category Name"
+    category_name.short_description = _('Category Name')
 
     def competition_name(self, obj):
         """
         Display the competition name.
         """
-        return obj.category.competition.name if obj.category.competition else "N/A"
-    competition_name.short_description = "Competition Name"
+        return obj.category.competition.name if obj.category.competition else _('N/A')
+    competition_name.short_description = _('Competition Name')
 
     def results(self, obj):
         """
         Display the results of the athlete for solo categories.
         """
         if obj.category.first_place == obj.athlete:
-            return "1st Place"
+            return _('1st Place')
         elif obj.category.second_place == obj.athlete:
-            return "2nd Place"
+            return _('2nd Place')
         elif obj.category.third_place == obj.athlete:
-            return "3rd Place"
-        return "No Placement"
-    results.short_description = "Place Obtained"
+            return _('3rd Place')
+        return _('No Placement')
+    results.short_description = _('Place Obtained')
 
 
 class AthleteTeamResultsInline(admin.TabularInline):
@@ -1077,8 +1077,8 @@ class AthleteTeamResultsInline(admin.TabularInline):
     """
     model = CategoryAthleteScore
     extra = 0
-    verbose_name = 'Team Result'
-    verbose_name_plural = 'Team Results'
+    verbose_name = _('Team Result')
+    verbose_name_plural = _('Team Results')
     can_add = False
     can_delete = False
     show_change_link = True
@@ -1112,15 +1112,15 @@ class AthleteTeamResultsInline(admin.TabularInline):
 
     def competition_name(self, obj):
         return obj.category.competition.name if obj.category and obj.category.competition else 'N/A'
-    competition_name.short_description = 'Competition'
+    competition_name.short_description = _('Competition')
 
     def category_name(self, obj):
         return obj.category.name if obj.category else 'N/A'
-    category_name.short_description = 'Category'
+    category_name.short_description = _('Category')
 
     def team_members_display(self, obj):
         return ', '.join([f"{m.first_name} {m.last_name}" for m in obj.team_members.all()])
-    team_members_display.short_description = 'Team Members'
+    team_members_display.short_description = _('Team Members')
 
 
 class AthleteFightResultsInline(admin.TabularInline):
@@ -1453,7 +1453,7 @@ class FederationRoleAdmin(admin.ModelAdmin):
         """
         athletes = Athlete.objects.filter(federation_role=obj)
         return ", ".join([f"{athlete.first_name} {athlete.last_name}" for athlete in athletes]) if athletes else "None"
-    get_associated_athletes.short_description = 'Associated Athletes'
+    get_associated_athletes.short_description = _('Associated Athletes')
 
 
 # Competition model is now represented as an Event (event_type='competition').
@@ -1598,7 +1598,7 @@ class CategoryAdmin(admin.ModelAdmin):
         elif obj.type == 'teams':
             return f"1st: {obj.first_place_team}, 2nd: {obj.second_place_team}, 3rd: {obj.third_place_team}"
         return "No winners assigned"
-    display_winners.short_description = "Winners"
+    display_winners.short_description = _('Winners')
 
     def save_model(self, request, obj, form, change):
         """
@@ -1612,14 +1612,14 @@ class CategoryAdmin(admin.ModelAdmin):
         Display the number of teams enrolled in the category.
         """
         return obj.enrolled_teams.count()
-    enrolled_teams_count.short_description = "Enrolled Teams Count"
+    enrolled_teams_count.short_description = _('Enrolled Teams Count')
 
     def enrolled_individuals_count(self, obj):
         """
         Display the number of individuals enrolled in the category.
         """
         return obj.enrolled_individuals.count()
-    enrolled_individuals_count.short_description = "Enrolled Individuals Count"
+    enrolled_individuals_count.short_description = _('Enrolled Individuals Count')
 
 @admin.register(Team)
 class TeamAdmin(admin.ModelAdmin):
@@ -1633,7 +1633,7 @@ class TeamAdmin(admin.ModelAdmin):
         """
         categories = obj.categories.all()
         return ", ".join([category.name for category in categories]) if categories else "No Categories Assigned"
-    assigned_categories.short_description = "Assigned Categories"
+    assigned_categories.short_description = _('Assigned Categories')
 
     def save_model(self, request, obj, form, change):
         """
@@ -1853,7 +1853,7 @@ class MatchAdmin(admin.ModelAdmin):
         Display the full names of the athletes with their corner in parentheses.
         """
         return f"{obj.red_corner.first_name} {obj.red_corner.last_name} (Red Corner) vs {obj.blue_corner.first_name} {obj.blue_corner.last_name} (Blue Corner)"
-    name_with_corners.short_description = "Match Name"
+    name_with_corners.short_description = _('Match Name')
 
     def central_referee_display(self, obj):
         """
@@ -1862,21 +1862,21 @@ class MatchAdmin(admin.ModelAdmin):
         if obj.central_referee:
             return f"{obj.central_referee.first_name} {obj.central_referee.last_name}"
         return "TBD"
-    central_referee_display.short_description = "Central Referee"
+    central_referee_display.short_description = _('Central Referee')
 
     def competition(self, obj):
         """
         Display the competition name associated with the match.
         """
         return obj.category.competition.name if obj.category.competition else "N/A"
-    competition.short_description = "Competition"
+    competition.short_description = _('Competition')
 
     def category_link(self, obj):
         """
         Display the category name as a clickable link.
         """
         return format_html('<a href="/admin/api/category/{}/change/">{}</a>', obj.category.id, obj.category.name)
-    category_link.short_description = "Category"
+    category_link.short_description = _('Category')
 
     def get_winner(self, obj):
         """
@@ -1894,7 +1894,7 @@ class MatchAdmin(admin.ModelAdmin):
             # fall back to stored winner
             pass
         return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else "TBD"
-    get_winner.short_description = "Winner"
+    get_winner.short_description = _('Winner')
 
     def winner_display(self, obj):
         """Computed winner display for the change form.
@@ -1916,7 +1916,7 @@ class MatchAdmin(admin.ModelAdmin):
                 return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else 'TBD'
             except Exception:
                 return 'TBD'
-    winner_display.short_description = 'Winner'
+    winner_display.short_description = _('Winner')
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """
@@ -2580,7 +2580,7 @@ class AthleteAdmin(admin.ModelAdmin):
     
     def user_email(self, obj):
         return obj.user.email if obj.user else 'No user'
-    user_email.short_description = 'Email'
+    user_email.short_description = _('Email')
     user_email.admin_order_field = 'user__email'
     
     def get_action_buttons(self, obj):
@@ -2643,7 +2643,7 @@ class AthleteAdmin(admin.ModelAdmin):
             return format_html('<a class="button" href="{}">Add enrolled event</a>', url)
         except Exception:
             return ''
-    add_enrolled_event_link.short_description = 'Add Enrollment'
+    add_enrolled_event_link.short_description = _('Add Enrollment')
 
     def add_grade_history_link(self, obj):
         """Render a button that opens the GradeHistory add form with this athlete pre-filled."""
@@ -2654,7 +2654,7 @@ class AthleteAdmin(admin.ModelAdmin):
             return format_html('<a class="button" href="{}">Add grade history</a>', url)
         except Exception:
             return ''
-    add_grade_history_link.short_description = 'Add Grade'
+    add_grade_history_link.short_description = _('Add Grade')
     
     def approve_profile(self, request, pk):
         from django.shortcuts import get_object_or_404, redirect
@@ -2815,18 +2815,18 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     
     def get_athlete_name(self, obj):
         return f"{obj.athlete.first_name} {obj.athlete.last_name}"
-    get_athlete_name.short_description = 'Athlete'
+    get_athlete_name.short_description = _('Athlete')
     get_athlete_name.admin_order_field = 'athlete__first_name'
     
     def get_competition_name(self, obj):
         return obj.category.competition.name
-    get_competition_name.short_description = 'Competition'
+    get_competition_name.short_description = _('Competition')
     # Keep admin ordering keyed to the legacy competition name for now; Event ordering could be added later
     get_competition_name.admin_order_field = 'category__competition__name'
     
     def get_category_name(self, obj):
         return obj.category.name
-    get_category_name.short_description = 'Category'
+    get_category_name.short_description = _('Category')
     get_category_name.admin_order_field = 'category__name'
     
     def get_submission_type(self, obj):
@@ -2834,7 +2834,7 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
             return f"🏅 Self-Submitted ({obj.placement_claimed or 'No placement'})"
         else:
             return f"🥋 Referee Score ({obj.score})"
-    get_submission_type.short_description = 'Type'
+    get_submission_type.short_description = _('Type')
     
     def get_action_buttons(self, obj):
         if obj.submitted_by_athlete and obj.status == 'pending':
@@ -2853,7 +2853,7 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         elif not obj.submitted_by_athlete:
             return format_html('<span style="color: blue;">Referee Entry</span>')
         return ''
-    get_action_buttons.short_description = 'Actions'
+    get_action_buttons.short_description = _('Actions')
     
     def get_urls(self):
         urls = super().get_urls()

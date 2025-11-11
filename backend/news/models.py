@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from landing.models import NewsPost, NewsPostGallery, NewsComment
 
@@ -8,24 +9,24 @@ class Post(NewsPost):
     class Meta:
         proxy = True
         app_label = 'news'
-        verbose_name = 'Post'
-        verbose_name_plural = 'Posts'
+        verbose_name = _('Post')
+        verbose_name_plural = _('Posts')
 
 
 class GalleryImage(NewsPostGallery):
     class Meta:
         proxy = True
         app_label = 'news'
-        verbose_name = 'Gallery Image'
-        verbose_name_plural = 'Gallery Images'
+        verbose_name = _('Gallery Image')
+        verbose_name_plural = _('Gallery Images')
 
 
 class Comment(NewsComment):
     class Meta:
         proxy = True
         app_label = 'news'
-        verbose_name = 'Comment'
-        verbose_name_plural = 'Comments'
+        verbose_name = _('Comment')
+        verbose_name_plural = _('Comments')
 from django.db import models
 
 from landing.models import NewsComment
@@ -41,5 +42,5 @@ class NewsCommentProxy(NewsComment):
     class Meta:
         proxy = True
         app_label = 'news'
-        verbose_name = 'Comment'
-        verbose_name_plural = 'Comments'
+        verbose_name = _('Comment')
+        verbose_name_plural = _('Comments')

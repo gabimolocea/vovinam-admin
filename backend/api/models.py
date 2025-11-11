@@ -8,6 +8,7 @@ from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
 from django.db.models.signals import post_delete
+from django.utils.translation import gettext_lazy as _
 
 # Create your models here.
 
@@ -60,8 +61,8 @@ class UserProxy(User):
     class Meta:
         proxy = True
         app_label = 'auth'
-        verbose_name = 'User'
-        verbose_name_plural = 'Users'
+        verbose_name = _('User')
+        verbose_name_plural = _('Users')
     
     @property
     def has_pending_athlete_profile(self):
@@ -81,8 +82,8 @@ try:
         class Meta:
             proxy = True
             app_label = 'api'
-            verbose_name = 'Event'
-            verbose_name_plural = 'Events'
+            verbose_name = _('Event')
+            verbose_name_plural = _('Events')
 except Exception:
     # During some migration or import-time operations the landing app
     # may not be fully importable; silently skip proxy creation in that case.
@@ -405,8 +406,8 @@ class AthleteActivity(models.Model):
     
     class Meta:
         ordering = ['-timestamp']
-        verbose_name = "Athlete Activity"
-        verbose_name_plural = "Athlete Activities"
+        verbose_name = _('Athlete Activity')
+        verbose_name_plural = _('Athlete Activities')
     
     def __str__(self):
         return f"{self.get_action_display()} - {self.athlete} by {self.performed_by}"
@@ -612,8 +613,8 @@ class Visa(models.Model):
     admin_notes = models.TextField(blank=True, null=True)
 
     class Meta:
-        verbose_name = 'Visa'
-        verbose_name_plural = 'Visas'
+        verbose_name = _('Visa')
+        verbose_name_plural = _('Visas')
 
     def is_valid(self):
         """Return whether the visa is currently valid depending on type."""
@@ -704,8 +705,8 @@ class TrainingSeminarParticipation(models.Model):
     
     class Meta:
         unique_together = ('athlete', 'seminar')
-        verbose_name = 'Event participation'
-        verbose_name_plural = 'Event participations'
+        verbose_name = _('Event participation')
+        verbose_name_plural = _('Event participations')
     
     def __str__(self):
         # Prefer to describe the participation by the linked Event if present;
@@ -1472,8 +1473,8 @@ class CategoryScoreActivity(models.Model):
     
     class Meta:
         ordering = ['-timestamp']
-        verbose_name = "Score Activity"
-        verbose_name_plural = "Score Activities"
+        verbose_name = _('Score Activity')
+        verbose_name_plural = _('Score Activities')
     
     def __str__(self):
         return f"{self.get_action_display()} - {self.score} by {self.performed_by}"
@@ -1568,8 +1569,8 @@ class AthleteMatch(models.Model):
     
     class Meta:
         ordering = ['-match_date']
-        verbose_name = 'Athlete Match'
-        verbose_name_plural = 'Athlete Matches'
+        verbose_name = _('Athlete Match')
+        verbose_name_plural = _('Athlete Matches')
     
     def __str__(self):
         if self.submitted_by_athlete:

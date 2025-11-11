@@ -3,6 +3,7 @@ from django.utils import timezone
 from django.urls import reverse
 from django.conf import settings
 from django_ckeditor_5.fields import CKEditor5Field  # Updated import
+from django.utils.translation import gettext_lazy as _
 
 class SEOModel(models.Model):
     """Abstract model for SEO fields"""
@@ -74,8 +75,8 @@ class NewsPost(SEOModel):
     
     class Meta:
         ordering = ['-created_at']
-        verbose_name = "Post"
-        verbose_name_plural = "Posts"
+        verbose_name = _('Post')
+        verbose_name_plural = _('Posts')
     
     def __str__(self):
         return self.title
@@ -121,8 +122,8 @@ class Event(SEOModel):
     
     class Meta:
         ordering = ['start_date']
-        verbose_name = "Event"
-        verbose_name_plural = "Events"
+        verbose_name = _('Event')
+        verbose_name_plural = _('Events')
     
     def __str__(self):
         return f"{self.title} - {self.start_date.strftime('%Y-%m-%d')}"
@@ -150,8 +151,8 @@ class AboutSection(models.Model):
     
     class Meta:
         ordering = ['order', 'section_title']
-        verbose_name = "About Section"
-        verbose_name_plural = "About Sections"
+        verbose_name = _('About Section')
+        verbose_name_plural = _('About Sections')
     
     def __str__(self):
         return self.section_title
@@ -177,8 +178,8 @@ class ContactMessage(models.Model):
     
     class Meta:
         ordering = ['-created_at']
-        verbose_name = "Contact Message"
-        verbose_name_plural = "Contact Messages"
+        verbose_name = _('Contact Message')
+        verbose_name_plural = _('Contact Messages')
     
     def __str__(self):
         return f"{self.name} - {self.subject}"
@@ -196,8 +197,8 @@ class ContactInfo(models.Model):
     is_active = models.BooleanField(default=True)
     
     class Meta:
-        verbose_name = "Contact Information"
-        verbose_name_plural = "Contact Information"
+        verbose_name = _('Contact Information')
+        verbose_name_plural = _('Contact Information')
     
     def __str__(self):
         return self.organization_name
@@ -228,8 +229,8 @@ class NewsPostGallery(models.Model):
     
     class Meta:
         ordering = ['order', 'created_at']
-        verbose_name = "Gallery Image"
-        verbose_name_plural = "Gallery Images"
+        verbose_name = _('Gallery Image')
+        verbose_name_plural = _('Gallery Images')
     
     def __str__(self):
         return f"{self.news_post.title} - Image {self.order}"
@@ -267,8 +268,8 @@ class NewsComment(models.Model):
     
     class Meta:
         ordering = ['created_at']
-        verbose_name = "Comment"
-        verbose_name_plural = "Comments"
+        verbose_name = _('Comment')
+        verbose_name_plural = _('Comments')
     
     def __str__(self):
         return f"Comment by {self.author.username} on {self.news_post.title}"
@@ -291,13 +292,13 @@ class ContactInfoProxy(ContactInfo):
         # Now that we have a dedicated contact app, show these proxies under
         # the 'contact' app label so they appear as their own top-level admin app.
         app_label = 'contact'
-        verbose_name = 'Contact Information'
-        verbose_name_plural = 'Contact Information'
+        verbose_name = _('Contact Information')
+        verbose_name_plural = _('Contact Information')
 
 
 class ContactMessageProxy(ContactMessage):
     class Meta:
         proxy = True
         app_label = 'contact'
-        verbose_name = 'Contact Message'
-        verbose_name_plural = 'Contact Messages'
+        verbose_name = _('Contact Message')
+        verbose_name_plural = _('Contact Messages')

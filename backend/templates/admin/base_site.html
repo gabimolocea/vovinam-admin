@@ -58,3 +58,42 @@
     {% endif %}
   </div>
 {% endblock %}
+
+{# Inject a small language selector into the admin header user links area. #}
+{# Place language selector before the welcome message so it appears near the top-left
+   user tools area and visually before the "Welcome, <user>" text. The links use
+   the same inline-link style as other user links (no large button chrome). #}
+{% block welcome-msg %}
+  {% get_current_language as LANGUAGE_CODE %}
+  <span style="margin-right:0.5rem;">
+    <a href="#" class="lang-switch lang-en{% if LANGUAGE_CODE|slice:":2" == 'en' %} active{% endif %}" data-lang="en" title="English" aria-label="English" style="text-decoration:none; padding:2px 6px; border-radius:4px;{% if LANGUAGE_CODE|slice:":2" == 'en' %}; {% endif %}">EN</a>
+    <a href="#" class="lang-switch lang-ro{% if LANGUAGE_CODE|slice:":2" == 'ro' %} active{% endif %}" data-lang="ro" title="Română" aria-label="Română" style="text-decoration:none;margin-left:6px; padding:2px 6px; border-radius:4px;{% if LANGUAGE_CODE|slice:":2" == 'ro' %}; {% endif %}">RO</a>
+  </span>
+  {{ block.super }}
+
+  <script>
+    (function(){
+      function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+      }
+      const csrftoken = getCookie('csrftoken');
+      document.querySelectorAll('.lang-switch').forEach(function(el){
+        el.addEventListener('click', function(e){
+          e.preventDefault();
+          const lang = el.getAttribute('data-lang');
+          const next = window.location.pathname + window.location.search + window.location.hash;
+          fetch('{% url "set_language" %}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'X-CSRFToken': csrftoken,
+            },
+            body: new URLSearchParams({language: lang, next: next})
+          }).then(function(){ window.location = next; });
+        });
+      });
+    })();
+  </script>
+{% endblock %}
