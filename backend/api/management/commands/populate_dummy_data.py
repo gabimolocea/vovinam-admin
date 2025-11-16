@@ -5,10 +5,13 @@ Usage: python manage.py populate_dummy_data
 
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from api.models import (
     Club, Athlete, GradeHistory, Competition, Category,
-    CategoryAthleteScore, TrainingSeminar, TrainingSeminarParticipation, Grade, City
+    CategoryAthleteScore, TrainingSeminar, TrainingSeminarParticipation, 
+    Grade, City, Group, Match
 )
+from landing.models import Event
 from datetime import datetime, timedelta
 import random
 
@@ -28,12 +31,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if options['clear']:
             self.stdout.write(self.style.WARNING('Clearing existing data...'))
+            Match.objects.all().delete()
             CategoryAthleteScore.objects.all().delete()
             TrainingSeminarParticipation.objects.all().delete()
             Athlete.objects.all().delete()
             Category.objects.all().delete()
+            Group.objects.all().delete()
             Competition.objects.all().delete()
             TrainingSeminar.objects.all().delete()
+            Event.objects.all().delete()
             Club.objects.all().delete()
             City.objects.all().delete()
             User.objects.filter(is_superuser=False).delete()
@@ -57,20 +63,32 @@ class Command(BaseCommand):
         # grades = self.create_grade_history(athletes)
         # self.stdout.write(self.style.SUCCESS(f'✓ Created {len(grades)} grade records'))
 
-        # Create competitions
-        competitions = self.create_competitions()
+        # Create events (competitions, seminars, examinations)
+        events = self.create_events(cities)
+        self.stdout.write(self.style.SUCCESS(f'✓ Created {len(events)} events'))
+
+        # Create competitions (link to events)
+        competitions = self.create_competitions(events)
         self.stdout.write(self.style.SUCCESS(f'✓ Created {len(competitions)} competitions'))
 
+        # Create groups for competitions
+        groups = self.create_groups(competitions)
+        self.stdout.write(self.style.SUCCESS(f'✓ Created {len(groups)} groups'))
+
         # Create competition categories and scores
-        categories = self.create_competition_categories(competitions, athletes)
+        categories = self.create_competition_categories(competitions, groups, athletes)
         self.stdout.write(self.style.SUCCESS(f'✓ Created {len(categories)} competition categories with scores'))
 
-        # Create training seminars
-        seminars = self.create_seminars()
+        # Create matches for fight categories
+        matches = self.create_matches(categories, athletes)
+        self.stdout.write(self.style.SUCCESS(f'✓ Created {len(matches)} matches'))
+
+        # Create training seminars (link to events)
+        seminars = self.create_seminars(events)
         self.stdout.write(self.style.SUCCESS(f'✓ Created {len(seminars)} training seminars'))
 
-        # Create seminar participations
-        participations = self.create_seminar_participations(seminars, athletes)
+        # Create seminar participations (link to events)
+        participations = self.create_seminar_participations(seminars, athletes, events)
         self.stdout.write(self.style.SUCCESS(f'✓ Created {len(participations)} seminar participations'))
 
         self.stdout.write(self.style.SUCCESS('\n✅ Database populated successfully!'))
@@ -181,40 +199,95 @@ class Command(BaseCommand):
         
         return grades
 
-    def create_competitions(self):
-        comp_names = [
-            'Campionatul Național Vovinam',
-            'Cupa României',
-            'Open București',
-            'Campionatul Regional Est',
-            'Memorial Patriarhul Vovinam',
+    def create_events(self, cities):
+        """Create Event objects (from landing app) for competitions, seminars, and examinations"""
+        event_data = [
+            {'title': 'Campionatul Național Vovinam 2025', 'type': 'competition', 'city': 'București'},
+            {'title': 'Cupa României - Ediția de Primăvară', 'type': 'competition', 'city': 'Cluj-Napoca'},
+            {'title': 'Open București - Turneu Internațional', 'type': 'competition', 'city': 'București'},
+            {'title': 'Campionatul Regional Est', 'type': 'competition', 'city': 'Iași'},
+            {'title': 'Memorial Patriarhul Vovinam', 'type': 'competition', 'city': 'Timișoara'},
+            {'title': 'Seminar Tehnici de Bază', 'type': 'training_seminar', 'city': 'București'},
+            {'title': 'Seminar Perfecționare Centuri Negre', 'type': 'training_seminar', 'city': 'Cluj-Napoca'},
+            {'title': 'Curs Arbitraj Internațional', 'type': 'training_seminar', 'city': 'Timișoara'},
+            {'title': 'Examen Centuri - Sesiunea de Vară', 'type': 'examination', 'city': 'București'},
+            {'title': 'Examen Centuri Superioare', 'type': 'examination', 'city': 'Cluj-Napoca'},
         ]
         
-        competitions = []
-        for i, name in enumerate(comp_names):
-            start_date = datetime.now().date() - timedelta(days=random.randint(30, 365))
+        city_lookup = {city.name: city for city in cities}
+        events = []
+        
+        for i, data in enumerate(event_data):
+            start_date = timezone.now() - timedelta(days=random.randint(30, 365))
             end_date = start_date + timedelta(days=random.randint(1, 3))
+            city = city_lookup[data['city']]
             
-            comp, created = Competition.objects.get_or_create(
-                name=name,
+            # Generate slug from title
+            slug = data['title'].lower().replace(' ', '-').replace('ă', 'a').replace('â', 'a').replace('î', 'i').replace('ș', 's').replace('ț', 't')
+            slug = f"{slug}-{i}"  # Add index to ensure uniqueness
+            
+            event, created = Event.objects.get_or_create(
+                slug=slug,
                 defaults={
-                    'place': random.choice(['București', 'Cluj-Napoca', 'Timișoara', 'Iași']),
+                    'title': data['title'],
+                    'event_type': data['type'],
                     'start_date': start_date,
                     'end_date': end_date,
+                    'city': city,
+                    'description': f'Eveniment {data["type"]} organizat în {data["city"]}.',
+                    'address': f'Sala de Sport, {data["city"]}',
+                    'is_featured': random.choice([True, False]),
+                }
+            )
+            events.append(event)
+        
+        return events
+
+    def create_competitions(self, events):
+        """Create Competition objects and link them to events"""
+        comp_events = [e for e in events if e.event_type == 'competition']
+        competitions = []
+        
+        for event in comp_events:
+            comp, created = Competition.objects.get_or_create(
+                name=event.title,
+                defaults={
+                    'place': event.city.name if event.city else 'Unknown',
+                    'start_date': event.start_date.date(),
+                    'end_date': event.end_date.date() if event.end_date else event.start_date.date(),
                 }
             )
             competitions.append(comp)
         
         return competitions
 
-    def create_competition_categories(self, competitions, athletes):
+    def create_groups(self, competitions):
+        """Create groups for competitions"""
+        groups = []
+        
+        for competition in competitions:
+            # Create 2-4 groups per competition
+            for i in range(random.randint(2, 4)):
+                group_name = f'{competition.name} - Group {chr(65 + i)}'  # A, B, C, D
+                group, created = Group.objects.get_or_create(
+                    name=group_name,
+                    defaults={'competition': competition}
+                )
+                groups.append(group)
+        
+        return groups
+
+    def create_competition_categories(self, competitions, groups, athletes):
         categories = []
         
         for competition in competitions:
+            comp_groups = [g for g in groups if g.competition == competition]
+            
             # Create 4-6 categories per competition
             for i in range(random.randint(4, 6)):
                 gender = random.choice(['male', 'female', 'mixt'])
-                cat_type = random.choice(['solo', 'fight'])
+                cat_type = random.choice(['solo', 'fight', 'teams'])
+                group = random.choice(comp_groups) if comp_groups else None
                 
                 category, created = Category.objects.get_or_create(
                     competition=competition,
@@ -222,6 +295,7 @@ class Command(BaseCommand):
                     defaults={
                         'gender': gender,
                         'type': cat_type,
+                        'group': group,
                     }
                 )
                 
@@ -246,38 +320,86 @@ class Command(BaseCommand):
         
         return categories
 
-    def create_seminars(self):
-        seminar_topics = [
-            'Tehnici de bază Vovinam',
-            'Perfecționare centuri negre',
-            'Arbitraj internațional',
-            'Metodica predării',
-            'Don Chan - tehnici avansate',
-        ]
+    def create_matches(self, categories, athletes):
+        """Create matches for fight categories"""
+        matches = []
+        fight_categories = [c for c in categories if c.type == 'fight']
         
-        seminars = []
-        for topic in seminar_topics:
-            start_date = datetime.now().date() - timedelta(days=random.randint(30, 200))
-            end_date = start_date + timedelta(days=random.randint(1, 2))
+        # Get referee athletes
+        referees = list(athletes[:5])  # Use first 5 athletes as referees
+        for ref in referees:
+            ref.is_referee = True
+            ref.save()
+        
+        for category in fight_categories:
+            # Get athletes in this category
+            category_athletes = list(category.athlete_scores.all().values_list('athlete', flat=True))
+            category_athletes = list(Athlete.objects.filter(id__in=category_athletes))
             
+            if len(category_athletes) < 2:
+                continue
+                
+            # Create 2-4 matches per fight category
+            for _ in range(min(random.randint(2, 4), len(category_athletes) // 2)):
+                if len(category_athletes) < 2:
+                    break
+                    
+                red_corner = random.choice(category_athletes)
+                category_athletes.remove(red_corner)
+                blue_corner = random.choice(category_athletes)
+                category_athletes.remove(blue_corner)
+                
+                match_type = random.choice(['qualifications', 'semi-finals', 'finals'])
+                winner = random.choice([red_corner, blue_corner])
+                
+                match, created = Match.objects.get_or_create(
+                    category=category,
+                    red_corner=red_corner,
+                    blue_corner=blue_corner,
+                    match_type=match_type,
+                    defaults={
+                        'winner': winner,
+                        'central_referee': random.choice(referees),
+                    }
+                )
+                
+                if created:
+                    # Add referees to match
+                    match.referees.add(*random.sample(referees, min(3, len(referees))))
+                
+                matches.append(match)
+        
+        return matches
+
+    def create_seminars(self, events):
+        """Create TrainingSeminar objects and link them to events"""
+        seminar_events = [e for e in events if e.event_type in ['training_seminar', 'examination']]
+        seminars = []
+        
+        for event in seminar_events:
             seminar, created = TrainingSeminar.objects.get_or_create(
-                name=topic,
+                name=event.title,
                 defaults={
-                    'place': random.choice(['București', 'Cluj-Napoca', 'Timișoara']),
-                    'start_date': start_date,
-                    'end_date': end_date,
+                    'place': event.city.name if event.city else 'Unknown',
+                    'start_date': event.start_date.date(),
+                    'end_date': event.end_date.date() if event.end_date else event.start_date.date(),
                 }
             )
             seminars.append(seminar)
         
         return seminars
 
-    def create_seminar_participations(self, seminars, athletes):
+    def create_seminar_participations(self, seminars, athletes, events):
+        """Create seminar participations and link to events"""
         participations = []
+        
+        # Create a mapping of seminar names to events
+        event_map = {e.title: e for e in events if e.event_type in ['training_seminar', 'examination']}
         
         for seminar in seminars:
             # 10-20 athletes per seminar
             selected_athletes = random.sample(athletes, min(random.randint(10, 20), len(athletes)))
+            event = event_map.get(seminar.name)
             
             for athlete in selected_athletes:
                 participation, created = TrainingSeminarParticipation.objects.get_or_create(
@@ -286,6 +408,7 @@ class Command(BaseCommand):
                     defaults={
                         'status': random.choice(['approved', 'approved', 'pending']),
                         'submitted_by_athlete': False,  # Admin submission
+                        'event': event,  # Link to the corresponding event
                     }
                 )
                 participations.append(participation)
