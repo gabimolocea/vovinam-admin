@@ -27,13 +27,28 @@ cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
 if cors_origins:
     CORS_ALLOWED_ORIGINS = cors_origins
 
+# CSRF - trust DigitalOcean App Platform domains
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.ondigitalocean.app',
+]
+if os.getenv('ALLOWED_HOSTS'):
+    for host in os.getenv('ALLOWED_HOSTS', '').split(','):
+        if host.strip():
+            CSRF_TRUSTED_ORIGINS.append(f'https://{host.strip()}')
+
 # Security settings for production
-SECURE_SSL_REDIRECT = not DEBUG
+# Note: SECURE_SSL_REDIRECT is disabled because DigitalOcean App Platform
+# handles SSL termination at the load balancer level. Enabling this causes
+# infinite redirect loops.
+SECURE_SSL_REDIRECT = False  # App Platform handles SSL termination
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
+
+# Trust proxy headers from App Platform load balancer
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Remove debug toolbar in production
 if 'debug_toolbar' in INSTALLED_APPS:
