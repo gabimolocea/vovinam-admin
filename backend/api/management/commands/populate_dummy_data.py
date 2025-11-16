@@ -352,20 +352,18 @@ class Command(BaseCommand):
                 match_type = random.choice(['qualifications', 'semi-finals', 'finals'])
                 winner = random.choice([red_corner, blue_corner])
                 
-                match, created = Match.objects.get_or_create(
+                # Use create instead of get_or_create to avoid duplicates
+                match = Match.objects.create(
                     category=category,
                     red_corner=red_corner,
                     blue_corner=blue_corner,
                     match_type=match_type,
-                    defaults={
-                        'winner': winner,
-                        'central_referee': random.choice(referees),
-                    }
+                    winner=winner,
+                    central_referee=random.choice(referees),
                 )
                 
-                if created:
-                    # Add referees to match
-                    match.referees.add(*random.sample(referees, min(3, len(referees))))
+                # Add referees to match
+                match.referees.add(*random.sample(referees, min(3, len(referees))))
                 
                 matches.append(match)
         
