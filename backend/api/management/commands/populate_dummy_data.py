@@ -6,9 +6,8 @@ Usage: python manage.py populate_dummy_data
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from api.models import (
-    Club, Athlete, Coach, GradeHistory, Competition,
-    CompetitionCategory, CategoryAthleteScore, TrainingSeminar,
-    TrainingSeminarParticipation
+    Club, Athlete, GradeHistory, Competition, Category,
+    CategoryAthleteScore, TrainingSeminar, TrainingSeminarParticipation
 )
 from datetime import datetime, timedelta
 import random
@@ -33,8 +32,7 @@ class Command(BaseCommand):
             TrainingSeminarParticipation.objects.all().delete()
             GradeHistory.objects.all().delete()
             Athlete.objects.all().delete()
-            Coach.objects.all().delete()
-            CompetitionCategory.objects.all().delete()
+            Category.objects.all().delete()
             Competition.objects.all().delete()
             TrainingSeminar.objects.all().delete()
             Club.objects.all().delete()
@@ -46,10 +44,6 @@ class Command(BaseCommand):
         # Create clubs
         clubs = self.create_clubs()
         self.stdout.write(self.style.SUCCESS(f'✓ Created {len(clubs)} clubs'))
-
-        # Create coaches
-        coaches = self.create_coaches(clubs)
-        self.stdout.write(self.style.SUCCESS(f'✓ Created {len(coaches)} coaches'))
 
         # Create users and athletes
         athletes = self.create_athletes(clubs)
@@ -93,29 +87,6 @@ class Command(BaseCommand):
             clubs.append(club)
         
         return clubs
-
-    def create_coaches(self, clubs):
-        coach_names = [
-            ('Mihai', 'Popescu'), ('Adrian', 'Ionescu'), ('Elena', 'Dumitru'),
-            ('Andrei', 'Popa'), ('Maria', 'Stan'), ('Gabriel', 'Moldovan'),
-        ]
-        
-        coaches = []
-        for i, (first_name, last_name) in enumerate(coach_names):
-            club = clubs[i % len(clubs)]
-            coach, created = Coach.objects.get_or_create(
-                first_name=first_name,
-                last_name=last_name,
-                club=club,
-                defaults={
-                    'email': f'{first_name.lower()}.{last_name.lower()}@{club.contact_email.split("@")[1]}',
-                    'phone': f'+4072{random.randint(1000000, 9999999)}',
-                    'dan_level': random.randint(1, 4),
-                }
-            )
-            coaches.append(coach)
-        
-        return coaches
 
     def create_athletes(self, clubs):
         first_names = ['Alex', 'Diana', 'Radu', 'Ana', 'Cristian', 'Ioana', 'Vlad', 'Elena', 'Mihai', 'Andreea']
@@ -222,17 +193,19 @@ class Command(BaseCommand):
         for competition in competitions:
             # Create 4-6 categories per competition
             for i in range(random.randint(4, 6)):
-                category, created = CompetitionCategory.objects.get_or_create(
+                gender = random.choice(['male', 'female', 'mixt'])
+                cat_type = random.choice(['solo', 'fight'])
+                
+                category, created = Category.objects.get_or_create(
                     competition=competition,
-                    name=f'{random.choice(["Male", "Female"])} {random.choice(["U50", "U60", "U70", "O70"])}',
+                    name=f'{gender.title()} {cat_type.title()} {i+1}',
                     defaults={
-                        'gender': random.choice(['M', 'F']),
-                        'weight_category': random.choice(['under_50', 'under_60', 'under_70', 'over_70']),
-                        'age_category': random.choice(['cadet', 'junior', 'senior']),
+                        'gender': gender,
+                        'type': cat_type,
                     }
                 )
                 
-                # Add 3-8 athletes to this category
+                # Add 3-8 athletes to this category via CategoryAthleteScore
                 selected_athletes = random.sample(athletes, min(random.randint(3, 8), len(athletes)))
                 
                 for rank, athlete in enumerate(selected_athletes[:3], start=1):  # Top 3 get medals
