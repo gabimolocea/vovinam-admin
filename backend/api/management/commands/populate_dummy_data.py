@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from api.models import (
     Club, Athlete, GradeHistory, Competition, Category,
-    CategoryAthleteScore, TrainingSeminar, TrainingSeminarParticipation, Grade
+    CategoryAthleteScore, TrainingSeminar, TrainingSeminarParticipation, Grade, City
 )
 from datetime import datetime, timedelta
 import random
@@ -35,13 +35,18 @@ class Command(BaseCommand):
             Competition.objects.all().delete()
             TrainingSeminar.objects.all().delete()
             Club.objects.all().delete()
+            City.objects.all().delete()
             User.objects.filter(is_superuser=False).delete()
             self.stdout.write(self.style.SUCCESS('✓ Data cleared'))
 
         self.stdout.write(self.style.SUCCESS('Populating database with dummy data...'))
 
+        # Create cities
+        cities = self.create_cities()
+        self.stdout.write(self.style.SUCCESS(f'✓ Created {len(cities)} cities'))
+
         # Create clubs
-        clubs = self.create_clubs()
+        clubs = self.create_clubs(cities)
         self.stdout.write(self.style.SUCCESS(f'✓ Created {len(clubs)} clubs'))
 
         # Create users and athletes
@@ -70,19 +75,36 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS('\n✅ Database populated successfully!'))
 
-    def create_clubs(self):
+    def create_cities(self):
+        city_names = ['București', 'Cluj-Napoca', 'Timișoara', 'Iași', 'Brașov', 'Constanța']
+        cities = []
+        
+        for city_name in city_names:
+            city, created = City.objects.get_or_create(name=city_name)
+            cities.append(city)
+        
+        return cities
+
+    def create_clubs(self, cities):
         club_data = [
-            {'name': 'CS Vovinam București', 'city': 'București', 'contact_email': 'contact@vovinam-bucuresti.ro'},
-            {'name': 'Vovinam Cluj-Napoca', 'city': 'Cluj-Napoca', 'contact_email': 'info@vovinam-cluj.ro'},
-            {'name': 'CS Dragon Timișoara', 'city': 'Timișoara', 'contact_email': 'dragon@vovinam-tm.ro'},
-            {'name': 'Vovinam Iași', 'city': 'Iași', 'contact_email': 'contact@vovinam-iasi.ro'},
-            {'name': 'CS Phoenix Brașov', 'city': 'Brașov', 'contact_email': 'phoenix@vovinam-brasov.ro'},
-            {'name': 'Vovinam Constanța', 'city': 'Constanța', 'contact_email': 'info@vovinam-constanta.ro'},
+            {'name': 'CS Vovinam București', 'city_name': 'București'},
+            {'name': 'Vovinam Cluj-Napoca', 'city_name': 'Cluj-Napoca'},
+            {'name': 'CS Dragon Timișoara', 'city_name': 'Timișoara'},
+            {'name': 'Vovinam Iași', 'city_name': 'Iași'},
+            {'name': 'CS Phoenix Brașov', 'city_name': 'Brașov'},
+            {'name': 'Vovinam Constanța', 'city_name': 'Constanța'},
         ]
+        
+        # Create a city lookup dict
+        city_lookup = {city.name: city for city in cities}
         
         clubs = []
         for data in club_data:
-            club, created = Club.objects.get_or_create(**data)
+            city = city_lookup[data['city_name']]
+            club, created = Club.objects.get_or_create(
+                name=data['name'],
+                defaults={'city': city}
+            )
             clubs.append(club)
         
         return clubs
