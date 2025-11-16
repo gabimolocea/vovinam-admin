@@ -6,6 +6,7 @@ Usage: python manage.py populate_dummy_data
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.db import transaction
 from api.models import (
     Club, Athlete, GradeHistory, Competition, Category,
     CategoryAthleteScore, TrainingSeminar, TrainingSeminarParticipation, 
@@ -363,18 +364,24 @@ class Command(BaseCommand):
                 if existing_match:
                     match = existing_match
                 else:
-                    # Create new match
-                    match = Match.objects.create(
-                        category=category,
-                        red_corner=red_corner,
-                        blue_corner=blue_corner,
-                        match_type=match_type,
-                        winner=winner,
-                        central_referee=random.choice(referees),
-                    )
-                    
-                    # Add referees to match
-                    match.referees.add(*random.sample(referees, min(3, len(referees))))
+                    # Create new match using atomic transaction to handle the double-save in Match.save()
+                    try:
+                        with transaction.atomic():
+                            match = Match(
+                                category=category,
+                                red_corner=red_corner,
+                                blue_corner=blue_corner,
+                                match_type=match_type,
+                                winner=winner,
+                                central_referee=random.choice(referees),
+                            )
+                            match.save()
+                            
+                            # Add referees to match (must be after save for M2M)
+                            match.referees.add(*random.sample(referees, min(3, len(referees))))
+                    except Exception as e:
+                        self.stdout.write(self.style.WARNING(f'Skipping duplicate match: {e}'))
+                        continue
                 
                 matches.append(match)
         
