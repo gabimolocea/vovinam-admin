@@ -228,14 +228,17 @@ class Command(BaseCommand):
                 # Add 3-8 athletes to this category via CategoryAthleteScore
                 selected_athletes = random.sample(athletes, min(random.randint(3, 8), len(athletes)))
                 
-                for rank, athlete in enumerate(selected_athletes[:3], start=1):  # Top 3 get medals
+                placements = ['1st', '2nd', '3rd']
+                for idx, athlete in enumerate(selected_athletes[:3]):  # Top 3 get medals
                     CategoryAthleteScore.objects.get_or_create(
                         category=category,
                         athlete=athlete,
                         defaults={
-                            'rank': rank,
-                            'points': random.randint(50, 100),
+                            'type': cat_type,
+                            'score': random.randint(50, 100),
+                            'placement_claimed': placements[idx],
                             'status': 'approved',
+                            'submitted_by_athlete': False,  # Submitted by referee/admin
                         }
                     )
                 
