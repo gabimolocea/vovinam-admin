@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from api.models import (
     Club, Athlete, GradeHistory, Competition, Category,
-    CategoryAthleteScore, TrainingSeminar, TrainingSeminarParticipation
+    CategoryAthleteScore, TrainingSeminar, TrainingSeminarParticipation, Grade
 )
 from datetime import datetime, timedelta
 import random
@@ -30,7 +30,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('Clearing existing data...'))
             CategoryAthleteScore.objects.all().delete()
             TrainingSeminarParticipation.objects.all().delete()
-            GradeHistory.objects.all().delete()
             Athlete.objects.all().delete()
             Category.objects.all().delete()
             Competition.objects.all().delete()
@@ -49,9 +48,9 @@ class Command(BaseCommand):
         athletes = self.create_athletes(clubs)
         self.stdout.write(self.style.SUCCESS(f'✓ Created {len(athletes)} athletes'))
 
-        # Create grade history
-        grades = self.create_grade_history(athletes)
-        self.stdout.write(self.style.SUCCESS(f'✓ Created {len(grades)} grade records'))
+        # Skip grade history - requires Grade FK setup
+        # grades = self.create_grade_history(athletes)
+        # self.stdout.write(self.style.SUCCESS(f'✓ Created {len(grades)} grade records'))
 
         # Create competitions
         competitions = self.create_competitions()
@@ -117,19 +116,17 @@ class Command(BaseCommand):
             
             # Create athlete
             birth_year = random.randint(1995, 2012)
+            date_of_birth = f'{birth_year}-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}'
+            
             athlete, created = Athlete.objects.get_or_create(
                 user=user,
                 defaults={
                     'first_name': first_name,
                     'last_name': last_name,
-                    'birth_date': f'{birth_year}-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}',
-                    'gender': random.choice(['M', 'F']),
+                    'date_of_birth': date_of_birth,
                     'club': club,
-                    'current_grade': random.choice(['white', 'yellow', 'blue', 'red', 'black1']),
-                    'weight_category': random.choice(['under_50', 'under_60', 'under_70', 'over_70']),
                     'status': random.choice(['approved', 'approved', 'approved', 'pending']),
-                    'phone': f'+4072{random.randint(1000000, 9999999)}',
-                    'email': email,
+                    'mobile_number': f'+4072{random.randint(1000000, 9999999)}',
                 }
             )
             athletes.append(athlete)
@@ -173,14 +170,15 @@ class Command(BaseCommand):
         
         competitions = []
         for i, name in enumerate(comp_names):
-            date = datetime.now().date() - timedelta(days=random.randint(30, 365))
+            start_date = datetime.now().date() - timedelta(days=random.randint(30, 365))
+            end_date = start_date + timedelta(days=random.randint(1, 3))
+            
             comp, created = Competition.objects.get_or_create(
                 name=name,
                 defaults={
-                    'date': date,
-                    'location': random.choice(['București', 'Cluj', 'Timișoara', 'Iași']),
-                    'type': random.choice(['national', 'international', 'regional']),
-                    'status': 'completed',
+                    'place': random.choice(['București', 'Cluj-Napoca', 'Timișoara', 'Iași']),
+                    'start_date': start_date,
+                    'end_date': end_date,
                 }
             )
             competitions.append(comp)
@@ -234,15 +232,15 @@ class Command(BaseCommand):
         
         seminars = []
         for topic in seminar_topics:
-            date = datetime.now().date() - timedelta(days=random.randint(30, 200))
+            start_date = datetime.now().date() - timedelta(days=random.randint(30, 200))
+            end_date = start_date + timedelta(days=random.randint(1, 2))
+            
             seminar, created = TrainingSeminar.objects.get_or_create(
-                title=topic,
+                name=topic,
                 defaults={
-                    'date': date,
-                    'location': random.choice(['București', 'Cluj', 'Timișoara']),
-                    'duration_hours': random.choice([4, 8, 16]),
-                    'instructor_name': random.choice(['Master Nguyen', 'Master Lee', 'Master Ion']),
-                    'description': f'Seminar intensiv de {topic.lower()}',
+                    'place': random.choice(['București', 'Cluj-Napoca', 'Timișoara']),
+                    'start_date': start_date,
+                    'end_date': end_date,
                 }
             )
             seminars.append(seminar)
