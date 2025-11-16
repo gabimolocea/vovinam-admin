@@ -352,18 +352,29 @@ class Command(BaseCommand):
                 match_type = random.choice(['qualifications', 'semi-finals', 'finals'])
                 winner = random.choice([red_corner, blue_corner])
                 
-                # Use create instead of get_or_create to avoid duplicates
-                match = Match.objects.create(
+                # Check if match already exists to avoid duplicates
+                existing_match = Match.objects.filter(
                     category=category,
                     red_corner=red_corner,
                     blue_corner=blue_corner,
-                    match_type=match_type,
-                    winner=winner,
-                    central_referee=random.choice(referees),
-                )
+                    match_type=match_type
+                ).first()
                 
-                # Add referees to match
-                match.referees.add(*random.sample(referees, min(3, len(referees))))
+                if existing_match:
+                    match = existing_match
+                else:
+                    # Create new match
+                    match = Match.objects.create(
+                        category=category,
+                        red_corner=red_corner,
+                        blue_corner=blue_corner,
+                        match_type=match_type,
+                        winner=winner,
+                        central_referee=random.choice(referees),
+                    )
+                    
+                    # Add referees to match
+                    match.referees.add(*random.sample(referees, min(3, len(referees))))
                 
                 matches.append(match)
         
