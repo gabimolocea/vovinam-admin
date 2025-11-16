@@ -285,7 +285,7 @@ class Command(BaseCommand):
                     athlete=athlete,
                     defaults={
                         'status': random.choice(['approved', 'approved', 'pending']),
-                        'certificate_issued': random.choice([True, False]),
+                        'submitted_by_athlete': False,  # Admin submission
                     }
                 )
                 participations.append(participation)
