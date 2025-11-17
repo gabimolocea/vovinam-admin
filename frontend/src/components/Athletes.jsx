@@ -84,8 +84,12 @@ const Athletes = () => {
                 marginRight: 0,
                 marginLeft: 0,
                 marginTop: 0,
+                bgcolor: 'primary.main',
+                fontWeight: 'bold',
               }}
-            />
+            >
+              {!row.original.profile_image && `${row.original.first_name?.[0] || ''}${row.original.last_name?.[0] || ''}`}
+            </Avatar>
             <Button
               component={Link}
               to={`/athletes/${row.original.id}`}

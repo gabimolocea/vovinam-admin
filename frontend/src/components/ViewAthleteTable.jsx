@@ -633,8 +633,22 @@ const ViewAthleteConverted = () => {
                   )}
                 </div>
               ) : (
-                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gray-200 border-4 border-gray-300 flex items-center justify-center">
-                  <UserIcon className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400" />
+                <div className="relative flex flex-col items-center gap-2">
+                  <div 
+                    className="w-24 h-24 sm:w-32 sm:h-32 bg-gradient-to-br from-blue-500 to-blue-700 border-4 border-gray-200 flex items-center justify-center"
+                    style={{ borderRadius: '5%' }}
+                  >
+                    <span className="text-white text-2xl sm:text-4xl font-bold">
+                      {athlete.first_name?.[0]?.toUpperCase()}{athlete.last_name?.[0]?.toUpperCase()}
+                    </span>
+                  </div>
+                  {athlete.current_grade_details?.image && (
+                    <img 
+                      src={athlete.current_grade_details.image.startsWith('http') ? athlete.current_grade_details.image : `http://127.0.0.1:8000${athlete.current_grade_details.image}`}
+                      alt={athlete.current_grade_details.name || "Grade badge"}
+                      className="max-h-6 w-auto object-contain"
+                    />
+                  )}
                 </div>
               )}
             </div>

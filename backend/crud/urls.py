@@ -28,8 +28,10 @@ else:
 
 # Catch-all route for React (must be last)
 # Serve index.html for all non-API routes (React Router)
-urlpatterns += [
-    re_path(r'^(?!api/|admin/|media/|static/|health/|ckeditor5/).*$', 
-            TemplateView.as_view(template_name='index.html'), 
-            name='frontend'),
-]
+# Only enable in production - in development, Vite serves the frontend separately
+if not settings.DEBUG:
+    urlpatterns += [
+        re_path(r'^(?!api/|admin/|media/|static/|health/|ckeditor5/).*$', 
+                TemplateView.as_view(template_name='index.html'), 
+                name='frontend'),
+    ]

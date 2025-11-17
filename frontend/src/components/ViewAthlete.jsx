@@ -801,8 +801,13 @@ const ViewAthlete = () => {
                 width: { xs: 80, sm: 100, md: 120 },
                 height: { xs: 80, sm: 100, md: 120 },
                 borderRadius: '5%',
+                bgcolor: 'primary.main',
+                fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
+                fontWeight: 'bold',
               }}
-            />
+            >
+              {!athleteData?.profile_image && `${athleteData?.first_name?.[0] || ''}${athleteData?.last_name?.[0] || ''}`}
+            </Avatar>
             {relatedData?.grade?.image && (
               <Box
                 component="img"
