@@ -26,9 +26,12 @@ const Athletes = () => {
       const gradesResponse = await AxiosInstance.get("grades/");
       console.log("Grades API Response:", gradesResponse.data);
 
-      // Map grade IDs to their names
+      // Map grade IDs to their details (name and image)
       const gradesMap = gradesResponse.data.reduce((acc, grade) => {
-        acc[grade.id] = grade.name;
+        acc[grade.id] = {
+          name: grade.name,
+          image: grade.image
+        };
         return acc;
       }, {});
 
@@ -38,7 +41,8 @@ const Athletes = () => {
       const transformedData = response.data.map((athlete) => ({
         ...athlete,
         club: athlete.club?.name || "N/A", // Use club object name directly
-        grade: gradesMap[athlete.current_grade] || "N/A", // Map grade ID to name
+        grade: gradesMap[athlete.current_grade]?.name || "N/A", // Map grade ID to name
+        gradeImage: gradesMap[athlete.current_grade]?.image || null, // Include grade image
       }));
 
       setMyData(transformedData);
@@ -75,7 +79,7 @@ const Athletes = () => {
               sx={{
                 width: 40,
                 height: 40,
-                borderRadius: "50%",
+                borderRadius: "5%",
                 marginRight: 0,
                 marginLeft: 0,
                 marginTop: 0,
@@ -98,6 +102,18 @@ const Athletes = () => {
       {
         accessorKey: "grade",
         header: "Grade",
+        Cell: ({ row }) => (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {row.original.gradeImage && (
+              <img
+                src={`http://127.0.0.1:8000${row.original.gradeImage}`}
+                alt={row.original.grade}
+                style={{ maxHeight: '24px', width: 'auto', objectFit: 'contain' }}
+              />
+            )}
+            <span>{row.original.grade}</span>
+          </Box>
+        ),
       },
     ],
     []

@@ -621,7 +621,8 @@ const ViewAthleteConverted = () => {
                   <img 
                     src={athlete.profile_image.startsWith('http') ? athlete.profile_image : `http://127.0.0.1:8000${athlete.profile_image}`}
                     alt={`${athlete.first_name} ${athlete.last_name}`}
-                    className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-200"
+                    className="w-24 h-24 sm:w-32 sm:h-32 object-cover border-4 border-gray-200"
+                    style={{ borderRadius: '5%' }}
                   />
                   {athlete.current_grade_details?.image && (
                     <img 
