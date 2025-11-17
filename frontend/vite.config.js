@@ -3,12 +3,12 @@ import react from '@vitejs/plugin-react-swc'
 import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  base: '/static/',  // Set base path for production to match Django STATIC_URL
+  base: mode === 'production' ? '/static/' : '/',  // Use /static/ only in production
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
-})
+}))
