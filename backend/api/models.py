@@ -180,7 +180,7 @@ class Athlete(models.Model):
     # Personal Data
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    date_of_birth = models.DateField()
+    date_of_birth = models.DateField(blank=True, null=True)
     team_place = models.CharField(max_length=50, blank=True, null=True)  # Place awarded to the athlete in a team competition
     address = models.TextField(blank=True, null=True)
     mobile_number = models.CharField(max_length=15, blank=True, null=True)
@@ -873,7 +873,7 @@ class Category(models.Model):
     ]
 
     name = models.CharField(max_length=100)
-    competition = models.ForeignKey('Competition', on_delete=models.CASCADE, related_name='categories')
+    competition = models.ForeignKey('Competition', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
     # New: link category to landing.Event (migrate data from Competition -> Event)
     event = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='categories', null=True, blank=True)
     type = models.CharField(max_length=20, choices=CATEGORY_TYPE_CHOICES, default='solo')
@@ -1001,25 +1001,36 @@ class Match(models.Model):
     def save(self, *args, **kwargs):
         """
         Override save to calculate the winner based on referee scores or allow manual winner selection.
+        Avoid double INSERT for new objects by setting computed fields before first save.
         """
-        # Save the instance first to ensure it has a primary key
-        if not self.pk:
+        # Generate match name if we have the related fields available
+        try:
+            red_name = self.red_corner.first_name if self.red_corner_id else ''
+            blue_name = self.blue_corner.first_name if self.blue_corner_id else ''
+            category_name = self.category.name if self.category_id else ''
+            self.name = f"{red_name} vs {blue_name} ({self.match_type}) - {category_name}"
+        except Exception:
+            # Fall back to whatever fields are available
+            pass
+
+        # If object exists, compute winner from referee_scores if present
+        if self.pk:
+            if self.referee_scores.exists():
+                self.winner = self.calculate_winner()
             super().save(*args, **kwargs)
-            self.refresh_from_db()  # Reload the instance to ensure it has a primary key
+            return
 
-        # Generate the match name
-        self.name = f"{self.red_corner.first_name} vs {self.blue_corner.first_name} ({self.match_type}) - {self.category.name}"
-
-        # Calculate the winner based on referee scores if they exist
-        if self.pk and self.referee_scores.exists():
-            self.winner = self.calculate_winner()
-        else:
-            # Allow manual winner selection if no referee scores exist
-            if not self.winner:
-                self.winner = None  # Clear the winner if not manually set
-
-        # Save again to update the winner field and name
+        # New object: do initial save once
         super().save(*args, **kwargs)
+
+        # After initial save, recalc winner if referee_scores were added in the same transaction
+        try:
+            if self.referee_scores.exists():
+                self.winner = self.calculate_winner()
+                super().save(update_fields=['winner'])
+        except Exception:
+            # Best-effort: don't block creation if post-save adjustment fails
+            pass
 
     def __str__(self):
         return self.name
