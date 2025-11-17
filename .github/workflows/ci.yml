@@ -1,5 +1,6 @@
 name: CI
 
+# Backend-only CI workflow - frontend jobs disabled
 on:
   push:
     branches: [ main, develop ]
