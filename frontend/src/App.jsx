@@ -18,20 +18,20 @@ import NewsFeed from './components/NewsFeed'
 import CreateNews from './components/CreateNews'
 import NewsDetail from './components/NewsDetail'
 import NotificationsPage from './pages/NotificationsPage'
-// Temporarily commented out components with Material-UI imports
+// Using Shadcn UI converted components instead of Material-UI versions
 // import EnhancedRegister from './components/EnhancedRegister'
 // import CreateClub from './components/CreateClub'
 // import Edit from './components/Edit'
-import Clubs from './components/Clubs'
+// import Clubs from './components/Clubs'
 // import Dashboard from './components/Dashboard'
 // import UserDashboard from './components/UserDashboard'
-import Athletes from './components/Athletes'
+// import Athletes from './components/Athletes'
 // import CreateAthlete from './components/CreateAthlete'
 // import EditAthlete from './components/EditAthlete'
-import ViewAthlete from './components/ViewAthlete'
-import ViewClub from './components/ViewClub'
-import Competitions from './components/Competitions'
-import CompetitionDetails from './components/CompetitionDetails'
+// import ViewAthlete from './components/ViewAthlete'
+// import ViewClub from './components/ViewClub'
+// import Competitions from './components/Competitions'
+// import CompetitionDetails from './components/CompetitionDetails'
 // import NewsLayout from './components/NewsLayout'
 // import NewsList from './pages/News/NewsList'
 // import ArticleDetail from './pages/News/ArticleDetail'
@@ -175,39 +175,22 @@ function App() {
         View-only routes for authenticated users 
         <Route path="/clubs" element={
           <ProtectedRoute>
-            <Clubs />
-          </ProtectedRoute>
-        } />
-        <Route path="/competition/:competitionId" element={
-          <ProtectedRoute>
-            <CompetitionDetails />
+            <ClubsConverted />
           </ProtectedRoute>
         } />
         <Route path="/athletes/" element={
           <ProtectedRoute>
-            <Athletes />
+            <AthletesConverted />
           </ProtectedRoute>
         } />
         <Route path="/athletes/:id/" element={
           <ProtectedRoute>
-            <ViewAthlete />
+            <ViewAthleteTable />
           </ProtectedRoute>
         } />
         <Route path="/clubs/:id" element={
           <ProtectedRoute>
-            <ViewClub />
-          </ProtectedRoute>
-        } />
-        <Route path="/competitions" element={
-          <ProtectedRoute>
-            <Competitions />
-          </ProtectedRoute>
-        } />
-        
-        Profile route 
-        <Route path="/profile" element={
-          <ProtectedRoute>
-            <Profile />
+            <ViewClubConverted />
           </ProtectedRoute>
         } />
         
