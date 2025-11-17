@@ -54,6 +54,22 @@ class User(AbstractUser):
     @property
     def is_supporter(self):
         return self.role == 'supporter'
+    
+    @property
+    def has_pending_athlete_profile(self):
+        """Check if user has a pending athlete profile"""
+        try:
+            return hasattr(self, 'athlete') and self.athlete and self.athlete.status == 'pending'
+        except:
+            return False
+    
+    @property
+    def has_approved_athlete_profile(self):
+        """Check if user has an approved athlete profile"""
+        try:
+            return hasattr(self, 'athlete') and self.athlete and self.athlete.status == 'approved'
+        except:
+            return False
 
 
 # Proxy model so the custom User appears under Django's 'auth' app section in admin
