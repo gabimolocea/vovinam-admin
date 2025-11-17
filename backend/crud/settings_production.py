@@ -22,10 +22,34 @@ DATABASES['default'] = dj_database_url.config(
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Media files - served directly by Django in production
-# DigitalOcean App Platform requires volumes for persistent media storage
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# Media files configuration
+# Use DigitalOcean Spaces (S3-compatible) for persistent media storage in production
+USE_SPACES = os.getenv('USE_SPACES', 'False') == 'True'
+
+if USE_SPACES:
+    # Add storages to installed apps
+    INSTALLED_APPS += ['storages']
+    
+    # DigitalOcean Spaces settings
+    AWS_ACCESS_KEY_ID = os.getenv('SPACES_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.getenv('SPACES_SECRET_ACCESS_KEY')
+    AWS_STORAGE_BUCKET_NAME = os.getenv('SPACES_BUCKET_NAME')
+    AWS_S3_ENDPOINT_URL = os.getenv('SPACES_ENDPOINT_URL')  # e.g., https://nyc3.digitaloceanspaces.com
+    AWS_S3_REGION_NAME = os.getenv('SPACES_REGION', 'nyc3')
+    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_REGION_NAME}.digitaloceanspaces.com'
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',
+    }
+    AWS_DEFAULT_ACL = 'public-read'
+    AWS_LOCATION = 'media'
+    
+    # Media files served from Spaces
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
+else:
+    # Local media files (development or without Spaces)
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # CORS - allow frontend domain
 cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
