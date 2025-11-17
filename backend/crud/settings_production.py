@@ -20,7 +20,6 @@ DATABASES['default'] = dj_database_url.config(
 
 # Static files - use WhiteNoise for serving
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files configuration
 # Use DigitalOcean Spaces (S3-compatible) for persistent media storage in production
@@ -44,7 +43,7 @@ if USE_SPACES:
     AWS_QUERYSTRING_AUTH = False  # Don't add auth query parameters to URLs
     AWS_S3_VERIFY = True  # Verify SSL certificates
     
-    # Media files served from Spaces (Django 4.2+ style)
+    # Configure separate storage backends for static and media files
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
@@ -62,6 +61,14 @@ if USE_SPACES:
     logger.info(f'Media URL: {MEDIA_URL}')
 else:
     # Local media files (development or without Spaces)
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
     MEDIA_URL = '/media/'
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
