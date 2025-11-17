@@ -101,11 +101,11 @@ const CompetitionDetails = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const competitionsResponse = await AxiosInstance.get("/competition/");
-        const categoriesResponse = await AxiosInstance.get("/category/");
-        const teamsResponse = await AxiosInstance.get("/team/");
-        const clubsResponse = await AxiosInstance.get("/club/");
-        const matchesResponse = await AxiosInstance.get("/match/");
+        const competitionsResponse = await AxiosInstance.get("/competitions/");
+        const categoriesResponse = await AxiosInstance.get("/categories/");
+        const teamsResponse = await AxiosInstance.get("/teams/");
+        const clubsResponse = await AxiosInstance.get("/clubs/");
+        const matchesResponse = await AxiosInstance.get("/matches/");
 
         const competition = competitionsResponse.data.find(
           (comp) => comp.id === parseInt(competitionId)
@@ -140,7 +140,7 @@ const CompetitionDetails = () => {
         category.type === "teams"
           ? await Promise.all(
               category.teams.map(async (team) => {
-                const teamData = await AxiosInstance.get(`/team/${team.id}`)
+                const teamData = await AxiosInstance.get(`/teams/${team.id}`)
                   .then((res) => res.data)
                   .catch((error) => {
                     console.error("Error fetching team data:", error);
@@ -180,7 +180,7 @@ const CompetitionDetails = () => {
                     }
 
                     // Fetch the athlete data to get the club ID
-                    const athleteData = await AxiosInstance.get(`/athlete/${athlete.id}`)
+                    const athleteData = await AxiosInstance.get(`/athletes/${athlete.id}`)
                       .then((res) => res.data)
                       .catch((error) => {
                         console.error(`Error fetching athlete data for ID ${athlete.id}:`, error);
@@ -199,7 +199,7 @@ const CompetitionDetails = () => {
                     }
 
                     // Fetch the club data using the club ID
-                    const clubData = await AxiosInstance.get(`/club/${athleteData.club}`)
+                    const clubData = await AxiosInstance.get(`/clubs/${athleteData.club}`)
                       .then((res) => res.data)
                       .catch((error) => {
                         console.error(`Error fetching club data for ID ${athleteData.club}:`, error);

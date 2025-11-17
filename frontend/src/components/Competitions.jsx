@@ -13,7 +13,7 @@ const Competitions = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const competitionsResponse = await AxiosInstance.get("/competition/");
+        const competitionsResponse = await AxiosInstance.get("/competitions/");
         setCompetitionsData(competitionsResponse.data); // Ensure the data includes start_date and place
       } catch (error) {
         console.error("Error fetching competitions:", error);
