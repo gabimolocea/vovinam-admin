@@ -46,10 +46,14 @@ RUN mkdir -p static/assets
 COPY --from=frontend-builder /build/dist/assets /app/static/assets
 
 # Create media directory
-RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news
+RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news media/grades
 
 # Collect static files (includes frontend assets)
 RUN python manage.py collectstatic --noinput
+
+# Copy entrypoint script
+COPY backend/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -58,5 +62,5 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Run gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "120", "crud.wsgi:application"]
+# Run entrypoint script (handles migrations + gunicorn)
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -792,15 +792,29 @@ const ViewAthlete = () => {
             gap: 3,
           }}
         >
-          <Avatar
-            src={`http://127.0.0.1:8000${athleteData?.profile_image || ""}`}
-            alt={`${athleteData?.first_name || "Athlete"} ${athleteData?.last_name || "Profile"}`}
-            sx={{
-              width: { xs: 80, sm: 100, md: 120 },
-              height: { xs: 80, sm: 100, md: 120 },
-              borderRadius: '5%',
-            }}
-          />
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+            <Avatar
+              src={`http://127.0.0.1:8000${athleteData?.profile_image || ""}`}
+              alt={`${athleteData?.first_name || "Athlete"} ${athleteData?.last_name || "Profile"}`}
+              sx={{
+                width: { xs: 80, sm: 100, md: 120 },
+                height: { xs: 80, sm: 100, md: 120 },
+                borderRadius: '5%',
+              }}
+            />
+            {relatedData?.grade?.image && (
+              <Box
+                component="img"
+                src={relatedData.grade.image.startsWith('http') ? relatedData.grade.image : `http://127.0.0.1:8000${relatedData.grade.image}`}
+                alt={relatedData.grade.name || "Grade badge"}
+                sx={{
+                  maxHeight: '24px',
+                  width: 'auto',
+                  objectFit: 'contain',
+                }}
+              />
+            )}
+          </Box>
         </Box>
 
         <Box
