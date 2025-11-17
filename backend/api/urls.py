@@ -42,6 +42,9 @@ urlpatterns = [
 # then append the rest of the urlpatterns below
 
 urlpatterns = [
+    # CSRF token endpoint
+    path('auth/csrf/', views.get_csrf_token, name='csrf-token'),
+    
     # Authentication URLs (existing)
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/login/', LoginView.as_view(), name='login'),

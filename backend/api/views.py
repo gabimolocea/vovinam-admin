@@ -48,6 +48,16 @@ def health(request):
         db_status = "failed"
         db_error = str(e)
 
+
+@api_view(["GET"])
+def get_csrf_token(request):
+    """
+    Returns a CSRF token for the frontend to use.
+    This endpoint ensures the csrftoken cookie is set.
+    """
+    from django.middleware.csrf import get_token
+    return Response({'csrfToken': get_token(request)})
+
     payload = {"status": "ok", "database": db_status}
     if db_error:
         # Include detailed error only when DEBUG is True; otherwise mask it

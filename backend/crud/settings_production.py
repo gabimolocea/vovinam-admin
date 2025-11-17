@@ -43,6 +43,11 @@ if os.getenv('ALLOWED_HOSTS'):
 SECURE_SSL_REDIRECT = False  # App Platform handles SSL termination
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = 'Lax'  # Allow same-site cookies
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
+CSRF_USE_SESSIONS = False  # Store CSRF token in cookie, not session
+CSRF_COOKIE_NAME = 'csrftoken'  # Django's default cookie name
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
