@@ -72,33 +72,36 @@ const Athletes = () => {
       {
         accessorKey: "full_name",
         header: "Name",
-        Cell: ({ row }) => (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <Avatar
-              src={getMediaUrl(row.original.profile_image)}
-              alt={`${row.original.first_name || "Athlete"} ${row.original.last_name || "Profile"}`}
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: "5%",
-                marginRight: 0,
-                marginLeft: 0,
-                marginTop: 0,
-                bgcolor: 'primary.main',
-                fontWeight: 'bold',
-              }}
-            >
-              {!row.original.profile_image && `${row.original.first_name?.[0] || ''}${row.original.last_name?.[0] || ''}`}
-            </Avatar>
-            <Button
-              component={Link}
-              to={`/athletes/${row.original.id}`}
-              sx={{ textTransform: 'none', color: 'primary.main', fontWeight: 600 }}
-            >
-              {`${row.original.first_name} ${row.original.last_name}`}
-            </Button>
-          </Box>
-        ),
+        Cell: ({ row }) => {
+          const hasValidImage = row.original.profile_image && !row.original.profile_image.includes('default.png');
+          return (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Avatar
+                src={hasValidImage ? getMediaUrl(row.original.profile_image) : null}
+                alt={`${row.original.first_name || "Athlete"} ${row.original.last_name || "Profile"}`}
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "5%",
+                  marginRight: 0,
+                  marginLeft: 0,
+                  marginTop: 0,
+                  bgcolor: 'primary.main',
+                  fontWeight: 'bold',
+                }}
+              >
+                {!hasValidImage && `${row.original.first_name?.[0] || ''}${row.original.last_name?.[0] || ''}`}
+              </Avatar>
+              <Button
+                component={Link}
+                to={`/athletes/${row.original.id}`}
+                sx={{ textTransform: 'none', color: 'primary.main', fontWeight: 600 }}
+              >
+                {`${row.original.first_name} ${row.original.last_name}`}
+              </Button>
+            </Box>
+          );
+        },
       },
       {
         accessorKey: "club",

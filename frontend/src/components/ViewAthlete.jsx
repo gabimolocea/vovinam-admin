@@ -795,7 +795,7 @@ const ViewAthlete = () => {
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
             <Avatar
-              src={getMediaUrl(athleteData?.profile_image)}
+              src={athleteData?.profile_image && !athleteData.profile_image.includes('default.png') ? getMediaUrl(athleteData.profile_image) : null}
               alt={`${athleteData?.first_name || "Athlete"} ${athleteData?.last_name || "Profile"}`}
               sx={{
                 width: { xs: 80, sm: 100, md: 120 },
@@ -806,7 +806,7 @@ const ViewAthlete = () => {
                 fontWeight: 'bold',
               }}
             >
-              {!athleteData?.profile_image && `${athleteData?.first_name?.[0] || ''}${athleteData?.last_name?.[0] || ''}`}
+              {(!athleteData?.profile_image || athleteData.profile_image.includes('default.png')) && `${athleteData?.first_name?.[0] || ''}${athleteData?.last_name?.[0] || ''}`}
             </Avatar>
             {relatedData?.grade?.image && (
               <Box

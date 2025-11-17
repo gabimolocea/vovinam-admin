@@ -616,7 +616,7 @@ const ViewAthleteConverted = () => {
           <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
             {/* Profile Image */}
             <div className="flex-shrink-0 self-center sm:self-start">
-              {athlete.profile_image ? (
+              {athlete.profile_image && !athlete.profile_image.includes('default.png') ? (
                 <div className="relative flex flex-col items-center gap-2">
                   <img 
                     src={athlete.profile_image.startsWith('http') ? athlete.profile_image : `http://127.0.0.1:8000${athlete.profile_image}`}
