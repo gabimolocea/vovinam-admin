@@ -617,12 +617,19 @@ const ViewAthleteConverted = () => {
             {/* Profile Image */}
             <div className="flex-shrink-0 self-center sm:self-start">
               {athlete.profile_image ? (
-                <div className="relative">
+                <div className="relative flex flex-col items-center gap-2">
                   <img 
                     src={athlete.profile_image.startsWith('http') ? athlete.profile_image : `http://127.0.0.1:8000${athlete.profile_image}`}
                     alt={`${athlete.first_name} ${athlete.last_name}`}
                     className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-200"
                   />
+                  {athlete.current_grade_details?.image && (
+                    <img 
+                      src={athlete.current_grade_details.image.startsWith('http') ? athlete.current_grade_details.image : `http://127.0.0.1:8000${athlete.current_grade_details.image}`}
+                      alt={athlete.current_grade_details.name || "Grade badge"}
+                      className="max-h-6 w-auto object-contain"
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gray-200 border-4 border-gray-300 flex items-center justify-center">

@@ -87,6 +87,16 @@ class AthleteSerializer(serializers.ModelSerializer):
         else:
             representation['club'] = None
         
+        # Add current grade details if available
+        if instance.current_grade:
+            representation['current_grade_details'] = {
+                'id': instance.current_grade.id,
+                'name': instance.current_grade.name,
+                'image': instance.current_grade.image.url if instance.current_grade.image else None,
+            }
+        else:
+            representation['current_grade_details'] = None
+        
         # Add computed properties
         representation['can_edit_profile'] = instance.can_edit_profile
         representation['can_add_results'] = instance.can_add_results
