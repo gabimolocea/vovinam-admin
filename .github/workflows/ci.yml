@@ -10,6 +10,9 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     
     steps:
     - uses: actions/checkout@v3
@@ -21,26 +24,21 @@ jobs:
     
     - name: Install dependencies
       run: |
-        cd backend
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
     - name: Clean old database and run migrations
       run: |
-        cd backend
         rm -f db.sqlite3
         python manage.py migrate
 
     - name: Smoke check API root
       run: |
-        cd backend
         # Run only the api root test to verify the app is responding
         python manage.py test api.tests.test_api_root
     
     - name: Run tests
-      run: |
-        cd backend
-        python manage.py test
+      run: python manage.py test
 
   # frontend:
   #   runs-on: ubuntu-latest
