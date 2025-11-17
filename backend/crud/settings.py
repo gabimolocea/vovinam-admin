@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'django_ckeditor_5',  # WYSIWYG editor
+    'storages',  # For S3-compatible storage (DigitalOcean Spaces)
     'api',
     'django_filters',
     'rest_framework',

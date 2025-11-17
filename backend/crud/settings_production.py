@@ -27,21 +27,20 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 USE_SPACES = os.getenv('USE_SPACES', 'False') == 'True'
 
 if USE_SPACES:
-    # Add storages to installed apps
-    INSTALLED_APPS += ['storages']
-    
     # DigitalOcean Spaces settings
     AWS_ACCESS_KEY_ID = os.getenv('SPACES_ACCESS_KEY_ID')
     AWS_SECRET_ACCESS_KEY = os.getenv('SPACES_SECRET_ACCESS_KEY')
     AWS_STORAGE_BUCKET_NAME = os.getenv('SPACES_BUCKET_NAME')
-    AWS_S3_ENDPOINT_URL = os.getenv('SPACES_ENDPOINT_URL')  # e.g., https://nyc3.digitaloceanspaces.com
-    AWS_S3_REGION_NAME = os.getenv('SPACES_REGION', 'nyc3')
+    AWS_S3_ENDPOINT_URL = os.getenv('SPACES_ENDPOINT_URL')  # e.g., https://fra1.digitaloceanspaces.com
+    AWS_S3_REGION_NAME = os.getenv('SPACES_REGION', 'fra1')
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_REGION_NAME}.digitaloceanspaces.com'
     AWS_S3_OBJECT_PARAMETERS = {
         'CacheControl': 'max-age=86400',
     }
     AWS_DEFAULT_ACL = 'public-read'
     AWS_LOCATION = 'media'
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_QUERYSTRING_AUTH = False  # Don't add auth query parameters to URLs
     
     # Media files served from Spaces
     DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
