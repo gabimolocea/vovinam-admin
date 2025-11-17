@@ -25,9 +25,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Run migrations
+    - name: Clean old database and run migrations
       run: |
         cd backend
+        rm -f db.sqlite3
         python manage.py migrate
 
     - name: Smoke check API root
