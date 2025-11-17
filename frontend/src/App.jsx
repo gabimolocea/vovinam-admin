@@ -157,21 +157,25 @@ function App() {
             <CreateClub />
           </ProtectedRoute>
         } />
+        {/* Temporarily commented - uses Material-UI
         <Route path="clubs/edit/:id" element={
           <ProtectedRoute requireAdmin={true}>
             <Edit />
           </ProtectedRoute>
         } />
+        */}
         <Route path="/create-athlete" element={
           <ProtectedRoute requireAdmin={true}>
-            <CreateAthlete />
+            <CreateAthleteConverted />
           </ProtectedRoute>
         } />
+        {/* Temporarily commented - uses Material-UI
         <Route path="/athletes/edit/:id" element={
           <ProtectedRoute requireAdmin={true}>
             <EditAthlete />
           </ProtectedRoute>
         } />
+        */}
         
         View-only routes for authenticated users 
         <Route path="/clubs" element={
@@ -207,7 +211,7 @@ function App() {
           </ProtectedRoute>
         } />
         
-        Athlete workflow routes 
+        {/* Athlete workflow routes - temporarily commented (Material-UI)
         <Route path="/athlete-registration" element={
           <ProtectedRoute requireRole="athlete">
             <AthleteRegistration />
@@ -218,8 +222,9 @@ function App() {
             <AthleteProfileStatus />
           </ProtectedRoute>
         } />
+        */}
         
-        Admin routes 
+        {/* Admin routes - temporarily commented (Material-UI)
         <Route path="/admin/pending-approvals" element={
           <ProtectedRoute requireAdmin={true}>
             <AdminApprovals />
@@ -230,15 +235,17 @@ function App() {
             <SubmissionManagement />
           </ProtectedRoute>
         } />
+        */}
         
-        Supporter routes 
+        {/* Supporter routes - temporarily commented (Material-UI)
         <Route path="/supporter-management" element={
           <ProtectedRoute requireRole="supporter">
             <SupporterManagement />
           </ProtectedRoute>
         } />
+        */}
         
-        News routes 
+        {/* News routes - temporarily commented (Material-UI)
         <Route path="/news" element={
           <ProtectedRoute>
             <NewsLayout />
