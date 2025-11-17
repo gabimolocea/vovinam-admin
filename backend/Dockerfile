@@ -39,6 +39,10 @@ COPY backend/ .
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /build/dist /app/frontend_build
 
+# Copy frontend public assets (fonts, etc) to Django static directory
+RUN mkdir -p static/fonts
+COPY --from=frontend-builder /build/public/fonts/* /app/static/fonts/
+
 # Create media directory
 RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news
 
