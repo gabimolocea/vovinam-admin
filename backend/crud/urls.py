@@ -18,8 +18,10 @@ urlpatterns = [
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 
-# Serve media files in production (whitenoise handles static)
+# Serve media files in production (WhiteNoise handles static files)
 if not settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
     # Development: serve both static and media
@@ -28,9 +30,8 @@ else:
 
 # Catch-all route for React (must be last)
 # Serve index.html for all non-API routes (React Router)
-# Exclude: api/, admin/, media/, static/, assets/, health/, ckeditor5/
 urlpatterns += [
-    re_path(r'^(?!api/|admin/|media/|static/|assets/|health/|ckeditor5/).*$', 
+    re_path(r'^(?!api/|admin/|media/|static/|health/|ckeditor5/).*$', 
             TemplateView.as_view(template_name='index.html'), 
             name='frontend'),
 ]
