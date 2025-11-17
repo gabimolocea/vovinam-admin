@@ -1,6 +1,12 @@
 {% extends "admin/base.html" %}
 {% load i18n admin_urls admin_groups %}
 
+{% block title %}{{ title }} | FRVV Admin{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">FRVV Admin</a></h1>
+{% endblock %}
+
 {# Override the sidebar block to provide a sticky, reordered navigation that
    uses ADMIN_APP_ORDER and the app grouping tag. We guard against missing
    `app_list` in contexts where the admin does not provide it.

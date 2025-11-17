@@ -286,6 +286,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom User Model
 AUTH_USER_MODEL = 'api.User'
 
+# Admin site configuration
+ADMIN_SITE_HEADER = 'FRVV Admin'
+ADMIN_SITE_TITLE = 'FRVV Admin'
+ADMIN_INDEX_TITLE = 'Romanian Vovinam Federation Administration'
+
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),  # Add your custom static directory here

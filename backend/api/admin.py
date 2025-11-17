@@ -2957,3 +2957,9 @@ class SupporterAthleteRelationAdmin(admin.ModelAdmin):
     list_filter = ['relationship', 'can_edit', 'can_register_competitions', 'created']
     search_fields = ['supporter__username', 'supporter__email', 'athlete__first_name', 'athlete__last_name']
     ordering = ['-created']
+
+
+# Configure admin site branding
+admin.site.site_header = 'FRVV Admin'
+admin.site.site_title = 'FRVV Admin'
+admin.site.index_title = 'Romanian Vovinam Federation Administration'
