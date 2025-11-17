@@ -39,10 +39,13 @@ COPY backend/ .
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /build/dist /app/frontend_build
 
-# Copy frontend fonts from Vite build output to Django static directory
-# Vite copies public/ contents to dist/ root during build
-RUN mkdir -p static/fonts
-COPY --from=frontend-builder /build/dist/fonts/* /app/static/fonts/
+# Copy frontend fonts to static directory
+# The CSS in assets/ references fonts with relative paths
+RUN mkdir -p static/fonts static/assets/fonts && \
+    if [ -d /app/frontend_build/fonts ]; then \
+        cp -r /app/frontend_build/fonts/* /app/static/fonts/ 2>/dev/null || true; \
+        cp -r /app/frontend_build/fonts/* /app/static/assets/fonts/ 2>/dev/null || true; \
+    fi
 
 # Create media directory
 RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news
