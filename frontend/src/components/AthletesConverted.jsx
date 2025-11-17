@@ -186,12 +186,15 @@ const Athletes = () => {
                     <TableRow key={athlete.id}>
                       <TableCell>
                         <div className="flex items-center space-x-3">
-                          <Avatar>
+                          <Avatar className="rounded-[5%]">
                             <AvatarImage 
-                              src={athlete.profile_image ? `http://127.0.0.1:8000${athlete.profile_image}` : undefined}
+                              src={athlete.profile_image && !athlete.profile_image.includes('default.png') ? `http://127.0.0.1:8000${athlete.profile_image}` : undefined}
                               alt={athlete.full_name}
+                              className="rounded-[5%]"
                             />
-                            <AvatarFallback>{getInitials(athlete.full_name)}</AvatarFallback>
+                            <AvatarFallback className="rounded-[5%] bg-gradient-to-br from-blue-500 to-blue-700 text-white font-bold">
+                              {getInitials(athlete.full_name)}
+                            </AvatarFallback>
                           </Avatar>
                           <div>
                             <Button
