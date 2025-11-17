@@ -14,6 +14,7 @@ import EditAthleteConverted from './components/EditAthleteConverted'
 import EditClubConverted from './components/EditClubConverted'
 import ViewAthleteTable from './components/ViewAthleteTable'
 import ViewClubConverted from './components/ViewClubConverted'
+import CompetitionsConverted from './components/CompetitionsConverted'
 import NewsFeed from './components/NewsFeed'
 import CreateNews from './components/CreateNews'
 import NewsDetail from './components/NewsDetail'
@@ -191,6 +192,11 @@ function App() {
         <Route path="/clubs/:id" element={
           <ProtectedRoute>
             <ViewClubConverted />
+          </ProtectedRoute>
+        } />
+        <Route path="/competitions" element={
+          <ProtectedRoute>
+            <CompetitionsConverted />
           </ProtectedRoute>
         } />
         
