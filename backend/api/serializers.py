@@ -106,7 +106,7 @@ class FederationRoleSerializer(serializers.ModelSerializer):
 class GradeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Grade
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'rank_order', 'grade_type', 'image']
 
 
 class CoachSimpleSerializer(serializers.ModelSerializer):

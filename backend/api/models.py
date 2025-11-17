@@ -141,6 +141,7 @@ class Grade(models.Model):
     name = models.CharField(max_length=100)
     rank_order = models.IntegerField(default=0)  # Rank order for grades (higher value = higher rank)
     grade_type = models.CharField(max_length=10, choices=GRADE_TYPE_CHOICES, default='inferior')  # Type of grade
+    image = models.ImageField(upload_to='grades/', blank=True, null=True, help_text='Grade badge image (SVG or PNG)')
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 

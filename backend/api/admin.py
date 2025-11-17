@@ -1400,9 +1400,16 @@ class TrainingSeminarAdmin(admin.ModelAdmin):
 # Register Grade model with the new grade_type field
 @admin.register(Grade)
 class GradeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'rank_order', 'grade_type', 'created', 'modified')  # Include grade_type in list_display
-    search_fields = ('name', 'grade_type')  # Enable search by grade_type
-    list_filter = ('grade_type', 'created', 'modified')  # Enable filtering by grade_type
+    list_display = ('name', 'rank_order', 'grade_type', 'image_preview', 'created', 'modified')
+    search_fields = ('name', 'grade_type')
+    list_filter = ('grade_type', 'created', 'modified')
+    readonly_fields = ('image_preview',)
+    
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" style="max-height: 50px; max-width: 100px;" />', obj.image.url)
+        return '-'
+    image_preview.short_description = 'Image Preview'
 
 # Updated GradeHistoryAdmin
 @admin.register(GradeHistory)
