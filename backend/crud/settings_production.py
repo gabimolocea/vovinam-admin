@@ -77,3 +77,17 @@ LOGGING = {
         },
     },
 }
+
+# Frontend integration - serve React build
+FRONTEND_BUILD_DIR = os.path.join(BASE_DIR, 'frontend_build')
+
+# Update TEMPLATES to include frontend build directory
+for template_engine in TEMPLATES:
+    if template_engine['BACKEND'] == 'django.template.backends.django.DjangoTemplates':
+        if FRONTEND_BUILD_DIR not in template_engine['DIRS']:
+            template_engine['DIRS'].insert(0, FRONTEND_BUILD_DIR)
+
+# Add frontend build to static files
+if FRONTEND_BUILD_DIR not in STATICFILES_DIRS:
+    STATICFILES_DIRS = list(STATICFILES_DIRS) if STATICFILES_DIRS else []
+    STATICFILES_DIRS.insert(0, FRONTEND_BUILD_DIR)

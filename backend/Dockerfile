@@ -1,4 +1,13 @@
-# Use Python 3.11 slim image
+# Stage 1: Build React frontend
+FROM node:18-slim AS frontend-builder
+
+WORKDIR /frontend
+COPY ../frontend/package.json ../frontend/package-lock.json ./
+RUN npm ci
+COPY ../frontend/ ./
+RUN npm run build
+
+# Stage 2: Build Django backend
 FROM python:3.11-slim
 
 # Set environment variables
@@ -20,8 +29,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
-# Copy project
+# Copy Django project
 COPY . .
+
+# Copy built frontend from stage 1
+COPY --from=frontend-builder /frontend/dist /app/frontend_build
 
 # Create media directory
 RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news
