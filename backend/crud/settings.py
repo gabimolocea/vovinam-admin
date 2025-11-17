@@ -294,7 +294,8 @@ ADMIN_INDEX_TITLE = 'Romanian Vovinam Federation Administration'
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),  # Add your custom static directory here
+    os.path.join(BASE_DIR, 'static'),  # Custom static directory
+    os.path.join(BASE_DIR, 'frontend_build'),  # Vite build output (includes fonts from public/)
 ]
 
 os.makedirs(os.path.join(BASE_DIR, 'static'), exist_ok=True)
