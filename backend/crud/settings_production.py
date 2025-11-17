@@ -36,15 +36,23 @@ if USE_SPACES:
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_REGION_NAME}.digitaloceanspaces.com'
     AWS_S3_OBJECT_PARAMETERS = {
         'CacheControl': 'max-age=86400',
+        'ACL': 'public-read',  # Make files publicly readable
     }
     AWS_DEFAULT_ACL = 'public-read'
     AWS_LOCATION = 'media'
     AWS_S3_FILE_OVERWRITE = False
     AWS_QUERYSTRING_AUTH = False  # Don't add auth query parameters to URLs
+    AWS_S3_VERIFY = True  # Verify SSL certificates
     
     # Media files served from Spaces
     DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
+    
+    # Debug: Log storage backend info
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f'Using Spaces storage: {AWS_S3_CUSTOM_DOMAIN}')
+    logger.info(f'Media URL: {MEDIA_URL}')
 else:
     # Local media files (development or without Spaces)
     MEDIA_URL = '/media/'
