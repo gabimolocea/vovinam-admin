@@ -370,7 +370,9 @@ const CompetitionDetails = () => {
       const templateBytes = await fetch(templatePath).then((res) => res.arrayBuffer());
       const pdfDoc = await PDFDocument.load(templateBytes);
   
-      const fontBytes = await fetch("/fonts/Roboto-ExtraBold.ttf").then((res) => res.arrayBuffer());
+      // Use Google Fonts CDN for Roboto Bold
+      const fontUrl = "https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc4AMP6lQ.woff2";
+      const fontBytes = await fetch(fontUrl).then((res) => res.arrayBuffer());
       pdfDoc.registerFontkit(fontkit);
       const customFont = await pdfDoc.embedFont(fontBytes);
   
@@ -469,8 +471,9 @@ const CompetitionDetails = () => {
   
       const pdfDoc = await PDFDocument.load(templateBytes);
   
-      // Fetch and embed the custom font
-      const fontBytes = await fetch("/fonts/Roboto-ExtraBold.ttf")
+      // Fetch and embed the custom font from Google Fonts CDN
+      const fontUrl = "https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc4AMP6lQ.woff2";
+      const fontBytes = await fetch(fontUrl)
         .then((res) => res.arrayBuffer())
         .catch((error) => {
           console.error("Error fetching font:", error);
