@@ -44,8 +44,15 @@ if USE_SPACES:
     AWS_QUERYSTRING_AUTH = False  # Don't add auth query parameters to URLs
     AWS_S3_VERIFY = True  # Verify SSL certificates
     
-    # Media files served from Spaces
-    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    # Media files served from Spaces (Django 4.2+ style)
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
     
     # Debug: Log storage backend info
