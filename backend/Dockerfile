@@ -47,8 +47,12 @@ COPY --from=frontend-builder /build/dist/fonts/* /app/static/fonts/
 # Create media directory
 RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news
 
-# Collect static files
+# Collect static files (must run AFTER fonts are copied)
 RUN python manage.py collectstatic --noinput
+
+# Copy entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -57,5 +61,5 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Run gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "120", "crud.wsgi:application"]
+# Use entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]
