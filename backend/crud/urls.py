@@ -28,8 +28,9 @@ else:
 
 # Catch-all route for React (must be last)
 # Serve index.html for all non-API routes (React Router)
+# Exclude: api/, admin/, media/, static/, assets/, health/, ckeditor5/
 urlpatterns += [
-    re_path(r'^(?!api/|admin/|media/|static/|health/|ckeditor5/).*$', 
+    re_path(r'^(?!api/|admin/|media/|static/|assets/|health/|ckeditor5/).*$', 
             TemplateView.as_view(template_name='index.html'), 
             name='frontend'),
 ]

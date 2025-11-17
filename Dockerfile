@@ -37,12 +37,18 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 COPY backend/ .
 
 # Copy built frontend from stage 1
-COPY --from=frontend-builder /build/dist /app/frontend_build
+# index.html goes to templates for the catch-all route
+RUN mkdir -p templates
+COPY --from=frontend-builder /build/dist/index.html /app/templates/
+
+# Assets (CSS, JS, images) go to static directory for WhiteNoise
+RUN mkdir -p static/assets
+COPY --from=frontend-builder /build/dist/assets /app/static/assets
 
 # Create media directory
 RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news
 
-# Collect static files
+# Collect static files (includes frontend assets)
 RUN python manage.py collectstatic --noinput
 
 # Create non-root user
