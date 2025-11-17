@@ -7,7 +7,7 @@ FROM node:18-slim AS frontend-builder
 
 WORKDIR /build
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 COPY frontend ./
 RUN npm run build
 
