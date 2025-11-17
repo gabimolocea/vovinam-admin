@@ -47,8 +47,8 @@ COPY --from=frontend-builder /build/dist/fonts/* /app/static/fonts/
 # Create media directory
 RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news
 
-# Collect static files (must run AFTER fonts are copied)
-RUN python manage.py collectstatic --noinput
+# NOTE: collectstatic is run by entrypoint.sh at container startup
+# This ensures the staticfiles directory is properly populated after all files are in place
 
 # Copy entrypoint script
 COPY entrypoint.sh /app/entrypoint.sh
