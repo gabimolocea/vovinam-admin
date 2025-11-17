@@ -3,7 +3,7 @@
 # Update in DigitalOcean: Settings → Source Directory: /
 
 # Stage 1: Build React frontend
-FROM node:18-slim AS frontend-builder
+FROM node:20-slim AS frontend-builder
 
 WORKDIR /build
 COPY frontend/package*.json ./
