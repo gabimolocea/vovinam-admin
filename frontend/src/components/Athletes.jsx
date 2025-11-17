@@ -7,6 +7,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DeleteDialog from "./DeleteDialog"; // Import the global DeleteDialog component
 import { useAuth } from "../contexts/AuthContext";
+import { getMediaUrl } from "../utils/env";
 
 const Athletes = () => {
   const { isAdmin } = useAuth();
@@ -74,7 +75,7 @@ const Athletes = () => {
         Cell: ({ row }) => (
           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
             <Avatar
-              src={`http://127.0.0.1:8000${row.original.profile_image || ""}`} // Use the provided base URL and profile image
+              src={getMediaUrl(row.original.profile_image)}
               alt={`${row.original.first_name || "Athlete"} ${row.original.last_name || "Profile"}`}
               sx={{
                 width: 40,
@@ -106,7 +107,7 @@ const Athletes = () => {
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {row.original.gradeImage && (
               <img
-                src={`http://127.0.0.1:8000${row.original.gradeImage}`}
+                src={getMediaUrl(row.original.gradeImage)}
                 alt={row.original.grade}
                 style={{ maxHeight: '24px', width: 'auto', objectFit: 'contain' }}
               />

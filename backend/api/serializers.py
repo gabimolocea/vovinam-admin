@@ -97,6 +97,12 @@ class AthleteSerializer(serializers.ModelSerializer):
         else:
             representation['current_grade_details'] = None
         
+        # Ensure profile_image returns full URL
+        if instance.profile_image:
+            representation['profile_image'] = instance.profile_image.url
+        else:
+            representation['profile_image'] = None
+        
         # Add computed properties
         representation['can_edit_profile'] = instance.can_edit_profile
         representation['can_add_results'] = instance.can_add_results
