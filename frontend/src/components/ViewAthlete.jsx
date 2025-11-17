@@ -48,6 +48,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { MaterialReactTable } from 'material-react-table';
 import { useAuth } from '../contexts/AuthContext';
+import { getMediaUrl } from '../utils/env';
 import CreateGradeHistory from './CreateGradeHistory';
 import CreateSeminarParticipation from './CreateSeminarParticipation';
 
@@ -794,7 +795,7 @@ const ViewAthlete = () => {
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
             <Avatar
-              src={`http://127.0.0.1:8000${athleteData?.profile_image || ""}`}
+              src={getMediaUrl(athleteData?.profile_image)}
               alt={`${athleteData?.first_name || "Athlete"} ${athleteData?.last_name || "Profile"}`}
               sx={{
                 width: { xs: 80, sm: 100, md: 120 },
@@ -805,7 +806,7 @@ const ViewAthlete = () => {
             {relatedData?.grade?.image && (
               <Box
                 component="img"
-                src={relatedData.grade.image.startsWith('http') ? relatedData.grade.image : `http://127.0.0.1:8000${relatedData.grade.image}`}
+                src={getMediaUrl(relatedData.grade.image)}
                 alt={relatedData.grade.name || "Grade badge"}
                 sx={{
                   maxHeight: '24px',

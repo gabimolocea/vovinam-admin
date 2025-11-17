@@ -22,6 +22,11 @@ DATABASES['default'] = dj_database_url.config(
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Media files - served directly by Django in production
+# DigitalOcean App Platform requires volumes for persistent media storage
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 # CORS - allow frontend domain
 cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
 if cors_origins:
