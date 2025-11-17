@@ -189,7 +189,8 @@ export default function Navbar({ content }) {
                   <div className="relative">
                     <button
                       onClick={handleUserMenuToggle}
-                      className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
+                      className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 text-white text-sm font-bold hover:from-blue-600 hover:to-blue-800 transition-all"
+                      style={{ borderRadius: '5%' }}
                       aria-expanded={userMenuOpen}
                     >
                       {`${(user.first_name || 'U').charAt(0).toUpperCase()}${(user.last_name || 'S').charAt(0).toUpperCase()}`}

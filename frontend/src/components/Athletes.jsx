@@ -82,12 +82,13 @@ const Athletes = () => {
                 sx={{
                   width: 40,
                   height: 40,
-                  borderRadius: "5%",
+                  borderRadius: '5%',
                   marginRight: 0,
                   marginLeft: 0,
                   marginTop: 0,
-                  bgcolor: 'primary.main',
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
                   fontWeight: 'bold',
+                  fontSize: '0.875rem',
                 }}
               >
                 {!hasValidImage && `${row.original.first_name?.[0] || ''}${row.original.last_name?.[0] || ''}`}

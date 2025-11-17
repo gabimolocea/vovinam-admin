@@ -801,7 +801,7 @@ const ViewAthlete = () => {
                 width: { xs: 80, sm: 100, md: 120 },
                 height: { xs: 80, sm: 100, md: 120 },
                 borderRadius: '5%',
-                bgcolor: 'primary.main',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
                 fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
                 fontWeight: 'bold',
               }}
