@@ -27,7 +27,7 @@ class ScoringAllocationTests(TestCase):
         self.match.save()
 
     def test_proportional_allocation(self):
-        """Central penalty should be split proportionally across referees based on raw contributions."""
+        """Central penalty is applied fully to each referee (not proportionally split)."""
         # ref0 (central) gives penalty to red of 5
         RefereePointEvent.objects.create(match=self.match, referee=self.refs[0], side='red', points=5, event_type='penalty')
         # other referees score raw red points: ref1=3, ref2=2, others 0
@@ -41,13 +41,12 @@ class ScoringAllocationTests(TestCase):
         # central penalty aggregated
         self.assertEqual(res['central_penalties']['red'], 5)
         per = res['per_ref']
-        # allocations: total_raw_red = 5 -> ref1 share 3/5 -> allocated 3; ref2 share 2/5 -> allocated 2
-        # so adjusted red for ref1 and ref2 should be 0
-        # find referee ids
+        # Full penalty applied to each referee: raw + penalty
+        # ref1: 3 + 5 = 8, ref2: 2 + 5 = 7
         r1 = self.refs[1].id
         r2 = self.refs[2].id
-        self.assertEqual(per[r1]['adj_red'], 0)
-        self.assertEqual(per[r2]['adj_red'], 0)
+        self.assertEqual(per[r1]['adj_red'], 8)
+        self.assertEqual(per[r2]['adj_red'], 7)
 
     def test_metadata_marked_central_penalty(self):
         """If a penalty event has metadata['central']=True it should be treated as central even when created by non-central referee."""
@@ -60,10 +59,10 @@ class ScoringAllocationTests(TestCase):
         res = compute_match_results(self.match)
         # central penalties aggregated should include the blue=4
         self.assertEqual(res['central_penalties']['blue'], 4)
-        # check allocations: total_raw_blue = 5 -> refs 1 and 2 have 2 and 3 -> allocations 2 and 2 (rounded)
         per = res['per_ref']
         r1 = self.refs[1].id
         r2 = self.refs[2].id
-        # adjusted blue should be raw - allocated (2-2=0, 3-2=1)
-        self.assertTrue(per[r1]['adj_blue'] in (0, -0))
-        self.assertEqual(per[r2]['adj_blue'], 1)
+        # Full penalty applied to each referee: raw + penalty
+        # ref1: 2 + 4 = 6, ref2: 3 + 4 = 7
+        self.assertEqual(per[r1]['adj_blue'], 6)
+        self.assertEqual(per[r2]['adj_blue'], 7)
