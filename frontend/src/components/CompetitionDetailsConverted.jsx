@@ -45,8 +45,15 @@ const CompetitionDetailsConverted = () => {
             // Fetch category-athlete relations
             const categoryAthletesResponse = await AxiosInstance.get(`/category-athlete-score/?category=${category.id}`);
             
+            // Handle both array and paginated response formats
+            let categoryAthletesList = Array.isArray(categoryAthletesResponse.data) 
+              ? categoryAthletesResponse.data 
+              : categoryAthletesResponse.data.results || [];
+            
+            console.log(`Category ${category.id} athletes:`, categoryAthletesList);
+            
             // Fetch athlete details
-            const athletePromises = categoryAthletesResponse.data.map(async (catAthlete) => {
+            const athletePromises = categoryAthletesList.map(async (catAthlete) => {
               try {
                 const athleteResponse = await AxiosInstance.get(`/athletes/${catAthlete.athlete}/`);
                 return {
