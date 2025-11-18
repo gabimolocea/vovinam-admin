@@ -52,18 +52,30 @@ const CompetitionDetailsConverted = () => {
             
             console.log(`Category ${category.id} athletes:`, categoryAthletesList);
             
-            // Fetch athlete details
+            // Process athlete data
             const athletePromises = categoryAthletesList.map(async (catAthlete) => {
               try {
-                const athleteResponse = await AxiosInstance.get(`/athletes/${catAthlete.athlete}/`);
-                return {
-                  ...athleteResponse.data,
-                  score: catAthlete.score,
-                  placement: catAthlete.placement,
-                  status: catAthlete.status
-                };
+                // Check if athlete is already an object with full data or just an ID
+                if (typeof catAthlete.athlete === 'object' && catAthlete.athlete !== null) {
+                  // Athlete data is already included
+                  return {
+                    ...catAthlete.athlete,
+                    score: catAthlete.score,
+                    placement: catAthlete.placement,
+                    status: catAthlete.status
+                  };
+                } else {
+                  // Athlete is just an ID, fetch the details
+                  const athleteResponse = await AxiosInstance.get(`/athletes/${catAthlete.athlete}/`);
+                  return {
+                    ...athleteResponse.data,
+                    score: catAthlete.score,
+                    placement: catAthlete.placement,
+                    status: catAthlete.status
+                  };
+                }
               } catch (err) {
-                console.error(`Error fetching athlete ${catAthlete.athlete}:`, err);
+                console.error(`Error processing athlete:`, catAthlete, err);
                 return null;
               }
             });
