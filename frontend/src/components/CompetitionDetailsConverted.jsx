@@ -16,6 +16,7 @@ const CompetitionDetailsConverted = () => {
   const [competition, setCompetition] = useState(null);
   const [categories, setCategories] = useState([]);
   const [categoryAthletes, setCategoryAthletes] = useState({});
+  const [eventParticipations, setEventParticipations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -30,11 +31,39 @@ const CompetitionDetailsConverted = () => {
         console.log("Competition:", compResponse.data);
         setCompetition(compResponse.data);
 
-        // Fetch categories for this competition
+        // Fetch all categories first
         const categoriesResponse = await AxiosInstance.get(`/categories/`);
-        const competitionCategories = categoriesResponse.data.filter(
-          cat => cat.competition === parseInt(competitionId)
-        );
+        
+        // Get categories - first check if they're in the competition response
+        let competitionCategories = [];
+        
+        if (compResponse.data.categories && compResponse.data.categories.length > 0) {
+          // Use category IDs from competition response
+          const categoryIds = compResponse.data.categories.map(cat => cat.id);
+          competitionCategories = categoriesResponse.data.filter(
+            cat => categoryIds.includes(cat.id)
+          );
+        } else {
+          // Fallback: filter by competition or event
+          competitionCategories = categoriesResponse.data.filter(
+            cat => cat.competition === parseInt(competitionId)
+          );
+          
+          // Also check for categories linked to events
+          const eventIds = competitionCategories.map(cat => cat.event).filter(Boolean);
+          if (eventIds.length > 0) {
+            const eventCategories = categoriesResponse.data.filter(
+              cat => cat.event && eventIds.includes(cat.event)
+            );
+            const categoryIds = new Set(competitionCategories.map(cat => cat.id));
+            eventCategories.forEach(cat => {
+              if (!categoryIds.has(cat.id)) {
+                competitionCategories.push(cat);
+              }
+            });
+          }
+        }
+        
         console.log("Categories:", competitionCategories);
         setCategories(competitionCategories);
 
@@ -89,6 +118,23 @@ const CompetitionDetailsConverted = () => {
         }
         
         setCategoryAthletes(athletesData);
+
+        // Fetch event participations if any category has an event ID
+        const eventId = categoriesResponse.data.find(cat => cat.event)?.event;
+        if (eventId) {
+          try {
+            const participationsResponse = await AxiosInstance.get(`/seminar-submissions/?event=${eventId}`);
+            const participationsList = Array.isArray(participationsResponse.data)
+              ? participationsResponse.data
+              : participationsResponse.data.results || [];
+            console.log("Event participations:", participationsList);
+            setEventParticipations(participationsList);
+          } catch (err) {
+            console.error("Error fetching event participations:", err);
+          }
+        } else {
+          console.log("No event ID found in categories");
+        }
       } catch (error) {
         console.error("Error fetching competition details:", error);
         setError("Failed to fetch competition details. Please try again.");
@@ -199,135 +245,186 @@ const CompetitionDetailsConverted = () => {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            <CardTitle>Categories & Participants</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {categories.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No categories found for this competition.
-            </div>
+      {/* Tabs for Categories and Event Participants */}
+      <Tabs defaultValue="categories" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="categories" className="flex items-center gap-2">
+            <Trophy className="h-4 w-4" />
+            Categories
+            <Badge variant="secondary" className="ml-1">
+              {categories.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="event-participants" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Event Participants
+            <Badge variant="secondary" className="ml-1">
+              {eventParticipations.length}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Categories Tab Content */}
+        <TabsContent value="categories">
+          {categories.length > 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {categories.map(category => {
+                    const athleteCount = categoryAthletes[category.id]?.length || 0;
+                    const teamCount = category.teams?.length || 0;
+                    
+                    return (
+                      <Card key={category.id} className="hover:shadow-lg transition-shadow">
+                        <CardHeader>
+                          <CardTitle className="text-base">{category.name}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge className={getCategoryTypeColor(category.type)}>
+                              {category.type}
+                            </Badge>
+                            {getGenderBadge(category.gender)}
+                          </div>
+                          
+                          <div className="space-y-2">
+                            {category.type === 'teams' ? (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Enrolled Teams:</span>
+                                <Badge variant="secondary">{teamCount}</Badge>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Enrolled Athletes:</span>
+                                <Badge variant="secondary">{athleteCount}</Badge>
+                              </div>
+                            )}
+                          </div>
+
+                          <Link to={`/category/${category.id}`}>
+                            <Button variant="outline" className="w-full mt-2">
+                              View Details
+                            </Button>
+                          </Link>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           ) : (
-            <Tabs defaultValue={`category-${categories[0]?.id}`} className="w-full">
-              <TabsList className="w-full justify-start flex-wrap h-auto">
-                {categories.map((category) => (
-                  <TabsTrigger
-                    key={category.id}
-                    value={`category-${category.id}`}
-                    className="flex items-center gap-2"
-                  >
-                    <div className={`w-2 h-2 rounded-full ${getCategoryTypeColor(category.type)}`} />
-                    {category.name}
-                    <Badge variant="secondary" className="ml-1">
-                      {categoryAthletes[category.id]?.length || 0}
-                    </Badge>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-
-              {categories.map((category) => (
-                <TabsContent key={category.id} value={`category-${category.id}`}>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge className={getCategoryTypeColor(category.type)}>
-                        {category.type}
-                      </Badge>
-                      {getGenderBadge(category.gender)}
-                      {category.group && (
-                        <Badge variant="outline">Group: {category.group}</Badge>
-                      )}
-                    </div>
-
-                    {categoryAthletes[category.id]?.length > 0 ? (
-                      <div className="rounded-md border">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Rank</TableHead>
-                              <TableHead>Athlete</TableHead>
-                              <TableHead>Club</TableHead>
-                              <TableHead>Grade</TableHead>
-                              <TableHead className="text-right">Score</TableHead>
-                              <TableHead>Status</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {categoryAthletes[category.id]
-                              .sort((a, b) => (a.placement || 999) - (b.placement || 999))
-                              .map((athlete, index) => (
-                                <TableRow key={`${category.id}-${athlete.id}-${index}`}>
-                                  <TableCell>
-                                    <div className="flex items-center gap-2">
-                                      {getPlacementIcon(athlete.placement)}
-                                      <span className="font-medium">
-                                        {athlete.placement || '-'}
-                                      </span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex items-center gap-3">
-                                      <Avatar className="rounded-[5%]">
-                                        <AvatarImage
-                                          src={athlete.profile_image && !athlete.profile_image.includes('default.png')
-                                            ? `http://127.0.0.1:8000${athlete.profile_image}`
-                                            : undefined}
-                                          className="rounded-[5%]"
-                                        />
-                                        <AvatarFallback className="rounded-[5%] bg-gradient-to-br from-blue-500 to-blue-700 text-white font-bold">
-                                          {getInitials(athlete.first_name, athlete.last_name)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <Link
-                                        to={`/athletes/${athlete.id}`}
-                                        className="font-medium hover:underline"
-                                      >
-                                        {athlete.first_name} {athlete.last_name}
-                                      </Link>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>{athlete.club_name || "N/A"}</TableCell>
-                                  <TableCell>
-                                    {athlete.current_grade_details?.name || "N/A"}
-                                  </TableCell>
-                                  <TableCell className="text-right font-mono">
-                                    {athlete.score !== null && athlete.score !== undefined
-                                      ? athlete.score.toFixed(2)
-                                      : '-'}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge
-                                      variant={
-                                        athlete.status === 'approved'
-                                          ? 'default'
-                                          : athlete.status === 'pending'
-                                          ? 'secondary'
-                                          : 'destructive'
-                                      }
-                                    >
-                                      {athlete.status || 'pending'}
-                                    </Badge>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-muted-foreground border rounded-md">
-                        No athletes enrolled in this category yet.
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-              ))}
-            </Tabs>
+            <Card>
+              <CardContent className="text-center py-8 text-muted-foreground">
+                No categories found for this competition.
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
+
+        {/* Event Participants Tab Content */}
+        <TabsContent value="event-participants">
+          {eventParticipations.length > 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Athlete</TableHead>
+                      <TableHead>Club</TableHead>
+                      <TableHead>Grade</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Submitted Date</TableHead>
+                      <TableHead>Documents</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {eventParticipations.map((participation, index) => (
+                      <TableRow key={`participation-${participation.id || index}`}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="rounded-[5%]">
+                              <AvatarImage
+                                src={participation.athlete_details?.profile_image}
+                                alt={`${participation.athlete_details?.first_name} ${participation.athlete_details?.last_name}`}
+                              />
+                              <AvatarFallback className="rounded-[5%] bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                                {participation.athlete_details?.first_name?.[0]}
+                                {participation.athlete_details?.last_name?.[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <Link
+                              to={`/athletes/${participation.athlete}`}
+                              className="font-medium hover:underline"
+                            >
+                              {participation.athlete_details?.first_name} {participation.athlete_details?.last_name}
+                            </Link>
+                          </div>
+                        </TableCell>
+                        <TableCell>{participation.athlete_details?.club_name || "N/A"}</TableCell>
+                        <TableCell>
+                          {participation.athlete_details?.current_grade_details?.name || "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              participation.status === 'approved'
+                                ? 'default'
+                                : participation.status === 'pending'
+                                ? 'secondary'
+                                : 'destructive'
+                            }
+                          >
+                            {participation.status || 'pending'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {participation.submitted_date
+                            ? new Date(participation.submitted_date).toLocaleDateString()
+                            : 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            {participation.participation_certificate && (
+                              <a
+                                href={participation.participation_certificate}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:underline"
+                              >
+                                Certificate
+                              </a>
+                            )}
+                            {participation.participation_document && (
+                              <a
+                                href={participation.participation_document}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:underline"
+                              >
+                                Document
+                              </a>
+                            )}
+                            {!participation.participation_certificate && !participation.participation_document && (
+                              <span className="text-xs text-muted-foreground">No documents</span>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="text-center py-8 text-muted-foreground">
+                No event participants found.
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

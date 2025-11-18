@@ -103,32 +103,13 @@ def compute_match_results(match: Match, events: Optional[Iterable[RefereePointEv
             raw_blue = sums.get('blue', 0)
             pen = central_penalties_by_round.get(rd, {'red': 0, 'blue': 0})
 
-            # Allocate penalty for red corner proportionally based on raw contributions
-            total_raw_red = rounds_totals.get(rd, {}).get('red', 0) or 0
-            if pen.get('red', 0) and total_raw_red > 0:
-                # proportion of this referee's contribution
-                share = (raw_red / total_raw_red) if total_raw_red else 0
-                allocated_red_pen = int(round((pen.get('red', 0) or 0) * share))
-            elif pen.get('red', 0):
-                # no raw points recorded - split evenly among referees
-                num_refs = max(1, len(per_ref))
-                allocated_red_pen = int(round((pen.get('red', 0) or 0) / num_refs))
-            else:
-                allocated_red_pen = 0
+            # Apply the full central adjustment to each referee (not proportional allocation)
+            # Negative values are penalties (subtracted), positive are additions
+            allocated_red_pen = pen.get('red', 0) or 0
+            allocated_blue_pen = pen.get('blue', 0) or 0
 
-            # Allocate penalty for blue corner proportionally based on raw contributions
-            total_raw_blue = rounds_totals.get(rd, {}).get('blue', 0) or 0
-            if pen.get('blue', 0) and total_raw_blue > 0:
-                share_b = (raw_blue / total_raw_blue) if total_raw_blue else 0
-                allocated_blue_pen = int(round((pen.get('blue', 0) or 0) * share_b))
-            elif pen.get('blue', 0):
-                num_refs = max(1, len(per_ref))
-                allocated_blue_pen = int(round((pen.get('blue', 0) or 0) / num_refs))
-            else:
-                allocated_blue_pen = 0
-
-            adj_red = raw_red - allocated_red_pen
-            adj_blue = raw_blue - allocated_blue_pen
+            adj_red = raw_red + allocated_red_pen
+            adj_blue = raw_blue + allocated_blue_pen
             rounds_detail[rd] = {'red': raw_red, 'blue': raw_blue, 'adj_red': adj_red, 'adj_blue': adj_blue}
             total_red += raw_red
             total_blue += raw_blue

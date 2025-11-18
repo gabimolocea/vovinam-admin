@@ -1,29 +1,53 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Building2Icon, Edit3Icon, ArrowLeftIcon, MapPinIcon, PhoneIcon, GlobeIcon, UserIcon } from "lucide-react";
+import { Building2Icon, Edit3Icon, ArrowLeftIcon, MapPinIcon, PhoneIcon, GlobeIcon, UserIcon, UsersIcon } from "lucide-react";
 
 import AxiosInstance from "./Axios";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 const ViewClubConverted = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   
   const [club, setClub] = useState(null);
+  const [athletes, setAthletes] = useState([]);
+  const [grades, setGrades] = useState({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    const fetchClub = async () => {
+    const fetchClubData = async () => {
       try {
         setLoading(true);
-        const response = await AxiosInstance.get(`clubs/${id}/`);
-        setClub(response.data);
+        
+        // Fetch club, athletes, and grades in parallel
+        const [clubResponse, athletesResponse, gradesResponse] = await Promise.all([
+          AxiosInstance.get(`clubs/${id}/`),
+          AxiosInstance.get("athletes/"),
+          AxiosInstance.get("grades/")
+        ]);
+        
+        setClub(clubResponse.data);
+        
+        // Build grades lookup
+        const gradesMap = gradesResponse.data.reduce((acc, grade) => {
+          acc[grade.id] = grade.name;
+          return acc;
+        }, {});
+        setGrades(gradesMap);
+        
+        // Filter athletes by club (club is an object with id and name)
+        const clubAthletes = athletesResponse.data.filter(
+          (athlete) => athlete.club?.id === parseInt(id)
+        );
+        setAthletes(clubAthletes);
+        
       } catch (error) {
-        console.error("Error fetching club:", error);
+        console.error("Error fetching club data:", error);
         setErrorMessage("Failed to load club data. Please try again.");
       } finally {
         setLoading(false);
@@ -31,7 +55,7 @@ const ViewClubConverted = () => {
     };
 
     if (id) {
-      fetchClub();
+      fetchClubData();
     }
   }, [id]);
 
@@ -123,12 +147,22 @@ const ViewClubConverted = () => {
             <p className="text-lg">{club.address || "N/A"}</p>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 md:col-span-2">
             <p className="text-sm font-medium text-gray-500 flex items-center gap-2">
               <UserIcon className="h-4 w-4" />
-              Coach
+              Coaches
             </p>
-            <p className="text-lg">{club.coach || "N/A"}</p>
+            {club.coaches && club.coaches.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {club.coaches.map((coach) => (
+                  <Badge key={coach.id} variant="secondary">
+                    {coach.first_name} {coach.last_name}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-lg">No coaches assigned</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -156,30 +190,6 @@ const ViewClubConverted = () => {
             ) : (
               <p className="text-lg text-gray-500">N/A</p>
             )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Additional Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Statistics</CardTitle>
-          <CardDescription>
-            Club metrics and activity
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="text-center p-4 bg-blue-50 rounded-lg">
-            <p className="text-2xl text-blue-600">{club.athlete_count || 0}</p>
-            <p className="text-sm text-gray-600">Athletes</p>
-          </div>
-          <div className="text-center p-4 bg-green-50 rounded-lg">
-            <p className="text-2xl text-green-600">{club.competition_count || 0}</p>
-            <p className="text-sm text-gray-600">Competitions</p>
-          </div>
-          <div className="text-center p-4 bg-purple-50 rounded-lg">
-            <p className="text-2xl text-purple-600">{club.established_year || "N/A"}</p>
-            <p className="text-sm text-gray-600">Established</p>
           </div>
         </CardContent>
       </Card>
@@ -228,6 +238,75 @@ const ViewClubConverted = () => {
               <p className="text-sm text-gray-500">{club.city?.name || club.city}</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Athletes Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UsersIcon className="h-5 w-5" />
+            Athletes
+          </CardTitle>
+          <CardDescription>
+            Athletes registered with this club
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {athletes.length > 0 ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Grade</TableHead>
+                    <TableHead>Date Joined</TableHead>
+                    <TableHead>Annual Visa</TableHead>
+                    <TableHead>Medical Visa</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {athletes.map((athlete) => (
+                    <TableRow key={athlete.id}>
+                      <TableCell className="font-medium">
+                        {athlete.first_name} {athlete.last_name}
+                      </TableCell>
+                      <TableCell>{grades[athlete.current_grade] || "N/A"}</TableCell>
+                      <TableCell>{athlete.registered_date || "N/A"}</TableCell>
+                      <TableCell>
+                        {athlete.annual_visa ? (
+                          <Badge variant="success">{athlete.annual_visa}</Badge>
+                        ) : (
+                          <span className="text-gray-400">N/A</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {athlete.medical_visa ? (
+                          <Badge variant="success">{athlete.medical_visa}</Badge>
+                        ) : (
+                          <span className="text-gray-400">N/A</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/athletes/${athlete.id}`)}
+                        >
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No athletes registered with this club yet.
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

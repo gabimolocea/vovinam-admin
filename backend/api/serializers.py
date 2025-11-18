@@ -148,9 +148,31 @@ class GradeHistorySerializer(serializers.ModelSerializer):
 class TeamSerializer(serializers.ModelSerializer):
     categories = serializers.PrimaryKeyRelatedField(many=True, queryset=Category.objects.all(), allow_null=True)  # Accept category IDs only
     members = serializers.PrimaryKeyRelatedField(many=True, queryset=TeamMember.objects.all(), allow_null=True)  # Accept member IDs only
+    score = serializers.SerializerMethodField()
+    club_name = serializers.SerializerMethodField()
+    
     class Meta:
         model = Team
-        fields = ['id', 'name', 'categories', 'members']
+        fields = ['id', 'name', 'categories', 'members', 'score', 'club_name']
+    
+    def get_score(self, obj):
+        """Calculate total score from all referee scores for this team in the current category"""
+        # Get category from context if available
+        category_id = self.context.get('category_id')
+        if category_id:
+            from .models import CategoryTeamScore
+            scores = CategoryTeamScore.objects.filter(team=obj, category_id=category_id)
+            if scores.exists():
+                return sum(score.score for score in scores) / scores.count()  # Average score
+        return None
+    
+    def get_club_name(self, obj):
+        """Get club name from first team member"""
+        first_member = obj.members.first()
+        if first_member and first_member.athlete and first_member.athlete.club:
+            return first_member.athlete.club.name
+        return "N/A"
+    
     def to_representation(self, instance):
         """Customize the output to include full category and member details."""
         representation = super().to_representation(instance)
@@ -204,6 +226,9 @@ class MatchSerializer(serializers.ModelSerializer):
     central_referee_name = serializers.SerializerMethodField()
     winner_name = serializers.SerializerMethodField()  # Dynamically determine the winner name
     referees = serializers.StringRelatedField(many=True)  # Display referees as strings
+    referee_scores = serializers.SerializerMethodField()  # Detailed referee scores
+    central_penalties_red = serializers.SerializerMethodField()
+    central_penalties_blue = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -220,12 +245,15 @@ class MatchSerializer(serializers.ModelSerializer):
             'blue_corner_full_name',  # Added full name for blue corner
             'blue_corner_club_name',
             'referees',
+            'referee_scores',  # Detailed referee scores
+            'central_penalties_red',
+            'central_penalties_blue',
             'central_referee',
             'central_referee_name',
             'winner',
             'winner_name',  # Dynamically determine the winner name
         ]
-        read_only_fields = ['name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name']
+        read_only_fields = ['name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name', 'referee_scores', 'central_penalties_red', 'central_penalties_blue']
 
     def get_red_corner_full_name(self, obj):
         """Get the full name of the red corner athlete."""
@@ -253,6 +281,126 @@ class MatchSerializer(serializers.ModelSerializer):
             cr = obj.central_referee
             return f"{cr.first_name} {cr.last_name}"
         return None
+
+    def get_referee_scores(self, obj):
+        """Return detailed scores from each referee for both corners, broken down by round, with central penalties subtracted."""
+        from collections import defaultdict
+        
+        # Step 1: Calculate total central penalties for the entire match
+        total_red_penalty = 0
+        total_blue_penalty = 0
+        
+        for event in obj.point_events.all():
+            # Check if this is a central penalty event
+            is_central = False
+            if event.metadata and isinstance(event.metadata, dict):
+                is_central = event.metadata.get('central', False)
+            
+            if is_central:
+                # Respect the sign: negative points are penalties, positive are additions
+                if event.side == 'red':
+                    total_red_penalty += event.points
+                else:  # blue
+                    total_blue_penalty += event.points
+        
+        # Step 2: Calculate each referee's raw score (excluding central penalties)
+        referee_data = defaultdict(lambda: {
+            'referee_name': '',
+            'rounds': defaultdict(lambda: {'red': 0, 'blue': 0}),
+            'raw_total_red': 0,
+            'raw_total_blue': 0
+        })
+        
+        # Get the central referee's ID, if one is assigned
+        central_referee_id = obj.central_referee.id if obj.central_referee else None
+
+        # Aggregate point events by referee and round (excluding central penalties)
+        for event in obj.point_events.all():
+            # Skip central penalty events
+            is_central = False
+            if event.metadata and isinstance(event.metadata, dict):
+                is_central = event.metadata.get('central', False)
+            
+            if is_central:
+                continue
+            
+            # Skip events from the central referee
+            if event.referee.id == central_referee_id:
+                continue
+
+            referee_id = event.referee.id
+            referee_name = f"{event.referee.first_name} {event.referee.last_name}"
+            referee_data[referee_id]['referee_name'] = referee_name
+            
+            # Get round from metadata, default to 1
+            round_num = 1
+            if event.metadata and isinstance(event.metadata, dict):
+                round_num = event.metadata.get('round', 1)
+            
+            # Add points to the appropriate side and round
+            if event.side == 'red':
+                referee_data[referee_id]['rounds'][round_num]['red'] += event.points
+                referee_data[referee_id]['raw_total_red'] += event.points
+            else:  # blue
+                referee_data[referee_id]['rounds'][round_num]['blue'] += event.points
+                referee_data[referee_id]['raw_total_blue'] += event.points
+        
+        # Convert to list format for JSON serialization
+        scores = []
+        for ref_id, data in referee_data.items():
+            rounds_list = []
+            for round_num in sorted(data['rounds'].keys()):
+                rounds_list.append({
+                    'round': round_num,
+                    'red': data['rounds'][round_num]['red'],
+                    'blue': data['rounds'][round_num]['blue']
+                })
+            
+            # Step 3: Calculate final totals by applying central adjustments
+            # Negative penalty points are subtracted, positive are added
+            final_total_red = data['raw_total_red'] + total_red_penalty
+            final_total_blue = data['raw_total_blue'] + total_blue_penalty
+            
+            scores.append({
+                'referee_name': data['referee_name'],
+                'rounds': rounds_list,
+                'total_red': final_total_red,
+                'total_blue': final_total_blue
+            })
+        
+        return scores
+
+    def get_central_penalties_red(self, obj):
+        """Return detailed central penalties for the red corner."""
+        penalties = []
+        # Filter for central penalties for the red corner
+        penalty_events = obj.point_events.filter(
+            side='red',
+            event_type__in=['penalty', 'deduction'],
+            metadata__central=True
+        )
+        for event in penalty_events:
+            penalties.append({
+                'points': event.points,
+                'metadata': event.metadata or {}
+            })
+        return penalties
+
+    def get_central_penalties_blue(self, obj):
+        """Return detailed central penalties for the blue corner."""
+        penalties = []
+        # Filter for central penalties for the blue corner
+        penalty_events = obj.point_events.filter(
+            side='blue',
+            event_type__in=['penalty', 'deduction'],
+            metadata__central=True
+        )
+        for event in penalty_events:
+            penalties.append({
+                'points': event.points,
+                'metadata': event.metadata or {}
+            })
+        return penalties
 
     def validate(self, data):
         """
@@ -321,13 +469,13 @@ class CategorySerializer(serializers.ModelSerializer):
     competition_name = serializers.SerializerMethodField()
     event_name = serializers.CharField(source='event.title', read_only=True)
     enrolled_athletes = CategoryAthleteSerializer(many=True, read_only=True)  # Include enrolled athletes
-    teams = TeamSerializer(many=True, read_only=True)  # Use the existing TeamSerializer for teams
+    teams = serializers.SerializerMethodField()  # Use method to pass context
     first_place_name = serializers.CharField(source='first_place.first_name', read_only=True, allow_null=True)
     second_place_name = serializers.CharField(source='second_place.first_name', read_only=True, allow_null=True)
     third_place_name = serializers.CharField(source='third_place.first_name', read_only=True, allow_null=True)
-    first_place_team = TeamSerializer(read_only=True)  # Include detailed team information
-    second_place_team = TeamSerializer(read_only=True)  # Include detailed team information
-    third_place_team = TeamSerializer(read_only=True)  # Include detailed team information
+    first_place_team = serializers.SerializerMethodField()  # Use method to pass context
+    second_place_team = serializers.SerializerMethodField()  # Use method to pass context
+    third_place_team = serializers.SerializerMethodField()  # Use method to pass context
     first_place = AthleteSerializer(read_only=True)  # Include full athlete details for first place
     second_place = AthleteSerializer(read_only=True)  # Include full athlete details for second place
     third_place = AthleteSerializer(read_only=True)  # Include full athlete details for third place
@@ -341,6 +489,29 @@ class CategorySerializer(serializers.ModelSerializer):
             'first_place_name', 'second_place_name', 'third_place_name',
             'first_place_team', 'second_place_team', 'third_place_team',
         ]
+
+    def get_teams(self, obj):
+        """Serialize teams with category context for score calculation"""
+        teams = obj.teams.all()
+        return TeamSerializer(teams, many=True, context={'category_id': obj.id}).data
+    
+    def get_first_place_team(self, obj):
+        """Serialize first place team with category context"""
+        if obj.first_place_team:
+            return TeamSerializer(obj.first_place_team, context={'category_id': obj.id}).data
+        return None
+    
+    def get_second_place_team(self, obj):
+        """Serialize second place team with category context"""
+        if obj.second_place_team:
+            return TeamSerializer(obj.second_place_team, context={'category_id': obj.id}).data
+        return None
+    
+    def get_third_place_team(self, obj):
+        """Serialize third place team with category context"""
+        if obj.third_place_team:
+            return TeamSerializer(obj.third_place_team, context={'category_id': obj.id}).data
+        return None
 
     def get_competition_name(self, obj):
         """Return the associated Event title or legacy Competition name for compatibility."""

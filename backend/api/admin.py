@@ -1524,7 +1524,7 @@ class CategoryAdminForm(forms.ModelForm):
 class CategoryAdmin(admin.ModelAdmin):
     # Prefer Event (landing.Event) information in the admin UI; keep legacy Competition search for compatibility
     list_display = ('name', 'event', 'type', 'gender', 'group', 'display_winners')
-    search_fields = ('name', 'event__title', 'competition__name', 'type', 'gender', 'group_name')  # Add search fields
+    search_fields = ('name', 'event__title', 'competition__name', 'type', 'gender', 'group__name')  # Add search fields
     autocomplete_fields = ['group', 'first_place', 'second_place', 'third_place', 'first_place_team', 'second_place_team', 'third_place_team']
    # form = CategoryAdminForm 
    

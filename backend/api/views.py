@@ -665,6 +665,34 @@ class CategoryViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
 
+class CategoryAthleteViewSet(viewsets.ViewSet):
+    """
+    ViewSet for CategoryAthlete - basic enrollment without scores.
+    """
+    permission_classes = [IsAdminOrReadOnly]
+    serializer_class = CategoryAthleteSerializer
+
+    def get_queryset(self):
+        queryset = CategoryAthlete.objects.select_related('athlete', 'category').all()
+        
+        # Filter by category if provided
+        category_id = self.request.query_params.get('category', None)
+        if category_id is not None:
+            queryset = queryset.filter(category_id=category_id)
+        
+        return queryset
+
+    def list(self, request):
+        queryset = self.get_queryset()
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        serializer = self.serializer_class(instance)
+        return Response(serializer.data)
+
+
 # FrontendTheme API removed — this viewset was intentionally deleted to disable theme management via the API.
 
 
@@ -1284,18 +1312,26 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         """Return scores based on user role and visibility (includes individual and team results)"""
         user = self.request.user
         
+        # Get base queryset based on user role
         if user.is_staff or hasattr(user, 'role') and user.role == 'admin':
             # Admins can see all scores (individual and team)
-            return CategoryAthleteScore.objects.all().select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
+            queryset = CategoryAthleteScore.objects.all().select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
         elif hasattr(user, 'athlete'):
             # Athletes can see their own scores + team scores they're part of + approved scores from others
             own_scores = CategoryAthleteScore.objects.filter(athlete=user.athlete)
             team_scores = CategoryAthleteScore.objects.filter(team_members=user.athlete)
             approved_scores = CategoryAthleteScore.objects.filter(status='approved').exclude(athlete=user.athlete).exclude(team_members=user.athlete)
-            return (own_scores | team_scores | approved_scores).select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members').distinct()
+            queryset = (own_scores | team_scores | approved_scores).select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members').distinct()
         else:
             # Other users only see approved scores
-            return CategoryAthleteScore.objects.filter(status='approved').select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
+            queryset = CategoryAthleteScore.objects.filter(status='approved').select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
+        
+        # Filter by category if provided in query params
+        category_id = self.request.query_params.get('category', None)
+        if category_id is not None:
+            queryset = queryset.filter(category_id=category_id)
+        
+        return queryset
 
     def perform_create(self, serializer):
         """Ensure only athletes can create scores for themselves"""
