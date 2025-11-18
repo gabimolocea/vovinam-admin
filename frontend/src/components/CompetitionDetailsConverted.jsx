@@ -259,7 +259,7 @@ const CompetitionDetailsConverted = () => {
                             {categoryAthletes[category.id]
                               .sort((a, b) => (a.placement || 999) - (b.placement || 999))
                               .map((athlete, index) => (
-                                <TableRow key={athlete.id}>
+                                <TableRow key={`${category.id}-${athlete.id}-${index}`}>
                                   <TableCell>
                                     <div className="flex items-center gap-2">
                                       {getPlacementIcon(athlete.placement)}
