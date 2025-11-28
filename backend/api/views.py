@@ -8,7 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import ValidationError
 from .serializers import *
 from .models import *
-from .permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin
+from .permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
@@ -57,6 +57,37 @@ def get_csrf_token(request):
     """
     from django.middleware.csrf import get_token
     return Response({'csrfToken': get_token(request)})
+
+@api_view(['GET'])
+def get_category_referees(request, pk):
+    """
+    Get the list of assigned referees for a category (via CategoryAthleteScore).
+    Used by admin to filter referee dropdown.
+    """
+    try:
+        athlete_score = CategoryAthleteScore.objects.select_related(
+            'category__referee_assignment'
+        ).get(pk=pk)
+        
+        if not athlete_score.category:
+            return Response({'referees': []})
+        
+        try:
+            assignment = athlete_score.category.referee_assignment
+            referees = []
+            for i in range(1, 6):
+                ref = getattr(assignment, f'referee_{i}', None)
+                if ref:
+                    referees.append({
+                        'id': ref.id,
+                        'name': f"{ref.first_name} {ref.last_name}",
+                        'position': f'R{i}'
+                    })
+            return Response({'referees': referees})
+        except:
+            return Response({'referees': []})
+    except CategoryAthleteScore.DoesNotExist:
+        return Response({'referees': []}, status=404)
 
     payload = {"status": "ok", "database": db_status}
     if db_error:
@@ -132,7 +163,7 @@ class CompetitionViewSet(viewsets.ViewSet):
     
 
 class ClubViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsClubCoachOrAdmin]
     queryset = Club.objects.all()
     serializer_class = ClubSerializer
 
@@ -202,7 +233,14 @@ class AthleteViewSet(viewsets.ModelViewSet):
     """
     queryset = Athlete.objects.all()
     serializer_class = AthleteSerializer
-    permission_classes = [AllowAny]
+    
+    def get_permissions(self):
+        """Use different permissions based on action"""
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        elif self.action in ['update', 'partial_update', 'destroy']:
+            return [IsClubCoachOrAdmin()]
+        return [permissions.IsAuthenticated()]
 
     def list(self, request):
         # Support optional filtering by coach status and simple search
@@ -697,7 +735,7 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
 
 
 class GradeHistoryViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAthleteOwnerCoachOrAdmin]
     serializer_class = GradeHistorySerializer
 
     def get_queryset(self):
@@ -782,52 +820,7 @@ class MedicalVisaViewSet(viewsets.ViewSet):
         return Response(status=204)
 
 
-class TrainingSeminarViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAuthenticated]
-    queryset = TrainingSeminar.objects.all()
-    serializer_class = TrainingSeminarSerializer
-
-    def list(self, request):
-        queryset = self.queryset
-        serializer = self.serializer_class(queryset, many=True)
-        return Response(serializer.data)
-
-    def create(self, request):
-        # Only admins can create seminars
-        if not (request.user.is_authenticated and request.user.is_admin):
-            return Response({'detail': 'Admin privileges required'}, status=403)
-        
-        serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
-
-    def retrieve(self, request, pk=None):
-        instance = self.queryset.get(pk=pk)
-        serializer = self.serializer_class(instance)
-        return Response(serializer.data)
-
-    def update(self, request, pk=None):
-        # Only admins can update seminars
-        if not (request.user.is_authenticated and request.user.is_admin):
-            return Response({'detail': 'Admin privileges required'}, status=403)
-            
-        instance = self.queryset.get(pk=pk)
-        serializer = self.serializer_class(instance, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=400)
-
-    def destroy(self, request, pk=None):
-        # Only admins can delete seminars
-        if not (request.user.is_authenticated and request.user.is_admin):
-            return Response({'detail': 'Admin privileges required'}, status=403)
-            
-        instance = self.queryset.get(pk=pk)
-        instance.delete()
-        return Response(status=204)
+# TrainingSeminarViewSet removed - use Events API instead
 
 class GroupViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminOrReadOnly]
@@ -1303,10 +1296,144 @@ def clubs_list(request):
         return Response([])
 
 
+class CategoryRefereeScoreViewSet(viewsets.ViewSet):
+    """ViewSet for referees to submit scores for athletes/teams in solo/team categories"""
+    permission_classes = [IsAuthenticated]
+    
+    def list(self, request):
+        """List referee scores - referees see their own, admins see all"""
+        user = request.user
+        
+        if user.is_staff or (hasattr(user, 'role') and user.role == 'admin'):
+            # Admins see all referee scores
+            queryset = CategoryRefereeScore.objects.all()
+        elif hasattr(user, 'athlete') and user.athlete.is_referee:
+            # Referees see only their own scores
+            queryset = CategoryRefereeScore.objects.filter(referee=user.athlete)
+        else:
+            # Non-referees cannot access
+            return Response(
+                {'error': 'Only referees and admins can access referee scores'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        queryset = queryset.select_related('athlete_score__athlete', 'athlete_score__category', 'referee')
+        serializer = CategoryRefereeScoreSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request):
+        """Create a new referee score"""
+        user = request.user
+        
+        # Validate user is a referee
+        if not (hasattr(user, 'athlete') and user.athlete.is_referee):
+            return Response(
+                {'error': 'Only referees can submit scores'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Auto-assign referee to current user's athlete
+        data = request.data.copy()
+        data['referee'] = user.athlete.id
+        
+        serializer = CategoryRefereeScoreSerializer(data=data)
+        if serializer.is_valid():
+            # Validate that the athlete_score is for solo/team category
+            athlete_score = serializer.validated_data['athlete_score']
+            if athlete_score.type not in ['solo', 'teams']:
+                return Response(
+                    {'error': 'Referee scoring is only applicable to solo and team categories'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if referee already scored this athlete
+            existing = CategoryRefereeScore.objects.filter(
+                athlete_score=athlete_score,
+                referee=user.athlete
+            ).first()
+            
+            if existing:
+                return Response(
+                    {'error': 'You have already scored this athlete/team'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def retrieve(self, request, pk=None):
+        """Get a specific referee score"""
+        try:
+            score = CategoryRefereeScore.objects.select_related(
+                'athlete_score__athlete', 'athlete_score__category', 'referee'
+            ).get(pk=pk)
+        except CategoryRefereeScore.DoesNotExist:
+            return Response({'error': 'Score not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check permissions
+        user = request.user
+        if not (user.is_staff or 
+                (hasattr(user, 'role') and user.role == 'admin') or
+                (hasattr(user, 'athlete') and user.athlete == score.referee)):
+            return Response(
+                {'error': 'You do not have permission to view this score'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = CategoryRefereeScoreSerializer(score)
+        return Response(serializer.data)
+    
+    def update(self, request, pk=None):
+        """Update a referee score (only by the referee who created it or admin)"""
+        try:
+            score = CategoryRefereeScore.objects.get(pk=pk)
+        except CategoryRefereeScore.DoesNotExist:
+            return Response({'error': 'Score not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        user = request.user
+        
+        # Check permissions: only the referee who created it or admin can update
+        if not (user.is_staff or
+                (hasattr(user, 'role') and user.role == 'admin') or
+                (hasattr(user, 'athlete') and user.athlete == score.referee)):
+            return Response(
+                {'error': 'You can only update your own scores'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = CategoryRefereeScoreSerializer(score, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def destroy(self, request, pk=None):
+        """Delete a referee score (only admin)"""
+        try:
+            score = CategoryRefereeScore.objects.get(pk=pk)
+        except CategoryRefereeScore.DoesNotExist:
+            return Response({'error': 'Score not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        user = request.user
+        
+        # Only admins can delete
+        if not (user.is_staff or (hasattr(user, 'role') and user.role == 'admin')):
+            return Response(
+                {'error': 'Only admins can delete referee scores'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        score.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
     """ViewSet for managing athlete category scores with approval workflow"""
     serializer_class = CategoryAthleteScoreSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAthleteOwnerCoachOrAdmin]
 
     def get_queryset(self):
         """Return scores based on user role and visibility (includes individual and team results)"""
@@ -1315,16 +1442,23 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         # Get base queryset based on user role
         if user.is_staff or hasattr(user, 'role') and user.role == 'admin':
             # Admins can see all scores (individual and team)
-            queryset = CategoryAthleteScore.objects.all().select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
+            queryset = CategoryAthleteScore.objects.all().select_related('athlete', 'category__event', 'reviewed_by').prefetch_related('team_members')
         elif hasattr(user, 'athlete'):
+            athlete = user.athlete
             # Athletes can see their own scores + team scores they're part of + approved scores from others
-            own_scores = CategoryAthleteScore.objects.filter(athlete=user.athlete)
-            team_scores = CategoryAthleteScore.objects.filter(team_members=user.athlete)
-            approved_scores = CategoryAthleteScore.objects.filter(status='approved').exclude(athlete=user.athlete).exclude(team_members=user.athlete)
-            queryset = (own_scores | team_scores | approved_scores).select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members').distinct()
+            own_scores = CategoryAthleteScore.objects.filter(athlete=athlete)
+            team_scores = CategoryAthleteScore.objects.filter(team_members=athlete)
+            approved_scores = CategoryAthleteScore.objects.filter(status='approved').exclude(athlete=athlete).exclude(team_members=athlete)
+            
+            # Coaches can also see scores from athletes in their club
+            if athlete.is_coach and athlete.club:
+                club_athletes_scores = CategoryAthleteScore.objects.filter(athlete__club=athlete.club)
+                queryset = (own_scores | team_scores | approved_scores | club_athletes_scores).select_related('athlete', 'category__event', 'reviewed_by').prefetch_related('team_members').distinct()
+            else:
+                queryset = (own_scores | team_scores | approved_scores).select_related('athlete', 'category__event', 'reviewed_by').prefetch_related('team_members').distinct()
         else:
             # Other users only see approved scores
-            queryset = CategoryAthleteScore.objects.filter(status='approved').select_related('athlete', 'category__competition', 'reviewed_by').prefetch_related('team_members')
+            queryset = CategoryAthleteScore.objects.filter(status='approved').select_related('athlete', 'category__event', 'reviewed_by').prefetch_related('team_members')
         
         # Filter by category if provided in query params
         category_id = self.request.query_params.get('category', None)
@@ -1342,13 +1476,26 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def update(self, request, *args, **kwargs):
-        """Only allow athletes to update their own pending/revision_required scores"""
+        """Allow athletes to update their own scores, and coaches to update their club athletes' scores"""
         instance = self.get_object()
         
-        # Check ownership
-        if not hasattr(request.user, 'athlete') or instance.athlete != request.user.athlete or not instance.submitted_by_athlete:
+        # Check if user has permission
+        if not hasattr(request.user, 'athlete'):
             return Response(
-                {'error': 'You can only edit your own submitted results'}, 
+                {'error': 'Only athletes and coaches can edit results'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        user_athlete = request.user.athlete
+        is_own_result = instance.athlete == user_athlete
+        is_coach_of_club = (user_athlete.is_coach and 
+                           user_athlete.club and 
+                           instance.athlete.club == user_athlete.club and
+                           user_athlete.club.coaches.filter(pk=user_athlete.pk).exists())
+        
+        if not (is_own_result or is_coach_of_club) or not instance.submitted_by_athlete:
+            return Response(
+                {'error': 'You can only edit your own submitted results or your club athletes\' results'}, 
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -1534,7 +1681,7 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         scores = CategoryAthleteScore.objects.filter(
             status='pending', 
             submitted_by_athlete=True
-        ).select_related('athlete', 'category__competition').prefetch_related('team_members')
+        ).select_related('athlete', 'category__event').prefetch_related('team_members')
         serializer = self.get_serializer(scores, many=True)
         return Response(serializer.data)
 
@@ -1551,7 +1698,7 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         team_scores = CategoryAthleteScore.objects.filter(
             models.Q(athlete=request.user.athlete, type='teams') |
             models.Q(team_members=request.user.athlete, type='teams')
-        ).select_related('category__competition', 'reviewed_by').prefetch_related('team_members').distinct()
+        ).select_related('category__event', 'reviewed_by').prefetch_related('team_members').distinct()
         
         serializer = self.get_serializer(team_scores, many=True)
         return Response(serializer.data)
@@ -1851,9 +1998,8 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
 class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
     """ViewSet for athlete training seminar participation submissions with approval workflow"""
     serializer_class = TrainingSeminarParticipationSerializer
-    # Allow unauthenticated GETs (read-only) so approved participations can be shown publicly;
-    # require authentication for write actions (create/update/delete)
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    # Allow coaches to manage their club athletes' seminar participations
+    permission_classes = [IsAthleteOwnerCoachOrAdmin]
     
     def perform_create(self, serializer):
         """Set the athlete and submitted_by_athlete flag when creating"""

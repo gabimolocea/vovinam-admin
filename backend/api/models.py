@@ -28,7 +28,7 @@ class User(AbstractUser):
     # New fields for enhanced user management
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
-    city = models.ForeignKey('City', on_delete=models.SET_NULL, blank=True, null=True)
+    # City removed - use athlete.city instead
     profile_completed = models.BooleanField(default=False)
     
     USERNAME_FIELD = 'email'
@@ -113,23 +113,12 @@ class City(models.Model):
     def __str__(self):
         return self.name
     
-class Competition(models.Model):
-    name = models.CharField(max_length=100)
-    place = models.CharField(max_length=100, blank=True, null=True)  # Place of the competition
-    
-    start_date = models.DateField(blank=True, null=True)  # Start date of the competition
-    end_date = models.DateField(blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.name} ({self.start_date} - {self.end_date})"
-
-
 class Club(models.Model):
     name = models.CharField(max_length=100, unique=True)
     logo = models.ImageField(upload_to='club_logos/', blank=True, null=True)  # Optional logo field
     city = models.ForeignKey(
         City, 
-        on_delete=models.CASCADE, 
+        on_delete=models.SET_NULL,  # Changed from CASCADE to SET_NULL for data safety
         related_name='clubs',
         blank=True,
         null=True
@@ -191,7 +180,7 @@ class Athlete(models.Model):
         ('revision_required', 'Revision Required'),
     ]
     
-    # Link to User account
+    # Link to User account - required for new athletes
     user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='athlete', blank=True, null=True)
     
     # Personal Data
@@ -266,6 +255,15 @@ class Athlete(models.Model):
     # Legacy approval tracking (keep for compatibility)
     approved_date = models.DateTimeField(blank=True, null=True)
     approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name='approved_athletes')
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['club', 'status']),
+            models.Index(fields=['current_grade']),
+            models.Index(fields=['is_coach']),
+            models.Index(fields=['is_referee']),
+            models.Index(fields=['status', 'submitted_date']),
+        ]
 
     def update_current_grade(self):
         """
@@ -487,6 +485,13 @@ class GradeHistory(models.Model):
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_grades')
     admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['athlete', 'status']),
+            models.Index(fields=['obtained_date']),
+            models.Index(fields=['status', 'submitted_date']),
+        ]
+
     def __str__(self):
         if self.submitted_by_athlete:
             return f"{self.grade.name} for {self.athlete.first_name} {self.athlete.last_name} (Self-submitted: {self.status})"
@@ -632,6 +637,11 @@ class Visa(models.Model):
     class Meta:
         verbose_name = _('Visa')
         verbose_name_plural = _('Visas')
+        unique_together = ['athlete', 'visa_type', 'issued_date']
+        indexes = [
+            models.Index(fields=['athlete', 'visa_type', 'issued_date']),
+            models.Index(fields=['athlete', 'visa_type', '-issued_date']),
+        ]
 
     def is_valid(self):
         """Return whether the visa is currently valid depending on type."""
@@ -673,20 +683,10 @@ class Visa(models.Model):
 
 
 # Training Seminars
-class TrainingSeminar(models.Model):
-    name = models.CharField(max_length=100)
-    start_date = models.DateField(blank=True, null=True)
-    end_date = models.DateField(blank=True, null=True)
-    place = models.CharField(max_length=100)
-    athletes = models.ManyToManyField(Athlete, related_name='training_seminars', blank=True)
-
-    def __str__(self):
-        return f"{self.name} ({self.start_date} - {self.end_date}) at {self.place}"
-
-
 class TrainingSeminarParticipation(models.Model):
     """
-    Through model to track athlete participation in training seminars with approval workflow.
+    Athlete participation in events (training seminars, competitions, etc.) with approval workflow.
+    Migrated from TrainingSeminar to use Event model directly.
     """
     STATUS_CHOICES = [
         ('pending', 'Pending Approval'),
@@ -696,9 +696,17 @@ class TrainingSeminarParticipation(models.Model):
     ]
     
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='seminar_participations')
-    seminar = models.ForeignKey(TrainingSeminar, on_delete=models.CASCADE, related_name='participations')
-    
-    # Athlete self-submission fields
+    # Legacy seminar field - deprecated, use event instead
+    seminar = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='legacy_participations', null=True, blank=True)
+    # Primary event field
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='seminar_participations',
+        help_text='Event this athlete participated in'
+    )
     submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
     participation_certificate = models.ImageField(upload_to='seminar_certificates/', null=True, blank=True, help_text='Participation certificate photo')
     participation_document = models.FileField(upload_to='seminar_documents/', null=True, blank=True, help_text='Official participation document')
@@ -710,36 +718,25 @@ class TrainingSeminarParticipation(models.Model):
     reviewed_date = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_seminar_participations')
     admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
-    # New nullable FK to Landing.Event for staged migration to Events
-    event = models.ForeignKey(
-        'landing.Event',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='seminar_participations',
-        help_text='Linked Event after migration (nullable, added for staged migration)'
-    )
     
     class Meta:
-        unique_together = ('athlete', 'seminar')
+        unique_together = ('athlete', 'event')
         verbose_name = _('Event participation')
         verbose_name_plural = _('Event participations')
+        indexes = [
+            models.Index(fields=['athlete', 'status']),
+            models.Index(fields=['status', 'submitted_date']),
+        ]
     
     def __str__(self):
-        # Prefer to describe the participation by the linked Event if present;
-        # fall back to the legacy TrainingSeminar name if `event` is not set.
+        # Use event if available, fallback to legacy seminar
         target_name = None
-        try:
-            if getattr(self, 'event', None):
-                # landing.Event uses `title` for the human-readable name
-                target_name = getattr(self.event, 'title', None)
-        except Exception:
-            target_name = None
-        if not target_name:
-            try:
-                target_name = getattr(self.seminar, 'name', None)
-            except Exception:
-                target_name = 'Unknown Event'
+        if self.event:
+            target_name = self.event.title
+        elif self.seminar:
+            target_name = self.seminar.title
+        else:
+            target_name = 'Unknown Event'
 
         if self.submitted_by_athlete:
             return f"{self.athlete.first_name} {self.athlete.last_name} - {target_name} (Self-submitted: {self.status})"
@@ -844,8 +841,8 @@ class CategoryTeam(models.Model):
 class Team(models.Model):
     """
     Represents a team of athletes.
+    Team name is now auto-generated from members for consistency.
     """
-    name = models.CharField(max_length=255, blank=True)  # Auto-generated name
     categories = models.ManyToManyField(
         'Category',
         through='CategoryTeam',  # Use the existing through model
@@ -854,6 +851,18 @@ class Team(models.Model):
         limit_choices_to={'type': 'teams'},  # Only allow categories with type 'teams'
     )
 
+    @property
+    def name(self):
+        """Auto-generate name from team members"""
+        members = self.members.select_related('athlete').all()[:3]
+        if not members:
+            return f"Team #{self.pk}"
+        names = [f"{m.athlete.first_name} {m.athlete.last_name}" for m in members]
+        base = ", ".join(names)
+        total_members = self.members.count()
+        if total_members > 3:
+            return f"{base} (+{total_members - 3} more)"
+        return base
 
     def __str__(self):
         return self.name
@@ -890,8 +899,6 @@ class Category(models.Model):
     ]
 
     name = models.CharField(max_length=100)
-    competition = models.ForeignKey('Competition', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
-    # New: link category to landing.Event (migrate data from Competition -> Event)
     event = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='categories', null=True, blank=True)
     type = models.CharField(max_length=20, choices=CATEGORY_TYPE_CHOICES, default='solo')
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixt')
@@ -913,6 +920,11 @@ class Category(models.Model):
         blank=True,
         related_name='categories'
     )  # Each category can be assigned to one group
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['event', 'type']),
+        ]
 
 
     def clean(self):
@@ -1000,54 +1012,94 @@ class Match(models.Model):
     blue_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='blue_corner_matches')
     referees = models.ManyToManyField('Athlete', related_name='refereed_matches', limit_choices_to={'is_referee': True})
     central_referee = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='central_for_matches', limit_choices_to={'is_referee': True})
-    winner = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='won_matches')
+    # Winner is now computed from scoring system - no longer stored
     name = models.CharField(max_length=255, blank=True)  # Automatically generated match name
 
-    def calculate_winner(self):
+    @property
+    def winner(self):
+        """Calculate winner from referee scores using scoring system"""
+        # First try simplified scoring system if it exists
+        winner = self.calculate_winner_simplified()
+        if winner:
+            return winner
+        
+        # Fall back to complex scoring system
+        try:
+            from .scoring import compute_match_results
+            results = compute_match_results(self)
+            return results.get('match_winner')
+        except Exception:
+            # Fallback to old calculation if scoring system unavailable
+            return self._calculate_winner_legacy()
+    
+    def calculate_winner_simplified(self):
         """
-        Determine the winner based on referee votes.
+        Calculate winner using simplified 5-referee scoring system.
+        Similar to solo/team category scoring: exclude highest and lowest scores, count middle 3.
+        Returns the corner with more votes from the middle 3 referees.
         """
+        try:
+            # Get all referee scores
+            scores = list(self.simplified_referee_scores.all())
+            if len(scores) < 3:
+                return None
+            
+            # Calculate score difference for each referee (red - blue)
+            score_diffs = []
+            for score in scores:
+                diff = score.red_corner_score - score.blue_corner_score
+                score_diffs.append({
+                    'diff': diff,
+                    'winner': 'red' if diff > 0 else ('blue' if diff < 0 else None),
+                    'score': score
+                })
+            
+            # Sort by absolute difference to identify extreme scores
+            sorted_diffs = sorted(score_diffs, key=lambda x: abs(x['diff']))
+            
+            # For 5 scores: remove lowest and highest difference (most extreme), keep middle 3
+            # For 4 scores: remove only the highest
+            # For 3 scores: use all 3
+            if len(sorted_diffs) == 3:
+                middle_scores = sorted_diffs
+            elif len(sorted_diffs) == 4:
+                middle_scores = sorted_diffs[:-1]
+            else:
+                middle_scores = sorted_diffs[1:-1]
+            
+            # Count votes from middle referees
+            red_votes = sum(1 for s in middle_scores if s['winner'] == 'red')
+            blue_votes = sum(1 for s in middle_scores if s['winner'] == 'blue')
+            
+            if red_votes > blue_votes:
+                return self.red_corner
+            elif blue_votes > red_votes:
+                return self.blue_corner
+            
+            return None  # Tie
+        except Exception:
+            return None
+    
+    def _calculate_winner_legacy(self):
+        """Legacy winner calculation based on referee votes"""
         red_votes = self.referee_scores.filter(winner='red').count()
         blue_votes = self.referee_scores.filter(winner='blue').count()
         if red_votes > blue_votes:
             return self.red_corner
         elif blue_votes > red_votes:
             return self.blue_corner
-        return None  # No winner if votes are tied
+        return None
 
     def save(self, *args, **kwargs):
-        """
-        Override save to calculate the winner based on referee scores or allow manual winner selection.
-        Avoid double INSERT for new objects by setting computed fields before first save.
-        """
-        # Generate match name if we have the related fields available
+        """Generate match name on save"""
         try:
             red_name = self.red_corner.first_name if self.red_corner_id else ''
             blue_name = self.blue_corner.first_name if self.blue_corner_id else ''
             category_name = self.category.name if self.category_id else ''
             self.name = f"{red_name} vs {blue_name} ({self.match_type}) - {category_name}"
         except Exception:
-            # Fall back to whatever fields are available
             pass
-
-        # If object exists, compute winner from referee_scores if present
-        if self.pk:
-            if self.referee_scores.exists():
-                self.winner = self.calculate_winner()
-            super().save(*args, **kwargs)
-            return
-
-        # New object: do initial save once
         super().save(*args, **kwargs)
-
-        # After initial save, recalc winner if referee_scores were added in the same transaction
-        try:
-            if self.referee_scores.exists():
-                self.winner = self.calculate_winner()
-                super().save(update_fields=['winner'])
-        except Exception:
-            # Best-effort: don't block creation if post-save adjustment fails
-            pass
 
     def __str__(self):
         return self.name
@@ -1116,6 +1168,305 @@ class RefereePointEvent(models.Model):
             raise DjangoValidationError(str(e))
 
 
+class MatchRefereeAssignment(models.Model):
+    """
+    Assigns 5 referees (R1-R5) to a match for simplified scoring.
+    Similar to CategoryRefereeAssignment but for fight matches.
+    """
+    match = models.OneToOneField(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='referee_assignment',
+        help_text='The match these referees are assigned to'
+    )
+    
+    referee_1 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r1_assignments',
+        limit_choices_to={'is_referee': True},
+        help_text='Referee position 1 (R1)'
+    )
+    
+    referee_2 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r2_assignments',
+        limit_choices_to={'is_referee': True},
+        help_text='Referee position 2 (R2)'
+    )
+    
+    referee_3 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r3_assignments',
+        limit_choices_to={'is_referee': True},
+        help_text='Referee position 3 (R3)'
+    )
+    
+    referee_4 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r4_assignments',
+        limit_choices_to={'is_referee': True},
+        help_text='Referee position 4 (R4)'
+    )
+    
+    referee_5 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r5_assignments',
+        limit_choices_to={'is_referee': True},
+        help_text='Referee position 5 (R5)'
+    )
+    
+    def __str__(self):
+        return f"Referee Assignment for {self.match}"
+    
+    def get_referees_list(self):
+        """Returns list of 5 referees in order [R1, R2, R3, R4, R5]"""
+        return [self.referee_1, self.referee_2, self.referee_3, self.referee_4, self.referee_5]
+    
+    def clean(self):
+        """Validate referee assignments"""
+        super().clean()
+        
+        # Check for duplicate referees
+        referees = [r for r in [self.referee_1, self.referee_2, self.referee_3, self.referee_4, self.referee_5] if r]
+        if len(referees) != len(set(referees)):
+            raise ValidationError("Cannot assign the same referee to multiple positions")
+
+
+class MatchRefereeScore(models.Model):
+    """
+    Stores individual referee scores for fighters in matches.
+    Each referee scores both red and blue corner.
+    The winner is determined by which corner has more referee votes after excluding high/low scores.
+    """
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='simplified_referee_scores',
+        help_text='The match being scored'
+    )
+    
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        limit_choices_to={'is_referee': True},
+        related_name='given_match_scores',
+        help_text='The referee providing this score'
+    )
+    
+    red_corner_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        help_text='Score for red corner fighter'
+    )
+    
+    blue_corner_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        help_text='Score for blue corner fighter'
+    )
+    
+    # Metadata
+    submitted_date = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, null=True, help_text='Optional notes from referee')
+    
+    class Meta:
+        unique_together = ('match', 'referee')  # Each referee scores each match once
+        indexes = [
+            models.Index(fields=['match', 'referee']),
+        ]
+    
+    def __str__(self):
+        return f"{self.referee} - {self.match}: Red {self.red_corner_score} vs Blue {self.blue_corner_score}"
+    
+    @property
+    def winner_choice(self):
+        """Determine which corner won according to this referee"""
+        if self.red_corner_score > self.blue_corner_score:
+            return 'red'
+        elif self.blue_corner_score > self.red_corner_score:
+            return 'blue'
+        return None  # Tie
+
+
+class CategoryRefereeAssignment(models.Model):
+    """
+    Assigns 5 referees to a category for scoring solo/team performances.
+    All athletes/teams in the category are scored by the same 5 referees.
+    """
+    category = models.OneToOneField(
+        'Category',
+        on_delete=models.CASCADE,
+        related_name='referee_assignment',
+        help_text='The category these referees are assigned to'
+    )
+    
+    referee_1 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_1_categories',
+        help_text='Referee 1 (R1)'
+    )
+    
+    referee_2 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_2_categories',
+        help_text='Referee 2 (R2)'
+    )
+    
+    referee_3 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_3_categories',
+        help_text='Referee 3 (R3)'
+    )
+    
+    referee_4 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_4_categories',
+        help_text='Referee 4 (R4)'
+    )
+    
+    referee_5 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_5_categories',
+        help_text='Referee 5 (R5)'
+    )
+    
+    class Meta:
+        verbose_name = 'Category Referee Assignment'
+        verbose_name_plural = 'Category Referee Assignments'
+    
+    def __str__(self):
+        return f"Referees for {self.category.name}"
+    
+    def get_referees_list(self):
+        """Return list of (position, referee) tuples"""
+        return [
+            (1, self.referee_1),
+            (2, self.referee_2),
+            (3, self.referee_3),
+            (4, self.referee_4),
+            (5, self.referee_5),
+        ]
+    
+    def clean(self):
+        """Validate referee assignments"""
+        super().clean()
+        if self.category and self.category.type not in ['solo', 'teams']:
+            raise ValidationError(
+                f"Referee assignments are only for solo and team categories, not {self.category.type}"
+            )
+        
+        # Check for duplicate referees
+        referees = [r for r in [self.referee_1, self.referee_2, self.referee_3, self.referee_4, self.referee_5] if r]
+        if len(referees) != len(set(referees)):
+            raise ValidationError("Cannot assign the same referee to multiple positions")
+
+
+class CategoryRefereeScore(models.Model):
+    """
+    Stores individual referee scores for athletes/teams in solo and team categories.
+    For solo/team categories, 5 referees score each athlete/team.
+    The final score excludes the highest and lowest scores and sums the middle 3.
+    """
+    CATEGORY_TYPE_CHOICES = [
+        ('solo', 'Solo'),
+        ('teams', 'Teams'),
+    ]
+    
+    # Link to the athlete's result submission
+    athlete_score = models.ForeignKey(
+        'CategoryAthleteScore',
+        on_delete=models.CASCADE,
+        related_name='referee_scores',
+        help_text='The athlete/team result being scored'
+    )
+    
+    # The referee providing the score
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        limit_choices_to={'is_referee': True},
+        related_name='given_category_scores',
+        help_text='The referee providing this score'
+    )
+    
+    # The score value
+    score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        help_text='Score given by this referee (typically 0-10 scale)'
+    )
+    
+    # Metadata
+    submitted_date = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, null=True, help_text='Optional notes from referee')
+    
+    class Meta:
+        unique_together = ('athlete_score', 'referee')  # Each referee scores each athlete/team once
+        indexes = [
+            models.Index(fields=['athlete_score', 'referee']),
+            models.Index(fields=['submitted_date']),
+        ]
+        verbose_name = 'Category Referee Score'
+        verbose_name_plural = 'Category Referee Scores'
+    
+    def __str__(self):
+        athlete = self.athlete_score.athlete
+        referee = self.referee
+        team_name = self.athlete_score.team_name if self.athlete_score.type == 'teams' else None
+        
+        if team_name:
+            return f"{referee.first_name} {referee.last_name} scored Team {team_name}: {self.score}"
+        elif athlete:
+            return f"{referee.first_name} {referee.last_name} scored {athlete.first_name} {athlete.last_name}: {self.score}"
+        else:
+            return f"{referee.first_name} {referee.last_name} scored (unknown): {self.score}"
+    
+    def clean(self):
+        """Validate that this is for a solo or team category"""
+        super().clean()
+        if self.athlete_score and self.athlete_score.type not in ['solo', 'teams']:
+            raise ValidationError(
+                f"Referee scoring is only applicable to solo and team categories, not {self.athlete_score.type}"
+            )
+
+
 class CategoryAthleteScore(models.Model):
     """
     Stores athlete results for a category with approval workflow.
@@ -1141,7 +1492,7 @@ class CategoryAthleteScore(models.Model):
     ]
     
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='athlete_scores')
-    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='category_scores')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='category_scores', null=True, blank=True, help_text='Athlete being scored (null for team scores)')
     referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True}, null=True, blank=True)
     score = models.IntegerField(default=0, blank=True, null=True, help_text='Numeric score given by referee/official (not relevant for athlete self-submissions with placement claims)')
     
@@ -1190,14 +1541,111 @@ class CategoryAthleteScore(models.Model):
 
     class Meta:
         unique_together = ('category', 'athlete', 'referee')  # Ensure unique scores per referee and athlete
+        indexes = [
+            models.Index(fields=['category', 'status']),
+            models.Index(fields=['athlete', 'status']),
+            models.Index(fields=['submitted_date']),
+            models.Index(fields=['status', 'submitted_by_athlete']),
+        ]
 
     def __str__(self):
-        if self.submitted_by_athlete:
-            placement_info = f"claims {self.placement_claimed}" if self.placement_claimed else "no placement claimed"
-            return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Athlete {placement_info})"
+        if self.type == 'teams' and self.team_name:
+            return f"Team {self.team_name} - {self.category.name}"
+        elif self.athlete:
+            if self.submitted_by_athlete:
+                placement_info = f"claims {self.placement_claimed}" if self.placement_claimed else "no placement claimed"
+                return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Athlete {placement_info})"
+            else:
+                referee_name = f"{self.referee.first_name} {self.referee.last_name}" if self.referee else "N/A"
+                return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Referee: {referee_name}, Score: {self.score})"
         else:
-            referee_name = f"{self.referee.first_name} {self.referee.last_name}" if self.referee else "N/A"
-            return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Referee: {referee_name}, Score: {self.score})"
+            return f"Score for {self.category.name} (No athlete)"
+    
+    @property
+    def calculated_score(self):
+        """
+        Calculate final score for solo/team categories by:
+        1. Collecting all 5 referee scores
+        2. Removing the highest and lowest scores
+        3. Summing the middle 3 scores
+        
+        Returns None if category type is not solo/teams or if less than 3 referee scores exist.
+        """
+        # Only applicable to solo and team categories
+        if self.type not in ['solo', 'teams']:
+            return None
+        
+        # Get all referee scores for this result
+        referee_scores = list(self.referee_scores.values_list('score', flat=True))
+        
+        # Need at least 3 scores to calculate (ideally 5)
+        if len(referee_scores) < 3:
+            return None
+        
+        # Sort scores to easily identify highest and lowest
+        sorted_scores = sorted(referee_scores)
+        
+        # Remove the lowest and highest
+        # If we have exactly 3 scores, use all 3
+        # If we have 4 scores, remove only the highest
+        # If we have 5+ scores, remove both highest and lowest
+        if len(sorted_scores) == 3:
+            middle_scores = sorted_scores
+        elif len(sorted_scores) == 4:
+            middle_scores = sorted_scores[:-1]  # Remove only highest
+        else:
+            middle_scores = sorted_scores[1:-1]  # Remove both lowest and highest
+        
+        # Sum the middle scores
+        return sum(middle_scores)
+    
+    @property
+    def referee_score_count(self):
+        """Return the number of referee scores submitted for this result"""
+        return self.referee_scores.count()
+    
+    @property
+    def has_all_referee_scores(self):
+        """Check if all 5 referee scores have been submitted"""
+        return self.type in ['solo', 'teams'] and self.referee_score_count == 5
+    
+    def get_referee_score(self, referee_position):
+        """
+        Get the score from a specific referee position (1-5).
+        Returns the score value or None if not submitted.
+        """
+        if not self.category:
+            return None
+        
+        try:
+            assignment = self.category.referee_assignment
+        except:
+            return None
+        
+        # Get the referee for this position
+        referee = getattr(assignment, f'referee_{referee_position}', None)
+        if not referee:
+            return None
+        
+        # Get the score from this referee
+        try:
+            score_obj = self.referee_scores.get(referee=referee)
+            return score_obj.score
+        except CategoryRefereeScore.DoesNotExist:
+            return None
+    
+    def get_all_referee_scores(self):
+        """
+        Get all 5 referee scores in order (R1-R5).
+        Returns dict with keys 'r1' through 'r5', values are scores or None.
+        """
+        return {
+            'r1': self.get_referee_score(1),
+            'r2': self.get_referee_score(2),
+            'r3': self.get_referee_score(3),
+            'r4': self.get_referee_score(4),
+            'r5': self.get_referee_score(5),
+        }
     
     def save(self, *args, **kwargs):
         """Override save to track status changes and ensure team submitter is included"""
@@ -1512,17 +1960,30 @@ class CategoryScoreActivity(models.Model):
 
 class Group(models.Model):
     """
-    Represents a group within a competition.
+    Represents a group within an event/competition.
     """
-    name = models.CharField(max_length=100, unique=True)  # Name of the group
-    competition = models.ForeignKey(
-        'Competition',
+    name = models.CharField(max_length=100)
+    event = models.ForeignKey(
+        'landing.Event',
         on_delete=models.CASCADE,
-        related_name='groups'
-    )  # Link each group to a specific competition
+        related_name='groups',
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['event', 'name'],
+                name='unique_group_per_event',
+                condition=models.Q(event__isnull=False)
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.name} ({self.competition.name})"
+        if self.event:
+            return f"{self.name} ({self.event.title})"
+        return f"{self.name} (No Event)"
 
  
 # FrontendTheme model removed — dynamic theme management has been deleted.
@@ -1576,7 +2037,7 @@ class AthleteMatch(models.Model):
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='athlete_matches')
     opponent_name = models.CharField(max_length=200, help_text='Name of the opponent')
     match_date = models.DateField(help_text='Date of the match')
-    competition = models.ForeignKey(Competition, on_delete=models.CASCADE, related_name='athlete_matches', blank=True, null=True)
+    event = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='athlete_matches', blank=True, null=True)
     venue = models.CharField(max_length=200, blank=True, null=True, help_text='Venue where the match took place')
     result = models.CharField(max_length=10, choices=RESULT_CHOICES, help_text='Match result')
     round_ended = models.CharField(max_length=50, blank=True, null=True, help_text='Round when match ended (e.g., "Round 2", "Decision")')
@@ -1676,7 +2137,6 @@ class Notification(models.Model):
     
     # Optional link to related objects
     related_result = models.ForeignKey('CategoryAthleteScore', on_delete=models.CASCADE, null=True, blank=True)
-    related_competition = models.ForeignKey('Competition', on_delete=models.CASCADE, null=True, blank=True)
     
     # Optional action data (JSON field for flexible data storage)
     action_data = models.JSONField(null=True, blank=True, help_text="Additional data for notification actions")

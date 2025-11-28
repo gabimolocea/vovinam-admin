@@ -22,9 +22,10 @@ router.register('categories', CategoryViewSet, basename='category')
 router.register('category-athletes', CategoryAthleteViewSet, basename='category-athlete')
 router.register('grade-histories', GradeHistoryViewSet, basename='grade-history')
 router.register('medical-visas', MedicalVisaViewSet, basename='medical-visa')
-router.register('training-seminars', TrainingSeminarViewSet, basename='training-seminar')
+# Training seminars removed - use Events API instead
 router.register('groups', GroupViewSet, basename='group')
 router.register('category-athlete-score', CategoryAthleteScoreViewSet, basename='category-athlete-score')
+router.register('category-referee-score', CategoryRefereeScoreViewSet, basename='category-referee-score')
 router.register('category-score-activity', CategoryScoreActivityViewSet, basename='category-score-activity')
 router.register('notifications', NotificationViewSet, basename='notification')
 router.register('notification-settings', NotificationSettingsViewSet, basename='notification-settings')
@@ -45,6 +46,9 @@ urlpatterns = [
 urlpatterns = [
     # CSRF token endpoint
     path('auth/csrf/', views.get_csrf_token, name='csrf-token'),
+    
+    # Category referee lookup for admin
+    path('category-athlete-score/<int:pk>/referees/', views.get_category_referees, name='category-referees'),
     
     # Authentication URLs (existing)
     path('auth/register/', RegisterView.as_view(), name='register'),

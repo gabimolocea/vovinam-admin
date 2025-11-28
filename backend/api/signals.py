@@ -100,15 +100,10 @@ def validate_and_assign_places(sender, instance, **kwargs):
     # Team placement is now handled through the CategoryAthleteScore system
     # with team_members relationships, so no additional processing needed here
 
-@receiver(post_save, sender=TeamMember)
-def update_team_name(sender, instance, **kwargs):
-    """
-    Update the team name based on its members after a TeamMember is saved.
-    """
-    team = instance.team
-    member_names = [f"{member.athlete.first_name} {member.athlete.last_name}" for member in team.members.all()]
-    team.name = " + ".join(member_names)
-    team.save(update_fields=['name'])  # Save only the updated name field
-    
+# Signal removed - team.name is now a computed property that auto-generates from members
+# No need to manually update it when TeamMember is saved
+
+
+
 
 

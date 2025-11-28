@@ -37,18 +37,6 @@ class ClubSerializer(serializers.ModelSerializer):
         ]
         return representation
 
-class CompetitionSerializer(serializers.ModelSerializer):
-    categories = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Competition
-        fields = '__all__'
-        depth = 1  # This will include the related clubs in the output
-    
-    def get_categories(self, obj):
-        return [{'id': cat.id, 'name': cat.name, 'type': cat.type, 'gender': cat.gender} for cat in obj.categories.all()]
-
-
 class AthleteSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), allow_null=True)  # Accept city ID only
@@ -148,6 +136,7 @@ class GradeHistorySerializer(serializers.ModelSerializer):
 class TeamSerializer(serializers.ModelSerializer):
     categories = serializers.PrimaryKeyRelatedField(many=True, queryset=Category.objects.all(), allow_null=True)  # Accept category IDs only
     members = serializers.PrimaryKeyRelatedField(many=True, queryset=TeamMember.objects.all(), allow_null=True)  # Accept member IDs only
+    name = serializers.ReadOnlyField()  # Team name is now auto-generated from members
     score = serializers.SerializerMethodField()
     club_name = serializers.SerializerMethodField()
     
@@ -224,6 +213,7 @@ class MatchSerializer(serializers.ModelSerializer):
     red_corner_club_name = serializers.CharField(source='red_corner.club.name', read_only=True, allow_null=True)  # Include red corner club name
     blue_corner_club_name = serializers.CharField(source='blue_corner.club.name', read_only=True, allow_null=True)  # Include blue corner club name
     central_referee_name = serializers.SerializerMethodField()
+    winner = serializers.SerializerMethodField()  # Winner computed from scoring system
     winner_name = serializers.SerializerMethodField()  # Dynamically determine the winner name
     referees = serializers.StringRelatedField(many=True)  # Display referees as strings
     referee_scores = serializers.SerializerMethodField()  # Detailed referee scores
@@ -253,7 +243,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'winner',
             'winner_name',  # Dynamically determine the winner name
         ]
-        read_only_fields = ['name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name', 'referee_scores', 'central_penalties_red', 'central_penalties_blue']
+        read_only_fields = ['name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name', 'referee_scores', 'central_penalties_red', 'central_penalties_blue', 'winner', 'winner_name']
 
     def get_red_corner_full_name(self, obj):
         """Get the full name of the red corner athlete."""
@@ -267,11 +257,17 @@ class MatchSerializer(serializers.ModelSerializer):
             return f"{obj.blue_corner.first_name} {obj.blue_corner.last_name}"
         return "Unknown Athlete"
 
+    def get_winner(self, obj):
+        """Get winner ID from scoring system property"""
+        winner = obj.winner
+        return winner.id if winner else None
+
     def get_winner_name(self, obj):
-        """Determine the winner name dynamically."""
-        if obj.winner == obj.red_corner:
+        """Determine the winner name dynamically from scoring system."""
+        winner = obj.winner
+        if winner == obj.red_corner:
             return self.get_red_corner_full_name(obj)
-        elif obj.winner == obj.blue_corner:
+        elif winner == obj.blue_corner:
             return self.get_blue_corner_full_name(obj)
         return None  # No winner
 
@@ -469,6 +465,7 @@ class CategorySerializer(serializers.ModelSerializer):
     competition_name = serializers.SerializerMethodField()
     event_name = serializers.CharField(source='event.title', read_only=True)
     enrolled_athletes = CategoryAthleteSerializer(many=True, read_only=True)  # Include enrolled athletes
+    enrolled_teams = serializers.SerializerMethodField()  # Include enrolled teams
     teams = serializers.SerializerMethodField()  # Use method to pass context
     first_place_name = serializers.CharField(source='first_place.first_name', read_only=True, allow_null=True)
     second_place_name = serializers.CharField(source='second_place.first_name', read_only=True, allow_null=True)
@@ -485,10 +482,15 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = [
             'id', 'name', 'competition', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
-            'enrolled_athletes', 'teams', 'first_place', 'second_place', 'third_place',
+            'enrolled_athletes', 'enrolled_teams', 'teams', 'first_place', 'second_place', 'third_place',
             'first_place_name', 'second_place_name', 'third_place_name',
             'first_place_team', 'second_place_team', 'third_place_team',
         ]
+    
+    def get_enrolled_teams(self, obj):
+        """Return list of enrolled teams with their names"""
+        enrolled = obj.enrolled_teams.select_related('team').all()
+        return [{'id': ct.team.id, 'team_name': ct.team.name} for ct in enrolled]
 
     def get_teams(self, obj):
         """Serialize teams with category context for score calculation"""
@@ -634,72 +636,6 @@ class MedicalVisaSerializer(serializers.ModelSerializer):
         model = Visa
         fields = ['id', 'athlete', 'issued_date', 'health_status', 'is_valid']
         read_only_fields = ['is_valid']
-
-# Basic TrainingSeminar serializer for admin use
-class TrainingSeminarSerializer(serializers.ModelSerializer):
-    athletes_names = serializers.StringRelatedField(many=True, source='athletes')  # Display athlete names
-    is_submitted = serializers.SerializerMethodField(read_only=True)
-    submission_status = serializers.SerializerMethodField(read_only=True)
-    submission_id = serializers.SerializerMethodField(read_only=True)
-    submission_date = serializers.SerializerMethodField(read_only=True)
-
-    class Meta:
-        model = TrainingSeminar
-        fields = [
-            'id', 'name', 'start_date', 'end_date', 'place', 'athletes', 'athletes_names', 'is_submitted',
-            'submission_status', 'submission_id', 'submission_date'
-        ]
-
-    def get_is_submitted(self, obj):
-        """Return True if the current request user (when an athlete) has submitted participation for this seminar.
-
-        This helps the frontend disable or mark seminars the athlete already submitted for.
-        """
-        request = self.context.get('request') if self.context else None
-        if not request or not getattr(request.user, 'is_authenticated', False):
-            return False
-
-        # Only meaningful for users who have an Athlete profile
-        if not hasattr(request.user, 'athlete') or request.user.athlete is None:
-            return False
-
-        try:
-            from .models import TrainingSeminarParticipation
-            return TrainingSeminarParticipation.objects.filter(
-                athlete=request.user.athlete,
-                seminar=obj
-            ).exists()
-        except Exception:
-            # On any unexpected error (e.g., DB unavailable), return False so UI remains usable
-            return False
-
-    def _get_participation_for_user(self, obj):
-        """Helper: return the participation instance for request.user.athlete and seminar=obj if any."""
-        request = self.context.get('request') if self.context else None
-        if not request or not getattr(request.user, 'is_authenticated', False):
-            return None
-        if not hasattr(request.user, 'athlete') or request.user.athlete is None:
-            return None
-        try:
-            from .models import TrainingSeminarParticipation
-            return TrainingSeminarParticipation.objects.filter(athlete=request.user.athlete, seminar=obj).first()
-        except Exception:
-            return None
-
-    def get_submission_status(self, obj):
-        part = self._get_participation_for_user(obj)
-        return part.status if part else None
-
-    def get_submission_id(self, obj):
-        part = self._get_participation_for_user(obj)
-        return part.id if part else None
-
-    def get_submission_date(self, obj):
-        part = self._get_participation_for_user(obj)
-        if not part or not part.submitted_date:
-            return None
-        # ISO format is safe for JSON; frontend can format as needed
-        return part.submitted_date.isoformat()
 
 
 # TrainingSeminarParticipation serializer with approval workflow
@@ -999,7 +935,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'username', 'email', 'password', 'password_confirm', 'first_name', 'last_name',
-            'role', 'phone_number', 'date_of_birth', 'city'
+            'role', 'phone_number', 'date_of_birth'
         ]
         extra_kwargs = {
             'password': {'write_only': True},
@@ -1030,7 +966,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 'role',
-            'phone_number', 'date_of_birth', 'city', 'profile_completed',
+            'phone_number', 'date_of_birth', 'profile_completed',
             'date_joined', 'is_active', 'managed_athletes'
         ]
         read_only_fields = ['username', 'date_joined', 'is_active']
@@ -1054,14 +990,43 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 'status': instance.athlete.status,
             }
         
-        # Include city details
-        if instance.city:
-            representation['city'] = {
-                'id': instance.city.id,
-                'name': instance.city.name
-            }
-
         return representation
+
+
+class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
+    """Serializer for individual referee scores in solo/team categories"""
+    referee_name = serializers.SerializerMethodField(read_only=True)
+    athlete_name = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = CategoryRefereeScore
+        fields = [
+            'id', 'athlete_score', 'referee', 'referee_name', 'athlete_name',
+            'score', 'submitted_date', 'notes'
+        ]
+        read_only_fields = ['submitted_date']
+    
+    def get_referee_name(self, obj):
+        """Return referee's full name"""
+        if obj.referee:
+            return f"{obj.referee.first_name} {obj.referee.last_name}"
+        return None
+    
+    def get_athlete_name(self, obj):
+        """Return athlete's full name"""
+        if obj.athlete_score and obj.athlete_score.athlete:
+            athlete = obj.athlete_score.athlete
+            return f"{athlete.first_name} {athlete.last_name}"
+        return None
+    
+    def validate(self, data):
+        """Validate that referee scoring is only for solo/team categories"""
+        athlete_score = data.get('athlete_score')
+        if athlete_score and athlete_score.type not in ['solo', 'teams']:
+            raise serializers.ValidationError({
+                'athlete_score': 'Referee scoring is only applicable to solo and team categories.'
+            })
+        return data
 
 
 class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
@@ -1074,6 +1039,10 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
     competition_date = serializers.SerializerMethodField()
     reviewed_by = serializers.StringRelatedField(read_only=True)
     team_members = serializers.PrimaryKeyRelatedField(many=True, queryset=Athlete.objects.all(), required=False)
+    referee_scores = CategoryRefereeScoreSerializer(many=True, read_only=True)
+    calculated_score = serializers.ReadOnlyField()
+    referee_score_count = serializers.ReadOnlyField()
+    has_all_referee_scores = serializers.ReadOnlyField()
     
     class Meta:
         model = CategoryAthleteScore
@@ -1081,7 +1050,8 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
             'id', 'athlete', 'category', 'category_name', 'group_name', 'competition_name', 'competition_date',
             'score', 'submitted_by_athlete', 'placement_claimed', 'notes', 'certificate_image', 
             'result_document', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes',
-            'type', 'group', 'team_members', 'team_name'
+            'type', 'group', 'team_members', 'team_name',
+            'referee_scores', 'calculated_score', 'referee_score_count', 'has_all_referee_scores'
         ]
         read_only_fields = ['submitted_date', 'reviewed_date', 'reviewed_by']
     
