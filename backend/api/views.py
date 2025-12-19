@@ -663,6 +663,40 @@ class CategoryViewSet(viewsets.ViewSet):
         instance = self.get_queryset().get(pk=pk)
         serializer = self.serializer_class(instance)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def eligible_athletes(self, request, pk=None):
+        """
+        Get list of athletes eligible to enroll in this category based on gender.
+        Categories with gender='mixt' return all athletes.
+        Male/female categories return only athletes with matching gender.
+        """
+        category = self.get_queryset().get(pk=pk)
+        
+        # Get all approved athletes
+        athletes_queryset = Athlete.objects.filter(status='approved')
+        
+        # Filter by gender if category is not mixed
+        if category.gender != 'mixt':
+            athletes_queryset = athletes_queryset.filter(gender=category.gender)
+        
+        # Exclude already enrolled athletes
+        enrolled_athlete_ids = CategoryAthlete.objects.filter(
+            category=category
+        ).values_list('athlete_id', flat=True)
+        athletes_queryset = athletes_queryset.exclude(id__in=enrolled_athlete_ids)
+        
+        serializer = AthleteSerializer(athletes_queryset, many=True, context={'request': request})
+        return Response({
+            'category': {
+                'id': category.id,
+                'name': category.name,
+                'gender': category.gender,
+                'type': category.type
+            },
+            'eligible_athletes': serializer.data,
+            'count': athletes_queryset.count()
+        })
 
 
 class CategoryAthleteViewSet(viewsets.ViewSet):

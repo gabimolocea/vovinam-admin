@@ -150,28 +150,17 @@ class CategoryAthleteInline(admin.TabularInline):
 # Inline GradeHistory for Athlete
 class GradeHistoryInline(admin.TabularInline):
     model = GradeHistory
-    fk_name = 'athlete'  # There are two FKs to Athlete on GradeHistory; ensure inline uses the athlete FK
-    extra = 0  # Display only existing entries
-    # Make the inline read-only when displayed on the Athlete page. Editing
-    # grade history should be done in the dedicated GradeHistory admin page.
-    fields = ('grade', 'obtained_date', 'level', 'event', 'examiner_1', 'examiner_2', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by')
-    readonly_fields = ('grade', 'obtained_date', 'level', 'event', 'examiner_1', 'examiner_2', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by')
-    show_change_link = False
+    fk_name = 'athlete'
+    extra = 0
+    fields = ('grade', 'obtained_date', 'level', 'event', 'examiner_1', 'examiner_2', 'status')
+    readonly_fields = ('grade', 'obtained_date', 'level', 'event', 'examiner_1', 'examiner_2', 'status')
+    show_change_link = True
+    can_delete = True
 
     def has_add_permission(self, request, obj=None):
         return False
 
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        """
-        Restrict examiner_1 and examiner_2 foreign key dropdowns to athletes that are coaches
-        when editing GradeHistory from the Athlete admin inline.
-        """
         if db_field.name in ('examiner_1', 'examiner_2'):
             kwargs['queryset'] = Athlete.objects.filter(is_coach=True)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
@@ -363,9 +352,14 @@ class VisaInline(admin.TabularInline):
     model = Visa
     extra = 0
     fields = ('visa_type', 'issued_date', 'visa_status', 'document', 'image', 'notes')
-    readonly_fields = ('visa_status',)
+    readonly_fields = ('visa_type', 'issued_date', 'visa_status', 'document', 'image', 'notes')
+    show_change_link = True
+    can_delete = True
     verbose_name = _('Visa')
     verbose_name_plural = _('Visas')
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
     def visa_status(self, obj):
             try:
@@ -2434,12 +2428,12 @@ class AthleteAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
-    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'add_enrolled_event_link', 'add_grade_history_link']
+    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'add_enrolled_event_link', 'add_grade_history_link', 'visa_add_buttons']
     ordering = ['-submitted_date']
     inlines = [
         AthleteActivityInline,
-    GradeHistoryInline,
-    VisaInline,
+        GradeHistoryInline,
+        VisaInline,
         AthleteTrainingSeminarParticipationInline,
         AthleteSoloResultsInline,
         AthleteFightResultsInline,
@@ -2448,9 +2442,21 @@ class AthleteAdmin(admin.ModelAdmin):
         # (team results are now shown via AthleteTeamResultsInline)
     ]
     
+    def visa_add_buttons(self, obj):
+        """Display add visa buttons"""
+        if obj and obj.pk:
+            return format_html(
+                '<a class="button" href="{}?athlete={}&visa_type=medical">Add Medical Visa</a> '
+                '<a class="button" href="{}?athlete={}&visa_type=annual">Add Annual Visa</a>',
+                reverse('admin:api_visa_add'), obj.pk,
+                reverse('admin:api_visa_add'), obj.pk
+            )
+        return ''
+    visa_add_buttons.short_description = _('Add Visa')
+    
     fieldsets = (
         ('Personal Information', {
-            'fields': ('user', 'first_name', 'last_name', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
+            'fields': ('user', 'first_name', 'last_name', 'gender', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
         }),
         ('Sports & Club Information', {
             'fields': ('club', 'city', 'current_grade', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_referee')
@@ -2460,7 +2466,15 @@ class AthleteAdmin(admin.ModelAdmin):
         }),
         # Team results are shown via the AthleteTeamResultsInline instead of a custom field
         ('Approval Workflow', {
-            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'add_enrolled_event_link', 'add_grade_history_link')
+            'fields': (
+                'status', 
+                'submitted_date', 
+                'reviewed_date', 
+                'reviewed_by', 
+                'add_enrolled_event_link', 
+                'add_grade_history_link',
+                'visa_add_buttons'
+            )
         }),
     )
     
@@ -2826,7 +2840,11 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     get_athlete_name.admin_order_field = 'athlete__first_name'
     
     def get_competition_name(self, obj):
-        return obj.category.competition.name
+        if obj.category.competition:
+            return obj.category.competition.name
+        elif obj.category.event:
+            return obj.category.event.title
+        return '-'
     get_competition_name.short_description = _('Competition')
     # Keep admin ordering keyed to the legacy competition name for now; Event ordering could be added later
     get_competition_name.admin_order_field = 'category__competition__name'

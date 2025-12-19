@@ -1,0 +1,53 @@
+{% load i18n admin_urls static %}
+<div class="inline-group" id="{{ inline_admin_formset.formset.prefix }}-group">
+  <div class="tabular inline-related {% if forloop.last %}last-related{% endif %}">
+    {{ inline_admin_formset.formset.management_form }}
+    <fieldset class="module">
+      <h2>{{ inline_admin_formset.opts.verbose_name_plural|capfirst }}</h2>
+      <table>
+        <thead>
+          <tr>
+            {% for field in inline_admin_formset.fields %}
+              {% if not field.widget.is_hidden %}
+                <th class="column-{{ field.name }}{% if field.required %} required{% endif %}">
+                  {{ field.label|capfirst }}
+                  {% if field.help_text %}
+                    <img src="{% static "admin/img/icon-unknown.svg" %}" class="help help-tooltip" title="{{ field.help_text|striptags }}" alt="({{ field.help_text|striptags }})">
+                  {% endif %}
+                </th>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for inline_admin_form in inline_admin_formset %}
+            {% if inline_admin_form.original %}
+              <tr class="{% cycle 'row1' 'row2' %}">
+                {% for fieldset in inline_admin_form %}
+                  {% for line in fieldset %}
+                    {% for field in line %}
+                      {% if not field.field.is_hidden %}
+                        <td class="{% if field.field.name %}field-{{ field.field.name }}{% endif %}">
+                          {% if field.is_readonly %}
+                            <div class="readonly">{{ field.contents }}</div>
+                          {% else %}
+                            {{ field.field }}
+                          {% endif %}
+                        </td>
+                      {% endif %}
+                    {% endfor %}
+                  {% endfor %}
+                {% endfor %}
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="add-row-container" style="margin-top: 10px;">
+        <a class="button add-grade-btn" href="{% url 'admin:api_gradehistory_add' %}?athlete={{ original.pk }}" title="Add Grade History">
+          ➕ Add Grade History
+        </a>
+      </div>
+    </fieldset>
+  </div>
+</div>

@@ -1,0 +1,14 @@
+{% extends "admin/edit_inline/tabular.html" %}
+{% load i18n admin_urls %}
+
+{% block inline_buttons_bottom %}
+{{ block.super }}
+<div style="margin: 10px 0; text-align: center; padding: 10px; background: #f8f9fa; border-top: 1px solid #ddd;">
+    <a class="button" href="{% url 'admin:api_visa_add' %}?athlete={{ original.pk }}&visa_type=medical" title="Add Medical Visa" style="background: #2271b1; color: white; padding: 8px 15px; border-radius: 4px; text-decoration: none; margin: 0 5px; display: inline-block;">
+        ➕ Add Medical Visa
+    </a>
+    <a class="button" href="{% url 'admin:api_visa_add' %}?athlete={{ original.pk }}&visa_type=annual" title="Add Annual Visa" style="background: #2271b1; color: white; padding: 8px 15px; border-radius: 4px; text-decoration: none; margin: 0 5px; display: inline-block;">
+        ➕ Add Annual Visa
+    </a>
+</div>
+{% endblock %}

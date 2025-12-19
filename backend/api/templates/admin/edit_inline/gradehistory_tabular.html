@@ -1,0 +1,10 @@
+{% extends "admin/edit_inline/tabular.html" %}
+
+{% block after_formsets %}
+<div class="add-row-container" style="margin: 10px 0; text-align: center;">
+    <a class="button add-grade-btn" href="{% url 'admin:api_gradehistory_add' %}?athlete={{ original.pk }}" title="Add Grade History" style="background: #2271b1; color: white; padding: 8px 15px; border-radius: 4px; text-decoration: none; margin: 0 5px;">
+        ➕ Add Grade History
+    </a>
+</div>
+{{ block.super }}
+{% endblock %}
