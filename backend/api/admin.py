@@ -96,7 +96,7 @@ class CategoryAthleteInline(admin.TabularInline):
     extra = 0
     autocomplete_fields = ['athlete']  # Enable autocomplete for the athlete field
     verbose_name = _('Athlete')
-    verbose_name_plural = _('Athletes')
+    verbose_name_plural = _('Athletes Enrolled')
 
     def get_formset(self, request, obj=None, **kwargs):
         """
@@ -975,9 +975,24 @@ class CategoryAthleteScoreInline(admin.TabularInline):
     model = CategoryAthleteScore  # Ensure this model exists in your models.py
     extra = 0
     autocomplete_fields = ['athlete', 'referee']  # Enable autocomplete for athlete and referee fields
-    fields = ('athlete', 'referee', 'score')  # Display athlete, referee, and score fields
+    fields = ('athlete', 'referee', 'score', 'type', 'status')  # Display athlete, referee, and score fields
+    readonly_fields = ('type',)
     verbose_name = _('Athlete Score')
     verbose_name_plural = _('Athlete Scores')
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Restrict athlete selection to enrolled athletes for solo categories"""
+        if db_field.name == 'athlete':
+            # Get the parent category from the request
+            parent_id = request.resolver_match.kwargs.get('object_id')
+            if parent_id:
+                try:
+                    category = Category.objects.get(pk=parent_id)
+                    if category.type == 'solo':
+                        kwargs['queryset'] = category.athletes.all()
+                except Category.DoesNotExist:
+                    pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class CategoryTeamScoreInline(admin.TabularInline):
     model = CategoryTeamScore  # Ensure this model exists in your models.py
@@ -995,10 +1010,12 @@ class TeamMemberInline(admin.TabularInline):
 
 class EnrolledTeamsInline(admin.TabularInline):
     model = CategoryTeam
-    extra = 1  # Allow adding new teams
+    extra = 0
+    autocomplete_fields = ['team']
     fields = ('team', 'place_obtained')
     readonly_fields = ('place_obtained',)
-    verbose_name_plural = _('TEAMS ENROLLED')  # Rename the section title
+    verbose_name = _("Team")
+    verbose_name_plural = _('Teams Enrolled')  # Rename the section title
 
     def place_obtained(self, obj):
         """
@@ -1021,11 +1038,13 @@ class AthleteSoloResultsInline(admin.TabularInline):
     extra = 0
     verbose_name = _('Solo Results')
     verbose_name_plural = _('Solo Results')
-    can_add = False  # Disable the "Add another" button
     can_delete = False  # Disable the "Delete" button
     show_change_link = False  # Hide the "Change" link
     fields = ('category_name', 'competition_name', 'results')  # Fields to display
     readonly_fields = ('category_name', 'competition_name', 'results')  # Make fields read-only
+    
+    def has_add_permission(self, request, obj=None):
+        return False  # Disable "Add another" button
 
     def get_queryset(self, request):
         """
@@ -1073,13 +1092,15 @@ class AthleteTeamResultsInline(admin.TabularInline):
     extra = 0
     verbose_name = _('Team Result')
     verbose_name_plural = _('Team Results')
-    can_add = False
     can_delete = False
     show_change_link = True
     fields = ('competition_name', 'category_name', 'team_name', 'team_members_display', 'placement_claimed', 'status')
     readonly_fields = ('competition_name', 'category_name', 'team_name', 'team_members_display', 'placement_claimed', 'status')
 
     fk_name = 'athlete'
+    
+    def has_add_permission(self, request, obj=None):
+        return False  # Disable "Add another" button
 
     def get_formset(self, request, obj=None, **kwargs):
         """Wrap the formset so its queryset includes team entries where this
@@ -1125,11 +1146,13 @@ class AthleteFightResultsInline(admin.TabularInline):
     extra = 0
     verbose_name = "Fight Results"
     verbose_name_plural = "Fight Results"
-    can_add = False  # Disable the "Add another" button
     can_delete = False  # Disable the "Delete" button
     show_change_link = False  # Hide the "Change" link
     fields = ('category_name', 'competition_name', 'results')  # Fields to display
     readonly_fields = ('category_name', 'competition_name', 'results')  # Make fields read-only
+    
+    def has_add_permission(self, request, obj=None):
+        return False  # Disable "Add another" button
 
     def get_queryset(self, request):
         """
@@ -1410,21 +1433,24 @@ class GradeAdmin(admin.ModelAdmin):
 class GradeHistoryAdmin(admin.ModelAdmin):
     list_display = ('athlete', 'grade', 'level', 'event', 'examiner_1', 'examiner_2', 'obtained_date')
     search_fields = ('athlete__first_name', 'athlete__last_name', 'grade__name', 'level')
-    list_filter = ('level', 'event', 'obtained_date')
+    list_filter = ('level', 'event', 'obtained_date', 'reviewed_by')
     # Use Django admin autocomplete for examiner fields and restrict choices to coaches
     autocomplete_fields = ('examiner_1', 'examiner_2')
-
-    # Use the custom form to show friendly validation messages in the admin
-    form = GradeHistoryAdminForm
-
+    
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """
         Restrict examiner_1 and examiner_2 foreign key dropdowns to athletes that are coaches.
-        This provides an autocomplete that only shows athletes with is_coach=True.
+        Restrict reviewed_by to users with admin role only.
         """
         if db_field.name in ('examiner_1', 'examiner_2'):
             kwargs['queryset'] = Athlete.objects.filter(is_coach=True)
+        elif db_field.name == 'reviewed_by':
+            from .models import User
+            kwargs['queryset'] = User.objects.filter(role='admin')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    # Use the custom form to show friendly validation messages in the admin
+    form = GradeHistoryAdminForm
 
     def get_changeform_initial_data(self, request):
         # Prefill the athlete field when ?athlete=<id> is provided in the URL
@@ -1519,12 +1545,14 @@ class CategoryAdmin(admin.ModelAdmin):
     # Prefer Event (landing.Event) information in the admin UI; keep legacy Competition search for compatibility
     list_display = ('name', 'event', 'type', 'gender', 'group', 'display_winners')
     search_fields = ('name', 'event__title', 'competition__name', 'type', 'gender', 'group__name')  # Add search fields
-    autocomplete_fields = ['group', 'first_place', 'second_place', 'third_place', 'first_place_team', 'second_place_team', 'third_place_team']
+    autocomplete_fields = ['group', 'event', 'first_place', 'second_place', 'third_place', 'first_place_team', 'second_place_team', 'third_place_team']
    # form = CategoryAdminForm 
    
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """
         Restrict the group selection to groups that belong to the same competition as the category.
+        Restrict event to only show event type 'competition'.
+        Restrict award selections to enrolled athletes/teams only.
         """
         if db_field.name == 'group':
             # Handle the case where request.obj is None (creating a new Category)
@@ -1535,6 +1563,31 @@ class CategoryAdmin(admin.ModelAdmin):
                     kwargs['queryset'] = Group.objects.filter(competition=category.competition)
             else:
                 kwargs['queryset'] = Group.objects.none()  # No groups available when creating a new Category
+        elif db_field.name == 'event':
+            # Only show events with event_type='competition'
+            try:
+                from landing.models import Event
+                kwargs['queryset'] = Event.objects.filter(event_type='competition')
+            except ImportError:
+                pass
+        elif db_field.name in ('first_place', 'second_place', 'third_place'):
+            # Restrict individual awards to enrolled athletes only
+            category_id = request.resolver_match.kwargs.get('object_id')
+            if category_id:
+                category = Category.objects.filter(pk=category_id).first()
+                if category:
+                    kwargs['queryset'] = category.athletes.all()
+            else:
+                kwargs['queryset'] = Athlete.objects.none()
+        elif db_field.name in ('first_place_team', 'second_place_team', 'third_place_team'):
+            # Restrict team awards to enrolled teams only
+            category_id = request.resolver_match.kwargs.get('object_id')
+            if category_id:
+                category = Category.objects.filter(pk=category_id).first()
+                if category:
+                    kwargs['queryset'] = category.teams.all()
+            else:
+                kwargs['queryset'] = Team.objects.none()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     def get_form(self, request, obj=None, **kwargs):
@@ -1845,6 +1898,24 @@ class MatchAdmin(admin.ModelAdmin):
 
     # Show per-referee score inline and a read-only list of central penalties
     inlines = [RefereeScoreInline, CentralPenaltyInline]
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Restrict red_corner and blue_corner to enrolled athletes in the selected category"""
+        if db_field.name in ('red_corner', 'blue_corner'):
+            # Try to get category from the match being edited
+            match_id = request.resolver_match.kwargs.get('object_id')
+            if match_id:
+                try:
+                    match = Match.objects.get(pk=match_id)
+                    if match.category:
+                        kwargs['queryset'] = match.category.athletes.all()
+                except Match.DoesNotExist:
+                    pass
+            else:
+                # For new matches, we can't restrict until category is selected
+                # User will need to save with category first
+                kwargs['queryset'] = Athlete.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     class Media:
         js = ('/static/api/js/referee_inline_winner.js', '/static/api/js/recompute_match_results.js',)
@@ -2376,6 +2447,16 @@ class GroupAdmin(admin.ModelAdmin):
     list_display = ('name', 'competition')  # Display name and competition
     search_fields = ('name', 'competition__name')  # Enable search by name and competition
     list_filter = ('competition',)  # Add a filter for competition
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Filter competition to only show events with event_type='competition'"""
+        if db_field.name == 'competition':
+            try:
+                from landing.models import Event
+                kwargs['queryset'] = Event.objects.filter(event_type='competition')
+            except ImportError:
+                pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 # User Admin
@@ -2428,7 +2509,7 @@ class AthleteAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
-    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'add_enrolled_event_link', 'add_grade_history_link', 'visa_add_buttons']
+    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'add_enrolled_event_link', 'add_grade_history_link', 'visa_add_buttons', 'result_add_buttons']
     ordering = ['-submitted_date']
     inlines = [
         AthleteActivityInline,
@@ -2454,6 +2535,27 @@ class AthleteAdmin(admin.ModelAdmin):
         return ''
     visa_add_buttons.short_description = _('Add Visa')
     
+    def result_add_buttons(self, obj):
+        """Display add result buttons for Solo, Teams, and Fight"""
+        if obj and obj.pk:
+            return format_html(
+                '<a class="button" href="{}?athlete={}&type=solo&submitted_by_athlete=true">Add Solo Result</a> '
+                '<a class="button" href="{}?athlete={}&type=teams&submitted_by_athlete=true">Add Team Result</a> '
+                '<a class="button" href="{}?athlete={}&type=fight&submitted_by_athlete=true">Add Fight Result</a>',
+                reverse('admin:api_categoryathletescore_add'), obj.pk,
+                reverse('admin:api_categoryathletescore_add'), obj.pk,
+                reverse('admin:api_categoryathletescore_add'), obj.pk
+            )
+        return ''
+    result_add_buttons.short_description = _('Add Result')
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Restrict reviewed_by to admin users only"""
+        if db_field.name == 'reviewed_by':
+            from .models import User
+            kwargs['queryset'] = User.objects.filter(role='admin')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
     fieldsets = (
         ('Personal Information', {
             'fields': ('user', 'first_name', 'last_name', 'gender', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
@@ -2473,7 +2575,8 @@ class AthleteAdmin(admin.ModelAdmin):
                 'reviewed_by', 
                 'add_enrolled_event_link', 
                 'add_grade_history_link',
-                'visa_add_buttons'
+                'visa_add_buttons',
+                'result_add_buttons'
             )
         }),
     )
