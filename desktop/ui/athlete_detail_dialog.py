@@ -3,9 +3,10 @@ Athlete detail dialog for viewing and editing
 """
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
-    QComboBox, QDateEdit, QTextEdit, QPushButton, QMessageBox, QTabWidget, QWidget
+    QComboBox, QDateEdit, QTextEdit, QPushButton, QMessageBox, QTabWidget, QWidget,
+    QTableWidget, QTableWidgetItem, QHeaderView, QLabel
 )
-from PyQt6.QtCore import QDate
+from PyQt6.QtCore import QDate, Qt
 from models.db import Database
 from datetime import datetime
 
@@ -28,6 +29,11 @@ class AthleteDetailDialog(QDialog):
         
         if self.athlete_data:
             self.load_data()
+            # Load athlete profile data (grade history, visas, results)
+            if self.athlete_id:
+                self.load_grade_history()
+                self.load_visas()
+                self.load_results()
     
     def init_ui(self):
         """Initialize the dialog UI"""
@@ -107,10 +113,104 @@ class AthleteDetailDialog(QDialog):
         
         tabs.addTab(emergency_tab, '🚨 Emergency Contact')
         
+        # Grade History Tab (read-only, only for existing athletes)
+        if self.athlete_id:
+            grade_history_tab = QWidget()
+            grade_history_layout = QVBoxLayout(grade_history_tab)
+            
+            grade_history_label = QLabel('📜 Grade promotions and history')
+            grade_history_layout.addWidget(grade_history_label)
+            
+            self.grade_history_table = QTableWidget()
+            self.grade_history_table.setColumnCount(4)
+            self.grade_history_table.setHorizontalHeaderLabels([
+                'Grade', 'Date Earned', 'Event', 'Status'
+            ])
+            self.grade_history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            self.grade_history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            self.grade_history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            grade_history_layout.addWidget(self.grade_history_table)
+            
+            tabs.addTab(grade_history_tab, '🥋 Grade History')
+        
+        # Visas Tab (read-only, only for existing athletes)
+        if self.athlete_id:
+            visas_tab = QWidget()
+            visas_layout = QVBoxLayout(visas_tab)
+            
+            visas_label = QLabel('📋 Medical and annual visas')
+            visas_layout.addWidget(visas_label)
+            
+            self.visas_table = QTableWidget()
+            self.visas_table.setColumnCount(5)
+            self.visas_table.setHorizontalHeaderLabels([
+                'Type', 'Issued Date', 'Expiration', 'Status', 'Valid'
+            ])
+            self.visas_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            self.visas_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            self.visas_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            visas_layout.addWidget(self.visas_table)
+            
+            tabs.addTab(visas_tab, '📋 Visas')
+        
+        # Results Tab (read-only, only for existing athletes)
+        if self.athlete_id:
+            results_tab = QWidget()
+            results_layout = QVBoxLayout(results_tab)
+            
+            # Filter bar for result types
+            filter_layout = QHBoxLayout()
+            filter_layout.addWidget(QLabel('Filter by type:'))
+            
+            self.result_type_filter = QComboBox()
+            self.result_type_filter.addItems(['All', 'Solo', 'Fight', 'Teams'])
+            self.result_type_filter.currentTextChanged.connect(self.filter_results)
+            filter_layout.addWidget(self.result_type_filter)
+            
+            filter_layout.addStretch()
+            
+            # Stats labels
+            self.solo_count_label = QLabel('Solo: 0')
+            self.fight_count_label = QLabel('Fight: 0')
+            self.teams_count_label = QLabel('Teams: 0')
+            
+            filter_layout.addWidget(self.solo_count_label)
+            filter_layout.addWidget(QLabel('|'))
+            filter_layout.addWidget(self.fight_count_label)
+            filter_layout.addWidget(QLabel('|'))
+            filter_layout.addWidget(self.teams_count_label)
+            
+            results_layout.addLayout(filter_layout)
+            
+            results_label = QLabel('🏆 Competition results and scores')
+            results_layout.addWidget(results_label)
+            
+            self.results_table = QTableWidget()
+            self.results_table.setColumnCount(5)
+            self.results_table.setHorizontalHeaderLabels([
+                'Event', 'Category', 'Type', 'Placement', 'Status'
+            ])
+            self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            results_layout.addWidget(self.results_table)
+            
+            # Store all results for filtering
+            self.all_results = []
+            
+            tabs.addTab(results_tab, '🏆 Results')
+        
         layout.addWidget(tabs)
         
         # Buttons
         button_layout = QHBoxLayout()
+        
+        # Delete button (only for existing athletes)
+        if self.athlete_id:
+            btn_delete = QPushButton('🗑️ Delete')
+            btn_delete.clicked.connect(self.delete_athlete)
+            button_layout.addWidget(btn_delete)
+            button_layout.addStretch()
         
         btn_save = QPushButton('💾 Save')
         btn_save.clicked.connect(self.save)
@@ -222,6 +322,155 @@ class AthleteDetailDialog(QDialog):
         self.emergency_contact_name.setText(self.athlete_data.get('emergency_contact_name', ''))
         self.emergency_contact_phone.setText(self.athlete_data.get('emergency_contact_phone', ''))
         self.address.setPlainText(self.athlete_data.get('address', ''))
+        
+        # Load additional tabs data if this is an existing athlete
+        if self.athlete_id:
+            self.load_grade_history()
+            self.load_visas()
+            self.load_results()
+    
+    def load_grade_history(self):
+        """Load grade history data for this athlete"""
+        if not hasattr(self, 'grade_history_table'):
+            return
+        
+        # Use server_id if available, otherwise local id
+        athlete_id = self.athlete_data.get('server_id') or self.athlete_id
+        
+        grade_history = self.db.get_grade_history_for_athlete(self.athlete_id)
+        
+        self.grade_history_table.setRowCount(len(grade_history))
+        
+        for row, record in enumerate(grade_history):
+            # Grade name
+            self.grade_history_table.setItem(row, 0, QTableWidgetItem(record.get('grade_name', '')))
+            
+            # Date earned
+            date_earned = record.get('date_earned', '')
+            if date_earned:
+                date_earned = date_earned[:10]  # Get just YYYY-MM-DD
+            self.grade_history_table.setItem(row, 1, QTableWidgetItem(date_earned))
+            
+            # Event
+            self.grade_history_table.setItem(row, 2, QTableWidgetItem(record.get('event_title', '')))
+            
+            # Status
+            status = record.get('status', 'pending')
+            status_item = QTableWidgetItem(status.capitalize())
+            # Color code status
+            if status == 'approved':
+                status_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif status == 'rejected':
+                status_item.setForeground(Qt.GlobalColor.red)
+            self.grade_history_table.setItem(row, 3, status_item)
+        
+        if len(grade_history) == 0:
+            self.grade_history_table.setRowCount(1)
+            self.grade_history_table.setItem(0, 0, QTableWidgetItem('No grade history yet'))
+            self.grade_history_table.setSpan(0, 0, 1, 4)
+    
+    def load_visas(self):
+        """Load visas data for this athlete"""
+        if not hasattr(self, 'visas_table'):
+            return
+        
+        visas = self.db.get_visas_for_athlete(self.athlete_id)
+        
+        self.visas_table.setRowCount(len(visas))
+        
+        for row, record in enumerate(visas):
+            # Type
+            visa_type = record.get('visa_type', 'medical')
+            self.visas_table.setItem(row, 0, QTableWidgetItem(visa_type.capitalize()))
+            
+            # Issued date
+            issued_date = record.get('issued_date', '')
+            if issued_date:
+                issued_date = issued_date[:10]
+            self.visas_table.setItem(row, 1, QTableWidgetItem(issued_date))
+            
+            # Expiration
+            expiration = record.get('expiration_date', '')
+            if expiration:
+                expiration = expiration[:10]
+            self.visas_table.setItem(row, 2, QTableWidgetItem(expiration))
+            
+            # Status
+            status = record.get('status', 'pending')
+            status_item = QTableWidgetItem(status.capitalize())
+            if status == 'approved':
+                status_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif status == 'rejected':
+                status_item.setForeground(Qt.GlobalColor.red)
+            self.visas_table.setItem(row, 3, status_item)
+            
+            # Valid
+            is_valid = record.get('is_valid', 0)
+            valid_text = '✓ Yes' if is_valid else '✗ No'
+            valid_item = QTableWidgetItem(valid_text)
+            if is_valid:
+                valid_item.setForeground(Qt.GlobalColor.darkGreen)
+            else:
+                valid_item.setForeground(Qt.GlobalColor.red)
+            self.visas_table.setItem(row, 4, valid_item)
+        
+        if len(visas) == 0:
+            self.visas_table.setRowCount(1)
+            self.visas_table.setItem(0, 0, QTableWidgetItem('No visas yet'))
+            self.visas_table.setSpan(0, 0, 1, 5)
+    
+    def load_results(self):
+        """Load competition results for this athlete"""
+        if not hasattr(self, 'results_table'):
+            return
+        
+        results = self.db.get_results_for_athlete(self.athlete_id)
+        
+        self.results_table.setRowCount(len(results))
+        
+        for row, record in enumerate(results):
+            # Event
+            self.results_table.setItem(row, 0, QTableWidgetItem(record.get('event_title', '')))
+            
+            # Category
+            self.results_table.setItem(row, 1, QTableWidgetItem(record.get('category_name', '')))
+            
+            # Type
+            result_type = record.get('result_type', 'individual')
+            self.results_table.setItem(row, 2, QTableWidgetItem(result_type.capitalize()))
+            
+            # Score
+            score = record.get('score', 0)
+            self.results_table.setItem(row, 3, QTableWidgetItem(str(score)))
+            
+            # Rank
+            rank = record.get('rank', '')
+            if rank:
+                rank_item = QTableWidgetItem(f"#{rank}")
+                # Color code podium positions
+                if rank == 1:
+                    rank_item.setForeground(Qt.GlobalColor.darkYellow)  # Gold
+                elif rank == 2:
+                    rank_item.setForeground(Qt.GlobalColor.gray)  # Silver
+                elif rank == 3:
+                    rank_item.setForeground(Qt.GlobalColor.darkRed)  # Bronze
+                self.results_table.setItem(row, 4, rank_item)
+            else:
+                self.results_table.setItem(row, 4, QTableWidgetItem('-'))
+            
+            # Status
+            status = record.get('status', 'pending')
+            status_item = QTableWidgetItem(status.capitalize())
+            if status == 'approved':
+                status_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif status == 'rejected':
+                status_item.setForeground(Qt.GlobalColor.red)
+            self.results_table.setItem(row, 5, status_item)
+        
+        if len(results) == 0:
+            self.results_table.setRowCount(1)
+            self.results_table.setItem(0, 0, QTableWidgetItem('No competition results yet'))
+            self.results_table.setSpan(0, 0, 1, 6)
     
     def save(self):
         """Save athlete data"""
@@ -265,3 +514,240 @@ class AthleteDetailDialog(QDialog):
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'Failed to save athlete: {str(e)}')
+    
+    def delete_athlete(self):
+        """Delete this athlete"""
+        if not self.athlete_id:
+            return
+        
+        name = f"{self.athlete_data.get('first_name', '')} {self.athlete_data.get('last_name', '')}"
+        
+        reply = QMessageBox.question(
+            self, 'Confirm Delete',
+            f'Are you sure you want to delete {name}?\n\nThis action cannot be undone.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.db.delete_athlete(self.athlete_id)
+                QMessageBox.information(self, 'Success', 'Athlete deleted successfully')
+                self.accept()  # Close dialog and signal parent to reload
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to delete athlete: {str(e)}')
+    
+    def load_grade_history(self):
+        """Load grade history data into table"""
+        if not self.athlete_id:
+            return
+        
+        grade_history = self.db.get_grade_history_for_athlete(self.athlete_id)
+        self.grade_history_table.setRowCount(len(grade_history))
+        
+        for row, record in enumerate(grade_history):
+            # Grade
+            self.grade_history_table.setItem(row, 0, QTableWidgetItem(record.get('grade_name', '')))
+            
+            # Date Earned
+            obtained_date = record.get('obtained_date', '')
+            if obtained_date:
+                # Format date nicely
+                from datetime import datetime
+                try:
+                    dt = datetime.fromisoformat(obtained_date.replace('Z', '+00:00'))
+                    obtained_date = dt.strftime('%Y-%m-%d')
+                except:
+                    pass
+            self.grade_history_table.setItem(row, 1, QTableWidgetItem(obtained_date))
+            
+            # Event
+            event_name = record.get('event_name', '') or 'N/A'
+            self.grade_history_table.setItem(row, 2, QTableWidgetItem(event_name))
+            
+            # Status
+            status = record.get('status', 'approved')
+            status_item = QTableWidgetItem(status.title())
+            
+            # Color code status
+            if status == 'approved':
+                status_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif status == 'rejected':
+                status_item.setForeground(Qt.GlobalColor.red)
+            elif status == 'pending':
+                status_item.setForeground(Qt.GlobalColor.darkYellow)
+            
+            self.grade_history_table.setItem(row, 3, status_item)
+    
+    def load_visas(self):
+        """Load visas data into table"""
+        if not self.athlete_id:
+            return
+        
+        visas = self.db.get_visas_for_athlete(self.athlete_id)
+        self.visas_table.setRowCount(len(visas))
+        
+        for row, record in enumerate(visas):
+            # Type
+            visa_type = record.get('visa_type', '').title()
+            self.visas_table.setItem(row, 0, QTableWidgetItem(visa_type))
+            
+            # Issued Date
+            issued_date = record.get('issued_date', '')
+            if issued_date:
+                from datetime import datetime
+                try:
+                    dt = datetime.fromisoformat(issued_date.replace('Z', '+00:00'))
+                    issued_date = dt.strftime('%Y-%m-%d')
+                except:
+                    pass
+            self.visas_table.setItem(row, 1, QTableWidgetItem(issued_date))
+            
+            # Expiration (calculated based on visa type)
+            if issued_date and record.get('issued_date'):
+                from datetime import datetime, timedelta
+                try:
+                    dt = datetime.fromisoformat(record.get('issued_date').replace('Z', '+00:00'))
+                    if record.get('visa_type') == 'medical':
+                        expiration = dt + timedelta(days=180)
+                    else:  # annual
+                        expiration = dt + timedelta(days=365)
+                    self.visas_table.setItem(row, 2, QTableWidgetItem(expiration.strftime('%Y-%m-%d')))
+                except:
+                    self.visas_table.setItem(row, 2, QTableWidgetItem('N/A'))
+            else:
+                self.visas_table.setItem(row, 2, QTableWidgetItem('N/A'))
+            
+            # Status
+            status = record.get('status', 'approved')
+            status_item = QTableWidgetItem(status.title())
+            
+            if status == 'approved':
+                status_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif status == 'rejected':
+                status_item.setForeground(Qt.GlobalColor.red)
+            elif status == 'pending':
+                status_item.setForeground(Qt.GlobalColor.darkYellow)
+            
+            self.visas_table.setItem(row, 3, status_item)
+            
+            # Valid
+            is_valid = record.get('is_valid', 0)
+            valid_item = QTableWidgetItem('✓ Yes' if is_valid else '✗ No')
+            
+            if is_valid:
+                valid_item.setForeground(Qt.GlobalColor.darkGreen)
+            else:
+                valid_item.setForeground(Qt.GlobalColor.red)
+            
+            self.visas_table.setItem(row, 4, valid_item)
+    
+    def load_results(self):
+        """Load competition results data into table"""
+        if not self.athlete_id:
+            return
+        
+        # Get all results
+        self.all_results = self.db.get_results_for_athlete(self.athlete_id)
+        
+        # Update stats
+        solo_count = sum(1 for r in self.all_results if r.get('result_type') == 'solo')
+        fight_count = sum(1 for r in self.all_results if r.get('result_type') == 'fight')
+        teams_count = sum(1 for r in self.all_results if r.get('result_type') == 'teams')
+        
+        self.solo_count_label.setText(f'🥋 Solo: {solo_count}')
+        self.fight_count_label.setText(f'🥊 Fight: {fight_count}')
+        self.teams_count_label.setText(f'👥 Teams: {teams_count}')
+        
+        # Apply current filter
+        self.filter_results()
+    
+    def filter_results(self):
+        """Filter results by selected type"""
+        if not hasattr(self, 'all_results'):
+            return
+        
+        filter_type = self.result_type_filter.currentText().lower()
+        
+        # Filter results
+        if filter_type == 'all':
+            filtered_results = self.all_results
+        else:
+            filtered_results = [r for r in self.all_results if r.get('result_type') == filter_type]
+        
+        # Display filtered results
+        self.display_results(filtered_results)
+    
+    def display_results(self, results):
+        """Display results in the table"""
+        self.results_table.setRowCount(len(results))
+        
+        for row, record in enumerate(results):
+            # Event
+            event_title = record.get('event_title', '') or 'N/A'
+            self.results_table.setItem(row, 0, QTableWidgetItem(event_title))
+            
+            # Category
+            category_name = record.get('category_name', '') or 'N/A'
+            self.results_table.setItem(row, 1, QTableWidgetItem(category_name))
+            
+            # Type with icon
+            result_type = record.get('result_type', 'individual')
+            type_icon = {
+                'solo': '🥋',
+                'fight': '🥊',
+                'teams': '👥'
+            }.get(result_type, '📋')
+            
+            type_text = f"{type_icon} {result_type.title()}"
+            type_item = QTableWidgetItem(type_text)
+            
+            # Color code by type
+            if result_type == 'solo':
+                type_item.setForeground(Qt.GlobalColor.blue)
+            elif result_type == 'fight':
+                type_item.setForeground(Qt.GlobalColor.darkRed)
+            elif result_type == 'teams':
+                type_item.setForeground(Qt.GlobalColor.darkGreen)
+            
+            self.results_table.setItem(row, 2, type_item)
+            
+            # Placement (Rank)
+            rank = record.get('rank')
+            if rank:
+                placement_text = {1: '🥇 1st Place', 2: '🥈 2nd Place', 3: '🥉 3rd Place'}.get(rank, f'#{rank}')
+                placement_item = QTableWidgetItem(placement_text)
+                
+                # Color code podium positions
+                if rank == 1:
+                    placement_item.setForeground(Qt.GlobalColor.darkYellow)  # Gold
+                    font = placement_item.font()
+                    font.setBold(True)
+                    placement_item.setFont(font)
+                elif rank == 2:
+                    placement_item.setForeground(Qt.GlobalColor.darkGray)  # Silver
+                elif rank == 3:
+                    placement_item.setForeground(Qt.GlobalColor.darkRed)  # Bronze
+                
+                self.results_table.setItem(row, 3, placement_item)
+            else:
+                self.results_table.setItem(row, 3, QTableWidgetItem('-'))
+            
+            # Status
+            status = record.get('status', 'pending')
+            status_item = QTableWidgetItem(status.title())
+            
+            if status == 'approved':
+                status_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif status == 'rejected':
+                status_item.setForeground(Qt.GlobalColor.red)
+            elif status == 'pending':
+                status_item.setForeground(Qt.GlobalColor.darkYellow)
+            
+            self.results_table.setItem(row, 4, status_item)
+        
+        if len(results) == 0:
+            self.results_table.setRowCount(1)
+            no_data_text = 'No results for this filter' if self.result_type_filter.currentText() != 'All' else 'No competition results yet'
+            self.results_table.setItem(0, 0, QTableWidgetItem(no_data_text))
+            self.results_table.setSpan(0, 0, 1, 5)
+

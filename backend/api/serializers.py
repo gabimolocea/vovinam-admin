@@ -444,7 +444,7 @@ class VisaSerializer(serializers.ModelSerializer):
     is_valid = serializers.SerializerMethodField()
 
     class Meta:
-        model = None  # set dynamically where used
+        model = Visa
         fields = ['id', 'athlete', 'visa_type', 'issued_date', 'document', 'image', 'health_status', 'visa_status', 'is_valid', 'status', 'submitted_date']
 
     def get_is_valid(self, obj):

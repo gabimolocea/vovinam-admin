@@ -55,6 +55,13 @@ class ClubDetailDialog(QDialog):
         # Buttons
         button_layout = QHBoxLayout()
         
+        # Delete button (only for existing clubs)
+        if self.club_id:
+            btn_delete = QPushButton('🗑️ Delete')
+            btn_delete.clicked.connect(self.delete_club)
+            button_layout.addWidget(btn_delete)
+            button_layout.addStretch()
+        
         btn_save = QPushButton('💾 Save')
         btn_save.clicked.connect(self.save)
         button_layout.addWidget(btn_save)
@@ -64,6 +71,22 @@ class ClubDetailDialog(QDialog):
         button_layout.addWidget(btn_cancel)
         
         layout.addLayout(button_layout)
+    
+    def delete_club(self):
+        """Delete this club"""
+        reply = QMessageBox.question(
+            self, 'Confirm Delete',
+            f'Are you sure you want to delete "{self.club_data.get("name", "this club")}"?\n\nThis action cannot be undone.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.db.delete_club(self.club_id)
+                QMessageBox.information(self, 'Success', 'Club deleted successfully')
+                self.accept()  # Close dialog after deletion
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to delete club: {str(e)}')
     
     def load_cities(self):
         """Load cities from database"""

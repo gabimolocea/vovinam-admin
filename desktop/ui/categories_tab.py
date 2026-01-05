@@ -25,18 +25,6 @@ class CategoriesTab(QWidget):
         btn_new.clicked.connect(self.create_category)
         button_layout.addWidget(btn_new)
         
-        btn_edit = QPushButton('✏️ Edit')
-        btn_edit.clicked.connect(self.edit_category)
-        button_layout.addWidget(btn_edit)
-        
-        btn_delete = QPushButton('🗑️ Delete')
-        btn_delete.clicked.connect(self.delete_category)
-        button_layout.addWidget(btn_delete)
-        
-        btn_refresh = QPushButton('🔄 Refresh')
-        btn_refresh.clicked.connect(self.load_categories)
-        button_layout.addWidget(btn_refresh)
-        
         button_layout.addStretch()
         layout.addLayout(button_layout)
         
@@ -57,6 +45,9 @@ class CategoriesTab(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        
+        # Double-click to open details
+        self.table.doubleClicked.connect(self.edit_category)
         
         layout.addWidget(self.table)
     

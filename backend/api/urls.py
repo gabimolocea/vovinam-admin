@@ -70,12 +70,14 @@ urlpatterns = [
     path('auth/profile-enhanced/', views.UserProfileView.as_view(), name='profile-enhanced'),
     # legacy route removed: use /api/athletes/my-profile/ (provided by AthleteViewSet.my_profile)
     path('admin-approvals/pending/', PendingApprovalsView.as_view(), name='pending-approvals'),
-    # Simple public athlete detail endpoint (stable URL for frontend)
-    path('athletes/<int:pk>/', views.athlete_detail, name='athlete-detail-public'),
     
     # Reference data endpoints (non-conflicting with router)
     path('sports/', views.sports_list, name='sports-list'),
     
     # Router URLs (should come last to avoid conflicts)
-    path('', include(router.urls)),  # This will handle the actual endpoints
+    path('', include(router.urls)),  # This will handle the actual endpoints including athletes CRUD
+    
+    # Simple public athlete detail endpoint (placed after router to not conflict with update/delete)
+    # This is a read-only endpoint for public pages - the router handles CRUD
+    path('athletes/<int:pk>/public/', views.athlete_detail, name='athlete-detail-public'),
 ]

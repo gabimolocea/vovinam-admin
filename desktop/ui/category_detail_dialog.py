@@ -78,6 +78,13 @@ class CategoryDetailDialog(QDialog):
         # Buttons
         button_layout = QHBoxLayout()
         
+        # Delete button (only for existing categories)
+        if self.category_id:
+            btn_delete = QPushButton('🗑️ Delete')
+            btn_delete.clicked.connect(self.delete_category)
+            button_layout.addWidget(btn_delete)
+            button_layout.addStretch()
+        
         btn_save = QPushButton('💾 Save')
         btn_save.clicked.connect(self.save)
         button_layout.addWidget(btn_save)
@@ -87,6 +94,22 @@ class CategoryDetailDialog(QDialog):
         button_layout.addWidget(btn_cancel)
         
         layout.addLayout(button_layout)
+    
+    def delete_category(self):
+        """Delete this category"""
+        reply = QMessageBox.question(
+            self, 'Confirm Delete',
+            f'Are you sure you want to delete "{self.category_data.get("name", "this category")}"?\n\nThis action cannot be undone.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.db.delete_category(self.category_id)
+                QMessageBox.information(self, 'Success', 'Category deleted successfully')
+                self.accept()  # Close dialog after deletion
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to delete category: {str(e)}')
     
     def load_competitions(self):
         """Load competitions from database"""

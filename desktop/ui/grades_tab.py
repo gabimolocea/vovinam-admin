@@ -25,18 +25,6 @@ class GradesTab(QWidget):
         btn_new.clicked.connect(self.create_grade)
         button_layout.addWidget(btn_new)
         
-        btn_edit = QPushButton('✏️ Edit')
-        btn_edit.clicked.connect(self.edit_grade)
-        button_layout.addWidget(btn_edit)
-        
-        btn_delete = QPushButton('🗑️ Delete')
-        btn_delete.clicked.connect(self.delete_grade)
-        button_layout.addWidget(btn_delete)
-        
-        btn_refresh = QPushButton('🔄 Refresh')
-        btn_refresh.clicked.connect(self.load_grades)
-        button_layout.addWidget(btn_refresh)
-        
         button_layout.addStretch()
         layout.addLayout(button_layout)
         
@@ -59,6 +47,9 @@ class GradesTab(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        
+        # Double-click to open details
+        self.table.doubleClicked.connect(self.edit_grade)
         
         layout.addWidget(self.table)
     

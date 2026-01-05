@@ -71,6 +71,13 @@ class CompetitionDetailDialog(QDialog):
         # Buttons
         button_layout = QHBoxLayout()
         
+        # Delete button (only for existing competitions)
+        if self.competition_id:
+            btn_delete = QPushButton('🗑️ Delete')
+            btn_delete.clicked.connect(self.delete_competition)
+            button_layout.addWidget(btn_delete)
+            button_layout.addStretch()
+        
         btn_save = QPushButton('💾 Save')
         btn_save.clicked.connect(self.save)
         button_layout.addWidget(btn_save)
@@ -80,6 +87,22 @@ class CompetitionDetailDialog(QDialog):
         button_layout.addWidget(btn_cancel)
         
         layout.addLayout(button_layout)
+    
+    def delete_competition(self):
+        """Delete this competition"""
+        reply = QMessageBox.question(
+            self, 'Confirm Delete',
+            f'Are you sure you want to delete "{self.competition_data.get("title", "this competition")}"?\n\nThis action cannot be undone.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.db.delete_competition(self.competition_id)
+                QMessageBox.information(self, 'Success', 'Competition deleted successfully')
+                self.accept()  # Close dialog after deletion
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to delete competition: {str(e)}')
     
     def load_cities(self):
         """Load cities from database"""

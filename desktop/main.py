@@ -6,6 +6,7 @@ import sys
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from ui.main_window import MainWindow
+from ui.theme import ThemeManager
 import config
 
 def main():
@@ -15,6 +16,10 @@ def main():
     
     # Set application style
     app.setStyle('Fusion')
+    
+    # Apply saved theme
+    saved_theme = ThemeManager.get_saved_theme()
+    ThemeManager.apply_theme(app, saved_theme)
     
     # Create and show main window
     window = MainWindow()

@@ -99,7 +99,7 @@ def get_category_referees(request, pk):
     return Response(payload)
 
 class CityViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.AllowAny]
     queryset = City.objects.all()
     serializer_class = CitySerializer
 
@@ -163,7 +163,7 @@ class CompetitionViewSet(viewsets.ViewSet):
     
 
 class ClubViewSet(viewsets.ViewSet):
-    permission_classes = [IsClubCoachOrAdmin]
+    permission_classes = [permissions.AllowAny]
     queryset = Club.objects.all()
     serializer_class = ClubSerializer
 
@@ -491,7 +491,7 @@ class FederationRoleViewSet(viewsets.ViewSet):
         instance.delete()
         return Response(status=204)
 class GradeViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.AllowAny]
     queryset = Grade.objects.all()
     serializer_class = GradeSerializer
     def list(self, request):
@@ -593,7 +593,7 @@ class TeamViewSet(viewsets.ViewSet):
     
 
 class MatchViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.AllowAny]
     queryset = Match.objects.all()
     serializer_class = MatchSerializer
 
