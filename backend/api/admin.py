@@ -2989,8 +2989,79 @@ class AthleteAdmin(admin.ModelAdmin):
             path('<int:pk>/approve/', self.admin_site.admin_view(self.approve_profile), name='api_athlete_approve'),
             path('<int:pk>/reject/', self.admin_site.admin_view(self.reject_profile), name='api_athlete_reject'),
             path('<int:pk>/request_revision/', self.admin_site.admin_view(self.request_revision), name='api_athlete_request_revision'),
+            path('import-excel/', self.admin_site.admin_view(self.import_excel), name='api_athlete_import_excel'),
+            path('download-excel-template/', self.admin_site.admin_view(self.download_excel_template), name='api_athlete_download_template'),
         ]
         return custom_urls + urls
+    
+    def download_excel_template(self, request):
+        """Download Excel template for athlete import."""
+        from django.http import HttpResponse
+        from .excel_sync import ExcelTemplateGenerator
+        
+        wb = ExcelTemplateGenerator.create_athlete_template()
+        
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=athlete_import_template.xlsx'
+        wb.save(response)
+        return response
+    
+    def import_excel(self, request):
+        """Import athletes from Excel file with dry run option."""
+        from django.http import HttpResponse
+        from .excel_sync import ExcelImportService
+        
+        if request.method == 'POST':
+            excel_file = request.FILES.get('excel_file')
+            dry_run = request.POST.get('dry_run') == 'true'
+            
+            if not excel_file:
+                messages.error(request, 'Please select an Excel file to upload.')
+                return render(request, 'admin/athlete_import_excel.html', {
+                    'title': 'Import Athletes from Excel',
+                })
+            
+            try:
+                service = ExcelImportService()
+                result = service.import_athletes(excel_file, dry_run=dry_run)
+                
+                if dry_run:
+                    messages.info(request, f"Validation Complete (No data saved):")
+                    messages.success(request, f"✓ {result['created']} athletes ready to create")
+                    messages.success(request, f"✓ {result['updated']} athletes ready to update")
+                    if result['errors']:
+                        messages.warning(request, f"⚠ {len(result['errors'])} errors found")
+                        for error in result['errors'][:10]:  # Show first 10 errors
+                            messages.error(request, f"Row {error.get('row', '?')}: {error.get('error', 'Unknown error')}")
+                else:
+                    messages.success(request, f"Import Complete!")
+                    messages.success(request, f"✓ Created {result['created']} new athletes")
+                    messages.success(request, f"✓ Updated {result['updated']} existing athletes")
+                    if result['errors']:
+                        messages.warning(request, f"⚠ {len(result['errors'])} rows had errors")
+                        for error in result['errors'][:10]:
+                            messages.error(request, f"Row {error.get('row', '?')}: {error.get('error', 'Unknown error')}")
+                
+                # Show detailed results
+                context = {
+                    'title': 'Import Results',
+                    'result': result,
+                    'dry_run': dry_run,
+                }
+                return render(request, 'admin/athlete_import_results.html', context)
+                
+            except Exception as e:
+                messages.error(request, f'Import failed: {str(e)}')
+                return render(request, 'admin/athlete_import_excel.html', {
+                    'title': 'Import Athletes from Excel',
+                })
+        
+        # GET request - show upload form
+        return render(request, 'admin/athlete_import_excel.html', {
+            'title': 'Import Athletes from Excel',
+        })
 
     def add_enrolled_event_link(self, obj):
         """Render a button that opens the TrainingSeminarParticipation add form with this athlete pre-filled."""

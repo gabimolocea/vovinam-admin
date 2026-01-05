@@ -1,0 +1,71 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div class="content" style="padding: 20px;">
+    <h1>{{ title }}</h1>
+    
+    {% if dry_run %}
+    <div style="margin-bottom: 20px; padding: 15px; background-color: #fff3cd; border-left: 4px solid #ffc107;">
+        <strong>⚠️ This was a TEST RUN - No data was saved to the database</strong>
+    </div>
+    {% else %}
+    <div style="margin-bottom: 20px; padding: 15px; background-color: #d4edda; border-left: 4px solid #28a745;">
+        <strong>✓ Import completed successfully!</strong>
+    </div>
+    {% endif %}
+    
+    <div style="margin-bottom: 30px;">
+        <h2>Summary</h2>
+        <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
+            <tr style="background-color: #f8f9fa;">
+                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Athletes Created:</td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">{{ result.created }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Athletes Updated:</td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">{{ result.updated }}</td>
+            </tr>
+            <tr style="background-color: #f8f9fa;">
+                <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">Errors:</td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">{{ result.errors|length }}</td>
+            </tr>
+        </table>
+    </div>
+    
+    {% if result.errors %}
+    <div style="margin-bottom: 30px;">
+        <h2>Errors (first 20)</h2>
+        <div style="background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; padding: 15px;">
+            <ul style="margin: 0; padding-left: 20px;">
+                {% for error in result.errors|slice:":20" %}
+                <li style="margin-bottom: 8px;">
+                    <strong>Row {{ error.row }}:</strong> {{ error.error }}
+                    {% if error.data %}
+                    <br><small style="color: #666;">Data: {{ error.data }}</small>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+    
+    <div style="margin-top: 30px;">
+        {% if dry_run and result.created > 0 or result.updated > 0 %}
+        <a href="{% url 'admin:api_athlete_import_excel' %}" class="button default" 
+           style="background-color: #28a745; color: white; padding: 10px 20px; margin-right: 10px;">
+            ✓ Proceed with Actual Import
+        </a>
+        {% endif %}
+        <a href="{% url 'admin:api_athlete_import_excel' %}" class="button" 
+           style="padding: 10px 20px; margin-right: 10px;">
+            Upload Another File
+        </a>
+        <a href="{% url 'admin:api_athlete_changelist' %}" class="button" 
+           style="padding: 10px 20px;">
+            ← Back to Athletes List
+        </a>
+    </div>
+</div>
+{% endblock %}

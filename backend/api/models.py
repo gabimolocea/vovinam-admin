@@ -9,6 +9,8 @@ from django.dispatch import receiver
 from django.core.exceptions import ValidationError
 from django.db.models.signals import post_delete
 from django.utils.translation import gettext_lazy as _
+from .mixins import TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin
+from .managers import AthleteManager
 
 # Create your models here.
 
@@ -168,10 +170,11 @@ class FederationRole(models.Model):
         return self.name
 
 
-class Athlete(models.Model):
+class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Model):
     """
     Unified Athlete model that handles both pending and approved athletes.
     Replaces the separate AthleteProfile system for simplified workflow.
+    Enhanced with: timestamps, sync tracking, soft delete, and audit trail.
     """
     STATUS_CHOICES = [
         ('pending', 'Pending Approval'),
@@ -179,6 +182,9 @@ class Athlete(models.Model):
         ('rejected', 'Rejected'),
         ('revision_required', 'Revision Required'),
     ]
+    
+    # Custom manager for optimized queries
+    objects = AthleteManager()
     
     # Link to User account - required for new athletes
     user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='athlete', blank=True, null=True)

@@ -481,7 +481,7 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'competition', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
+            'id', 'name', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
             'enrolled_athletes', 'enrolled_teams', 'teams', 'first_place', 'second_place', 'third_place',
             'first_place_name', 'second_place_name', 'third_place_name',
             'first_place_team', 'second_place_team', 'third_place_team',

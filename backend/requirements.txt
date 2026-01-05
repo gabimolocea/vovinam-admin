@@ -11,6 +11,9 @@ Pillow==11.3.0
 requests==2.32.5
 jsonschema==4.19.1
 
+# Excel and sync dependencies
+openpyxl==3.1.2
+
 # Production dependencies
 gunicorn==21.2.0
 dj-database-url==2.1.0

@@ -34,6 +34,12 @@ router.register('seminar-submissions', TrainingSeminarParticipationViewSet, base
 router.register('coaches', CoachesViewSet, basename='coach')
 # team-scores endpoint deprecated - use category-athlete-score with type='teams' filter
 
+# Sync and Excel endpoints
+from .sync_api import SyncAPIViewSet
+from .excel_views import ExcelSyncViewSet
+router.register('sync', SyncAPIViewSet, basename='sync')
+router.register('excel', ExcelSyncViewSet, basename='excel')
+
 # Compatibility shim: keep responding to old athlete-profiles paths with a deprecation/redirect
 from . import views as _views
 urlpatterns = [
