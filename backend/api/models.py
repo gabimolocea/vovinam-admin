@@ -309,14 +309,6 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
         self.approved_date = timezone.now()  # Legacy field
         self.approved_by = admin_user  # Legacy field
         self.save()
-        
-        # Log the activity
-        AthleteActivity.objects.create(
-            athlete=self,
-            action='approved',
-            performed_by=admin_user,
-            notes=f"Profile approved by {admin_user.get_full_name() or admin_user.username}"
-        )
     
     def reject(self, admin_user, reason=None):
         """Reject the athlete profile"""
@@ -328,14 +320,6 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
         if reason:
             self.admin_notes = reason
         self.save()
-        
-        # Log the activity
-        AthleteActivity.objects.create(
-            athlete=self,
-            action='rejected',
-            performed_by=admin_user,
-            notes=reason or f"Profile rejected by {admin_user.get_full_name() or admin_user.username}"
-        )
     
     def request_revision(self, admin_user, reason=None):
         """Request revision of the athlete profile"""
@@ -347,14 +331,6 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
         if reason:
             self.admin_notes = reason
         self.save()
-        
-        # Log the activity
-        AthleteActivity.objects.create(
-            athlete=self,
-            action='revision_requested',
-            performed_by=admin_user,
-            notes=reason or f"Revision requested by {admin_user.get_full_name() or admin_user.username}"
-        )
     
     def resubmit(self):
         """Resubmit profile after revision"""
@@ -365,14 +341,6 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
         self.reviewed_date = None
         self.reviewed_by = None
         self.save()
-        
-        # Log the activity
-        AthleteActivity.objects.create(
-            athlete=self,
-            action='resubmitted',
-            performed_by=self.user,
-            notes=f"Profile resubmitted by {self.user.get_full_name() or self.user.username}"
-        )
 
     def enrolled_competitions_and_categories(self):
         """
@@ -404,34 +372,6 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
     
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
-
-
-class AthleteActivity(models.Model):
-    """
-    Track all activities on athlete profiles (approvals, rejections, edits)
-    """
-    ACTION_CHOICES = [
-        ('submitted', 'Profile Submitted'),
-        ('approved', 'Profile Approved'),
-        ('rejected', 'Profile Rejected'),
-        ('revision_requested', 'Revision Requested'),
-        ('updated', 'Profile Updated'),
-        ('resubmitted', 'Profile Resubmitted'),
-    ]
-    
-    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='activity_log')
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
-    performed_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    notes = models.TextField(blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-timestamp']
-        verbose_name = _('Athlete Activity')
-        verbose_name_plural = _('Athlete Activities')
-    
-    def __str__(self):
-        return f"{self.get_action_display()} - {self.athlete} by {self.performed_by}"
 
 
 class GradeHistory(models.Model):
@@ -812,9 +752,55 @@ class CategoryAthlete(models.Model):
     """
     Through model for the many-to-many relationship between Category and Athlete.
     """
+    PLACE_CHOICES = [
+        (1, '1st Place'),
+        (2, '2nd Place'),
+        (3, '3rd Place'),
+    ]
+    
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name="enrolled_athletes")
     athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE)
     weight = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)  # Weight in kilograms
+    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement (auto-calculated from total score)')
+    disqualified = models.BooleanField(default=False, help_text='Mark as disqualified')
+    
+    # Referee scores for solo categories
+    ref1_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF1', help_text='Referee 1 score')
+    ref2_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF2', help_text='Referee 2 score')
+    ref3_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF3', help_text='Referee 3 score')
+    ref4_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF4', help_text='Referee 4 score')
+    ref5_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF5', help_text='Referee 5 score')
+    
+    @property
+    def total_score(self):
+        """Calculate total score excluding highest and lowest referee scores"""
+        from decimal import Decimal
+        scores = [s for s in [self.ref1_score, self.ref2_score, self.ref3_score, self.ref4_score, self.ref5_score] if s is not None]
+        if len(scores) < 3:
+            return None
+        scores.sort()
+        # Remove highest and lowest, sum the rest
+        return sum(scores[1:-1])
+    
+    @property
+    def scores_with_markup(self):
+        """Return scores with highest/lowest marked for strikethrough"""
+        scores = [
+            (self.ref1_score, 'ref1'),
+            (self.ref2_score, 'ref2'),
+            (self.ref3_score, 'ref3'),
+            (self.ref4_score, 'ref4'),
+            (self.ref5_score, 'ref5')
+        ]
+        valid_scores = [(s, n) for s, n in scores if s is not None]
+        if len(valid_scores) < 3:
+            return scores
+        
+        sorted_scores = sorted(valid_scores, key=lambda x: x[0])
+        lowest = sorted_scores[0][1]
+        highest = sorted_scores[-1][1]
+        
+        return [(s, n, n == lowest or n == highest) for s, n in scores]
 
     class Meta:
         unique_together = ('category', 'athlete')  # Ensure an athlete cannot be added twice to the same category
@@ -834,14 +820,68 @@ class CategoryTeam(models.Model):
     """
     Through model for the many-to-many relationship between Category and Team.
     """
+    PLACE_CHOICES = [
+        (1, '1st Place'),
+        (2, '2nd Place'),
+        (3, '3rd Place'),
+    ]
+    
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='enrolled_teams')
     team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='enrolled_categories')  # Rename related_name
+    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement (auto-calculated from total score)')
+    disqualified = models.BooleanField(default=False, help_text='Mark as disqualified')
+    
+    # Referee scores for team categories
+    ref1_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF1', help_text='Referee 1 score')
+    ref2_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF2', help_text='Referee 2 score')
+    ref3_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF3', help_text='Referee 3 score')
+    ref4_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF4', help_text='Referee 4 score')
+    ref5_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF5', help_text='Referee 5 score')
+    
+    @property
+    def total_score(self):
+        """Calculate total score excluding highest and lowest referee scores"""
+        from decimal import Decimal
+        scores = [s for s in [self.ref1_score, self.ref2_score, self.ref3_score, self.ref4_score, self.ref5_score] if s is not None]
+        if len(scores) < 3:
+            return None
+        scores.sort()
+        # Remove highest and lowest, sum the rest
+        return sum(scores[1:-1])
+    
+    @property
+    def scores_with_markup(self):
+        """Return scores with highest/lowest marked for strikethrough"""
+        scores = [
+            (self.ref1_score, 'ref1'),
+            (self.ref2_score, 'ref2'),
+            (self.ref3_score, 'ref3'),
+            (self.ref4_score, 'ref4'),
+            (self.ref5_score, 'ref5')
+        ]
+        valid_scores = [(s, n) for s, n in scores if s is not None]
+        if len(valid_scores) < 3:
+            return scores
+        
+        sorted_scores = sorted(valid_scores, key=lambda x: x[0])
+        lowest = sorted_scores[0][1]
+        highest = sorted_scores[-1][1]
+        
+        return [(s, n, n == lowest or n == highest) for s, n in scores]
 
     class Meta:
         unique_together = ('category', 'team')  # Ensure a team cannot be added twice to the same category
 
     def __str__(self):
-        return f"{self.team.name} in {self.category.name}"
+        category = self.category
+        group = category.group if category else None
+        event = category.event if category else None
+        group_name = group.name if group else 'No Group'
+        event_title = event.title if event else 'No Competition'
+        return (
+            f"{self.team.name} - "
+            f"{category.name} - {group_name} - {event_title}"
+        )
 
 
 class Team(models.Model):
@@ -871,7 +911,12 @@ class Team(models.Model):
         return base
 
     def __str__(self):
-        return self.name
+        """Display team with member names for clarity"""
+        members = self.members.select_related('athlete').all()[:3]
+        if not members:
+            return f"Team #{self.pk}"
+        names = [f"{m.athlete.first_name} {m.athlete.last_name}" for m in members]
+        return ", ".join(names)
 
 
 class TeamMember(models.Model):
@@ -890,106 +935,45 @@ class TeamMember(models.Model):
 
 class Category(models.Model):
     """
-    Represents a competition category.
+    Base category model using multi-table inheritance.
+    Specific category types (Solo, Team, Fight) extend this model.
     """
-    CATEGORY_TYPE_CHOICES = [
-        ('solo', 'Solo'),
-        ('teams', 'Teams'),
-        ('fight', 'Fight'),
-    ]
-
     GENDER_CHOICES = [
         ('male', 'Male'),
         ('female', 'Female'),
         ('mixt', 'Mixt'),
     ]
+    
+    STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
 
+    category_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this category (e.g., C1, C2, SOLO-M-1)')
     name = models.CharField(max_length=100)
     event = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='categories', null=True, blank=True)
-    type = models.CharField(max_length=20, choices=CATEGORY_TYPE_CHOICES, default='solo')
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixt')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
+    
+    # M2M relationships shared across all types - defined here but used by child classes
     athletes = models.ManyToManyField('Athlete', through='CategoryAthlete', related_name='categories', blank=True)
     teams = models.ManyToManyField('Team', through='CategoryTeam', related_name='category_teams', blank=True)
-
-    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='first_place_categories')
-    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='second_place_categories')
-    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='third_place_categories')
-
-    first_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='first_place_team_categories')
-    second_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='second_place_team_categories')
-    third_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='third_place_team_categories')
-
+    
     group = models.ForeignKey(
         'Group',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='categories'
-    )  # Each category can be assigned to one group
+    )
 
     class Meta:
         indexes = [
-            models.Index(fields=['event', 'type']),
+            models.Index(fields=['event']),
         ]
 
-
-    def clean(self):
-        """
-        Validate that the awarded individual or team is enrolled in the category and not awarded multiple times.
-        """
-        if self.type == 'teams':
-            # Validate teams
-            awarded_teams = [self.first_place_team, self.second_place_team, self.third_place_team]
-            # Ensure no duplicate awards for teams
-            awarded_teams = list(filter(None, awarded_teams))  # Convert filter result to a list
-            if len(set(awarded_teams)) != len(awarded_teams):
-                raise ValidationError("The same team cannot be awarded multiple times within the same category.")
-
-            # Ensure teams are enrolled before being awarded
-            for team in awarded_teams:
-                if team and not self.teams.filter(pk=team.pk).exists():
-                    raise ValidationError(f"Team '{team}' must be enrolled in the category to be awarded.")
-        elif self.type in ['solo', 'fight']:
-            # Validate individuals
-            awarded_athletes = [self.first_place, self.second_place, self.third_place]
-            # Ensure no duplicate awards for athletes
-            awarded_athletes = list(filter(None, awarded_athletes))  # Convert filter result to a list
-            if len(set(awarded_athletes)) != len(awarded_athletes):
-                raise ValidationError("The same athlete cannot be awarded multiple times within the same category.")
-
-            # Ensure athletes are enrolled before being awarded
-            for athlete in awarded_athletes:
-                if athlete and not CategoryAthlete.objects.filter(category=self, athlete=athlete).exists():
-                    raise ValidationError(f"Athlete '{athlete}' must be enrolled in the category to be awarded.")
-
-
-    def calculate_athlete_scores(self):
-        """
-        Calculate total scores for each athlete in the category.
-        """
-        athlete_scores = {}
-        for score in self.athlete_scores.all():
-            athlete_scores[score.athlete] = athlete_scores.get(score.athlete, 0) + score.score
-        return athlete_scores
-
-    
-    
-
-    def save(self, *args, **kwargs):
-        # Check if the type has changed
-        if self.pk:  # Ensure this is not a new instance
-            old_instance = Category.objects.get(pk=self.pk)
-            if old_instance.type != self.type:
-                # If the type has changed, clear athletes and teams
-                self.athletes.clear()
-                self.teams.clear()
-
-        # Save the instance
-        super().save(*args, **kwargs)
-
-
     def __str__(self):
-        # Prefer an associated Event (new model) if present; fall back to legacy Competition
         associated = getattr(self, 'event', None) or getattr(self, 'competition', None)
         assoc_name = None
         if associated is not None:
@@ -998,11 +982,177 @@ class Category(models.Model):
 
     @property
     def event_or_competition(self):
-        """
-        Compatibility helper: return the linked Event if present, otherwise the legacy Competition.
-        Callers should use this to avoid repeatedly checking both fields while we migrate data.
-        """
+        """Return linked Event or fallback to legacy Competition"""
         return self.event if getattr(self, 'event', None) else self.competition
+    
+    def _generate_category_number(self):
+        """Auto-generate category number based on type and gender"""
+        # Determine category type by checking class name
+        class_name = self.__class__.__name__.lower()
+        
+        if 'solo' in class_name:
+            prefix = 'S' if self.gender == 'male' else ('SF' if self.gender == 'female' else 'SM')
+        elif 'team' in class_name:
+            prefix = 'T' if self.gender == 'male' else ('TF' if self.gender == 'female' else 'TM')
+        elif 'fight' in class_name:
+            prefix = 'F' if self.gender == 'male' else ('FF' if self.gender == 'female' else 'FM')
+        else:
+            prefix = 'C'
+        
+        # Find the highest existing number with this prefix
+        import re
+        existing = Category.objects.filter(
+            category_number__startswith=prefix
+        ).exclude(id=self.id if self.id else None).values_list('category_number', flat=True)
+        
+        max_num = 0
+        for num_str in existing:
+            match = re.search(r'\d+$', num_str)
+            if match:
+                max_num = max(max_num, int(match.group()))
+        
+        return f"{prefix}{max_num + 1}"
+    
+    def save(self, *args, **kwargs):
+        """Auto-generate category_number if not provided"""
+        if not self.category_number:
+            self.category_number = self._generate_category_number()
+        super().save(*args, **kwargs)
+
+
+class SoloCategory(Category):
+    """
+    Solo competition category - individual athletes compete.
+    Athletes enrolled via CategoryAthlete M2M (inherited from Category).
+    """
+    # Individual awards
+    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_first_place_categories')
+    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_second_place_categories')
+    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_third_place_categories')
+
+    class Meta:
+        verbose_name = 'Solo Category'
+        verbose_name_plural = 'Solo Categories'
+
+    def clean(self):
+        """Validate awards are enrolled athletes"""
+        awarded = [self.first_place, self.second_place, self.third_place]
+        awarded = list(filter(None, awarded))
+        
+        if len(set(awarded)) != len(awarded):
+            raise ValidationError("The same athlete cannot be awarded multiple times.")
+        
+        for athlete in awarded:
+            if athlete and not self.athletes.filter(pk=athlete.pk).exists():
+                raise ValidationError(f"Athlete '{athlete}' must be enrolled to be awarded.")
+
+    def calculate_athlete_scores(self):
+        """Calculate total scores for each athlete"""
+        athlete_scores = {}
+        for score in self.athlete_scores.all():
+            athlete_scores[score.athlete] = athlete_scores.get(score.athlete, 0) + score.score
+        return athlete_scores
+
+
+class TeamCategory(Category):
+    """
+    Team competition category - teams of athletes compete.
+    Teams enrolled via CategoryTeam M2M (inherited from Category).
+    """
+    # Team awards
+    first_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='first_place_team_categories')
+    second_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='second_place_team_categories')
+    third_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='third_place_team_categories')
+
+    class Meta:
+        verbose_name = 'Team Category'
+        verbose_name_plural = 'Team Categories'
+
+    def clean(self):
+        """Validate awards are enrolled teams"""
+        awarded = [self.first_place_team, self.second_place_team, self.third_place_team]
+        awarded = list(filter(None, awarded))
+        
+        if len(set(awarded)) != len(awarded):
+            raise ValidationError("The same team cannot be awarded multiple times.")
+        
+        for team in awarded:
+            if team and not self.teams.filter(pk=team.pk).exists():
+                raise ValidationError(f"Team '{team}' must be enrolled to be awarded.")
+
+
+class FightCategory(Category):
+    """
+    Fight competition category - bracket-style matches between individual athletes.
+    Athletes enrolled via CategoryAthlete M2M (inherited from Category).
+    Matches created for bracket generation.
+    """
+    # Fight-specific awards
+    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_first_place_categories')
+    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_second_place_categories')
+    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_third_place_categories')
+
+    class Meta:
+        verbose_name = 'Fight Category'
+        verbose_name_plural = 'Fight Categories'
+
+    def clean(self):
+        """Validate awards are enrolled athletes"""
+        awarded = [self.first_place, self.second_place, self.third_place]
+        awarded = list(filter(None, awarded))
+        
+        if len(set(awarded)) != len(awarded):
+            raise ValidationError("The same athlete cannot be awarded multiple times.")
+        
+        for athlete in awarded:
+            if athlete and not self.athletes.filter(pk=athlete.pk).exists():
+                raise ValidationError(f"Athlete '{athlete}' must be enrolled to be awarded.")
+
+
+class FightAthleteWeight(models.Model):
+    """
+    Track weight-in data for athletes in fight categories.
+    Registered weight: submitted ~1 week before competition
+    Match day weight: measured on competition day
+    Used to detect disqualifications due to excessive weight loss
+    """
+    PLACE_CHOICES = [
+        (1, '1st Place'),
+        (2, '2nd Place'),
+        (3, '3rd Place'),
+    ]
+    
+    category = models.ForeignKey('FightCategory', on_delete=models.CASCADE, related_name='athlete_weights')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='fight_weights')
+    pre_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='Registered Weight (kg)', help_text='Weight submitted ~1 week before competition')
+    current_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='Match Day Weight (kg)', help_text='Weight measured on competition day')
+    weight_loss_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, editable=False, help_text='Calculated percentage weight loss')
+    is_disqualified = models.BooleanField(default=False, help_text='Mark as disqualified if weight exceeds limits')
+    disqualification_reason = models.CharField(max_length=255, blank=True, help_text='Reason for disqualification')
+    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement')
+    recorded_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('category', 'athlete')
+        verbose_name = 'Fight Athlete Weight'
+        verbose_name_plural = 'Fight Athlete Weights'
+
+    def __str__(self):
+        return f"{self.athlete} - {self.category.name}"
+
+    def save(self, *args, **kwargs):
+        """Calculate weight loss percentage before saving"""
+        if self.pre_weight_kg and self.current_weight_kg:
+            loss = self.pre_weight_kg - self.current_weight_kg
+            self.weight_loss_percentage = (loss / self.pre_weight_kg) * 100
+        super().save(*args, **kwargs)
+
+    def get_weight_loss_display(self):
+        """Display weight loss in kg and percentage"""
+        if self.pre_weight_kg and self.current_weight_kg:
+            loss_kg = self.pre_weight_kg - self.current_weight_kg
+            return f"{loss_kg:.2f}kg ({self.weight_loss_percentage:.1f}%)" if self.weight_loss_percentage else f"{loss_kg:.2f}kg"
+        return "Incomplete"
 
 
 class Match(models.Model):
@@ -1011,13 +1161,21 @@ class Match(models.Model):
         ('semi-finals', 'Semi-Finals'),
         ('finals', 'Finals'),
     ]
+    
+    STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
 
+    match_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this match (e.g., M1, M2, F-C1-Q1)')
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='matches')
     match_type = models.CharField(max_length=20, choices=MATCH_TYPE_CHOICES, default='qualifications')
     red_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='red_corner_matches')
     blue_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='blue_corner_matches')
     referees = models.ManyToManyField('Athlete', related_name='refereed_matches', limit_choices_to={'is_referee': True})
     central_referee = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='central_for_matches', limit_choices_to={'is_referee': True})
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
     # Winner is now computed from scoring system - no longer stored
     name = models.CharField(max_length=255, blank=True)  # Automatically generated match name
 
@@ -1096,8 +1254,38 @@ class Match(models.Model):
             return self.blue_corner
         return None
 
+    def _generate_match_number(self):
+        """Auto-generate match number based on category and match type"""
+        type_prefix = {
+            'qualifications': 'Q',
+            'semi-finals': 'SF',
+            'finals': 'F',
+        }.get(self.match_type, 'M')
+        
+        # Count existing matches of this type in this category
+        if self.category_id:
+            count = Match.objects.filter(
+                category_id=self.category_id,
+                match_type=self.match_type
+            ).count() + 1
+            
+            # Include category number if available
+            if self.category and self.category.category_number:
+                return f"{self.category.category_number}-{type_prefix}{count}"
+            else:
+                return f"M{count}"
+        else:
+            # Fallback to simple incrementing
+            last = Match.objects.order_by('-id').first()
+            return f"M{last.id + 1 if last else 1}"
+    
     def save(self, *args, **kwargs):
-        """Generate match name on save"""
+        """Generate match name and number on save"""
+        # Auto-generate match_number if not provided
+        if not self.match_number:
+            self.match_number = self._generate_match_number()
+        
+        # Generate match name
         try:
             red_name = self.red_corner.first_name if self.red_corner_id else ''
             blue_name = self.blue_corner.first_name if self.blue_corner_id else ''
@@ -1108,12 +1296,20 @@ class Match(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.name
+        category = self.category
+        group = category.group if category else None
+        event = category.event if category else None
+        group_name = group.name if group else 'No Group'
+        event_title = event.title if event else 'No Competition'
+        return (
+            f"{self.name} - "
+            f"{category.name} - {group_name} - {event_title}"
+        )
 
 
 class RefereeScore(models.Model):
     match = models.ForeignKey('Match', on_delete=models.CASCADE, related_name='referee_scores')
-    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True})
+    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True}, null=True, blank=True)
     red_corner_score = models.IntegerField(default=0)
     blue_corner_score = models.IntegerField(default=0)
     winner = models.CharField(max_length=10, choices=[('red', 'Red Corner'), ('blue', 'Blue Corner')], null=True, blank=True)
@@ -1193,6 +1389,7 @@ class MatchRefereeAssignment(models.Model):
         blank=True,
         related_name='match_r1_assignments',
         limit_choices_to={'is_referee': True},
+        verbose_name='Referee 1',
         help_text='Referee position 1 (R1)'
     )
     
@@ -1203,6 +1400,7 @@ class MatchRefereeAssignment(models.Model):
         blank=True,
         related_name='match_r2_assignments',
         limit_choices_to={'is_referee': True},
+        verbose_name='Referee 2',
         help_text='Referee position 2 (R2)'
     )
     
@@ -1213,6 +1411,7 @@ class MatchRefereeAssignment(models.Model):
         blank=True,
         related_name='match_r3_assignments',
         limit_choices_to={'is_referee': True},
+        verbose_name='Referee 3',
         help_text='Referee position 3 (R3)'
     )
     
@@ -1223,6 +1422,7 @@ class MatchRefereeAssignment(models.Model):
         blank=True,
         related_name='match_r4_assignments',
         limit_choices_to={'is_referee': True},
+        verbose_name='Referee 4',
         help_text='Referee position 4 (R4)'
     )
     
@@ -1233,6 +1433,7 @@ class MatchRefereeAssignment(models.Model):
         blank=True,
         related_name='match_r5_assignments',
         limit_choices_to={'is_referee': True},
+        verbose_name='Referee 5',
         help_text='Referee position 5 (R5)'
     )
     
@@ -1393,10 +1594,14 @@ class CategoryRefereeAssignment(models.Model):
     def clean(self):
         """Validate referee assignments"""
         super().clean()
-        if self.category and self.category.type not in ['solo', 'teams']:
-            raise ValidationError(
-                f"Referee assignments are only for solo and team categories, not {self.category.type}"
-            )
+        # Check if category is a solo or team category (not Fight)
+        from django.contrib.contenttypes.models import ContentType
+        if self.category:
+            category_type = ContentType.objects.get_for_model(self.category).model
+            if category_type not in ['solocategory', 'teamcategory']:
+                raise ValidationError(
+                    f"Referee assignments are only for solo and team categories, not {category_type}"
+                )
         
         # Check for duplicate referees
         referees = [r for r in [self.referee_1, self.referee_2, self.referee_3, self.referee_4, self.referee_5] if r]
@@ -1555,17 +1760,21 @@ class CategoryAthleteScore(models.Model):
         ]
 
     def __str__(self):
-        if self.type == 'teams' and self.team_name:
-            return f"Team {self.team_name} - {self.category.name}"
-        elif self.athlete:
-            if self.submitted_by_athlete:
-                placement_info = f"claims {self.placement_claimed}" if self.placement_claimed else "no placement claimed"
-                return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Athlete {placement_info})"
-            else:
-                referee_name = f"{self.referee.first_name} {self.referee.last_name}" if self.referee else "N/A"
-                return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Referee: {referee_name}, Score: {self.score})"
+        category = self.category
+        group = category.group if category else None
+        event = category.event if category else None
+        group_name = group.name if group else 'No Group'
+        event_title = event.title if event else 'No Competition'
+        
+        if self.athlete:
+            return (
+                f"{self.athlete.first_name} {self.athlete.last_name} - "
+                f"{category.name} - {group_name} - {event_title}"
+            )
+        elif self.type == 'teams' and self.team_name:
+            return f"Team {self.team_name} - {category.name} - {group_name} - {event_title}"
         else:
-            return f"Score for {self.category.name} (No athlete)"
+            return f"{category.name} - {group_name} - {event_title}"
     
     @property
     def calculated_score(self):
@@ -1696,14 +1905,6 @@ class CategoryAthleteScore(models.Model):
         # Auto-populate Category awards if placement is claimed
         if self.submitted_by_athlete and self.placement_claimed:
             self._update_category_awards()
-        
-        # Log the approval
-        CategoryScoreActivity.objects.create(
-            score=self,
-            action='approved',
-            performed_by=admin_user,
-            notes=f'Result approved and category awards updated. {notes}' if notes else 'Result approved and category awards updated.'
-        )
         
         # Create notification for result approval
         from .notification_utils import create_result_status_notification
@@ -1872,14 +2073,6 @@ class CategoryAthleteScore(models.Model):
         self.admin_notes = notes
         self.save()
         
-        # Log the rejection
-        CategoryScoreActivity.objects.create(
-            score=self,
-            action='rejected',
-            performed_by=admin_user,
-            notes=f'Result rejected. {notes}' if notes else 'Result rejected.'
-        )
-        
         # Create notification for result rejection
         from .notification_utils import create_result_status_notification
         create_result_status_notification(self, 'rejected', admin_user, notes)
@@ -1893,14 +2086,6 @@ class CategoryAthleteScore(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
-        
-        # Log the revision request
-        CategoryScoreActivity.objects.create(
-            score=self,
-            action='revision_requested',
-            performed_by=admin_user,
-            notes=f'Revision requested. {notes}' if notes else 'Revision requested.'
-        )
         
         # Create notification for revision request
         from .notification_utils import create_result_status_notification
@@ -1933,48 +2118,29 @@ class CategoryTeamScore(models.Model):
 #     pass
 
 
-class CategoryScoreActivity(models.Model):
-    """
-    Activity log for category athlete score approvals and changes.
-    """
-    ACTION_CHOICES = [
-        ('submitted', 'Result Submitted'),
-        ('approved', 'Result Approved'),
-        ('rejected', 'Result Rejected'),
-        ('revision_requested', 'Revision Requested'),
-        ('updated', 'Result Updated'),
-        ('resubmitted', 'Result Resubmitted'),
-        ('deleted', 'Result Deleted'),
-    ]
-    
-    score = models.ForeignKey('CategoryAthleteScore', on_delete=models.CASCADE, related_name='activity_log')
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
-    performed_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    notes = models.TextField(blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-timestamp']
-        verbose_name = _('Score Activity')
-        verbose_name_plural = _('Score Activities')
-    
-    def __str__(self):
-        return f"{self.get_action_display()} - {self.score} by {self.performed_by}"
-
-
-
-
 class Group(models.Model):
     """
-    Represents a group within an event/competition.
+    Represents an age-based group within an event/competition.
+    Groups organize categories by athlete birth year ranges.
+    Example: Athletes born 2015-2018
     """
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, help_text="Group name (e.g., 'U12 Beginners', 'Youth 2015-2018')")
     event = models.ForeignKey(
         'landing.Event',
         on_delete=models.CASCADE,
         related_name='groups',
         null=True,
         blank=True
+    )
+    birth_year_start = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Starting birth year for this age group (e.g., 2015)"
+    )
+    birth_year_end = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Ending birth year for this age group (e.g., 2018)"
     )
 
     class Meta:
@@ -1985,18 +2151,35 @@ class Group(models.Model):
                 condition=models.Q(event__isnull=False)
             ),
         ]
+        ordering = ['event', '-birth_year_end', 'name']
 
     def __str__(self):
+        age_range = ""
+        if self.birth_year_start and self.birth_year_end:
+            age_range = f" [{self.birth_year_start}-{self.birth_year_end}]"
+        elif self.birth_year_start:
+            age_range = f" [{self.birth_year_start}+]"
+        elif self.birth_year_end:
+            age_range = f" [up to {self.birth_year_end}]"
+        
         if self.event:
-            return f"{self.name} ({self.event.title})"
-        return f"{self.name} (No Event)"
+            return f"{self.name}{age_range} ({self.event.title})"
+        return f"{self.name}{age_range} (No Event)"
+    
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.birth_year_start and self.birth_year_end:
+            if self.birth_year_start > self.birth_year_end:
+                raise ValidationError({
+                    'birth_year_start': 'Start year must be before or equal to end year'
+                })
 
  
 # FrontendTheme model removed — dynamic theme management has been deleted.
 # The database migration that originally created the model remains; a
 # subsequent migration will drop the table when applied.
 
-# AthleteProfile and AthleteProfileActivity models removed - functionality consolidated into Athlete and AthleteActivity models
+# AthleteActivity and CategoryScoreActivity models removed - activity tracking eliminated per business decision
 
 
 class SupporterAthleteRelation(models.Model):
@@ -2205,3 +2388,223 @@ def create_notification_settings(sender, instance, created, **kwargs):
     """Create notification settings when a new user is created"""
     if created:
         NotificationSettings.objects.create(user=instance)
+
+
+class MatchVideoRecording(models.Model):
+    """
+    Video recording for individual Fight category matches.
+    Each match can have its own video recording.
+    All fields optional to allow gradual video addition.
+    """
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='video_recordings',
+        help_text='The match this video records'
+    )
+    
+    # Video storage - either file upload OR external URL
+    video_file = models.FileField(
+        upload_to='match_videos/%Y/%m/%d/',
+        blank=True,
+        null=True,
+        help_text='Uploaded video file (MP4, WebM, etc.)'
+    )
+    
+    video_url = models.URLField(
+        blank=True,
+        null=True,
+        max_length=500,
+        help_text='External video URL (YouTube, Vimeo, streaming service)'
+    )
+    
+    # Video metadata
+    duration_seconds = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text='Total video duration in seconds'
+    )
+    
+    recorded_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='When the video was recorded'
+    )
+    
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When video was uploaded to system'
+    )
+    
+    # Access control
+    is_public = models.BooleanField(
+        default=False,
+        help_text='Whether video is publicly accessible'
+    )
+    
+    class Meta:
+        verbose_name = 'Match Video Recording'
+        verbose_name_plural = 'Match Video Recordings'
+        ordering = ['-recorded_at', '-uploaded_at']
+    
+    def __str__(self):
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
+        return f"{self.match.name} ({date})"
+    
+    def clean(self):
+        """Validate that at least one video source is provided"""
+        if not self.video_file and not self.video_url:
+            raise ValidationError("Either video file or video URL must be provided")
+
+
+class AthletePerformanceVideo(models.Model):
+    """
+    Video recording of an individual athlete's performance in a Solo category.
+    Links to CategoryAthleteScore for individual athlete results.
+    """
+    athlete_score = models.OneToOneField(
+        'CategoryAthleteScore',
+        on_delete=models.CASCADE,
+        related_name='performance_video',
+        verbose_name='Solo category',
+        help_text='The athlete score entry this video documents'
+    )
+    
+    # Video storage - either file upload OR external URL
+    video_file = models.FileField(
+        upload_to='athlete_videos/%Y/%m/%d/',
+        blank=True,
+        null=True,
+        help_text='Uploaded video file (MP4, WebM, etc.)'
+    )
+    
+    video_url = models.URLField(
+        blank=True,
+        null=True,
+        max_length=500,
+        help_text='External video URL (YouTube, Vimeo, streaming service)'
+    )
+    
+    duration_seconds = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text='Total video duration in seconds'
+    )
+    
+    recorded_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='When the video was recorded'
+    )
+    
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When video was uploaded to system'
+    )
+    
+    # Access control
+    is_public = models.BooleanField(
+        default=False,
+        help_text='Whether video is publicly accessible'
+    )
+    
+    class Meta:
+        verbose_name = 'Solo Performance Video'
+        verbose_name_plural = 'Solo Performance Videos'
+        ordering = ['-recorded_at', '-uploaded_at']
+    
+    def __str__(self):
+        athlete = self.athlete_score.athlete
+        category = self.athlete_score.category
+        group = category.group
+        event = category.event
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
+        group_name = group.name if group else 'No Group'
+        event_title = event.title if event else 'No Competition'
+        return (
+            f"{athlete.first_name} {athlete.last_name} - "
+            f"{category.name} / {group_name} / {event_title} ({date})"
+        )
+    
+    def clean(self):
+        """Validate that at least one video source is provided"""
+        if not self.video_file and not self.video_url:
+            raise ValidationError("Either video file or video URL must be provided")
+
+
+class TeamPerformanceVideo(models.Model):
+    """
+    Video recording of a team's performance in a Team category.
+    Links to CategoryTeam for team results.
+    """
+    category_team = models.OneToOneField(
+        'CategoryTeam',
+        on_delete=models.CASCADE,
+        related_name='performance_video',
+        help_text='The team enrollment this video documents'
+    )
+    
+    # Video storage - either file upload OR external URL
+    video_file = models.FileField(
+        upload_to='team_videos/%Y/%m/%d/',
+        blank=True,
+        null=True,
+        help_text='Uploaded video file (MP4, WebM, etc.)'
+    )
+    
+    video_url = models.URLField(
+        blank=True,
+        null=True,
+        max_length=500,
+        help_text='External video URL (YouTube, Vimeo, streaming service)'
+    )
+    
+    duration_seconds = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text='Total video duration in seconds'
+    )
+    
+    recorded_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='When the video was recorded'
+    )
+    
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When video was uploaded to system'
+    )
+    
+    # Access control
+    is_public = models.BooleanField(
+        default=False,
+        help_text='Whether video is publicly accessible'
+    )
+    
+    class Meta:
+        verbose_name = 'Team Performance Video'
+        verbose_name_plural = 'Team Performance Videos'
+        ordering = ['-recorded_at', '-uploaded_at']
+    
+    def __str__(self):
+        team = self.category_team.team
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
+        return f"{team.name} ({date})"
+    
+    def clean(self):
+        """Validate that at least one video source is provided"""
+        if not self.video_file and not self.video_url:
+            raise ValidationError("Either video file or video URL must be provided")
+
+
+# DISABLED FEATURES (for future use):
+# MatchVideoSegment - Timestamp segments within a match video for specific rounds/periods
+# RefereePointEventTimestamp - Links a specific referee point event to a video timestamp
+# These models are commented out because they are not needed yet.
+# To re-enable: uncomment and create a migration.
+#
+# class MatchVideoSegment(models.Model):
+#     """Timestamp segments within a match video for specific rounds/periods."""
+#     video_recording = models.ForeignKey('MatchVideoRecording', on_delete=models.CASCADE, related_name='segments')
+#     round_number = models.IntegerField(help_text='Round number (1, 2, 3, etc.)')

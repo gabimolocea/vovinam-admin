@@ -19,6 +19,7 @@ from ui.categories_tab import CategoriesTab
 from ui.matches_tab import MatchesTab
 from ui.clubs_tab import ClubsTab
 from ui.grades_tab import GradesTab
+from ui.brackets_tab import BracketsTab
 from ui.theme import ThemeManager
 
 class MainWindow(QMainWindow):
@@ -73,6 +74,10 @@ class MainWindow(QMainWindow):
         # Categories tab
         self.categories_tab = CategoriesTab(self.db)
         self.tabs.addTab(self.categories_tab, '📋 Categories')
+        
+        # Brackets tab
+        self.brackets_tab = BracketsTab(self.db)
+        self.tabs.addTab(self.brackets_tab, '🏁 Brackets')
         
         # Matches tab
         self.matches_tab = MatchesTab(self.db)

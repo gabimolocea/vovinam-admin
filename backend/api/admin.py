@@ -18,8 +18,6 @@ from .models import (
     City,
     Club,
     Athlete,
-    AthleteActivity,
-    CategoryScoreActivity,
     SupporterAthleteRelation,
     TrainingSeminarParticipation,
     Grade,
@@ -27,6 +25,10 @@ from .models import (
     Title,
     FederationRole,
     Category,
+    SoloCategory,
+    TeamCategory,
+    FightCategory,
+    FightAthleteWeight,
     Team,
     CategoryTeam,
     CategoryAthlete,
@@ -36,19 +38,41 @@ from .models import (
     CategoryAthleteScore,
     CategoryRefereeScore,
     CategoryRefereeAssignment,
+    MatchRefereeAssignment,
     CategoryTeamScore,
-    # CategoryTeamAthleteScore, # deprecated - consolidated into CategoryAthleteScore
     TeamMember,
     Group,
+    MatchVideoRecording,
+    AthletePerformanceVideo,
+    TeamPerformanceVideo,
 )
 
 # Optional grouping configuration used by the admin grouping template tag.
 # Map a user-facing group title to a list of model names (object names).
 # Update this dict to control how models under the `api` app are grouped.
 ADMIN_MODEL_GROUPS = {
-    'People': ['Athlete', 'User', 'Club'],
-    'Events & Content': ['Event', 'NewsPost'],
-    'Administration': ['City', 'Title', 'FederationRole'],
+    'General Management': [
+        'User',
+        'Athlete',
+        'Club',
+        'City',
+        'Title',
+        'FederationRole',
+        'Grade',
+        'GradeHistory',
+        'Group',
+        'SupporterAthleteRelation',
+    ],
+    'Competition Specific': [
+        'SoloCategory',
+        'TeamCategory',
+        'FightCategory',
+        'FightAthleteWeight',
+        'Team',
+        'Match',
+        'CategoryAthleteScore',
+        'MatchVideoRecording',
+    ],
 }
 # NOTE: Event proxy registration moved further down after inlines are defined
 # so we can inject participation inlines into the Event admin. See below.
@@ -84,9 +108,51 @@ class AthleteInline(admin.TabularInline):
         return False
 
 
+class CategoryAthleteInlineForm(forms.ModelForm):
+    class Meta:
+        model = CategoryAthlete
+        fields = '__all__'
+    
+    def save(self, commit=True):
+        # Add debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        instance = super().save(commit=False)
+        logger.error(f"=== CategoryAthleteInlineForm.save() ===")
+        logger.error(f"  category_id: {instance.category_id}")
+        logger.error(f"  athlete_id: {instance.athlete_id}")
+        logger.error(f"  commit: {commit}")
+        
+        # Verify both FKs exist before saving
+        if instance.category_id:
+            from .models import Category
+            if not Category.objects.filter(pk=instance.category_id).exists():
+                logger.error(f"ERROR: Category {instance.category_id} does not exist!")
+                raise ValidationError(f"Category with ID {instance.category_id} does not exist")
+                
+        if instance.athlete_id:
+            if not Athlete.objects.filter(pk=instance.athlete_id).exists():
+                logger.error(f"ERROR: Athlete {instance.athlete_id} does not exist!")
+                raise ValidationError(f"Athlete with ID {instance.athlete_id} does not exist")
+        
+        if commit:
+            try:
+                logger.error("Attempting to save...")
+                instance.save()
+                logger.error("SUCCESS!")
+            except Exception as e:
+                logger.error(f"SAVE ERROR: {e}")
+                raise
+        
+        return instance
+
+
 class CategoryAthleteInline(admin.TabularInline):
     model = CategoryAthlete
+    form = CategoryAthleteInlineForm
     extra = 0
+    fields = ('athlete', 'place')
     autocomplete_fields = ['athlete']  # Enable autocomplete for the athlete field
     verbose_name = _('Athlete')
     verbose_name_plural = _('Athletes')
@@ -95,22 +161,30 @@ class CategoryAthleteInline(admin.TabularInline):
         """
         Dynamically adjust the inline title and fields based on the parent model.
         """
-        if isinstance(obj, Category):
-            if obj.type == 'fight':
+        if obj:
+            from .models import FightCategory, SoloCategory
+            if isinstance(obj, FightCategory):
                 self.verbose_name = _('Athlete')
                 self.verbose_name_plural = _('ENROLLED ATHLETES')
-                self.fields = ('athlete', 'weight')  # Only include actual fields from the model
-                self.readonly_fields = ('category_with_event', 'category_type')  # Computed fields are read-only
-            elif obj.type == 'solo':
+                self.fields = ('athlete', 'place')
+            elif isinstance(obj, SoloCategory):
                 self.verbose_name = _('Enrolled Athlete')
                 self.verbose_name_plural = _('Enrolled Athletes')
-
+                self.fields = ('athlete', 'ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score', 'total_display', 'place', 'disqualified')
+                self.readonly_fields = ('total_display',)
             else:
-                self.verbose_name = _('Event History')
-                self.verbose_name_plural = _('Add another Event History')
-                self.fields = ('category_with_event', 'category_type', 'weight')  # Only include actual fields from the model
-                self.readonly_fields = ('athlete_with_club', 'category_with_event', 'category_type', 'weight')  # Computed fields are read-only
+                # For generic Category views (shouldn't happen often)
+                self.verbose_name = _('Athlete')
+                self.verbose_name_plural = _('Athletes')
+                self.fields = ('athlete', 'place')
         return super().get_formset(request, obj, **kwargs)
+    
+    def total_display(self, obj):
+        """Display calculated total score"""
+        if obj and obj.total_score is not None:
+            return f"{obj.total_score:.2f}"
+        return "-"
+    total_display.short_description = 'Total'
 
     def athlete_with_club(self, obj):
         """
@@ -136,7 +210,14 @@ class CategoryAthleteInline(admin.TabularInline):
         """
         Display the type of the category.
         """
-        return obj.category.type.capitalize()
+        from .models import FightCategory, SoloCategory, TeamCategory
+        if isinstance(obj.category, FightCategory):
+            return 'Fight'
+        elif isinstance(obj.category, SoloCategory):
+            return 'Solo'
+        elif isinstance(obj.category, TeamCategory):
+            return 'Team'
+        return 'Unknown'
     category_type.short_description = _('Category Type')
 
 
@@ -685,7 +766,6 @@ class MatchInline(admin.TabularInline):
 class RefereeScoreInline(admin.TabularInline):
     model = RefereeScore
     extra = 0
-    autocomplete_fields = ['referee']
     # Show per-round columns (3 rounds default) plus totals and adjusted totals
     # Use a custom form so per-round fields are editable and saved as events.
     class RefereeScoreForm(forms.ModelForm):
@@ -698,16 +778,20 @@ class RefereeScoreInline(admin.TabularInline):
 
         class Meta:
             model = RefereeScore
-            # Make total fields read-only in the form; per-round inputs are provided separately
             fields = ('referee', 'winner')
-
+        
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
+            # Make referee not required to allow null (if field exists)
+            if 'referee' in self.fields:
+                self.fields['referee'].required = False
+                self.fields['referee'].widget.attrs = {'style': 'width: 150px;'}
             try:
                 # Populate per-round initial values from existing score events
                 inst = getattr(self, 'instance', None)
                 if inst and getattr(inst, 'pk', None):
                     from .models import RefereePointEvent
+                    
                     evs = RefereePointEvent.objects.filter(match=inst.match, referee=inst.referee, event_type='score')
                     # Prefer metadata stored round, default 1
                     by_round = {}
@@ -726,21 +810,64 @@ class RefereeScoreInline(admin.TabularInline):
                             self.fields.get(f'blue_round_{rd}').initial = r.get('blue')
             except Exception:
                 pass
+        
+        def save(self, commit=True):
+            """Auto-populate referee from ref_position if not already set"""
+            instance = super().save(commit=False)
+            
+            # If ref_position is selected and referee is not set, set it from MatchRefereeAssignment
+            if self.cleaned_data.get('ref_position') and not instance.referee_id:
+                try:
+                    from .models import MatchRefereeAssignment
+                    pos = int(self.cleaned_data['ref_position'])
+                    assignment = MatchRefereeAssignment.objects.get(match=instance.match)
+                    ref_field = f'referee_{pos}'
+                    instance.referee = getattr(assignment, ref_field, None)
+                except:
+                    pass
+            
+            if commit:
+                instance.save()
+            return instance
 
     form = RefereeScoreForm
+    extra = 5
+    max_num = 5
+    can_delete = False
+    verbose_name = ''
+    verbose_name_plural = 'Referee Scores'
     fields = (
         'referee',
-        'red_round_1', 'red_round_2', 'red_round_3', 'red_total',
-        'blue_round_1', 'blue_round_2', 'blue_round_3', 'blue_total',
+        'red_round_1', 'blue_round_1',  # ROUND 1
+        'red_round_2', 'blue_round_2',  # ROUND 2
+        'red_round_3', 'blue_round_3',  # ROUND 3
+        'red_total', 'blue_total',
         'winner_combined',
     )
+    autocomplete_fields = ['referee']
     # per-round inputs are editable on the form; totals and computed displays are read-only
     readonly_fields = ('red_total', 'blue_total', 'winner_combined')
-
-    class Media:
-        css = {
-            'all': ('admin/css/referee_rounds_narrow.css',)
-        }
+    
+    def ref_number(self, obj):
+        """Display REF 1-5 based on the form position"""
+        if obj and hasattr(obj, 'pk') and obj.pk:
+            # For existing objects, try to determine position from match assignment
+            try:
+                from .models import MatchRefereeAssignment
+                assignment = MatchRefereeAssignment.objects.get(match=obj.match)
+                for i in range(1, 6):
+                    if getattr(assignment, f'referee_{i}') == obj.referee:
+                        return f'REF {i}'
+            except:
+                pass
+        # For new forms or unknown position, return empty (will be set via CSS counter)
+        return ''
+    ref_number.short_description = 'REFEREE'
+    
+    def get_formset(self, request, obj=None, **kwargs):
+        """Customize formset to always show exactly 5 forms"""
+        formset = super().get_formset(request, obj, **kwargs)
+        return formset
 
     def red_total(self, obj):
         """Computed RED TOTAL: sum of round scores minus central penalties (read-only)."""
@@ -760,15 +887,15 @@ class RefereeScoreInline(admin.TabularInline):
 
     def red_round_1(self, obj):
         return self._red_round(obj, 1)
-    red_round_1.short_description = _('Red R1')
+    red_round_1.short_description = _('RED')
 
     def red_round_2(self, obj):
         return self._red_round(obj, 2)
-    red_round_2.short_description = _('Red R2')
+    red_round_2.short_description = _('RED')
 
     def red_round_3(self, obj):
         return self._red_round(obj, 3)
-    red_round_3.short_description = _('Red R3')
+    red_round_3.short_description = _('RED')
 
     def _red_round(self, obj, rd):
         try:
@@ -802,15 +929,15 @@ class RefereeScoreInline(admin.TabularInline):
 
     def blue_round_1(self, obj):
         return self._blue_round(obj, 1)
-    blue_round_1.short_description = _('Blue R1')
+    blue_round_1.short_description = _('BLUE')
 
     def blue_round_2(self, obj):
         return self._blue_round(obj, 2)
-    blue_round_2.short_description = _('Blue R2')
+    blue_round_2.short_description = _('BLUE')
 
     def blue_round_3(self, obj):
         return self._blue_round(obj, 3)
-    blue_round_3.short_description = _('Blue R3')
+    blue_round_3.short_description = _('BLUE')
 
     def _blue_round(self, obj, rd):
         try:
@@ -917,6 +1044,64 @@ class CentralPenaltyInlineFormSet(forms.models.BaseInlineFormSet):
         return super().save_existing(form, obj, commit=commit)
 
 
+class CentralPenaltyInlineForm(forms.ModelForm):
+    """Custom form with intuitive fields for central penalty metadata."""
+    
+    penalty_round = forms.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=3,
+        label='Round',
+        help_text='Which round (1, 2, or 3)',
+        widget=forms.NumberInput(attrs={'style': 'width: 80px;'})
+    )
+    
+    penalty_reason = forms.CharField(
+        required=False,
+        max_length=200,
+        label='Reason',
+        help_text='E.g., "excessive contact", "illegal technique", "unsportsmanlike conduct"',
+        widget=forms.TextInput(attrs={'style': 'width: 250px;', 'placeholder': 'excessive contact'})
+    )
+    
+    class Meta:
+        model = RefereePointEvent
+        fields = '__all__'
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Pre-populate fields from metadata if editing existing object
+        if self.instance and self.instance.pk and self.instance.metadata:
+            metadata = self.instance.metadata
+            if isinstance(metadata, dict):
+                self.initial['penalty_round'] = metadata.get('round')
+                self.initial['penalty_reason'] = metadata.get('reason')
+    
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        
+        # Build metadata JSON from intuitive fields
+        metadata = instance.metadata or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        
+        # Set values from form fields
+        if self.cleaned_data.get('penalty_round'):
+            metadata['round'] = self.cleaned_data['penalty_round']
+        if self.cleaned_data.get('penalty_reason'):
+            metadata['reason'] = self.cleaned_data['penalty_reason']
+        
+        # Always mark as central penalty and from admin
+        metadata['central'] = True
+        metadata['origin'] = 'admin'
+        
+        instance.metadata = metadata
+        
+        if commit:
+            instance.save()
+        return instance
+
+
 class CentralPenaltyInline(admin.TabularInline):
     """Editable inline on Match for creating and editing central penalty events.
 
@@ -924,8 +1109,9 @@ class CentralPenaltyInline(admin.TabularInline):
     central in metadata so the scoring helper treats them accordingly.
     """
     model = RefereePointEvent
+    form = CentralPenaltyInlineForm
     extra = 1
-    fields = ('referee', 'side', 'points', 'metadata', 'created_by', 'timestamp')
+    fields = ('referee', 'side', 'points', 'penalty_round', 'penalty_reason', 'created_by', 'timestamp')
     readonly_fields = ('created_by', 'timestamp')
     formset = CentralPenaltyInlineFormSet
     can_delete = True
@@ -939,9 +1125,36 @@ class CentralPenaltyInline(admin.TabularInline):
         except Exception:
             return qs.none()
 
-class CategoryRefereeAssignmentInline(admin.StackedInline):
+class CategoryRefereeAssignmentForm(forms.ModelForm):
+    """Custom form to handle polymorphic category assignment"""
+    class Meta:
+        model = CategoryRefereeAssignment
+        fields = '__all__'
+    
+    def clean(self):
+        """Validate all referee assignments"""
+        cleaned_data = super().clean()
+        # Check that all referee foreign keys reference valid athletes
+        for i in range(1, 6):
+            ref_field = f'referee_{i}'
+            ref_id = cleaned_data.get(ref_field)
+            if ref_id:
+                # Verify the referee exists
+                if not Athlete.objects.filter(pk=ref_id.pk).exists():
+                    raise ValidationError(f"Referee {i} (ID {ref_id.pk}) does not exist in database")
+        return cleaned_data
+    
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if commit:
+            instance.save()
+        return instance
+
+
+class CategoryRefereeAssignmentInline(admin.TabularInline):
     """Inline to assign 5 referees (R1-R5) to a category"""
     model = CategoryRefereeAssignment
+    form = CategoryRefereeAssignmentForm
     extra = 0
     max_num = 1
     can_delete = False
@@ -951,9 +1164,9 @@ class CategoryRefereeAssignmentInline(admin.StackedInline):
     verbose_name_plural = _('Assign 5 Referees (R1, R2, R3, R4, R5)')
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        """Filter autocomplete to show only athletes with is_referee=True"""
+        """Filter autocomplete to show only approved athletes with is_referee=True"""
         if db_field.name.startswith('referee_'):
-            kwargs["queryset"] = Athlete.objects.filter(is_referee=True)
+            kwargs["queryset"] = Athlete.objects.filter(is_referee=True, status='approved')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class CategoryAthleteScoreInlineForm(forms.ModelForm):
@@ -1028,54 +1241,9 @@ class CategoryAthleteScoreInline(admin.TabularInline):
         if obj.pk:
             return obj.calculated_score or '-'
         return '-'
-    
-    def save_formset(self, request, form, formset, change):
-        """Save the formset and update CategoryRefereeScore records"""
-        # Save instances without committing to DB yet
-        instances = formset.save(commit=False)
-        
-        # First pass: save all instances with proper category and type
-        for instance in instances:
-            if not instance.category_id:
-                instance.category = form.instance
-            if not instance.type:
-                instance.type = 'solo'
-            instance.save()
-        
-        # Second pass: handle referee scores
-        for form_instance in formset.forms:
-            if not form_instance.cleaned_data or form_instance.cleaned_data.get('DELETE', False):
-                continue
-            
-            instance = form_instance.instance
-            if not instance.pk:
-                continue
-                
-            # Get the category's referee assignment and save scores
-            try:
-                referee_assignment = CategoryRefereeAssignment.objects.get(category=instance.category)
-                
-                for i in range(1, 6):
-                    referee = getattr(referee_assignment, f'referee_{i}', None)
-                    score_value = form_instance.cleaned_data.get(f'r{i}_score_field')
-                    
-                    if referee and score_value is not None:
-                        CategoryRefereeScore.objects.update_or_create(
-                            athlete_score=instance,
-                            referee=referee,
-                            defaults={'score': score_value}
-                        )
-            except CategoryRefereeAssignment.DoesNotExist:
-                pass
-        
-        # Delete any instances marked for deletion
-        for obj in formset.deleted_objects:
-            obj.delete()
-        
-        formset.save_m2m()
 
 class CategoryTeamScoreInlineForm(forms.ModelForm):
-    """Custom form for CategoryTeamScore (CategoryAthleteScore with type='teams') inline"""
+    """Custom form for team enrollment (CategoryAthleteScore with type='teams')"""
     team_name_select = forms.ChoiceField(
         required=False,
         label='Team Name',
@@ -1084,7 +1252,10 @@ class CategoryTeamScoreInlineForm(forms.ModelForm):
     
     class Meta:
         model = CategoryAthleteScore
-        fields = '__all__'
+        fields = ('team_name', 'status', 'notes')
+        widgets = {
+            'notes': forms.Textarea(attrs={'rows': 2, 'cols': 40}),
+        }
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1108,10 +1279,6 @@ class CategoryTeamScoreInlineForm(forms.ModelForm):
         # Pre-select current team name if editing
         if instance and instance.team_name:
             self.fields['team_name_select'].initial = instance.team_name
-        
-        # Hide the original team_name field
-        if 'team_name' in self.fields:
-            self.fields['team_name'].widget = forms.HiddenInput()
     
     def clean(self):
         cleaned_data = super().clean()
@@ -1143,14 +1310,15 @@ class CategoryTeamScoreInlineForm(forms.ModelForm):
 
 
 class CategoryTeamScoreInline(admin.TabularInline):
+    """Inline to add team entries to a team category"""
     model = CategoryAthleteScore
     form = CategoryTeamScoreInlineForm
     extra = 1
-    fields = ('team_name_select', 'get_r1_action', 'get_r2_action', 'get_r3_action', 'get_r4_action', 'get_r5_action', 'get_total_score', 'status')
-    readonly_fields = ('get_r1_action', 'get_r2_action', 'get_r3_action', 'get_r4_action', 'get_r5_action', 'get_total_score')
+    fields = ('team_name_select', 'get_r1_score', 'get_r2_score', 'get_r3_score', 'get_r4_score', 'get_r5_score', 'get_total_score', 'status', 'notes')
+    readonly_fields = ('get_r1_score', 'get_r2_score', 'get_r3_score', 'get_r4_score', 'get_r5_score', 'get_total_score')
     ordering = ('-submitted_date',)
-    verbose_name = _('Team Score')
-    verbose_name_plural = _('Team Scores (Teams Category)')
+    verbose_name = _('Team Entry')
+    verbose_name_plural = _('Team Entries')
     fk_name = 'category'
     
     def get_queryset(self, request):
@@ -1178,75 +1346,62 @@ class CategoryTeamScoreInline(admin.TabularInline):
             formset.form.__init__ = patched_init
         return formset
     
-    @admin.display(description='Team Members')
-    def get_team_members_display(self, obj):
-        """Display team members"""
-        if obj.pk and obj.team_members.exists():
-            members = obj.team_members.all()[:3]
-            names = [f"{m.first_name} {m.last_name}" for m in members]
-            result = ", ".join(names)
-            if obj.team_members.count() > 3:
-                result += f" (+{obj.team_members.count() - 3} more)"
-            return result
+    @admin.display(description='R1')
+    def get_r1_score(self, obj):
+        """Display R1 score with edit link"""
+        if obj.pk:
+            score = obj.get_referee_score(1)
+            if score is not None:
+                return format_html('{:.2f}', score)
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+                             '/admin/api/categoryscore/add/', obj.pk)
         return '-'
     
-    def _get_referee_action(self, obj, position):
-        """Generate Add Score button or display score for a referee position"""
-        if not obj.pk or not obj.category:
-            return format_html('<span style="color: #999;">Save first</span>')
-        
-        # Get the referee assignment for this category
-        try:
-            from .models import CategoryRefereeAssignment
-            assignment = CategoryRefereeAssignment.objects.get(category=obj.category)
-            referee = getattr(assignment, f'referee_{position}', None)
-            if not referee:
-                return format_html('<span style="color: #999;">No R{}</span>', position)
-        except CategoryRefereeAssignment.DoesNotExist:
-            return format_html('<span style="color: #999;">No referees</span>')
-        except Exception as e:
-            return format_html('<span style="color: red;">Error</span>')
-        
-        # Check if score exists
-        score = obj.get_referee_score(position)
-        
-        if score is not None:
-            return format_html('{:.2f}', score)
-        else:
-            # Generate "Add Score" link to Score History with pre-filled params
-            from django.urls import reverse
-            from urllib.parse import urlencode
-            url = reverse('admin:api_scorehistoryproxy_add')
-            params = urlencode({
-                'athlete_score': obj.pk,
-                'referee_position': f'R{position}',
-            })
-            return format_html(
-                '<a class="button" href="{}?{}" style="padding: 5px 10px; background: #417690; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">Add Score</a>',
-                url, params
-            )
-    
-    @admin.display(description='R1')
-    def get_r1_action(self, obj):
-        return self._get_referee_action(obj, 1)
-    
     @admin.display(description='R2')
-    def get_r2_action(self, obj):
-        return self._get_referee_action(obj, 2)
+    def get_r2_score(self, obj):
+        """Display R2 score with edit link"""
+        if obj.pk:
+            score = obj.get_referee_score(2)
+            if score is not None:
+                return format_html('{:.2f}', score)
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+                             '/admin/api/categoryscore/add/', obj.pk)
+        return '-'
     
     @admin.display(description='R3')
-    def get_r3_action(self, obj):
-        return self._get_referee_action(obj, 3)
+    def get_r3_score(self, obj):
+        """Display R3 score with edit link"""
+        if obj.pk:
+            score = obj.get_referee_score(3)
+            if score is not None:
+                return format_html('{:.2f}', score)
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+                             '/admin/api/categoryscore/add/', obj.pk)
+        return '-'
     
     @admin.display(description='R4')
-    def get_r4_action(self, obj):
-        return self._get_referee_action(obj, 4)
+    def get_r4_score(self, obj):
+        """Display R4 score with edit link"""
+        if obj.pk:
+            score = obj.get_referee_score(4)
+            if score is not None:
+                return format_html('{:.2f}', score)
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+                             '/admin/api/categoryscore/add/', obj.pk)
+        return '-'
     
     @admin.display(description='R5')
-    def get_r5_action(self, obj):
-        return self._get_referee_action(obj, 5)
+    def get_r5_score(self, obj):
+        """Display R5 score with edit link"""
+        if obj.pk:
+            score = obj.get_referee_score(5)
+            if score is not None:
+                return format_html('{:.2f}', score)
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+                             '/admin/api/categoryscore/add/', obj.pk)
+        return '-'
     
-    @admin.display(description='Total Score')
+    @admin.display(description='Total')
     def get_total_score(self, obj):
         """Display the calculated total score"""
         if obj.pk:
@@ -1254,7 +1409,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
         return '-'
     
     def save_formset(self, request, form, formset, change):
-        """Save the formset"""
+        """Save team entries and auto-create empty referee scores"""
         # Save instances without committing to DB yet
         instances = formset.save(commit=False)
         
@@ -1264,7 +1419,6 @@ class CategoryTeamScoreInline(admin.TabularInline):
                 instance.category = form.instance
             if not instance.type:
                 instance.type = 'teams'
-            
             instance.save()
         
         # Delete any instances marked for deletion
@@ -1272,6 +1426,27 @@ class CategoryTeamScoreInline(admin.TabularInline):
             obj.delete()
         
         formset.save_m2m()
+        
+        # Auto-create empty CategoryRefereeScore records for this team entry
+        # Get the referee assignment for this category
+        try:
+            referee_assignment = CategoryRefereeAssignment.objects.get(
+                category=form.instance
+            )
+            
+            # For each newly saved team entry, create empty scores for all 5 referees
+            for instance in instances:
+                if instance.pk:  # Only for saved instances
+                    for i in range(1, 6):
+                        referee = getattr(referee_assignment, f'referee_{i}', None)
+                        if referee:
+                            CategoryRefereeScore.objects.get_or_create(
+                                athlete_score=instance,
+                                referee=referee,
+                                defaults={'score': 0}
+                            )
+        except CategoryRefereeAssignment.DoesNotExist:
+            pass
 
 
 class TeamMemberInline(admin.TabularInline):
@@ -1283,22 +1458,16 @@ class TeamMemberInline(admin.TabularInline):
 class EnrolledTeamsInline(admin.TabularInline):
     model = CategoryTeam
     extra = 1  # Allow adding new teams
-    fields = ('team', 'place_obtained')
-    readonly_fields = ('place_obtained',)
+    fields = ('team', 'ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score', 'total_display', 'place', 'disqualified')
+    readonly_fields = ('total_display',)
     verbose_name_plural = _('TEAMS ENROLLED')  # Rename the section title
-
-    def place_obtained(self, obj):
-        """
-        Display the place obtained by the team in the category.
-        """
-        if obj.category.first_place_team == obj.team:
-            return _('1st Place')
-        elif obj.category.second_place_team == obj.team:
-            return _('2nd Place')
-        elif obj.category.third_place_team == obj.team:
-            return _('3rd Place')
-        return _('No Placement')
-    place_obtained.short_description = _('Place Obtained')
+    
+    def total_display(self, obj):
+        """Display calculated total score"""
+        if obj and obj.total_score is not None:
+            return f"{obj.total_score:.2f}"
+        return "-"
+    total_display.short_description = 'Total'
 
 class AthleteSoloResultsInline(admin.TabularInline):
     """
@@ -1322,7 +1491,7 @@ class AthleteSoloResultsInline(admin.TabularInline):
         Filter the queryset to include only results for solo categories.
         """
         qs = super().get_queryset(request)
-        return qs.filter(category__type='solo')  # Filter by category type 'solo'
+        return qs.filter(category__solocategory__isnull=False)  # Filter by SoloCategory type
 
     def category_name(self, obj):
         """
@@ -1434,7 +1603,7 @@ class AthleteFightResultsInline(admin.TabularInline):
         Filter the queryset to include only results for fight categories.
         """
         qs = super().get_queryset(request)
-        return qs.filter(category__type='fight')  # Filter by category type 'fight'
+        return qs.filter(category__fightcategory__isnull=False)  # Filter by FightCategory type
 
     def category_name(self, obj):
         """
@@ -1816,140 +1985,262 @@ class GroupInline(admin.TabularInline):
     verbose_name_plural = "Groups"
 
 class CategoryAdminForm(forms.ModelForm):
-    groups = forms.ModelMultipleChoiceField(
-        queryset=Group.objects.all(),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,  # Use checkboxes for group selection
-        label="Groups"
-    )
-
     class Meta:
         model = Category
         fields = '__all__'
 
-    def save(self, commit=True):
-        """
-        Override save to handle the ManyToMany relationship between Category and Group.
-        """
-        instance = super().save(commit=False)
-        if commit:
-            instance.save()
-            # Update the groups relationship
-            instance.groups.set(self.cleaned_data['groups'])
-        return instance
-
-@admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
-    # Prefer Event (landing.Event) information in the admin UI; keep legacy Competition search for compatibility
-    list_display = ('name', 'event', 'type', 'gender', 'group', 'display_winners')
-    search_fields = ('name', 'event__title', 'competition__name', 'type', 'gender', 'group__name')  # Add search fields
-    autocomplete_fields = ['group', 'first_place', 'second_place', 'third_place', 'first_place_team', 'second_place_team', 'third_place_team']
-   # form = CategoryAdminForm 
+@admin.register(SoloCategory)
+class SoloCategoryAdmin(admin.ModelAdmin):
+    list_display = ('category_number', 'name', 'event', 'get_group_display', 'gender', 'status', 'display_winners')
+    search_fields = ('category_number', 'name', 'event__title', 'gender', 'group__name')
+    list_filter = ('event', 'gender', 'group', 'status')
+    autocomplete_fields = ['group']
+    readonly_fields = ('category_number',)
     
-    class Media:
-        js = ('admin/js/category_team_autocomplete.js',)
-   
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        """
-        Restrict the group selection to groups that belong to the same competition as the category.
-        """
-        if db_field.name == 'group':
-            # Handle the case where request.obj is None (creating a new Category)
-            category_id = request.resolver_match.kwargs.get('object_id')  # Get the category ID from the URL
-            if category_id:
-                category = Category.objects.filter(pk=category_id).first()
-                if category:
-                    kwargs['queryset'] = Group.objects.filter(event=category.event)
-            else:
-                kwargs['queryset'] = Group.objects.none()  # No groups available when creating a new Category
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    fieldsets = [
+        ('CATEGORY DETAILS', {
+            'fields': ('category_number', 'name', 'event', 'group', 'gender', 'status'),
+            'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Category number is auto-generated based on type and gender. Assign places directly in the Athletes inline below.'
+        }),
+    ]
     
-    def get_form(self, request, obj=None, **kwargs):
-        """
-        Dynamically modify the form to hide the 'athletes' field when creating a new category.
-        """
-        form = super().get_form(request, obj, **kwargs)
-        if obj is None:  # If creating a new category
-            # Remove the 'athletes' field from the form
-            if 'athletes' in form.base_fields:
-                del form.base_fields['athletes']
-            # Add a custom help text message
-            form.base_fields['name'].help_text = (
-                "Create the category first, then reopen it to add athletes or teams."
-            )
-        return form
-
-    def get_fieldsets(self, request, obj=None):
-        """
-        Dynamically modify the fieldsets to hide the 'athletes' field if the category type is 'Teams and Fight'.
-        """
-        
-        fieldsets = [
-            ('CATEGORY DETAILS', {
-                'fields': ('name', 'event', 'group', 'type', 'gender')
-            }),
-        ]
-        if obj and obj.type in ['solo', 'fight']:
-            fieldsets.append(('AWARDS - INDIVIDUAL', {
-                'fields': ('first_place', 'second_place', 'third_place'),
-
-            }))
-        elif obj and obj.type == 'teams':
-            fieldsets.append(('AWARDS - TEAMS', {
-                'fields': ('first_place_team', 'second_place_team', 'third_place_team'),
-
-            }))
-        return fieldsets
-
+    def get_group_display(self, obj):
+        """Display group with age range"""
+        if obj.group:
+            if obj.group.birth_year_start and obj.group.birth_year_end:
+                return f"{obj.group.name} ({obj.group.birth_year_start}-{obj.group.birth_year_end})"
+            return obj.group.name
+        return "No Group"
+    get_group_display.short_description = 'Age Group'
+    get_group_display.admin_order_field = 'group__name'
+    
     def get_inlines(self, request, obj=None):
-        """
-        Dynamically include inlines based on category type.
-        """
+        """Include referees and athletes for solo categories"""
         inlines = []
         if obj:
-            if obj.type == 'solo':
-                inlines.append(CategoryRefereeAssignmentInline)  # Assign 5 referees
-                inlines.append(CategoryAthleteInline)
-                inlines.append(CategoryAthleteScoreInline)  # Add athlete score inline for solo categories
-            elif obj.type == 'teams':
-                inlines.append(CategoryRefereeAssignmentInline)  # Assign 5 referees
-                inlines.append(CategoryTeamScoreInline)  # Add team score inline for teams categories
-                inlines.append(EnrolledTeamsInline)  # Add the new EnrolledTeamsInline
-            elif obj.type == 'fight':
-                inlines.extend([CategoryAthleteInline, MatchInline])  # Add athlete and match inlines for fight categories
+            inlines.append(CategoryRefereeAssignmentInline)
+            inlines.append(CategoryAthleteInline)
         return inlines
+    
+    def save_formset(self, request, form, formset, change):
+        """Ensure CategoryRefereeAssignment gets the correct category_id"""
+        # For CategoryRefereeAssignmentInline, handle the OneToOne relationship properly
+        if formset.model == CategoryRefereeAssignment:
+            parent_pk = form.instance.pk
+            
+            if not parent_pk:
+                # Parent not yet saved - don't try to save the inline
+                return
+            
+            # Get or create the assignment for this category
+            assignment, created = CategoryRefereeAssignment.objects.get_or_create(
+                category_id=parent_pk
+            )
+            
+            # Update it with form data WITHOUT calling formset.save()
+            # (which would try to create a duplicate record)
+            for inline_form in formset.forms:
+                if inline_form.cleaned_data and not inline_form.cleaned_data.get('DELETE', False):
+                    # Read referee values directly from cleaned form data
+                    assignment.referee_1 = inline_form.cleaned_data.get('referee_1')
+                    assignment.referee_2 = inline_form.cleaned_data.get('referee_2')
+                    assignment.referee_3 = inline_form.cleaned_data.get('referee_3')
+                    assignment.referee_4 = inline_form.cleaned_data.get('referee_4')
+                    assignment.referee_5 = inline_form.cleaned_data.get('referee_5')
+                    assignment.save()
+                    break  # Only process first form (max_num=1)
+            
+            # Set attributes Django admin expects for change message
+            # For new objects, add to new_objects; for updates, leave empty
+            # (changed_objects format is complex and not needed for our case)
+            formset.new_objects = [assignment] if created else []
+            formset.changed_objects = []
+            formset.deleted_objects = []
+        else:
+            super().save_formset(request, form, formset, change)
 
     def display_winners(self, obj):
-        """
-        Display the winners for the category.
-        """
-        if obj.type in ['solo', 'fight']:
-            return f"1st: {obj.first_place}, 2nd: {obj.second_place}, 3rd: {obj.third_place}"
-        elif obj.type == 'teams':
-            return f"1st: {obj.first_place_team}, 2nd: {obj.second_place_team}, 3rd: {obj.third_place_team}"
-        return "No winners assigned"
+        """Display the individual winners"""
+        return f"1st: {obj.first_place}, 2nd: {obj.second_place}, 3rd: {obj.third_place}"
     display_winners.short_description = _('Winners')
 
     def save_model(self, request, obj, form, change):
-        """
-        Trigger validation before saving the category.
-        """
-        obj.clean()  # Trigger validation logic
+        """Trigger validation before saving"""
+        obj.clean()
+        super().save_model(request, obj, form, change)
+    
+    class Media:
+        css = {
+            'all': ('/static/api/css/category_scores.css',)
+        }
+        js = ('/static/api/js/category_scores.js',)
+
+@admin.register(TeamCategory)
+class TeamCategoryAdmin(admin.ModelAdmin):
+    list_display = ('category_number', 'name', 'event', 'get_group_display', 'gender', 'status', 'display_winners')
+    search_fields = ('category_number', 'name', 'event__title', 'gender', 'group__name')
+    list_filter = ('event', 'gender', 'group', 'status')
+    autocomplete_fields = ['group']
+    readonly_fields = ('category_number',)
+    
+    fieldsets = [
+        ('CATEGORY DETAILS', {
+            'fields': ('category_number', 'name', 'event', 'group', 'gender', 'status'),
+            'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Category number is auto-generated based on type and gender. Assign places directly in the Teams inline below.'
+        }),
+    ]
+    
+    def get_group_display(self, obj):
+        """Display group with age range"""
+        if obj.group:
+            if obj.group.birth_year_start and obj.group.birth_year_end:
+                return f"{obj.group.name} ({obj.group.birth_year_start}-{obj.group.birth_year_end})"
+            return obj.group.name
+        return "No Group"
+    get_group_display.short_description = 'Age Group'
+    get_group_display.admin_order_field = 'group__name'
+    
+    def get_inlines(self, request, obj=None):
+        """Include referees and teams for team categories"""
+        inlines = []
+        if obj:
+            inlines.append(CategoryRefereeAssignmentInline)
+            inlines.append(EnrolledTeamsInline)
+        return inlines
+
+    def display_winners(self, obj):
+        """Display the team winners"""
+        return f"1st: {obj.first_place_team}, 2nd: {obj.second_place_team}, 3rd: {obj.third_place_team}"
+    display_winners.short_description = _('Winners')
+
+    def save_model(self, request, obj, form, change):
+        """Trigger validation before saving"""
+        obj.clean()
+        super().save_model(request, obj, form, change)
+    
+    def save_formset(self, request, form, formset, change):
+        """Ensure CategoryRefereeAssignment gets the correct category_id"""
+        # For CategoryRefereeAssignmentInline, handle the OneToOne relationship properly
+        if formset.model == CategoryRefereeAssignment:
+            parent_pk = form.instance.pk
+            
+            if not parent_pk:
+                # Parent not yet saved - don't try to save the inline
+                return
+            
+            # Get or create the assignment for this category
+            assignment, created = CategoryRefereeAssignment.objects.get_or_create(
+                category_id=parent_pk
+            )
+            
+            # Update it with form data WITHOUT calling formset.save()
+            # (which would try to create a duplicate record)
+            for inline_form in formset.forms:
+                if inline_form.cleaned_data and not inline_form.cleaned_data.get('DELETE', False):
+                    # Read referee values directly from cleaned form data
+                    assignment.referee_1 = inline_form.cleaned_data.get('referee_1')
+                    assignment.referee_2 = inline_form.cleaned_data.get('referee_2')
+                    assignment.referee_3 = inline_form.cleaned_data.get('referee_3')
+                    assignment.referee_4 = inline_form.cleaned_data.get('referee_4')
+                    assignment.referee_5 = inline_form.cleaned_data.get('referee_5')
+                    assignment.save()
+                    break  # Only process first form (max_num=1)
+            
+            # Set attributes Django admin expects for change message
+            # For new objects, add to new_objects; for updates, leave empty
+            # (changed_objects format is complex and not needed for our case)
+            formset.new_objects = [assignment] if created else []
+            formset.changed_objects = []
+            formset.deleted_objects = []
+        else:
+            super().save_formset(request, form, formset, change)
+    
+    class Media:
+        css = {
+            'all': ('/static/api/css/category_scores.css',)
+        }
+        js = ('/static/api/js/category_scores.js',)
+
+
+class FightAthleteWeightInline(admin.TabularInline):
+    """Inline for managing enrolled athletes and their weight data in fight categories"""
+    model = FightAthleteWeight
+    extra = 1
+    fields = ('athlete', 'pre_weight_kg', 'current_weight_kg', 'is_disqualified', 'disqualification_reason', 'place')
+    autocomplete_fields = ['athlete']
+    verbose_name = _('Enrolled Athlete')
+    verbose_name_plural = _('Enrolled Athletes')
+
+
+@admin.register(FightCategory)
+class FightCategoryAdmin(admin.ModelAdmin):
+    list_display = ('category_number', 'name', 'event', 'get_group_display', 'gender', 'status', 'display_winners')
+    search_fields = ('category_number', 'name', 'event__title', 'gender', 'group__name')
+    list_filter = ('event', 'gender', 'group', 'status')
+    autocomplete_fields = ['group']
+    readonly_fields = ('category_number',)
+    
+    fieldsets = [
+        ('CATEGORY DETAILS', {
+            'fields': ('category_number', 'name', 'event', 'group', 'gender', 'status'),
+            'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Category number is auto-generated based on type and gender. Assign places directly in the Athletes inline below.'
+        }),
+    ]
+    
+    def get_group_display(self, obj):
+        """Display group with age range"""
+        if obj.group:
+            if obj.group.birth_year_start and obj.group.birth_year_end:
+                return f"{obj.group.name} ({obj.group.birth_year_start}-{obj.group.birth_year_end})"
+            return obj.group.name
+        return "No Group"
+    get_group_display.short_description = 'Age Group'
+    get_group_display.admin_order_field = 'group__name'
+    
+    def get_inlines(self, request, obj=None):
+        """Include enrolled athletes with weights and matches for fight categories"""
+        inlines = []
+        if obj:
+            inlines.append(FightAthleteWeightInline)
+            inlines.append(MatchInline)
+        return inlines
+
+    def display_winners(self, obj):
+        """Display the fight winners"""
+        return f"1st: {obj.first_place}, 2nd: {obj.second_place}, 3rd: {obj.third_place}"
+    display_winners.short_description = _('Winners')
+
+    def save_model(self, request, obj, form, change):
+        """Trigger validation before saving"""
+        obj.clean()
         super().save_model(request, obj, form, change)
 
-    def enrolled_teams_count(self, obj):
-        """
-        Display the number of teams enrolled in the category.
-        """
-        return obj.enrolled_teams.count()
-    enrolled_teams_count.short_description = _('Enrolled Teams Count')
 
-    def enrolled_individuals_count(self, obj):
-        """
-        Display the number of individuals enrolled in the category.
-        """
-        return obj.enrolled_individuals.count()
-    enrolled_individuals_count.short_description = _('Enrolled Individuals Count')
+@admin.register(FightAthleteWeight)
+class FightAthleteWeightAdmin(admin.ModelAdmin):
+    """Admin for managing athlete weight-in data in fight categories"""
+    list_display = ('athlete', 'category', 'pre_weight_kg', 'current_weight_kg', 'weight_loss_percentage', 'is_disqualified', 'recorded_at')
+    list_filter = ('category__event', 'is_disqualified', 'recorded_at')
+    search_fields = ('athlete__first_name', 'athlete__last_name', 'category__name')
+    autocomplete_fields = ['athlete', 'category']
+    fieldsets = (
+        ('Athlete & Category', {
+            'fields': ('category', 'athlete')
+        }),
+        ('Weight Measurements', {
+            'fields': ('pre_weight_kg', 'current_weight_kg', 'weight_loss_percentage')
+        }),
+        ('Disqualification', {
+            'fields': ('is_disqualified', 'disqualification_reason')
+        }),
+        ('Record', {
+            'fields': ('recorded_at',),
+            'classes': ('collapse',)
+        }),
+    )
+    readonly_fields = ('weight_loss_percentage', 'recorded_at')
+    ordering = ['-recorded_at']
+
 
 class TeamAdminForm(forms.ModelForm):
     """Custom form for Team that excludes the name property"""
@@ -2179,32 +2470,194 @@ class CentralPenaltyForm(forms.Form):
     reason = forms.CharField(required=False, widget=forms.Textarea, label='Reason (optional)')
 
 
+# ============================================================================
+# VIDEO RECORDING INLINE CLASSES (used by Match and Category admins)
+# ============================================================================
+
+class AthletePerformanceVideoInline(admin.TabularInline):
+    """Inline for adding performance videos to individual athletes in Solo categories"""
+    model = AthletePerformanceVideo
+    extra = 0
+    fields = ('athlete_display', 'video_file', 'video_url', 'recorded_at', 'is_public')
+    readonly_fields = ('athlete_display',)
+    verbose_name = _('Solo Performance Video')
+    verbose_name_plural = _('Solo Performance Videos')
+    show_change_link = True
+    
+    def athlete_display(self, obj):
+        """Display athlete name"""
+        if obj.athlete_score and obj.athlete_score.athlete:
+            athlete = obj.athlete_score.athlete
+            return f"{athlete.first_name} {athlete.last_name}"
+        return '-'
+    athlete_display.short_description = 'Athlete'
+    
+    def get_queryset(self, request):
+        """Filter videos by category from parent object"""
+        qs = super().get_queryset(request)
+        # Get category_id from the parent object (SoloCategory)
+        if hasattr(self, 'parent_obj') and self.parent_obj:
+            qs = qs.filter(athlete_score__category_id=self.parent_obj.id)
+        return qs
+
+
+class AthletePerformanceVideoForm(forms.ModelForm):
+    class Meta:
+        model = AthletePerformanceVideo
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields.get('athlete_score')
+        if field:
+            def label_from_instance(obj):
+                athlete = obj.athlete
+                category = obj.category
+                
+                if not athlete:
+                    return f"{category.name if category else 'Unknown'}"
+                
+                group = category.group if category else None
+                event = category.event if category else None
+                group_name = group.name if group else 'No Group'
+                event_title = event.title if event else 'No Competition'
+                return (
+                    f"{athlete.first_name} {athlete.last_name} - "
+                    f"{category.name} - {group_name} - {event_title}"
+                )
+            field.label_from_instance = label_from_instance
+
+
+class TeamPerformanceVideoForm(forms.ModelForm):
+    class Meta:
+        model = TeamPerformanceVideo
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields.get('category_team')
+        if field:
+            def label_from_instance(obj):
+                team = obj.team
+                category = obj.category
+                
+                if not team or not category:
+                    return f"{team.name if team else 'Unknown'}"
+                
+                group = category.group if category else None
+                event = category.event if category else None
+                group_name = group.name if group else 'No Group'
+                event_title = event.title if event else 'No Competition'
+                return (
+                    f"{team.name} - "
+                    f"{category.name} - {group_name} - {event_title}"
+                )
+            field.label_from_instance = label_from_instance
+
+
+class MatchVideoRecordingForm(forms.ModelForm):
+    class Meta:
+        model = MatchVideoRecording
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields.get('match')
+        if field:
+            def label_from_instance(obj):
+                category = obj.category
+                
+                if not category:
+                    return obj.name
+                
+                group = category.group if category else None
+                event = category.event if category else None
+                group_name = group.name if group else 'No Group'
+                event_title = event.title if event else 'No Competition'
+                return (
+                    f"{obj.name} - "
+                    f"{category.name} - {group_name} - {event_title}"
+                )
+            field.label_from_instance = label_from_instance
+
+
+class TeamPerformanceVideoInline(admin.TabularInline):
+    """Inline for adding performance videos to teams in Team categories"""
+    model = TeamPerformanceVideo
+    extra = 0
+    fields = ('team_display', 'video_file', 'video_url', 'recorded_at', 'is_public')
+    readonly_fields = ('team_display',)
+    verbose_name = _('Performance Video')
+    verbose_name_plural = _('Performance Videos')
+    show_change_link = True
+    
+    def team_display(self, obj):
+        """Display team name"""
+        if obj.category_team and obj.category_team.team:
+            return obj.category_team.team.name
+        return '-'
+    team_display.short_description = 'Team'
+    
+    def get_queryset(self, request):
+        """Filter videos by category from parent object"""
+        qs = super().get_queryset(request)
+        # Get category_id from the parent object (TeamCategory)
+        if hasattr(self, 'parent_obj') and self.parent_obj:
+            qs = qs.filter(category_team__category_id=self.parent_obj.id)
+        return qs
+
+
+class MatchVideoRecordingInline(admin.TabularInline):
+    """Inline for adding videos to Fight matches"""
+    model = MatchVideoRecording
+    extra = 0
+    fields = ('video_file', 'video_url', 'recorded_at', 'is_public')
+    verbose_name = _('Video Recording')
+    verbose_name_plural = _('Video Recordings (Optional)')
+    show_change_link = True
+
+
+class MatchRefereeAssignmentInline(admin.TabularInline):
+    """Inline for assigning referees to matches in fight categories"""
+    model = MatchRefereeAssignment
+    extra = 0
+    fields = ('referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5')
+    autocomplete_fields = ['referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5']
+    verbose_name = _('Referee Assignment')
+    verbose_name_plural = _('Referee Assignments')
+
+
 @admin.register(Match)
 class MatchAdmin(admin.ModelAdmin):
-    list_display = ('name_with_corners', 'match_type', 'get_winner', 'category_link')
-    search_fields = ('name', 'red_corner__first_name', 'red_corner__last_name', 'blue_corner__first_name', 'blue_corner__last_name', 'category__name', 'category__event__title')
-    list_filter = ('match_type', 'category__event')
+    list_display = ('match_number', 'name_with_corners', 'match_type', 'status', 'get_winner', 'category_link')
+    search_fields = ('match_number', 'name', 'red_corner__first_name', 'red_corner__last_name', 'blue_corner__first_name', 'blue_corner__last_name', 'category__name', 'category__event__title')
+    list_filter = ('match_type', 'status', 'category__event')
 
     # Use a custom change form template so we can add a quick 'Add central penalty' button
     change_form_template = 'admin/api/match/change_form.html'
 
     fieldsets = (
         ('MATCH DETAILS', {
-            # Place central_referee near the top so admins can set it before adding penalties
+            # Central referee is selected in the Central Penalties inline below
             # Winner is read-only and computed from referee scores/penalties
-            'fields': ('category', 'match_type', 'red_corner', 'blue_corner', 'central_referee', 'winner_display')
+            # Match number is auto-generated based on category and match type
+            'fields': ('match_number', 'category', 'match_type', 'red_corner', 'blue_corner', 'status', 'winner_display'),
+            'description': 'Match number is automatically generated based on the category and match type.'
         } ),
     )
 
-    autocomplete_fields = ['red_corner', 'blue_corner', 'central_referee']  # Winner is computed and read-only
+    autocomplete_fields = ['red_corner', 'blue_corner']  # Winner is computed and read-only
 
-    readonly_fields = ('winner_display',)
+    readonly_fields = ('winner_display', 'match_number')
 
-    # Show per-referee score inline and a read-only list of central penalties
-    inlines = [RefereeScoreInline, CentralPenaltyInline]
+    # Show referee scores, central penalties, and video recordings
+    inlines = [RefereeScoreInline, CentralPenaltyInline, MatchVideoRecordingInline]
 
     class Media:
-        js = ('/static/api/js/referee_inline_winner.js', '/static/api/js/recompute_match_results.js',)
+        js = ('/static/api/js/referee_inline_winner.js', '/static/api/js/recompute_match_results.js', '/static/api/js/category_scores.js',)
+        css = {
+            'all': ('/static/api/css/category_scores.css',)
+        }
 
     def name_with_corners(self, obj):
         """
@@ -2447,6 +2900,7 @@ class MatchAdmin(admin.ModelAdmin):
         totals consistently in save_related.
         """
         # Let Django save the inlines first
+        super().save_formset(request, form, formset, change)
         super().save_formset(request, form, formset, change)
 
         # If this was the RefereeScore inline, map per-round fields into score events
@@ -2729,10 +3183,37 @@ class MatchAdmin(admin.ModelAdmin):
 class GroupAdmin(admin.ModelAdmin):
     """
     Admin configuration for the Group model.
+    Manages age-based groups for organizing categories.
     """
-    list_display = ('name', 'event')  # Display name and event
-    search_fields = ('name', 'event__title')  # Enable search by name and event title
-    list_filter = ('event',)  # Add a filter for event
+    list_display = ('name', 'event', 'get_age_range', 'get_category_count')
+    search_fields = ('name', 'event__title')
+    list_filter = ('event',)
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'event')
+        }),
+        ('Age Range', {
+            'fields': ('birth_year_start', 'birth_year_end'),
+            'description': 'Define the birth year range for athletes in this group (e.g., 2015-2018)'
+        }),
+    )
+    
+    def get_age_range(self, obj):
+        """Display the age range for this group"""
+        if obj.birth_year_start and obj.birth_year_end:
+            return f"{obj.birth_year_start} - {obj.birth_year_end}"
+        elif obj.birth_year_start:
+            return f"{obj.birth_year_start}+"
+        elif obj.birth_year_end:
+            return f"up to {obj.birth_year_end}"
+        return "Not set"
+    get_age_range.short_description = 'Birth Year Range'
+    
+    def get_category_count(self, obj):
+        """Display number of categories in this group"""
+        count = obj.categories.count()
+        return f"{count} categories"
+    get_category_count.short_description = 'Categories'
 
 
 # User Admin
@@ -2764,18 +3245,6 @@ class UserAdmin(BaseUserAdmin):
 
 
 # Athlete Profile Management Admin
-class AthleteActivityInline(admin.TabularInline):
-    model = AthleteActivity
-    extra = 0
-    readonly_fields = ('action', 'performed_by', 'timestamp', 'notes')
-    ordering = ('-timestamp',)
-    verbose_name = "Activity Log"
-    verbose_name_plural = "Activity Logs"
-    
-    def has_add_permission(self, request, obj=None):
-        return False  # Prevent manual addition of activities
-
-
 @admin.register(Athlete)
 class AthleteAdmin(admin.ModelAdmin):
     # Merge photo and name into a single narrow column (no header label).
@@ -2788,8 +3257,7 @@ class AthleteAdmin(admin.ModelAdmin):
     readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'add_enrolled_event_link', 'add_grade_history_link']
     ordering = ['-submitted_date']
     inlines = [
-        AthleteActivityInline,
-    GradeHistoryInline,
+        GradeHistoryInline,
     VisaInline,
         AthleteTrainingSeminarParticipationInline,
         AthleteSoloResultsInline,
@@ -3162,31 +3630,6 @@ class AthleteAdmin(admin.ModelAdmin):
         return render(request, 'admin/request_revision.html', context)
 
 
-@admin.register(AthleteActivity)
-class AthleteActivityAdmin(admin.ModelAdmin):
-    list_display = ['athlete', 'action', 'performed_by', 'timestamp']
-    list_filter = ['action', 'timestamp', 'performed_by']
-    search_fields = ['athlete__first_name', 'athlete__last_name', 'performed_by__username']
-    readonly_fields = ['athlete', 'action', 'performed_by', 'timestamp', 'notes']
-    ordering = ['-timestamp']
-    
-    def has_add_permission(self, request):
-        return False  # Prevent manual addition
-    
-    def has_change_permission(self, request, obj=None):
-        return False  # Prevent editing
-
-
-class CategoryScoreActivityInline(admin.TabularInline):
-    model = CategoryScoreActivity
-    extra = 0
-    readonly_fields = ['action', 'performed_by', 'notes', 'timestamp']
-    can_delete = False
-    
-    def has_add_permission(self, request, obj=None):
-        return False
-
-
 # Enhanced CategoryAthleteScore admin with approval workflow
 class CategoryRefereeScoreInline(admin.TabularInline):
     """Inline for managing individual referee scores for solo/team categories"""
@@ -3282,7 +3725,7 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     ]
     readonly_fields = ['submitted_date', 'reviewed_date', 'get_calculated_score_display', 'get_referee_count']
     ordering = ['-submitted_date']
-    inlines = [CategoryRefereeScoreInline, CategoryScoreActivityInline]
+    inlines = [CategoryRefereeScoreInline, AthletePerformanceVideoInline]
     
     fieldsets = (
         ('Basic Information', {
@@ -3323,7 +3766,7 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     
     def get_athlete_name(self, obj):
         """Display athlete name or team name"""
-        if obj.type == 'teams' and obj.team_name:
+        if obj.team_name and obj.team_members.exists():
             member_count = obj.team_members.count()
             return f"Team: {obj.team_name} ({member_count} members)" if member_count > 0 else f"Team: {obj.team_name}"
         elif obj.athlete:
@@ -3354,17 +3797,20 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     
     def get_calculated_score(self, obj):
         """Display calculated score in list view"""
-        if obj.type not in ['solo', 'teams']:
-            return 'N/A'
+        from .models import FightCategory
+        if isinstance(obj.category, FightCategory):
+            return f'⚠ {obj.referee_score_count}/5 scores'
         score = obj.calculated_score
         if score is None:
-            return f'âš  {obj.referee_score_count}/5 scores'
-        return f'âœ“ {score:.2f}'
+            return 'N/A'
+        return f'✓ {score:.2f}'
     get_calculated_score.short_description = _('Final Score')
+
     
     def get_calculated_score_display(self, obj):
         """Display calculated score with details in change form"""
-        if obj.type not in ['solo', 'teams']:
+        from .models import FightCategory
+        if isinstance(obj.category, FightCategory):
             return format_html('<em>Not applicable (only for solo/team categories)</em>')
         
         score = obj.calculated_score
@@ -3394,7 +3840,7 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
             breakdown = f'Scores: {", ".join(str(s) for s in sorted_scores)} | All counted (need 5 for proper calculation)'
         
         return format_html(
-            '<strong style="color: green; font-size: 16px;">Final Score: {:.2f}</strong><br>'
+            '<strong style="font-size: 16px;">Final Score: {:.2f}</strong><br>'
             '<em style="color: #666;">{}</em>',
             score, breakdown
         )
@@ -3402,7 +3848,8 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     
     def get_referee_count(self, obj):
         """Display referee score count with validation status"""
-        if obj.type not in ['solo', 'teams']:
+        from .models import FightCategory
+        if isinstance(obj.category, FightCategory):
             return format_html('<em>N/A</em>')
         
         count = obj.referee_score_count
@@ -3507,21 +3954,6 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         return render(request, 'admin/request_score_revision.html', context)
 
 
-@admin.register(CategoryScoreActivity)
-class CategoryScoreActivityAdmin(admin.ModelAdmin):
-    list_display = ['score', 'action', 'performed_by', 'timestamp']
-    list_filter = ['action', 'timestamp', 'performed_by']
-    search_fields = ['score__category__name', 'score__athlete__first_name', 'score__athlete__last_name', 'performed_by__username']
-    readonly_fields = ['score', 'action', 'performed_by', 'timestamp', 'notes']
-    ordering = ['-timestamp']
-    
-    def has_add_permission(self, request):
-        return False
-    
-    def has_change_permission(self, request, obj=None):
-        return False
-
-
 # ============================================================================
 # Note: CategoryAthleteScore already registered above with @admin.register
 # Removed duplicate admin.site.register to avoid conflicts
@@ -3540,13 +3972,244 @@ class SupporterAthleteRelationAdmin(admin.ModelAdmin):
 # SCORING SUMMARY:
 # - CategoryAthleteScoreAdmin: Main results (registered above with @admin.register)
 # - CategoryRefereeScoreInline: 5 referee scores (inline in CategoryAthleteScoreAdmin)
-# - CategoryScoreActivityAdmin: Audit log (registered above with @admin.register)
 #
-# Removed: ScoreHistoryProxy, duplicate admin registrations, complex forms
+# Removed: ScoreHistoryProxy, duplicate admin registrations, complex forms, activity logs
 # ============================================================================
 
 
+# DISABLED INLINES (for future use):
+# MatchVideoSegmentInline - Manage video segments/round timestamps
+# RefereePointEventTimestampInline - Link point events to video timestamps
+# Disabled because timestamp features are not needed yet.
+# To re-enable: uncomment and add back to MatchVideoRecordingAdmin.inlines.
+#
+# class MatchVideoSegmentInline(admin.TabularInline):
+#     """Inline for managing video segments within a match video"""
+#     model = MatchVideoSegment
+#     extra = 1
+#
+# class RefereePointEventTimestampInline(admin.TabularInline):
+#     """Inline for linking point events to video timestamps"""
+#     model = RefereePointEventTimestamp
+#     extra = 0
+
+
+@admin.register(MatchVideoRecording)
+class MatchVideoRecordingAdmin(admin.ModelAdmin):
+    """Admin for match video recordings (Fight categories)"""
+    form = MatchVideoRecordingForm
+    list_display = ('match_display', 'category_display', 'group_display', 'competition_display', 'recorded_at', 'duration_display', 'is_public', 'uploaded_at')
+    list_filter = ('is_public', 'recorded_at', 'match__category__event')
+    search_fields = ('match__name', 'match__category__name', 'match__category__group__name', 'match__category__event__title')
+    autocomplete_fields = ['match']
+    # Inlines disabled: Point Event Timestamps and Video Segments features disabled for now
+    
+    fieldsets = [
+        ('VIDEO SOURCE', {
+            'fields': ('match', 'video_file', 'video_url'),
+            'description': 'Provide either a video file OR a video URL (YouTube, Vimeo, etc.)'
+        }),
+        ('METADATA', {
+            'fields': ('recorded_at', 'duration_seconds', 'is_public'),
+        }),
+    ]
+    
+    def match_display(self, obj):
+        """Display match name"""
+        return obj.match.name
+    match_display.short_description = 'Match'
+    match_display.admin_order_field = 'match__name'
+    
+    def duration_display(self, obj):
+        """Display duration in human-readable format"""
+        if obj.duration_seconds:
+            minutes = obj.duration_seconds // 60
+            seconds = obj.duration_seconds % 60
+            return f"{minutes}m {seconds}s"
+        return '-'
+    duration_display.short_description = 'Duration'
+
+    def category_display(self, obj):
+        """Display category name"""
+        return obj.match.category.name if obj.match.category else 'No Category'
+    category_display.short_description = 'Category'
+    category_display.admin_order_field = 'match__category__name'
+
+    def group_display(self, obj):
+        """Display category group"""
+        if obj.match.category and obj.match.category.group:
+            return obj.match.category.group.name
+        return 'No Group'
+    group_display.short_description = 'Group'
+    group_display.admin_order_field = 'match__category__group__name'
+
+    def competition_display(self, obj):
+        """Display competition/event title"""
+        if obj.match.category and obj.match.category.event:
+            return obj.match.category.event.title
+        return 'No Competition'
+    competition_display.short_description = 'Competition'
+    competition_display.admin_order_field = 'match__category__event__title'
+
+
 # Configure admin site branding
+class CustomAdminSite(admin.AdminSite):
+    """Custom admin site with grouped model sections"""
+    site_header = 'FRVV Admin'
+    site_title = 'FRVV Admin'
+    index_title = 'Romanian Vovinam Federation Administration'
+    
+    def index(self, request, extra_context=None):
+        """Customize the admin index to show grouped sections"""
+        extra_context = extra_context or {}
+        extra_context['admin_model_groups'] = ADMIN_MODEL_GROUPS
+        return super().index(request, extra_context)
+
+
+# VIDEO RECORDING ADMIN CLASSES FOR ATHLETE AND TEAM PERFORMANCES
+# ============================================================================
+
+@admin.register(AthletePerformanceVideo)
+class AthletePerformanceVideoAdmin(admin.ModelAdmin):
+    """Admin for athlete performance videos (Solo categories)"""
+    form = AthletePerformanceVideoForm
+    list_display = ('athlete_display', 'category_display', 'group_display', 'competition_display', 'recorded_at', 'is_public', 'uploaded_at')
+    list_filter = ('is_public', 'recorded_at', 'athlete_score__category__event')
+    search_fields = ('athlete_score__athlete__first_name', 'athlete_score__athlete__last_name', 'athlete_score__category__name', 'athlete_score__category__group__name', 'athlete_score__category__event__title')
+    autocomplete_fields = ['athlete_score']
+    
+    fieldsets = [
+        ('SOLO CATEGORY', {
+            'fields': ('athlete_score',),
+        }),
+        ('VIDEO SOURCE', {
+            'fields': ('video_file', 'video_url'),
+            'description': 'Provide either a video file OR a video URL (YouTube, Vimeo, etc.)'
+        }),
+        ('METADATA', {
+            'fields': ('recorded_at', 'duration_seconds', 'is_public'),
+        }),
+    ]
+    
+    def athlete_display(self, obj):
+        """Display athlete name"""
+        athlete = obj.athlete_score.athlete
+        return f"{athlete.first_name} {athlete.last_name}"
+    athlete_display.short_description = 'Athlete'
+    
+    def category_display(self, obj):
+        """Display category name"""
+        return obj.athlete_score.category.name
+    category_display.short_description = 'Category'
+    category_display.admin_order_field = 'athlete_score__category__name'
+
+    def group_display(self, obj):
+        """Display category group"""
+        group = obj.athlete_score.category.group
+        return group.name if group else 'No Group'
+    group_display.short_description = 'Group'
+    group_display.admin_order_field = 'athlete_score__category__group__name'
+
+    def competition_display(self, obj):
+        """Display competition/event title"""
+        event = obj.athlete_score.category.event
+        return event.title if event else 'No Competition'
+    competition_display.short_description = 'Competition'
+    competition_display.admin_order_field = 'athlete_score__category__event__title'
+
+
+@admin.register(TeamPerformanceVideo)
+class TeamPerformanceVideoAdmin(admin.ModelAdmin):
+    """Admin for team performance videos (Team categories)"""
+    form = TeamPerformanceVideoForm
+    list_display = ('team_display', 'category_display', 'group_display', 'competition_display', 'recorded_at', 'is_public', 'uploaded_at')
+    list_filter = ('is_public', 'recorded_at', 'category_team__category__event')
+    search_fields = ('category_team__team__name', 'category_team__category__name', 'category_team__category__group__name', 'category_team__category__event__title')
+    autocomplete_fields = ['category_team']
+    
+    fieldsets = [
+        ('TEAM & CATEGORY', {
+            'fields': ('category_team',),
+        }),
+        ('VIDEO SOURCE', {
+            'fields': ('video_file', 'video_url'),
+            'description': 'Provide either a video file OR a video URL (YouTube, Vimeo, etc.)'
+        }),
+        ('METADATA', {
+            'fields': ('recorded_at', 'duration_seconds', 'is_public'),
+        }),
+    ]
+    
+    def team_display(self, obj):
+        """Display team name"""
+        return obj.category_team.team.name
+    team_display.short_description = 'Team'
+    
+    def category_display(self, obj):
+        """Display category name"""
+        return obj.category_team.category.name
+    category_display.short_description = 'Category'
+    category_display.admin_order_field = 'category_team__category__name'
+
+    def group_display(self, obj):
+        """Display category group"""
+        group = obj.category_team.category.group
+        return group.name if group else 'No Group'
+    group_display.short_description = 'Group'
+    group_display.admin_order_field = 'category_team__category__group__name'
+
+    def competition_display(self, obj):
+        """Display competition/event title"""
+        event = obj.category_team.category.event
+        return event.title if event else 'No Competition'
+    competition_display.short_description = 'Competition'
+    competition_display.admin_order_field = 'category_team__category__event__title'
+
+
+@admin.register(CategoryTeam)
+class CategoryTeamAdmin(admin.ModelAdmin):
+    """Admin for managing individual team enrollments in team categories"""
+    list_display = ('team_display', 'category_display', 'place', 'total_score_display', 'disqualified')
+    list_filter = ('category__event', 'place', 'disqualified')
+    search_fields = ('team__members__athlete__first_name', 'team__members__athlete__last_name', 'category__name', 'category__event__title')
+    autocomplete_fields = ['team']
+    readonly_fields = ('total_score_display',)
+    inlines = [TeamPerformanceVideoInline]
+    
+    fieldsets = [
+        ('TEAM & CATEGORY', {
+            'fields': ('team', 'category'),
+        }),
+        ('SCORING', {
+            'fields': ('ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score', 'total_score_display', 'place'),
+        }),
+        ('STATUS', {
+            'fields': ('disqualified',),
+        }),
+    ]
+    
+    def team_display(self, obj):
+        """Display team name"""
+        return obj.team.name
+    team_display.short_description = 'Team'
+    team_display.admin_order_field = 'team__name'
+    
+    def category_display(self, obj):
+        """Display category name"""
+        return obj.category.name
+    category_display.short_description = 'Category'
+    category_display.admin_order_field = 'category__name'
+    
+    def total_score_display(self, obj):
+        """Display calculated total score"""
+        if obj.total_score is not None:
+            return f"{obj.total_score:.2f}"
+        return '-'
+    total_score_display.short_description = 'Total Score'
+
+
+# Replace the default admin site with our custom one
+admin.site.__class__ = CustomAdminSite
 admin.site.site_header = 'FRVV Admin'
 admin.site.site_title = 'FRVV Admin'
 admin.site.index_title = 'Romanian Vovinam Federation Administration'

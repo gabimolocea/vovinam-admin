@@ -406,15 +406,19 @@ class DashboardWidget(QWidget):
         pixmap = self.create_bar_chart(cities_data, "Top 10 Cities", '#FF9800')
         self.cities_chart.setPixmap(pixmap)
         
-        # Gender distribution
-        cursor.execute("""
-            SELECT gender, COUNT(*) as count
-            FROM athletes
-            WHERE gender IS NOT NULL AND gender != ''
-            GROUP BY gender
-            ORDER BY count DESC
-        """)
-        gender_data = cursor.fetchall()
+        # Gender distribution (from categories)
+        try:
+            cursor.execute("""
+                SELECT gender, COUNT(*) as count
+                FROM categories
+                WHERE gender IS NOT NULL AND gender != ''
+                GROUP BY gender
+                ORDER BY count DESC
+            """)
+            gender_data = cursor.fetchall()
+        except Exception as e:
+            print(f"Error loading gender distribution: {e}")
+            gender_data = []
         
         # Create pie chart for gender
         gender_colors = ['#2196F3', '#E91E63', '#9C27B0']

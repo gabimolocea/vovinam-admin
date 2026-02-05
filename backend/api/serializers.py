@@ -224,10 +224,12 @@ class MatchSerializer(serializers.ModelSerializer):
         model = Match
         fields = [
             'id',
+            'match_number',
             'name',
             'category',
             'category_name',
             'match_type',
+            'status',
             'red_corner',
             'red_corner_full_name',  # Added full name for red corner
             'red_corner_club_name',
@@ -481,7 +483,7 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
+            'id', 'category_number', 'name', 'status', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
             'enrolled_athletes', 'enrolled_teams', 'teams', 'first_place', 'second_place', 'third_place',
             'first_place_name', 'second_place_name', 'third_place_name',
             'first_place_team', 'second_place_team', 'third_place_team',
@@ -911,21 +913,6 @@ class SupporterAthleteRelationSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class AthleteActivitySerializer(serializers.ModelSerializer):
-    """Serializer for athlete activity log"""
-    performed_by = serializers.StringRelatedField(read_only=True)
-    athlete = serializers.StringRelatedField(read_only=True)
-    
-    class Meta:
-        model = AthleteActivity
-        fields = ['id', 'athlete', 'action', 'performed_by', 'notes', 'timestamp']
-        read_only_fields = ['timestamp', 'performed_by']
-    
-    def create(self, validated_data):
-        """Auto-assign current user as performer"""
-        validated_data['performed_by'] = self.context['request'].user
-        return super().create(validated_data)
-
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Enhanced user registration with role selection"""
@@ -1106,27 +1093,7 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
         ent = getattr(cat, 'event_or_competition', None) or getattr(cat, 'competition', None)
         if not ent:
             return None
-        # support both Competition.date and Event.start_date
-        date = getattr(ent, 'date', None) or getattr(ent, 'start_date', None)
-        return date
-
-    def validate(self, data):
-        """Custom validation for CategoryAthleteScore"""
-        result_type = data.get('type', 'solo')
-        team_members = data.get('team_members', [])
-        
-        # Validate team_members based on type
-        if result_type != 'teams' and team_members:
-            raise serializers.ValidationError({
-                'team_members': 'Team members can only be specified for team results.'
-            })
-        
-        if result_type == 'teams' and not team_members:
-            raise serializers.ValidationError({
-                'team_members': 'Team members are required for team results.'
-            })
-        
-        return data
+        return getattr(ent, 'start_date', None)
 
     def create(self, validated_data):
         """Auto-assign current user's athlete profile and set submission flag"""
@@ -1134,45 +1101,91 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
         if request and hasattr(request.user, 'athlete'):
             validated_data['athlete'] = request.user.athlete
             validated_data['submitted_by_athlete'] = True
-            
+
             # For team results, handle team members separately
             team_members = validated_data.pop('team_members', [])
-            
+
             # Create the result first
             result = super().create(validated_data)
-            
+
             # For team results, ensure submitting athlete is included in team members
             if result.type == 'teams':
                 if request.user.athlete not in team_members:
                     team_members.append(request.user.athlete)
                 result.team_members.set(team_members)
-            
-            # Log the submission
-            CategoryScoreActivity.objects.create(
-                score=result,
-                action='submitted',
-                performed_by=request.user,
-                notes=f"{'Team' if result.type == 'teams' else 'Individual'} result submitted for {result.category.name} in {result.category.competition.name}"
-            )
-            
+
+            competition = result.category.event_or_competition
+            competition_name = getattr(competition, 'title', None) or getattr(competition, 'name', None) or 'competition'
+
             # Create notification for result submission
             from .notification_utils import create_result_submitted_notification
             create_result_submitted_notification(result)
-            
+
             return result
-        else:
-            raise serializers.ValidationError("User must have an athlete profile to submit results")
 
+        raise serializers.ValidationError("User must have an athlete profile to submit results")
+class OfflineCategoryAthleteScoreSerializer(serializers.ModelSerializer):
+    """Writable serializer for offline result uploads."""
+    team_members = serializers.PrimaryKeyRelatedField(many=True, queryset=Athlete.objects.all(), required=False)
 
-class CategoryScoreActivitySerializer(serializers.ModelSerializer):
-    """Serializer for category score activity log"""
-    performed_by = serializers.StringRelatedField(read_only=True)
-    score = serializers.StringRelatedField(read_only=True)
-    
     class Meta:
-        model = CategoryScoreActivity
-        fields = ['id', 'score', 'action', 'performed_by', 'notes', 'timestamp']
-        read_only_fields = ['timestamp', 'performed_by']
+        model = CategoryAthleteScore
+        fields = [
+            'id', 'athlete', 'category', 'score', 'submitted_by_athlete', 'placement_claimed',
+            'notes', 'status', 'type', 'group', 'team_members', 'team_name'
+        ]
+
+
+class OfflineAthleteSerializer(serializers.ModelSerializer):
+    club_id = serializers.IntegerField(source='club.id', read_only=True)
+    club_name = serializers.CharField(source='club.name', read_only=True, allow_null=True)
+    current_grade_id = serializers.IntegerField(source='current_grade.id', read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = Athlete
+        fields = [
+            'id',
+            'first_name',
+            'last_name',
+            'date_of_birth',
+            'club_id',
+            'club_name',
+            'current_grade_id',
+            'is_referee',
+            'updated_at',
+        ]
+
+
+class OfflineClubSerializer(serializers.ModelSerializer):
+    updated_at = serializers.DateTimeField(source='modified', read_only=True)
+
+    class Meta:
+        model = Club
+        fields = ['id', 'name', 'city', 'updated_at']
+
+
+class OfflineCompetitionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Event
+        fields = ['id', 'title', 'address', 'start_date', 'end_date', 'event_type']
+
+
+class OfflineCategorySerializer(serializers.ModelSerializer):
+    competition_id = serializers.IntegerField(source='event.id', read_only=True)
+    group_id = serializers.IntegerField(source='group.id', read_only=True)
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'competition_id', 'group_id', 'type', 'gender']
+
+
+class OfflineMatchSerializer(serializers.ModelSerializer):
+    category_id = serializers.IntegerField(source='category.id', read_only=True)
+
+    class Meta:
+        model = Match
+        fields = ['id', 'category_id', 'match_type', 'red_corner', 'blue_corner', 'name']
 
 
 class CategoryScoreApprovalSerializer(serializers.Serializer):

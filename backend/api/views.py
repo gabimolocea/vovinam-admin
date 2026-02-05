@@ -224,6 +224,94 @@ class ClubViewSet(viewsets.ViewSet):
             return Response(RefereePointEventSerializer(ev).data, status=201)
         return Response(serializer.errors, status=400)
 
+
+class OfflineSyncViewSet(viewsets.ViewSet):
+    """Offline snapshot and results upload endpoints for competition manager."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='athletes')
+    def athletes(self, request):
+        athletes = Athlete.objects.filter(status='approved', is_deleted=False)
+        serializer = OfflineAthleteSerializer(athletes, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='clubs')
+    def clubs(self, request):
+        clubs = Club.objects.all()
+        serializer = OfflineClubSerializer(clubs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='competition-pack')
+    def competition_pack(self, request):
+        from landing.models import Event
+
+        competitions = Event.objects.filter(event_type='competition')
+        categories = Category.objects.filter(event__in=competitions)
+        matches = Match.objects.filter(category__in=categories)
+
+        return Response({
+            'competitions': OfflineCompetitionSerializer(competitions, many=True).data,
+            'categories': OfflineCategorySerializer(categories, many=True).data,
+            'matches': OfflineMatchSerializer(matches, many=True).data,
+        })
+
+    @action(detail=False, methods=['post'], url_path='results')
+    def results(self, request):
+        results = request.data.get('results', [])
+        if not isinstance(results, list):
+            return Response({'detail': 'results must be a list'}, status=400)
+
+        created = []
+        failed = []
+
+        for item in results:
+            try:
+                category_id = item.get('category_id') or item.get('category')
+                if not category_id:
+                    raise ValidationError({'category_id': 'This field is required.'})
+
+                category = Category.objects.get(pk=category_id)
+                result_type = item.get('type') or category.type
+                score = item.get('score')
+                placement_claimed = item.get('placement_claimed')
+                notes = item.get('notes')
+
+                payload = {
+                    'category': category.id,
+                    'type': result_type,
+                    'score': score,
+                    'placement_claimed': placement_claimed,
+                    'notes': notes,
+                    'submitted_by_athlete': False,
+                    'status': 'pending'
+                }
+
+                if result_type == 'teams':
+                    team_member_ids = item.get('team_member_ids') or item.get('team_members') or []
+                    team_name = item.get('team_name')
+                    payload['team_members'] = team_member_ids
+                    payload['team_name'] = team_name
+                    serializer = OfflineCategoryAthleteScoreSerializer(data=payload)
+                    serializer.is_valid(raise_exception=True)
+                    obj = serializer.save()
+                else:
+                    athlete_id = item.get('athlete_id') or item.get('athlete')
+                    if not athlete_id:
+                        raise ValidationError({'athlete_id': 'This field is required for solo/fight results.'})
+                    payload['athlete'] = athlete_id
+                    serializer = OfflineCategoryAthleteScoreSerializer(data=payload)
+                    serializer.is_valid(raise_exception=True)
+                    obj = serializer.save()
+
+                created.append({'id': obj.id, 'category': obj.category_id})
+            except Exception as exc:
+                failed.append({'item': item, 'error': str(exc)})
+
+        return Response({
+            'created': created,
+            'failed': failed,
+        })
+
 class AthleteViewSet(viewsets.ModelViewSet):
     """Public athlete endpoints plus profile creation and admin actions.
 
@@ -276,7 +364,6 @@ class AthleteViewSet(viewsets.ModelViewSet):
         serializer = AthleteProfileSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             athlete = serializer.save(user=request.user, status='pending')
-            AthleteActivity.objects.create(athlete=athlete, action='submitted', performed_by=request.user)
             return Response(AthleteProfileSerializer(athlete).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -328,13 +415,6 @@ class AthleteViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['get'])
-    def activity_log(self, request, pk=None):
-        athlete = self.get_object()
-        activities = athlete.activity_log.all()
-        serializer = AthleteActivitySerializer(activities, many=True)
-        return Response(serializer.data)
-
     @action(detail=False, methods=['get', 'post', 'put'], permission_classes=[permissions.IsAuthenticated], url_path='my-profile')
     def my_profile(self, request):
         """Convenience endpoint for the current user's athlete profile.
@@ -359,7 +439,6 @@ class AthleteViewSet(viewsets.ModelViewSet):
             serializer = AthleteProfileSerializer(data=request.data, context={'request': request})
             if serializer.is_valid():
                 athlete = serializer.save(user=user, status='pending')
-                AthleteActivity.objects.create(athlete=athlete, action='submitted', performed_by=user)
                 return Response(AthleteProfileSerializer(athlete).data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -378,8 +457,6 @@ class AthleteViewSet(viewsets.ModelViewSet):
                 # If the athlete was in revision_required and user updated, resubmit
                 if updated.status == 'revision_required':
                     updated.resubmit()
-                else:
-                    AthleteActivity.objects.create(athlete=updated, action='updated', performed_by=user)
                 return Response(AthleteProfileSerializer(updated).data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -687,6 +764,9 @@ class CategoryViewSet(viewsets.ViewSet):
 
     def list(self, request):
         queryset = self.get_queryset()
+        event_id = request.query_params.get('event')
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
@@ -717,6 +797,11 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         category_id = self.request.query_params.get('category', None)
         if category_id is not None:
             queryset = queryset.filter(category_id=category_id)
+
+        # Filter by event if provided
+        event_id = self.request.query_params.get('event', None)
+        if event_id is not None:
+            queryset = queryset.filter(category__event_id=event_id)
         
         return queryset
 
@@ -724,6 +809,13 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         queryset = self.get_queryset()
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
+
+    def create(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
 
     def retrieve(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
@@ -1209,13 +1301,6 @@ def athlete_profiles_compat(request, subpath=''):
         if serializer.is_valid():
             athlete = serializer.save()
             
-            # Log the submission
-            AthleteActivity.objects.create(
-                athlete=athlete,
-                action='submitted',
-                performed_by=request.user
-            )
-            
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         
         # Debug: Print serializer errors to console
@@ -1243,13 +1328,6 @@ def athlete_profiles_compat(request, subpath=''):
                 # Use the resubmit method for revision_required status
                 if athlete.status == 'revision_required':
                     updated_athlete.resubmit()
-                else:
-                    # Log the update for pending status
-                    AthleteActivity.objects.create(
-                        athlete=updated_athlete,
-                        action='updated',
-                        performed_by=request.user
-                    )
                 
                 return Response(serializer.data)
             
@@ -1513,14 +1591,6 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
             instance.reviewed_by = None
             instance.admin_notes = ''
             instance.save()
-            
-            # Log the resubmission
-            CategoryScoreActivity.objects.create(
-                score=instance,
-                action='resubmitted',
-                performed_by=request.user,
-                notes='Result updated and resubmitted for review'
-            )
         
         return super().update(request, *args, **kwargs)
 
@@ -1541,14 +1611,6 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
                 {'error': 'Can only delete pending results'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Log the deletion
-        CategoryScoreActivity.objects.create(
-            score=instance,
-            action='deleted',
-            performed_by=request.user,
-            notes=f'Result for {instance.category.name} deleted by athlete'
-        )
         
         return super().destroy(request, *args, **kwargs)
 
@@ -1702,29 +1764,6 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(team_scores, many=True)
         return Response(serializer.data)
-
-
-class CategoryScoreActivityViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for viewing category score activity logs"""
-    serializer_class = CategoryScoreActivitySerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        """Return activity logs based on user permissions"""
-        user = self.request.user
-        
-        if user.is_staff or hasattr(user, 'role') and user.role == 'admin':
-            # Admins can see all activity
-            return CategoryScoreActivity.objects.all().select_related('score__athlete', 'performed_by')
-        elif hasattr(user, 'athlete'):
-            # Athletes can see activity for their own scores
-            return CategoryScoreActivity.objects.filter(
-                score__athlete=user.athlete,
-                score__submitted_by_athlete=True
-            ).select_related('score', 'performed_by')
-        else:
-            # No access for other users
-            return CategoryScoreActivity.objects.none()
 
 
 # CategoryTeamAthleteScoreViewSet deprecated - team functionality consolidated into CategoryAthleteScoreViewSet

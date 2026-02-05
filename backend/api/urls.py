@@ -26,12 +26,13 @@ router.register('medical-visas', MedicalVisaViewSet, basename='medical-visa')
 router.register('groups', GroupViewSet, basename='group')
 router.register('category-athlete-score', CategoryAthleteScoreViewSet, basename='category-athlete-score')
 router.register('category-referee-score', CategoryRefereeScoreViewSet, basename='category-referee-score')
-router.register('category-score-activity', CategoryScoreActivityViewSet, basename='category-score-activity')
 router.register('notifications', NotificationViewSet, basename='notification')
 router.register('notification-settings', NotificationSettingsViewSet, basename='notification-settings')
 router.register('grade-submissions', GradeHistorySubmissionViewSet, basename='grade-submission')
 router.register('seminar-submissions', TrainingSeminarParticipationViewSet, basename='seminar-submission')
 router.register('coaches', CoachesViewSet, basename='coach')
+# Offline competition sync endpoints
+router.register('offline', OfflineSyncViewSet, basename='offline')
 # team-scores endpoint deprecated - use category-athlete-score with type='teams' filter
 
 # Sync and Excel endpoints

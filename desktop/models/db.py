@@ -282,6 +282,46 @@ class Database:
         except:
             pass  # Column already exists
         
+        # Live scoring sessions table (for LAN referee scoring)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS live_scoring_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT UNIQUE NOT NULL,
+                match_id INTEGER,
+                category_id INTEGER,
+                category_name TEXT,
+                category_type TEXT,  -- 'solo', 'match', 'team'
+                athlete1_id INTEGER,
+                athlete1_name TEXT,
+                athlete2_id INTEGER,
+                athlete2_name TEXT,
+                status TEXT DEFAULT 'active',  -- 'active', 'completed', 'cancelled'
+                started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                completed_at TEXT,
+                is_synced INTEGER DEFAULT 0,
+                
+                FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE SET NULL
+            )
+        ''')
+        
+        # Live referee scores table (real-time scoring data)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS live_referee_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                referee_id INTEGER NOT NULL,
+                referee_name TEXT NOT NULL,
+                athlete1_score REAL DEFAULT 0.0,
+                athlete2_score REAL DEFAULT 0.0,
+                round_number INTEGER DEFAULT 1,
+                score_data TEXT,  -- JSON: detailed scoring breakdown
+                timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                is_final INTEGER DEFAULT 0,
+                
+                FOREIGN KEY (session_id) REFERENCES live_scoring_sessions(session_id) ON DELETE CASCADE
+            )
+        ''')
+        
         # Grade History table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS grade_history (
@@ -371,6 +411,47 @@ class Database:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 
                 FOREIGN KEY (athlete_id) REFERENCES athletes(id) ON DELETE CASCADE
+            )
+        ''')
+        
+        # Brackets table (tournament structure for each category)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS brackets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                category_name TEXT NOT NULL,
+                category_type TEXT NOT NULL,  -- 'solo', 'match', 'team'
+                bracket_type TEXT DEFAULT 'single_elimination',  -- 'single_elimination', 'double_elimination', 'round_robin'
+                bracket_name TEXT,
+                total_participants INTEGER,
+                status TEXT DEFAULT 'active',  -- 'active', 'completed', 'cancelled'
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+            )
+        ''')
+        
+        # Bracket positions table (slots in bracket)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bracket_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bracket_id INTEGER NOT NULL,
+                position_number INTEGER NOT NULL,
+                round INTEGER NOT NULL,  -- Which round (1, 2, 3, etc)
+                match_id INTEGER,
+                athlete1_id INTEGER,
+                athlete1_name TEXT,
+                athlete2_id INTEGER,
+                athlete2_name TEXT,
+                winner_id INTEGER,
+                winner_name TEXT,
+                status TEXT DEFAULT 'pending',  -- 'pending', 'in_progress', 'completed'
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (bracket_id) REFERENCES brackets(id) ON DELETE CASCADE,
+                FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE SET NULL
             )
         ''')
         
@@ -1113,4 +1194,240 @@ class Database:
         cursor.execute(query, values)
         conn.commit()
         return cursor.lastrowid
-
+    
+    # Live Scoring Sync Methods
+    def get_unsynced_scoring_sessions(self) -> List[Dict]:
+        """Get all unsynced live scoring sessions"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT * FROM live_scoring_sessions 
+               WHERE is_synced = 0 AND status = 'completed'
+               ORDER BY completed_at"""
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    
+    def get_session_scores(self, session_id: str) -> List[Dict]:
+        """Get all referee scores for a specific session"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT * FROM live_referee_scores 
+               WHERE session_id = ? AND is_final = 1
+               ORDER BY referee_id""",
+            (session_id,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    
+    def mark_session_synced(self, session_id: str) -> bool:
+        """Mark a scoring session as synced"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(
+            """UPDATE live_scoring_sessions 
+               SET is_synced = 1 
+               WHERE session_id = ?""",
+            (session_id,)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    
+    def create_scoring_session(self, session_data: Dict) -> str:
+        """Create a new live scoring session"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        
+        session_id = session_data.get('session_id')
+        cursor.execute('''
+            INSERT INTO live_scoring_sessions 
+            (session_id, match_id, category_id, category_name, category_type,
+             athlete1_id, athlete1_name, athlete2_id, athlete2_name, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        ''', (
+            session_id,
+            session_data.get('match_id'),
+            session_data.get('category_id'),
+            session_data.get('category_name'),
+            session_data.get('category_type'),
+            session_data.get('athlete1_id'),
+            session_data.get('athlete1_name'),
+            session_data.get('athlete2_id'),
+            session_data.get('athlete2_name')
+        ))
+        conn.commit()
+        return session_id    
+    # Bracket Methods
+    def create_bracket(self, category_id: int, category_name: str, category_type: str, 
+                      bracket_type: str = 'single_elimination', bracket_name: str = None,
+                      participants: List[Dict] = None) -> int:
+        """Create a new bracket for a category"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO brackets 
+            (category_id, category_name, category_type, bracket_type, bracket_name, 
+             total_participants, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'active')
+        ''', (
+            category_id,
+            category_name,
+            category_type,
+            bracket_type,
+            bracket_name or f"{category_name} - {bracket_type}",
+            len(participants) if participants else 0
+        ))
+        conn.commit()
+        bracket_id = cursor.lastrowid
+        
+        # Generate bracket positions if participants provided
+        if participants:
+            self._generate_bracket_positions(bracket_id, bracket_type, participants)
+        
+        return bracket_id
+    
+    def _generate_bracket_positions(self, bracket_id: int, bracket_type: str, participants: List[Dict]):
+        """Generate bracket positions based on participants"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        
+        if bracket_type == 'single_elimination':
+            self._generate_single_elimination(cursor, bracket_id, participants)
+        elif bracket_type == 'round_robin':
+            self._generate_round_robin(cursor, bracket_id, participants)
+        elif bracket_type == 'double_elimination':
+            self._generate_double_elimination(cursor, bracket_id, participants)
+        
+        conn.commit()
+    
+    def _generate_single_elimination(self, cursor, bracket_id: int, participants: List[Dict]):
+        """Generate single elimination bracket positions"""
+        import math
+        
+        position = 1
+        round_num = 1
+        
+        # Round up to nearest power of 2
+        num_participants = len(participants)
+        bracket_size = 2 ** math.ceil(math.log2(num_participants))
+        
+        # Pair up participants
+        for i in range(0, bracket_size, 2):
+            athlete1 = participants[i] if i < num_participants else None
+            athlete2 = participants[i + 1] if i + 1 < num_participants else None
+            
+            cursor.execute('''
+                INSERT INTO bracket_positions
+                (bracket_id, position_number, round, athlete1_id, athlete1_name,
+                 athlete2_id, athlete2_name, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+            ''', (
+                bracket_id,
+                position,
+                round_num,
+                athlete1.get('id') if athlete1 else None,
+                athlete1.get('name') if athlete1 else None,
+                athlete2.get('id') if athlete2 else None,
+                athlete2.get('name') if athlete2 else None
+            ))
+            position += 1
+    
+    def _generate_round_robin(self, cursor, bracket_id: int, participants: List[Dict]):
+        """Generate round robin bracket positions"""
+        position = 1
+        
+        # Create match for each combination
+        for i, p1 in enumerate(participants):
+            for p2 in participants[i + 1:]:
+                cursor.execute('''
+                    INSERT INTO bracket_positions
+                    (bracket_id, position_number, round, athlete1_id, athlete1_name,
+                     athlete2_id, athlete2_name, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+                ''', (
+                    bracket_id,
+                    position,
+                    1,
+                    p1.get('id'),
+                    p1.get('name'),
+                    p2.get('id'),
+                    p2.get('name')
+                ))
+                position += 1
+    
+    def _generate_double_elimination(self, cursor, bracket_id: int, participants: List[Dict]):
+        """Generate double elimination bracket positions"""
+        # First create the winners bracket (same as single elimination)
+        self._generate_single_elimination(cursor, bracket_id, participants)
+        
+        # Then create losers bracket with same participants
+        import math
+        position = len(participants)
+        num_participants = len(participants)
+        bracket_size = 2 ** math.ceil(math.log2(num_participants))
+        
+        for i in range(0, bracket_size, 2):
+            athlete1 = participants[i] if i < num_participants else None
+            athlete2 = participants[i + 1] if i + 1 < num_participants else None
+            
+            cursor.execute('''
+                INSERT INTO bracket_positions
+                (bracket_id, position_number, round, athlete1_id, athlete1_name,
+                 athlete2_id, athlete2_name, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+            ''', (
+                bracket_id,
+                position,
+                2,
+                athlete1.get('id') if athlete1 else None,
+                athlete1.get('name') if athlete1 else None,
+                athlete2.get('id') if athlete2 else None,
+                athlete2.get('name') if athlete2 else None
+            ))
+            position += 1
+    
+    def get_brackets_for_category(self, category_id: int) -> List[Dict]:
+        """Get all brackets for a category"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT * FROM brackets WHERE category_id = ? ORDER BY created_at DESC""",
+            (category_id,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    
+    def get_bracket_positions(self, bracket_id: int, round_num: int = None) -> List[Dict]:
+        """Get positions for a bracket, optionally filtered by round"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        
+        if round_num:
+            cursor.execute(
+                """SELECT * FROM bracket_positions 
+                   WHERE bracket_id = ? AND round = ?
+                   ORDER BY position_number""",
+                (bracket_id, round_num)
+            )
+        else:
+            cursor.execute(
+                """SELECT * FROM bracket_positions 
+                   WHERE bracket_id = ?
+                   ORDER BY round, position_number""",
+                (bracket_id,)
+            )
+        
+        return [dict(row) for row in cursor.fetchall()]
+    
+    def update_bracket_position(self, position_id: int, match_id: int, 
+                               winner_id: int, winner_name: str):
+        """Update a bracket position with match result"""
+        conn = self.connect()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE bracket_positions
+            SET match_id = ?, winner_id = ?, winner_name = ?, status = 'completed'
+            WHERE id = ?
+        ''', (match_id, winner_id, winner_name, position_id))
+        
+        conn.commit()
