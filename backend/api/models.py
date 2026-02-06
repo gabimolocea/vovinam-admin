@@ -371,7 +371,8 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
         return self.user is not None and self.approved_date is not None
     
     def __str__(self):
-        return f"{self.first_name} {self.last_name}"
+        club_name = f", {self.club.name}" if self.club else ""
+        return f"{self.first_name} {self.last_name}{club_name}"
 
 
 class GradeHistory(models.Model):
@@ -899,16 +900,23 @@ class Team(models.Model):
 
     @property
     def name(self):
-        """Auto-generate name from team members"""
-        members = self.members.select_related('athlete').all()[:3]
+        """Auto-generate name from team members with club of first member"""
+        members = self.members.select_related('athlete', 'athlete__club').all()[:3]
         if not members:
             return f"Team #{self.pk}"
         names = [f"{m.athlete.first_name} {m.athlete.last_name}" for m in members]
         base = ", ".join(names)
         total_members = self.members.count()
+        
+        # Add club name of first athlete if available
+        first_member = self.members.select_related('athlete', 'athlete__club').first()
+        club_suffix = ""
+        if first_member and first_member.athlete.club:
+            club_suffix = f" ({first_member.athlete.club.name})"
+        
         if total_members > 3:
-            return f"{base} (+{total_members - 3} more)"
-        return base
+            return f"{base} (+{total_members - 3} more){club_suffix}"
+        return f"{base}{club_suffix}"
 
     def __str__(self):
         """Display team with member names for clarity"""
@@ -930,7 +938,8 @@ class TeamMember(models.Model):
         unique_together = ('team', 'athlete')  # Ensure an athlete cannot be added twice to the same team
 
     def __str__(self):
-        return f"{self.athlete.first_name} {self.athlete.last_name} in {self.team.name}"
+        club_name = f", {self.athlete.club.name}" if self.athlete.club else ""
+        return f"{self.athlete.first_name} {self.athlete.last_name}{club_name}"
 
 
 class Category(models.Model):

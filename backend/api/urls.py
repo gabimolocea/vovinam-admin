@@ -43,9 +43,27 @@ router.register('excel', ExcelSyncViewSet, basename='excel')
 
 # Compatibility shim: keep responding to old athlete-profiles paths with a deprecation/redirect
 from . import views as _views
+from .autocomplete import (
+    AthleteAutocomplete, ClubAutocomplete, CategoryAutocomplete,
+    GradeAutocomplete, FederationRoleAutocomplete, TitleAutocomplete,
+    CityAutocomplete, TeamAutocomplete, EventAutocomplete, MatchAutocomplete
+)
+
 urlpatterns = [
     path('athlete-profiles/', _views.athlete_profiles_compat, name='athlete-profiles-compat-root'),
     path('athlete-profiles/<path:subpath>/', _views.athlete_profiles_compat, name='athlete-profiles-compat'),
+    
+    # Autocomplete endpoints for django-autocomplete-light
+    path('autocomplete/athletes/', AthleteAutocomplete.as_view(), name='athlete-autocomplete'),
+    path('autocomplete/clubs/', ClubAutocomplete.as_view(), name='club-autocomplete'),
+    path('autocomplete/categories/', CategoryAutocomplete.as_view(), name='category-autocomplete'),
+    path('autocomplete/grades/', GradeAutocomplete.as_view(), name='grade-autocomplete'),
+    path('autocomplete/federation-roles/', FederationRoleAutocomplete.as_view(), name='federation-role-autocomplete'),
+    path('autocomplete/titles/', TitleAutocomplete.as_view(), name='title-autocomplete'),
+    path('autocomplete/cities/', CityAutocomplete.as_view(), name='city-autocomplete'),
+    path('autocomplete/teams/', TeamAutocomplete.as_view(), name='team-autocomplete'),
+    path('autocomplete/events/', EventAutocomplete.as_view(), name='event-autocomplete'),
+    path('autocomplete/matches/', MatchAutocomplete.as_view(), name='match-autocomplete'),
 ]
 
 # then append the rest of the urlpatterns below

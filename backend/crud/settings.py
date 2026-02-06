@@ -33,6 +33,8 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'admin_interface',
+    'colorfield',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -42,6 +44,9 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_ckeditor_5',  # WYSIWYG editor
     'storages',  # For S3-compatible storage (DigitalOcean Spaces)
+    'dal',  # django-autocomplete-light
+    'dal_select2',  # django-autocomplete-light select2 widget
+    'reversion',  # django-reversion for version control
     'api',
     'django_filters',
     'rest_framework',

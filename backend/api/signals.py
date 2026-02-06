@@ -1,7 +1,9 @@
 from django.db.models.signals import m2m_changed, post_save, pre_delete
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
+from django.contrib.admin.models import ADDITION, CHANGE, DELETION
 from .models import *
+from .history_utils import log_addition, log_change
 
 @receiver(m2m_changed, sender=Club.coaches.through)
 def update_is_coach(sender, instance, action, pk_set, **kwargs):
@@ -81,6 +83,41 @@ def validate_and_assign_places(sender, instance, **kwargs):
 # No need to manually update it when TeamMember is saved
 
 
+# Change history tracking signals
+# These signals create LogEntry records for objects created/modified via API
+# so they show up in Django admin history views
+
+MODELS_TO_LOG = [
+    Athlete, Event, Category, Team, Match, 
+    GradeHistory, CategoryAthleteScore, CategoryTeamScore,
+    TrainingSeminarParticipation, Visa, FederationRole
+]
 
 
+def log_model_creation(sender, instance, created, **kwargs):
+    """
+    Create a LogEntry when a tracked model instance is created.
+    Only logs if the user is available from the request context.
+    """
+    if created:
+        # Try to get user from request if available
+        user = getattr(instance, '_current_user', None)
+        if user and not user.is_anonymous:
+            log_addition(instance, user, f"Added via API")
+
+
+def log_model_change(sender, instance, created, update_fields=None, **kwargs):
+    """
+    Create a LogEntry when a tracked model instance is modified.
+    """
+    if not created:
+        user = getattr(instance, '_current_user', None)
+        if user and not user.is_anonymous:
+            log_change(instance, user, {})
+
+
+# Register change logging for tracked models
+for model in MODELS_TO_LOG:
+    post_save.connect(log_model_creation, sender=model, dispatch_uid=f'{model.__name__}_log_addition')
+    post_save.connect(log_model_change, sender=model, dispatch_uid=f'{model.__name__}_log_change')
 

@@ -1,0 +1,48 @@
+/* Compact referee assignment inline */
+
+/* Target the inline table itself */
+#categoryrefereeassignment_set-group .inline-related,
+#categoryrefereeassignment_set-0 table {
+    margin: 0 !important;
+}
+
+/* Make all cells in the referee assignment inline tight */
+#categoryrefereeassignment_set-group table td,
+.inline-group table [id*="categoryrefereeassignment"] td {
+    padding: 2px 1px !important;
+    margin: 0 !important;
+    height: 30px !important;
+    width: 150px !important;
+}
+
+/* Set exact width for referee input fields - 150px */
+#categoryrefereeassignment_set-group input[id*="referee"],
+#categoryrefereeassignment_set-group select[id*="referee"],
+[id*="categoryrefereeassignment"] input[id*="referee"],
+[id*="categoryrefereeassignment"] select[id*="referee"] {
+    width: 150px !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 3px 2px !important;
+    font-size: 12px !important;
+    min-width: 150px !important;
+}
+
+/* Remove spacing from fieldset/row */
+#categoryrefereeassignment_set-group tr,
+[id*="categoryrefereeassignment"] tr {
+    height: 35px !important;
+}
+
+/* Make the autocomplete field tight */
+.related-widget-wrapper {
+    margin: 0 !important;
+    width: 150px !important;
+}
+
+/* Force inline referee widths */
+#categoryrefereeassignment_set-group .related-widget-wrapper select {
+    width: 150px !important;
+}
+
+
