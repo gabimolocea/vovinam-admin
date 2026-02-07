@@ -1,4 +1,9 @@
 document.addEventListener('DOMContentLoaded', function () {
+  const originalLabels = document.querySelectorAll(
+    '#enrolled_teams-0 > td.original > p, [id^="enrolled_teams-"] > td.original > p'
+  );
+  originalLabels.forEach((node) => node.remove());
+
   const scoreFields = ['ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score'];
   const inlineGroups = document.querySelectorAll('.inline-group[id^="categoryteam_set"]');
 

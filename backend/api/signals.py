@@ -1,7 +1,8 @@
-from django.db.models.signals import m2m_changed, post_save, pre_delete
+from django.db.models.signals import m2m_changed, post_save, pre_delete, post_migrate
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
 from django.contrib.admin.models import ADDITION, CHANGE, DELETION
+from django.core.management import call_command
 from .models import *
 from .history_utils import log_addition, log_change
 
@@ -120,4 +121,16 @@ def log_model_change(sender, instance, created, update_fields=None, **kwargs):
 for model in MODELS_TO_LOG:
     post_save.connect(log_model_creation, sender=model, dispatch_uid=f'{model.__name__}_log_addition')
     post_save.connect(log_model_change, sender=model, dispatch_uid=f'{model.__name__}_log_change')
+
+
+@receiver(post_migrate)
+def seed_default_cities(sender, **kwargs):
+    if getattr(sender, "name", None) != "api":
+        return
+    if City.objects.exists():
+        return
+    try:
+        call_command("import_ro_cities")
+    except Exception:
+        call_command("loaddata", "ro_cities_fallback")
 

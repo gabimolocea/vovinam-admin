@@ -6,7 +6,7 @@
 {% block breadcrumbs %}
 <div class="breadcrumbs">
 <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
-&rsaquo; <a href="{% url 'admin:api_athleteprofile_changelist' %}">Athlete Profiles</a>
+&rsaquo; <a href="{% url 'admin:api_athlete_changelist' %}">Athletes</a>
 &rsaquo; {{ title }}
 </div>
 {% endblock %}
@@ -44,7 +44,7 @@
     
     <div class="submit-row">
         <input type="submit" value="Request Revision" class="default" style="background-color: #ffc107; color: #212529;">
-        <a href="{% url 'admin:api_athleteprofile_changelist' %}" class="button cancel-link">Cancel</a>
+        <a href="{% url 'admin:api_athlete_changelist' %}" class="button cancel-link">Cancel</a>
     </div>
 </form>
 

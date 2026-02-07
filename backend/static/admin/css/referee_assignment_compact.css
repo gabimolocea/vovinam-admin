@@ -1,48 +1,81 @@
-/* Compact referee assignment inline */
+/* Referee assignment inline */
 
-/* Target the inline table itself */
-#categoryrefereeassignment_set-group .inline-related,
-#categoryrefereeassignment_set-0 table {
-    margin: 0 !important;
+#categoryrefereeassignment_set-group,
+[id*="categoryrefereeassignment"] {
+    overflow-x: auto;
 }
 
-/* Make all cells in the referee assignment inline tight */
+/* Hide the stacked inline h3 text for referees */
+#categoryrefereeassignment_set-group .inline-related h3,
+[id*="categoryrefereeassignment"] .inline-related h3 {
+    display: none !important;
+}
+
+/* Exact selector for referee assignment inline heading */
+#referee_assignment-0 > h3 {
+    display: none !important;
+}
+
+#categoryrefereeassignment_set-group table,
+[id*="categoryrefereeassignment"] table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+/* Stack referee fields vertically */
+.admin-interface #categoryrefereeassignment_set-group table,
+.admin-interface [id*="categoryrefereeassignment"] table {
+    display: block !important;
+    width: 100% !important;
+}
+
+.admin-interface #categoryrefereeassignment_set-group thead,
+.admin-interface [id*="categoryrefereeassignment"] thead {
+    display: none !important;
+}
+
+.admin-interface #categoryrefereeassignment_set-group tbody,
+.admin-interface [id*="categoryrefereeassignment"] tbody {
+    display: block !important;
+    width: 100% !important;
+}
+
+.admin-interface #categoryrefereeassignment_set-group tr,
+.admin-interface [id*="categoryrefereeassignment"] tr {
+    display: block !important;
+    width: 100% !important;
+    margin-bottom: 6px;
+}
+
+.admin-interface #categoryrefereeassignment_set-group td,
+.admin-interface [id*="categoryrefereeassignment"] td {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+}
+
 #categoryrefereeassignment_set-group table td,
 .inline-group table [id*="categoryrefereeassignment"] td {
-    padding: 2px 1px !important;
-    margin: 0 !important;
-    height: 30px !important;
-    width: 150px !important;
+    padding: 4px 2px;
+    height: 32px;
+    width: 160px;
+    max-width: 160px;
 }
 
-/* Set exact width for referee input fields - 150px */
 #categoryrefereeassignment_set-group input[id*="referee"],
 #categoryrefereeassignment_set-group select[id*="referee"],
 [id*="categoryrefereeassignment"] input[id*="referee"],
 [id*="categoryrefereeassignment"] select[id*="referee"] {
-    width: 150px !important;
-    box-sizing: border-box !important;
-    margin: 0 !important;
-    padding: 3px 2px !important;
-    font-size: 12px !important;
-    min-width: 150px !important;
+    width: 100%;
+    max-width: 160px;
+    box-sizing: border-box;
+    padding: 3px 2px;
+    font-size: 12px;
 }
 
-/* Remove spacing from fieldset/row */
-#categoryrefereeassignment_set-group tr,
-[id*="categoryrefereeassignment"] tr {
-    height: 35px !important;
-}
-
-/* Make the autocomplete field tight */
-.related-widget-wrapper {
-    margin: 0 !important;
-    width: 150px !important;
-}
-
-/* Force inline referee widths */
-#categoryrefereeassignment_set-group .related-widget-wrapper select {
-    width: 150px !important;
+#categoryrefereeassignment_set-group .related-widget-wrapper {
+    width: 160px;
+    max-width: 160px;
 }
 
 

@@ -33,6 +33,12 @@ router.register('seminar-submissions', TrainingSeminarParticipationViewSet, base
 router.register('coaches', CoachesViewSet, basename='coach')
 # Offline competition sync endpoints
 router.register('offline', OfflineSyncViewSet, basename='offline')
+# PWA competition management endpoints
+router.register('competition-fields', CompetitionFieldViewSet, basename='competition-field')
+router.register('category-field-assignments', CategoryFieldAssignmentViewSet, basename='category-field-assignment')
+router.register('monitor-sessions', DisplayMonitorSessionViewSet, basename='monitor-session')
+router.register('match-rounds', MatchRoundViewSet, basename='match-round')
+router.register('qr-codes', QRCodeAssignmentViewSet, basename='qr-code')
 # team-scores endpoint deprecated - use category-athlete-score with type='teams' filter
 
 # Sync and Excel endpoints
@@ -48,8 +54,7 @@ from .autocomplete import (
     GradeAutocomplete, FederationRoleAutocomplete, TitleAutocomplete,
     CityAutocomplete, TeamAutocomplete, EventAutocomplete, MatchAutocomplete
 )
-
-urlpatterns = [
+autocomplete_urlpatterns = [
     path('athlete-profiles/', _views.athlete_profiles_compat, name='athlete-profiles-compat-root'),
     path('athlete-profiles/<path:subpath>/', _views.athlete_profiles_compat, name='athlete-profiles-compat'),
     
@@ -68,7 +73,7 @@ urlpatterns = [
 
 # then append the rest of the urlpatterns below
 
-urlpatterns = [
+urlpatterns = autocomplete_urlpatterns + [
     # CSRF token endpoint
     path('auth/csrf/', views.get_csrf_token, name='csrf-token'),
     
@@ -80,6 +85,7 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='login'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/profile/', UserProfileView.as_view(), name='profile'),
+    path('auth/me/', UserProfileView.as_view(), name='me'),  # Alias for /profile/
     path('auth/session-check/', SessionCheckView.as_view(), name='session-check'),
     path('auth/session-login/', SessionLoginView.as_view(), name='session-login'),
     path('auth/session-logout/', SessionLogoutView.as_view(), name='session-logout'),

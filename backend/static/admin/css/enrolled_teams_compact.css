@@ -1,60 +1,44 @@
-/* Compact EnrolledTeamsInline & CategoryAthleteInline - tight columns */
+/* Compact EnrolledTeamsInline & CategoryAthleteInline */
 
-/* Make the table narrower */
+#categoryteam_set-group,
+#categoryathlete_set-group,
+.inline-group[id*="categoryteam"],
+.inline-group[id*="categoryathlete"] {
+    overflow-x: auto;
+}
+
 #categoryteam_set-group table,
-#categoryathlete_set-group table {
-    width: auto !important;
-    max-width: 100%;
-    border-collapse: separate !important;
-    border-spacing: 4px 0 !important;
-    table-layout: fixed !important;
+#categoryathlete_set-group table,
+.inline-group[id*="categoryteam"] table,
+.inline-group[id*="categoryathlete"] table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 4px 0;
+    table-layout: fixed;
 }
 
-/* Team/Athlete input field - always 200px width with margin */
-#categoryteam_set-group input[id*="team"],
-#categoryteam_set-group select[id*="team"],
-#categoryteam_set-group .related-widget-wrapper input,
-#categoryathlete_set-group input[id*="athlete"],
-#categoryathlete_set-group select[id*="athlete"],
-#categoryathlete_set-group .related-widget-wrapper input {
-    width: 190px !important;
-    max-width: 190px !important;
-    min-width: 190px !important;
-    box-sizing: border-box !important;
-    margin-right: 4px !important;
+#categoryteam_set-group th,
+#categoryathlete_set-group th,
+.inline-group[id*="categoryteam"] th,
+.inline-group[id*="categoryathlete"] th {
+    padding: 4px 2px;
+    text-align: center;
+    font-size: 11px;
+    white-space: nowrap;
 }
 
-/* Team/Athlete cell - fixed width */
-#categoryteam_set-group td:first-child,
-#categoryathlete_set-group td:first-child {
-    width: 200px !important;
-    min-width: 200px !important;
-    max-width: 200px !important;
-    padding: 4px 2px !important;
+#categoryteam_set-group td,
+#categoryathlete_set-group td,
+.inline-group[id*="categoryteam"] td,
+.inline-group[id*="categoryathlete"] td {
+    padding: 4px 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 200px;
+    max-width: 200px;
 }
 
-/* Target all input fields for ref scores - 80px max */
-#categoryteam_set-group input[id*="ref1_score"],
-#categoryteam_set-group input[id*="ref2_score"],
-#categoryteam_set-group input[id*="ref3_score"],
-#categoryteam_set-group input[id*="ref4_score"],
-#categoryteam_set-group input[id*="ref5_score"],
-#categoryathlete_set-group input[id*="ref1_score"],
-#categoryathlete_set-group input[id*="ref2_score"],
-#categoryathlete_set-group input[id*="ref3_score"],
-#categoryathlete_set-group input[id*="ref4_score"],
-#categoryathlete_set-group input[id*="ref5_score"],
-.inline-group[id*="categoryteam"] input[id*="ref"],
-.inline-group[id*="categoryathlete"] input[id*="ref"] {
-    width: 80px !important;
-    max-width: 80px !important;
-    min-width: 80px !important;
-    box-sizing: border-box !important;
-    margin: 0 !important;
-    padding: 2px 4px !important;
-}
-
-/* Ref score cells - fixed width */
 #categoryteam_set-group td:nth-child(2),
 #categoryteam_set-group td:nth-child(3),
 #categoryteam_set-group td:nth-child(4),
@@ -64,56 +48,88 @@
 #categoryathlete_set-group td:nth-child(3),
 #categoryathlete_set-group td:nth-child(4),
 #categoryathlete_set-group td:nth-child(5),
-#categoryathlete_set-group td:nth-child(6) {
-    width: 80px !important;
-    min-width: 80px !important;
-    max-width: 80px !important;
-    padding: 4px 2px !important;
+#categoryathlete_set-group td:nth-child(6),
+.inline-group[id*="categoryteam"] td:nth-child(2),
+.inline-group[id*="categoryteam"] td:nth-child(3),
+.inline-group[id*="categoryteam"] td:nth-child(4),
+.inline-group[id*="categoryteam"] td:nth-child(5),
+.inline-group[id*="categoryteam"] td:nth-child(6),
+.inline-group[id*="categoryathlete"] td:nth-child(2),
+.inline-group[id*="categoryathlete"] td:nth-child(3),
+.inline-group[id*="categoryathlete"] td:nth-child(4),
+.inline-group[id*="categoryathlete"] td:nth-child(5),
+.inline-group[id*="categoryathlete"] td:nth-child(6) {
+    width: 60px;
+    max-width: 60px;
 }
 
-/* All other input fields - 80px */
-#categoryteam_set-group input:not([id*="team"]):not([id*="ref"]),
-#categoryteam_set-group select:not([id*="team"]),
-#categoryathlete_set-group input:not([id*="athlete"]):not([id*="ref"]),
-#categoryathlete_set-group select:not([id*="athlete"]) {
-    width: 70px !important;
-    max-width: 70px !important;
-    min-width: 70px !important;
-    box-sizing: border-box !important;
+#categoryteam_set-group input[id*="team"],
+#categoryteam_set-group select[id*="team"],
+#categoryathlete_set-group input[id*="athlete"],
+#categoryathlete_set-group select[id*="athlete"],
+.inline-group[id*="categoryteam"] input[id*="team"],
+.inline-group[id*="categoryteam"] select[id*="team"],
+.inline-group[id*="categoryathlete"] input[id*="athlete"],
+.inline-group[id*="categoryathlete"] select[id*="athlete"] {
+    width: 100%;
+    min-width: 180px;
+    box-sizing: border-box;
 }
 
-/* Narrow down th headers */
-#categoryteam_set-group th,
-#categoryathlete_set-group th {
-    padding: 4px 2px !important;
-    text-align: center;
-    font-size: 11px !important;
-    white-space: nowrap !important;
+#categoryathlete_set-group td:first-child,
+.inline-group[id*="categoryathlete"] td:first-child {
+    padding-right: 4px;
 }
 
-/* Row height */
-#categoryteam_set-group tr,
-#categoryathlete_set-group tr {
-    height: 35px !important;
+#categoryathlete_set-group .related-widget-wrapper,
+.inline-group[id*="categoryathlete"] .related-widget-wrapper,
+#categoryathlete_set-group .select2-container,
+.inline-group[id*="categoryathlete"] .select2-container {
+    width: 100%;
+    max-width: 100%;
 }
 
-/* Ensure column widths don't overflow */
-#categoryteam_set-group td,
-#categoryathlete_set-group td {
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
+/* Override select2 selection width for enrolled athletes */
+#enrolled_athletes-0 > td.field-athlete > div > span > span.selection > span,
+[id^="enrolled_athletes-"] > td.field-athlete > div > span > span.selection > span {
+    width: 100% !important;
+    max-width: 100% !important;
 }
 
-/* Place and disqualified fields */
-#categoryteam_set-group input[id*="place"],
-#categoryteam_set-group input[id*="disqualified"],
-#categoryathlete_set-group input[id*="place"],
-#categoryathlete_set-group input[id*="disqualified"] {
-    width: 70px !important;
-    max-width: 70px !important;
-    min-width: 70px !important;
+/* Hide original object label in teams enrolled inline */
+#enrolled_teams-0 > td.original > p,
+[id^="enrolled_teams-"] > td.original > p {
+    display: none !important;
 }
+
+#categoryteam_set-group input[id*="ref"],
+#categoryathlete_set-group input[id*="ref"],
+.inline-group[id*="categoryteam"] input[id*="ref"],
+.inline-group[id*="categoryathlete"] input[id*="ref"] {
+    width: 60px;
+    box-sizing: border-box;
+    padding: 2px 3px;
+}
+
+#categoryteam_set-group .select2-container,
+#categoryathlete_set-group .select2-container,
+.inline-group[id*="categoryteam"] .select2-container,
+.inline-group[id*="categoryathlete"] .select2-container {
+    width: 100%;
+    min-width: 180px;
+}
+
+#categoryteam_set-group .related-widget-wrapper-link,
+#categoryathlete_set-group .related-widget-wrapper-link,
+.inline-group[id*="categoryteam"] .related-widget-wrapper-link,
+.inline-group[id*="categoryathlete"] .related-widget-wrapper-link,
+#categoryteam_set-group .related-widget-wrapper > a,
+#categoryathlete_set-group .related-widget-wrapper > a,
+.inline-group[id*="categoryteam"] .related-widget-wrapper > a,
+.inline-group[id*="categoryathlete"] .related-widget-wrapper > a {
+    display: none;
+}
+
 
 
 

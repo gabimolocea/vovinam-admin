@@ -1257,3 +1257,140 @@ class NotificationActionSerializer(serializers.Serializer):
         required=False,
         help_text="List of notification IDs for batch operations"
     )
+
+
+# ============================================================================
+# PWA COMPETITION MANAGEMENT SERIALIZERS
+# ============================================================================
+
+class CompetitionFieldSerializer(serializers.ModelSerializer):
+    """Serializer for competition fields (tatamis/scoring stations)"""
+    
+    class Meta:
+        model = CompetitionField
+        fields = [
+            'id', 'event', 'name', 'field_number', 'is_active',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class CategoryFieldAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for assigning categories to fields"""
+    
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_type = serializers.SerializerMethodField(read_only=True)
+    field_name = serializers.CharField(source='field.name', read_only=True)
+    
+    class Meta:
+        model = CategoryFieldAssignment
+        fields = [
+            'id', 'category', 'category_name', 'category_type', 'field', 'field_name',
+            'status', 'scheduled_start_time', 'actual_start_time', 'actual_end_time',
+            'order', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def get_category_type(self, obj):
+        """Get the category type (solo, team, fight)"""
+        return obj.category.get_real_instance().__class__.__name__.lower()
+
+
+class DisplayMonitorSessionSerializer(serializers.ModelSerializer):
+    """Serializer for display monitor sessions"""
+    
+    field_name = serializers.CharField(source='field.name', read_only=True)
+    current_category_name = serializers.CharField(source='current_category.name', read_only=True, allow_null=True)
+    current_match_number = serializers.CharField(source='current_match.match_number', read_only=True, allow_null=True)
+    current_athlete_name = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = DisplayMonitorSession
+        fields = [
+            'id', 'field', 'field_name', 'current_category', 'current_category_name',
+            'current_match', 'current_match_number', 'current_athlete', 'current_athlete_name',
+            'status', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def get_current_athlete_name(self, obj):
+        """Get full name of current athlete"""
+        if obj.current_athlete:
+            return f"{obj.current_athlete.first_name} {obj.current_athlete.last_name}"
+        return None
+
+
+class MatchRoundSerializer(serializers.ModelSerializer):
+    """Serializer for match rounds in fighting competitions"""
+    
+    match_number = serializers.CharField(source='match.match_number', read_only=True)
+    
+    class Meta:
+        model = MatchRound
+        fields = [
+            'id', 'match', 'match_number', 'round_number', 'duration_seconds',
+            'status', 'started_at', 'ended_at', 'created_at'
+        ]
+        read_only_fields = ['created_at']
+
+
+class QRCodeAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for QR code assignments"""
+    
+    referee_name = serializers.SerializerMethodField(read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True, allow_null=True)
+    match_number = serializers.CharField(source='match.match_number', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = QRCodeAssignment
+        fields = [
+            'id', 'referee', 'referee_name', 'category', 'category_name',
+            'match', 'match_number', 'code', 'is_active', 'created_at', 'expires_at'
+        ]
+        read_only_fields = ['code', 'created_at']
+    
+    def get_referee_name(self, obj):
+        """Get full name of referee"""
+        return f"{obj.referee.first_name} {obj.referee.last_name}"
+
+
+class CategoryRefereeScorerWithDeductionsSerializer(serializers.ModelSerializer):
+    """Updated serializer for category referee scores with deduction support"""
+    
+    referee_name = serializers.SerializerMethodField(read_only=True)
+    athlete_name = serializers.SerializerMethodField(read_only=True)
+    category_name = serializers.CharField(source='athlete_score.category.name', read_only=True)
+    
+    class Meta:
+        model = CategoryRefereeScore
+        fields = [
+            'id', 'athlete_score', 'referee', 'referee_name', 'athlete_name',
+            'category_name', 'deductions', 'score', 'submitted_date', 'notes'
+        ]
+        read_only_fields = ['submitted_date']
+    
+    def get_referee_name(self, obj):
+        """Get full name of referee"""
+        return f"{obj.referee.first_name} {obj.referee.last_name}"
+    
+    def get_athlete_name(self, obj):
+        """Get athlete name or team name"""
+        if obj.athlete_score.athlete:
+            athlete = obj.athlete_score.athlete
+            return f"{athlete.first_name} {athlete.last_name}"
+        return obj.athlete_score.team_name or "Unknown"
+    
+    def create(self, validated_data):
+        """Override create to auto-calculate score from deductions"""
+        deductions = validated_data.get('deductions', {})
+        total_deduction = sum(deductions.values()) if deductions else 0
+        validated_data['score'] = 100 - total_deduction
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        """Override update to auto-calculate score from deductions"""
+        if 'deductions' in validated_data:
+            deductions = validated_data['deductions']
+            total_deduction = sum(deductions.values()) if deductions else 0
+            validated_data['score'] = 100 - total_deduction
+        return super().update(instance, validated_data)

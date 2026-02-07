@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vovinam Referee Scoring</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .content {
+            padding: 20px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+        
+        select, input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .score-input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .score-input {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .score-input input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .score-input input:focus {
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        button {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .status-message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
+        .status-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        
+        .session-info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .session-info p {
+            margin: 5px 0;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        .session-info .category {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .athlete-names {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .athlete-names span {
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .referee-id-input {
+            background: #f9f9f9;
+            border: 2px dashed #ddd;
+        }
+        
+        .counter {
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🥋 Referee Scoring</h1>
+            <p>Submit scores for athletes and matches</p>
+        </div>
+        
+        <div class="content">
+            <!-- Step 1: Referee Identification -->
+            <div id="step-1" class="section">
+                <div class="section-title">🔑 Your Details</div>
+                <div class="form-group">
+                    <label for="referee-name">Referee Name / ID</label>
+                    <input 
+                        type="text" 
+                        id="referee-name" 
+                        placeholder="e.g., Ref 1, John Smith"
+                        class="referee-id-input"
+                    >
+                </div>
+                <button class="btn-primary" onclick="continueTatami()" style="width: 100%;">Continue →</button>
+            </div>
+            
+            <!-- Step 2: Select Tatami -->
+            <div id="step-2" class="section hidden">
+                <div class="section-title">🏛️ Select Tatami</div>
+                <div id="status-message" class="status-message"></div>
+                <div class="form-group">
+                    <label for="tatami-select">Which Tatami?</label>
+                    <select id="tatami-select" onchange="loadSessions()">
+                        <option value="">-- Loading tatamis --</option>
+                    </select>
+                </div>
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="goBack(1)">← Back</button>
+                </div>
+            </div>
+            
+            <!-- Step 3: Select Session -->
+            <div id="step-3" class="section hidden">
+                <div class="section-title">📋 Select Category/Match</div>
+                <div id="sessions-container"></div>
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="goBack(2)">← Back</button>
+                </div>
+            </div>
+            
+            <!-- Step 4: Submit Score -->
+            <div id="step-4" class="section hidden">
+                <div class="section-title">📊 Enter Score</div>
+                
+                <div id="session-info" class="session-info"></div>
+                <div id="status-submit" class="status-message"></div>
+                
+                <div class="form-group">
+                    <label>Technique</label>
+                    <input type="number" id="technique" min="0" max="10" step="0.5" placeholder="0 - 10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Power</label>
+                    <input type="number" id="power" min="0" max="10" step="0.5" placeholder="0 - 10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Speed</label>
+                    <input type="number" id="speed" min="0" max="10" step="0.5" placeholder="0 - 10">
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="goBack(3)">← Back</button>
+                    <button class="btn-primary" onclick="submitScore()">✓ Submit Score</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentStep = 1;
+        let selectedTatami = null;
+        let selectedSession = null;
+        
+        // Load tatamis on page load
+        window.addEventListener('load', () => {
+            loadTatamis();
+        });
+        
+        function showStep(step) {
+            document.querySelectorAll('[id^="step-"]').forEach(el => {
+                el.classList.add('hidden');
+            });
+            document.getElementById('step-' + step).classList.remove('hidden');
+            currentStep = step;
+            window.scrollTo(0, 0);
+        }
+        
+        function continueTatami() {
+            const refName = document.getElementById('referee-name').value.trim();
+            if (!refName) {
+                showMessage('status-message', 'Please enter your name', 'error');
+                return;
+            }
+            localStorage.setItem('refereeId', refName);
+            showStep(2);
+        }
+        
+        function goBack(step) {
+            showStep(step);
+        }
+        
+        async function loadTatamis() {
+            try {
+                const response = await fetch('/api/referee/tatamis');
+                const tatamis = await response.json();
+                
+                const select = document.getElementById('tatami-select');
+                select.innerHTML = '<option value="">-- Select a Tatami --</option>';
+                
+                tatamis.forEach(tatami => {
+                    const option = document.createElement('option');
+                    option.value = tatami.id;
+                    option.textContent = `${tatami.name} (${tatami.type})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                showMessage('status-message', 'Error loading tatamis: ' + error.message, 'error');
+            }
+        }
+        
+        async function loadSessions() {
+            selectedTatami = document.getElementById('tatami-select').value;
+            if (!selectedTatami) return;
+            
+            try {
+                const response = await fetch(`/api/referee/sessions/${selectedTatami}`);
+                const sessions = await response.json();
+                
+                const container = document.getElementById('sessions-container');
+                if (sessions.length === 0) {
+                    container.innerHTML = '<p style="color: #999; text-align: center;">No active sessions</p>';
+                    return;
+                }
+                
+                container.innerHTML = sessions.map(session => `
+                    <div class="session-info" onclick="selectSession(${session.id}, '${session.category_name}', '${session.athlete1_name}', '${session.athlete2_name || ''}')">
+                        <div class="category">${session.category_name}</div>
+                        <div class="athlete-names">
+                            <span>${session.athlete1_name}</span>
+                            ${session.athlete2_name ? `<span> vs ${session.athlete2_name}</span>` : ''}
+                        </div>
+                        <div class="counter">Click to score</div>
+                    </div>
+                `).join('');
+                
+                showStep(3);
+            } catch (error) {
+                showMessage('status-message', 'Error loading sessions: ' + error.message, 'error');
+            }
+        }
+        
+        function selectSession(sessionId, category, athlete1, athlete2) {
+            selectedSession = sessionId;
+            
+            const info = document.getElementById('session-info');
+            info.innerHTML = `
+                <div class="category">${category}</div>
+                <div class="athlete-names">
+                    <span>${athlete1}</span>
+                    ${athlete2 ? `<span> vs ${athlete2}</span>` : ''}
+                </div>
+            `;
+            
+            // Clear score inputs
+            document.getElementById('technique').value = '';
+            document.getElementById('power').value = '';
+            document.getElementById('speed').value = '';
+            
+            showStep(4);
+        }
+        
+        async function submitScore() {
+            const technique = parseFloat(document.getElementById('technique').value);
+            const power = parseFloat(document.getElementById('power').value);
+            const speed = parseFloat(document.getElementById('speed').value);
+            const refId = localStorage.getItem('refereeId');
+            
+            if (isNaN(technique) || isNaN(power) || isNaN(speed)) {
+                showMessage('status-submit', 'Please enter all scores', 'error');
+                return;
+            }
+            
+            if (technique < 0 || technique > 10 || power < 0 || power > 10 || speed < 0 || speed > 10) {
+                showMessage('status-submit', 'Scores must be between 0 and 10', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/referee/submit-score', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_id: selectedSession,
+                        referee_id: refId,
+                        score_data: {
+                            technique: technique,
+                            power: power,
+                            speed: speed,
+                            total: (technique + power + speed) / 3
+                        }
+                    })
+                });
+                
+                if (response.ok) {
+                    showMessage('status-submit', '✓ Score submitted successfully!', 'success');
+                    setTimeout(() => {
+                        showStep(3);
+                    }, 2000);
+                } else {
+                    const error = await response.json();
+                    showMessage('status-submit', 'Error: ' + (error.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showMessage('status-submit', 'Network error: ' + error.message, 'error');
+            }
+        }
+        
+        function showMessage(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = 'status-message ' + type;
+        }
+    </script>
+</body>
+</html>

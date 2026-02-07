@@ -97,6 +97,15 @@ class SyncManager:
             else:
                 print(f"Grades sync failed: {msg}")
             
+            # Sync categories
+            print("Syncing categories...")
+            success, msg, count = self.pull_categories()
+            if success:
+                total_synced += count
+                print(msg)
+            else:
+                print(f"Categories sync failed: {msg}")
+            
             return True, f"Reference data synced successfully ({total_synced} records)"
         except Exception as e:
             print(f"Reference data sync error: {e}")
@@ -1506,4 +1515,179 @@ class SyncManager:
         ).fetchone()
         
         return result['id'] if result else None
+    
+    def push_scores_to_backend(self, competition_id: int = None) -> Tuple[bool, str, Dict]:
+        """
+        Upload local offline scores to Django backend.
+        
+        Args:
+            competition_id: Optional filter to sync only specific competition
+            
+        Returns:
+            (success: bool, message: str, stats: dict with pushed/conflicts/errors)
+        """
+        try:
+            stats = {
+                'total': 0,
+                'pushed': 0,
+                'conflicts': 0,
+                'errors': 0,
+                'skipped': 0,
+                'details': []
+            }
+            
+            conn = self.db.connect()
+            cursor = conn.cursor()
+            
+            # Get all unsynced scores from local database
+            query = "SELECT * FROM score_submissions WHERE synced = 0"
+            params = []
+            
+            if competition_id:
+                query += " AND session_id IN (SELECT id FROM scoring_sessions WHERE event_id = ?)"
+                params.append(competition_id)
+            
+            cursor.execute(query, params)
+            local_scores = cursor.fetchall()
+            stats['total'] = len(local_scores)
+            
+            if not local_scores:
+                return True, "No unsynced scores to push", stats
+            
+            # Push each score
+            for score_record in local_scores:
+                try:
+                    # Extract score data
+                    session_id = score_record['session_id']
+                    referee_id = score_record['referee_id']
+                    score_json = score_record['score_data']
+                    
+                    # Get session details
+                    session = cursor.execute(
+                        "SELECT * FROM scoring_sessions WHERE id = ?",
+                        (session_id,)
+                    ).fetchone()
+                    
+                    if not session:
+                        stats['skipped'] += 1
+                        stats['details'].append(f"Score {score_record['id']}: Session not found")
+                        continue
+                    
+                    # Build payload for backend
+                    payload = {
+                        'referee_id': referee_id,
+                        'athlete1_name': session.get('athlete1_name'),
+                        'athlete2_name': session.get('athlete2_name'),
+                        'category_name': session.get('category_name'),
+                        'score_data': score_json,
+                        'submitted_at': score_record['submitted_at'],
+                        'offline_session_id': session_id
+                    }
+                    
+                    # Try to POST to backend
+                    response = self.session.post(
+                        f"{self.api_base_url}/referee-scores/",
+                        json=payload,
+                        timeout=10
+                    )
+                    
+                    if response.status_code == 201:
+                        # Success - mark as synced
+                        cursor.execute(
+                            "UPDATE score_submissions SET synced = 1 WHERE id = ?",
+                            (score_record['id'],)
+                        )
+                        conn.commit()
+                        stats['pushed'] += 1
+                        stats['details'].append(f"✓ Score {score_record['id']} pushed")
+                        
+                    elif response.status_code == 409:
+                        # Conflict - duplicate submission
+                        stats['conflicts'] += 1
+                        error_msg = response.json().get('error', 'Duplicate submission')
+                        stats['details'].append(f"⚠ Score {score_record['id']} CONFLICT: {error_msg}")
+                        
+                    elif response.status_code == 401:
+                        # Auth error - need to login again
+                        return False, "Authentication failed - please login again", stats
+                        
+                    else:
+                        # Other error
+                        stats['errors'] += 1
+                        error_text = response.text[:200]
+                        stats['details'].append(f"✗ Score {score_record['id']} ERROR: {response.status_code} - {error_text}")
+                        
+                except Exception as e:
+                    stats['errors'] += 1
+                    stats['details'].append(f"Exception pushing score: {str(e)}")
+            
+            # Build summary message
+            message = f"Sync complete: {stats['pushed']} pushed, {stats['conflicts']} conflicts, {stats['errors']} errors, {stats['skipped']} skipped"
+            success = stats['errors'] == 0 and stats['total'] > 0
+            
+            return success, message, stats
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return False, f"Sync failed: {str(e)}", stats
+    
+    def get_unsynced_scores_count(self) -> int:
+        """Get count of scores not yet synced to backend"""
+        try:
+            conn = self.db.connect()
+            cursor = conn.cursor()
+            result = cursor.execute(
+                "SELECT COUNT(*) as count FROM score_submissions WHERE synced = 0"
+            ).fetchone()
+            return result['count'] if result else 0
+        except:
+            return 0
+    
+    def export_offline_scores(self, filepath: str) -> Tuple[bool, str]:
+        """
+        Export all local scores to JSON file (for backup/manual upload).
+        
+        Useful if automatic sync fails.
+        """
+        try:
+            import json
+            
+            conn = self.db.connect()
+            cursor = conn.cursor()
+            
+            # Get all scores with session details
+            query = """
+            SELECT 
+                ss.id,
+                ss.athlete1_name,
+                ss.athlete2_name,
+                ss.category_name,
+                ss.started_at,
+                ss.completed_at,
+                sub.referee_id,
+                sub.score_data,
+                sub.submitted_at,
+                sub.synced
+            FROM score_submissions sub
+            JOIN scoring_sessions ss ON sub.session_id = ss.id
+            """
+            
+            cursor.execute(query)
+            scores = cursor.fetchall()
+            
+            # Convert to JSON-serializable format
+            export_data = {
+                'export_date': datetime.now().isoformat(),
+                'total_scores': len(scores),
+                'scores': [dict(score) for score in scores]
+            }
+            
+            with open(filepath, 'w') as f:
+                json.dump(export_data, f, indent=2)
+            
+            return True, f"Exported {len(scores)} scores to {filepath}"
+            
+        except Exception as e:
+            return False, f"Export failed: {str(e)}"
 

@@ -71,6 +71,7 @@ class EventAdmin(admin.ModelAdmin):
     list_display = ['title', 'start_date', 'city', 'event_type', 'is_featured', 'event_status']
     list_filter = ['is_featured', 'start_date']
     search_fields = ['title', 'description', 'city__name', 'tags']
+    autocomplete_fields = ['city']
     prepopulated_fields = {'slug': ('title',)}
     # Removed inline editing for `is_featured` to avoid the changelist-wide
     # "Save" button. Use the object change form or admin actions to toggle

@@ -79,6 +79,22 @@ class MainWindow(QMainWindow):
         self.brackets_tab = BracketsTab(self.db)
         self.tabs.addTab(self.brackets_tab, '🏁 Brackets')
         
+        # Tatami/LAN Scoring tab
+        from ui.tatami_manager import TatamiManagerWidget
+        from ui.scoring_sessions import ScoringSessionWidget
+        tatami_layout_widget = QWidget()
+        tatami_layout = QHBoxLayout(tatami_layout_widget)
+        
+        self.tatami_manager = TatamiManagerWidget(self.db)
+        self.scoring_sessions = ScoringSessionWidget(self.db)
+        
+        self.tatami_manager.tatami_selected.connect(self.scoring_sessions.set_tatami)
+        
+        tatami_layout.addWidget(self.tatami_manager, 1)
+        tatami_layout.addWidget(self.scoring_sessions, 1)
+        
+        self.tabs.addTab(tatami_layout_widget, '🏛️ Tatami/Scoring')
+        
         # Matches tab
         self.matches_tab = MatchesTab(self.db)
         # Clubs tab

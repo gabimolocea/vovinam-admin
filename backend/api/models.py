@@ -54,6 +54,18 @@ class User(AbstractUser):
         return self.role == 'athlete'
     
     @property
+    def is_referee(self):
+        """User is referee if they're admin OR if they're an athlete with is_referee=True"""
+        if self.is_admin:
+            return True
+        if self.is_athlete:
+            try:
+                return hasattr(self, 'athlete') and self.athlete and self.athlete.is_referee
+            except:
+                return False
+        return False
+    
+    @property
     def is_supporter(self):
         return self.role == 'supporter'
     
@@ -648,7 +660,7 @@ class TrainingSeminarParticipation(models.Model):
     # Primary event field
     event = models.ForeignKey(
         'landing.Event',
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name='seminar_participations',
@@ -905,7 +917,7 @@ class Team(models.Model):
         if not members:
             return f"Team #{self.pk}"
         names = [f"{m.athlete.first_name} {m.athlete.last_name}" for m in members]
-        base = ", ".join(names)
+        base = " & ".join(names)
         total_members = self.members.count()
         
         # Add club name of first athlete if available
@@ -920,11 +932,7 @@ class Team(models.Model):
 
     def __str__(self):
         """Display team with member names for clarity"""
-        members = self.members.select_related('athlete').all()[:3]
-        if not members:
-            return f"Team #{self.pk}"
-        names = [f"{m.athlete.first_name} {m.athlete.last_name}" for m in members]
-        return ", ".join(names)
+        return self.name
 
 
 class TeamMember(models.Model):
@@ -961,7 +969,7 @@ class Category(models.Model):
 
     category_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this category (e.g., C1, C2, SOLO-M-1)')
     name = models.CharField(max_length=100)
-    event = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='categories', null=True, blank=True)
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixt')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
     
@@ -981,6 +989,7 @@ class Category(models.Model):
         indexes = [
             models.Index(fields=['event']),
         ]
+        verbose_name_plural = 'Categories'
 
     def __str__(self):
         associated = getattr(self, 'event', None) or getattr(self, 'competition', None)
@@ -1187,6 +1196,9 @@ class Match(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
     # Winner is now computed from scoring system - no longer stored
     name = models.CharField(max_length=255, blank=True)  # Automatically generated match name
+
+    class Meta:
+        verbose_name_plural = 'Matches'
 
     @property
     def winner(self):
@@ -1622,7 +1634,9 @@ class CategoryRefereeScore(models.Model):
     """
     Stores individual referee scores for athletes/teams in solo and team categories.
     For solo/team categories, 5 referees score each athlete/team.
-    The final score excludes the highest and lowest scores and sums the middle 3.
+    Referees start with base score of 100 and submit deductions.
+    Final score = 100 - sum_of_deductions.
+    The final award score excludes the highest and lowest scores and averages the middle 3.
     """
     CATEGORY_TYPE_CHOICES = [
         ('solo', 'Solo'),
@@ -1646,11 +1660,20 @@ class CategoryRefereeScore(models.Model):
         help_text='The referee providing this score'
     )
     
-    # The score value
+    # Deduction structure (JSON field for flexibility)
+    # Example: {"wrong_technique": 10, "wrong_position": 5, "not_looking_real": 0, "stamina": 3}
+    deductions = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Deductions by category: wrong_technique, wrong_position, not_looking_real, stamina'
+    )
+    
+    # Calculated total score (100 - sum_of_deductions)
     score = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        help_text='Score given by this referee (typically 0-10 scale)'
+        default=100,
+        help_text='Final score: 100 minus all deductions'
     )
     
     # Metadata
@@ -2605,6 +2628,315 @@ class TeamPerformanceVideo(models.Model):
         """Validate that at least one video source is provided"""
         if not self.video_file and not self.video_url:
             raise ValidationError("Either video file or video URL must be provided")
+
+
+# ============================================================================
+# PWA COMPETITION MANAGEMENT MODELS
+# ============================================================================
+
+class CompetitionField(models.Model):
+    """
+    Represents a scoring field/tatami at a competition.
+    Multiple fields can run simultaneously during an event.
+    Each field displays scores on a dedicated monitor.
+    """
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.CASCADE,
+        related_name='fields',
+        help_text='The event this field belongs to'
+    )
+    
+    name = models.CharField(
+        max_length=100,
+        help_text='Field name (e.g., "Field 1", "Tatami A", "Area B")'
+    )
+    
+    field_number = models.IntegerField(
+        help_text='Numeric identifier for the field'
+    )
+    
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Whether this field is currently being used'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('event', 'field_number')
+        ordering = ['field_number']
+        verbose_name = 'Competition Field'
+        verbose_name_plural = 'Competition Fields'
+    
+    def __str__(self):
+        return f"{self.name} (Event: {self.event.title})"
+
+
+class CategoryFieldAssignment(models.Model):
+    """
+    Assigns a category to a specific field for competition day.
+    Allows admin to track which categories are being held on which fields.
+    """
+    category = models.OneToOneField(
+        'Category',
+        on_delete=models.CASCADE,
+        related_name='field_assignment',
+        help_text='The category being assigned'
+    )
+    
+    field = models.ForeignKey(
+        'CompetitionField',
+        on_delete=models.CASCADE,
+        related_name='category_assignments',
+        help_text='The field this category is assigned to'
+    )
+    
+    STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='not_started',
+        help_text='Current status of this category on this field'
+    )
+    
+    scheduled_start_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the category is scheduled to start'
+    )
+    
+    actual_start_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the category actually started'
+    )
+    
+    actual_end_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the category actually ended'
+    )
+    
+    order = models.IntegerField(
+        default=0,
+        help_text='Order in which categories are run on this field'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['order']
+        verbose_name = 'Category Field Assignment'
+        verbose_name_plural = 'Category Field Assignments'
+        indexes = [
+            models.Index(fields=['field', 'status']),
+        ]
+    
+    def __str__(self):
+        return f"{self.category.name} → {self.field.name}"
+
+
+class DisplayMonitorSession(models.Model):
+    """
+    Tracks what is currently being displayed on each field's monitor.
+    Admin can switch which category/match is shown on each monitor in real-time.
+    """
+    field = models.OneToOneField(
+        'CompetitionField',
+        on_delete=models.CASCADE,
+        related_name='monitor_session',
+        help_text='Which field this monitor serves'
+    )
+    
+    current_category = models.ForeignKey(
+        'Category',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='monitor_sessions_category',
+        help_text='The category currently displayed'
+    )
+    
+    current_match = models.ForeignKey(
+        'Match',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='monitor_sessions_match',
+        help_text='The match currently displayed (for fighting categories)'
+    )
+    
+    current_athlete = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='monitor_sessions',
+        help_text='The current athlete being displayed (for solo/teams)'
+    )
+    
+    STATUS_CHOICES = [
+        ('idle', 'Idle'),
+        ('displaying', 'Displaying'),
+        ('scores_revealed', 'Scores Revealed'),
+    ]
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='idle',
+        help_text='Current display status'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'Display Monitor Session'
+        verbose_name_plural = 'Display Monitor Sessions'
+    
+    def __str__(self):
+        if self.current_category:
+            return f"Monitor {self.field.field_number}: {self.current_category.name}"
+        return f"Monitor {self.field.field_number}: Idle"
+
+
+class MatchRound(models.Model):
+    """
+    Represents a single round in a fighting match.
+    Tracks round duration, scores submitted per round, and round status.
+    """
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='rounds',
+        help_text='The match this round belongs to'
+    )
+    
+    round_number = models.IntegerField(
+        help_text='Round number (1, 2, 3, etc.)'
+    )
+    
+    duration_seconds = models.IntegerField(
+        default=180,
+        help_text='Duration of this round in seconds (default 3 minutes)'
+    )
+    
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+    ]
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='scheduled',
+        help_text='Current status of this round'
+    )
+    
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the round started'
+    )
+    
+    ended_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the round ended'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('match', 'round_number')
+        ordering = ['round_number']
+        verbose_name = 'Match Round'
+        verbose_name_plural = 'Match Rounds'
+    
+    def __str__(self):
+        return f"{self.match.match_number or self.match.id} - Round {self.round_number}"
+
+
+class QRCodeAssignment(models.Model):
+    """
+    Generates unique QR codes for quick referee access to their assigned categories/matches.
+    When a referee scans the QR, they're automatically logged in to that specific category/match.
+    """
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        limit_choices_to={'is_referee': True},
+        related_name='qr_assignments',
+        help_text='The referee this QR code is for'
+    )
+    
+    category = models.ForeignKey(
+        'Category',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='qr_assignments',
+        help_text='The category this QR code grants access to (solo/teams only)'
+    )
+    
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='qr_assignments',
+        help_text='The match this QR code grants access to (fighting only)'
+    )
+    
+    code = models.CharField(
+        max_length=255,
+        unique=True,
+        db_index=True,
+        help_text='Unique QR code value'
+    )
+    
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Whether this QR code can be used'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Optional expiration date for this QR code'
+    )
+    
+    class Meta:
+        unique_together = ('referee', 'category', 'match')
+        verbose_name = 'QR Code Assignment'
+        verbose_name_plural = 'QR Code Assignments'
+        indexes = [
+            models.Index(fields=['code']),
+            models.Index(fields=['referee', 'category']),
+            models.Index(fields=['referee', 'match']),
+        ]
+    
+    def __str__(self):
+        target = self.category.name if self.category else self.match.match_number
+        return f"QR for {self.referee.first_name} → {target}"
+    
+    def clean(self):
+        """Validate that either category or match is specified, but not both"""
+        if not self.category and not self.match:
+            raise ValidationError("QR code must be assigned to either a category or a match")
+        if self.category and self.match:
+            raise ValidationError("QR code cannot be assigned to both a category and a match")
 
 
 # DISABLED FEATURES (for future use):

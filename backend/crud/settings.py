@@ -28,11 +28,31 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+# Allow admin modals (admin_interface) to load in iframes on same origin
+X_FRAME_OPTIONS = "SAMEORIGIN"
+
+# Admin sidebar app order (best-first for daily workflow)
+ADMIN_APP_ORDER = [
+    'api',
+    'landing',
+    'news',
+    'contact',
+    'auth',
+    'admin_interface',
+    'reversion',
+]
+
+# Hide specific models from the admin sidebar (per app label)
+ADMIN_MODEL_HIDE = {
+    'api': ['Grade'],
+}
+
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    # 'daphne',  # ASGI server for Django Channels - disabled for development runserver
     'admin_interface',
     'colorfield',
     'django.contrib.admin',
@@ -47,6 +67,7 @@ INSTALLED_APPS = [
     'dal',  # django-autocomplete-light
     'dal_select2',  # django-autocomplete-light select2 widget
     'reversion',  # django-reversion for version control
+    'channels',  # Django Channels for WebSocket support
     'api',
     'django_filters',
     'rest_framework',
@@ -279,7 +300,7 @@ LOCALE_PATHS = [
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
@@ -338,4 +359,22 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+}
+
+# ============================================================================
+# DJANGO CHANNELS CONFIGURATION
+# ============================================================================
+
+ASGI_APPLICATION = 'crud.asgi.application'
+
+# Channel Layers - In-memory for development, Redis for production
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6379)],
+        },
+    } if not DEBUG else {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer'
+    }
 }

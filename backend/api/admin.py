@@ -9,9 +9,10 @@ from django.urls import path, reverse
 from django.shortcuts import render
 from django.http import JsonResponse
 from reversion.admin import VersionAdmin
-from dal import autocomplete
+from dal import autocomplete, forward
 from .bracket_visualization import bracket_visualization_readonly_field, BracketStats
-from django.db.models import Count
+from django.db import models
+from django.db.models import Count, Case, When, IntegerField
 from django.db.models.functions import TruncMonth
 import datetime
 import json
@@ -54,42 +55,111 @@ from .models import (
 # Map a user-facing group title to a list of model names (object names).
 # Update this dict to control how models under the `api` app are grouped.
 ADMIN_MODEL_GROUPS = {
-    'General Management': [
-        'User',
+    'GENERAL': [
         'Athlete',
-        'Club',
-        'City',
-        'Title',
-        'FederationRole',
-        'Grade',
-        'GradeHistory',
-        'Group',
         'SupporterAthleteRelation',
+        'Club',
+        'GradeHistory',
+        'Title',
+        'Visa',
+        'FederationRole',
+        'City',
+        'User',
+        'UserProxy',
     ],
-    'Competition Specific': [
+    'COMPETITION MANAGEMENT': [
+        'Event',
+        'Group',
+        'Category',
         'SoloCategory',
         'TeamCategory',
         'FightCategory',
         'FightAthleteWeight',
         'Team',
         'Match',
-        'CategoryAthleteScore',
+        'EventParticipation',
+        'TrainingSeminarParticipation',
         'MatchVideoRecording',
+        'AthletePerformanceVideo',
+        'TeamPerformanceVideo',
+        'CategoryAthleteScore',
     ],
 }
 # NOTE: Event proxy registration moved further down after inlines are defined
 # so we can inject participation inlines into the Event admin. See below.
 
 
+class AthleteInlineForm(forms.ModelForm):
+    athlete_selector = forms.ModelChoiceField(
+        queryset=Athlete.objects.all(),
+        required=False,
+        label=_('Name'),
+        widget=autocomplete.ModelSelect2(url='athlete-autocomplete')
+    )
+
+    class Meta:
+        model = Athlete
+        fields = ()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        def label_with_club(athlete):
+            if not athlete:
+                return ''
+            club_name = athlete.club.name if athlete.club else None
+            if club_name:
+                return f"{athlete.first_name} {athlete.last_name} ({club_name})"
+            return f"{athlete.first_name} {athlete.last_name}"
+
+        self.fields['athlete_selector'].label_from_instance = label_with_club
+        # Only allow athletes without a club for new rows
+        if not (self.instance and self.instance.pk):
+            self.fields['athlete_selector'].queryset = Athlete.objects.filter(club__isnull=True)
+        else:
+            # For existing rows, show the current athlete but prevent edits
+            self.fields['athlete_selector'].initial = self.instance
+            self.fields['athlete_selector'].required = False
+            self.fields['athlete_selector'].widget.attrs['disabled'] = True
+
+
+class AthleteInlineFormSet(forms.BaseInlineFormSet):
+    def delete_existing(self, obj, commit=True):
+        """Remove athlete from club without deleting the athlete record."""
+        obj.club = None
+        if commit:
+            obj.save()
+        return obj
+
+    def save_new(self, form, commit=True):
+        """Attach selected athlete to this club without editing details."""
+        athlete = form.cleaned_data.get('athlete_selector')
+        if not athlete:
+            return None
+        if athlete.club_id:
+            raise ValidationError(_('Selected athlete is already assigned to a club.'))
+        athlete.club = self.instance
+        if commit:
+            athlete.save()
+        return athlete
+
+
 class AthleteInline(admin.TabularInline):
     model = Athlete
     fk_name = 'club'  # Specify the foreign key field
-    fields = ('get_athlete_link', 'status', 'current_grade', 'is_coach', 'is_referee', 'registered_date', 'mobile_number')
-    readonly_fields = ('get_athlete_link', 'status', 'current_grade', 'is_coach', 'is_referee', 'registered_date', 'mobile_number')
-    extra = 0  # Don't show empty forms
+    formset = AthleteInlineFormSet
+    form = AthleteInlineForm
+    fields = ('athlete_selector', 'current_grade_display')
+    readonly_fields = ('current_grade_display',)
+    extra = 1  # Allow adding athletes from the tab
     verbose_name = _('Athlete')
-    verbose_name_plural = _('ATHLETES')
-    can_delete = False  # Don't allow inline deletion
+    verbose_name_plural = _('Athletes')
+    can_delete = True  # Allow removing athletes from the club
+
+    def current_grade_display(self, obj):
+        if obj and obj.current_grade:
+            return obj.current_grade.name
+        return '—'
+    current_grade_display.short_description = _('Grade')
     
     def get_athlete_link(self, obj):
         """Display athlete name as clickable link to their detail page"""
@@ -103,12 +173,10 @@ class AthleteInline(admin.TabularInline):
     get_athlete_link.short_description = _('Name')
     
     def has_add_permission(self, request, obj=None):
-        """Disable inline add - athletes should be added via Athlete admin"""
-        return False
+        return True
     
     def has_delete_permission(self, request, obj=None):
-        """Disable inline delete - athletes should be removed via Athlete admin"""
-        return False
+        return True
 
 
 class CategoryAthleteInlineForm(forms.ModelForm):
@@ -173,6 +241,7 @@ class CategoryAthleteInline(admin.TabularInline):
         css = {
             'all': ('/static/admin/css/enrolled_teams_compact.css?v=20260206',)
         }
+        js = ('/static/admin/js/enrolled_teams_compact.js?v=20260206',)
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """Style foreign key fields, especially athlete autocomplete"""
@@ -180,10 +249,19 @@ class CategoryAthleteInline(admin.TabularInline):
         
         # Set width for athlete field
         if db_field.name == 'athlete':
+            formfield.widget = autocomplete.ModelSelect2(
+                url='athlete-autocomplete',
+                forward=['category']
+            )
             formfield.widget.attrs.update({
                 'style': 'width: 200px !important; max-width: 200px !important; min-width: 200px !important;',
                 'class': 'vForeignKeyRawIdAdminField'
             })
+            if hasattr(formfield.widget, 'can_add_related'):
+                formfield.widget.can_add_related = False
+                formfield.widget.can_change_related = False
+                formfield.widget.can_view_related = False
+                formfield.widget.can_delete_related = False
         
         return formfield
     
@@ -537,6 +615,55 @@ class TrainingSeminarParticipationInline(admin.TabularInline):
     readonly_fields = ('athlete_link', 'reviewed_date', 'reviewed_by')
     can_delete = True
 
+    class _InlineFormSet(forms.BaseInlineFormSet):
+        def _ensure_legacy_seminar(self, event):
+            if not event or not event.pk:
+                return
+            try:
+                from django.db import connection
+                ev_start = getattr(event, 'start_date', None)
+                ev_end = getattr(event, 'end_date', None)
+                if hasattr(ev_start, 'date'):
+                    ev_start = ev_start.date()
+                if hasattr(ev_end, 'date'):
+                    ev_end = ev_end.date()
+                ev_place = getattr(event, 'address', '') or ''
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO api_trainingseminar (id, name, start_date, end_date, place) VALUES (?, ?, ?, ?, ?)",
+                        [event.pk, getattr(event, 'title', '') or f"Event {event.pk}", ev_start, ev_end, ev_place]
+                    )
+            except Exception:
+                pass
+
+        def save_new(self, form, commit=True):
+            obj = super().save_new(form, commit=False)
+            event = getattr(self, 'instance', None)
+            if event:
+                self._ensure_legacy_seminar(event)
+                if not obj.event_id:
+                    obj.event = event
+                if not obj.seminar_id:
+                    obj.seminar = event
+            if commit:
+                obj.save()
+            return obj
+
+        def save_existing(self, form, instance, commit=True):
+            obj = super().save_existing(form, instance, commit=False)
+            event = getattr(self, 'instance', None)
+            if event:
+                self._ensure_legacy_seminar(event)
+                if not obj.event_id:
+                    obj.event = event
+                if not obj.seminar_id:
+                    obj.seminar = event
+            if commit:
+                obj.save()
+            return obj
+
+    formset = _InlineFormSet
+
     def athlete_link(self, obj):
         """Link to the athlete change page when available."""
         try:
@@ -604,6 +731,27 @@ try:
         # Create a custom EventAdmin class with helpful methods and links
         class CustomEventAdmin(LandingEventAdmin):
             inlines = new_inlines
+
+            def _ensure_legacy_seminar(self, event):
+                """Ensure legacy TrainingSeminar row exists for this event."""
+                if not event or not event.pk:
+                    return
+                try:
+                    from django.db import connection
+                    ev_start = getattr(event, 'start_date', None)
+                    ev_end = getattr(event, 'end_date', None)
+                    if hasattr(ev_start, 'date'):
+                        ev_start = ev_start.date()
+                    if hasattr(ev_end, 'date'):
+                        ev_end = ev_end.date()
+                    ev_place = getattr(event, 'address', '') or ''
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO api_trainingseminar (id, name, start_date, end_date, place) VALUES (?, ?, ?, ?, ?)",
+                            [event.pk, getattr(event, 'title', '') or f"Event {event.pk}", ev_start, ev_end, ev_place]
+                        )
+                except Exception:
+                    pass
             
             def get_readonly_fields(self, request, obj=None):
                 """Add custom display fields for quick-add links"""
@@ -660,6 +808,24 @@ try:
                             first_fieldset[1]['fields'] = tuple(fields)
                             fieldsets[0] = tuple(first_fieldset)
                 return fieldsets
+
+            def save_formset(self, request, form, formset, change):
+                """Ensure legacy seminar is set for event participations."""
+                if formset.model is TrainingSeminarParticipation:
+                    event = form.instance
+                    self._ensure_legacy_seminar(event)
+                    instances = formset.save(commit=False)
+                    for instance in instances:
+                        if not instance.seminar_id:
+                            instance.seminar = event
+                        if not instance.event_id:
+                            instance.event = event
+                        instance.save()
+                    formset.save_m2m()
+                    for obj in formset.deleted_objects:
+                        obj.delete()
+                    return
+                return super().save_formset(request, form, formset, change)
         
         APILandingEventAdmin = type(
             'APILandingEventAdmin',
@@ -736,50 +902,25 @@ try:
                 event = cleaned.get('event')
 
                 if not seminar and event:
-                    # Try to infer the original TrainingSeminar id from the
-                    # Event.tags that were set during migration: tags start with
-                    # 'migrated_from_trainingseminar:<id>' when present.
-                    ts = None
+                    # Legacy DB schema expects seminar_id to exist in api_trainingseminar.
+                    # Ensure a matching row exists, then mirror the event id.
                     try:
-                        tags = (getattr(event, 'tags', None) or '')
-                        if tags.startswith('migrated_from_trainingseminar:'):
-                            try:
-                                ts_pk = int(tags.split(':', 1)[1])
-                                from .models import TrainingSeminar
-                                ts = TrainingSeminar.objects.filter(pk=ts_pk).first()
-                            except Exception:
-                                ts = None
-                    except Exception:
-                        ts = None
-
-                    # Fallback: try to match by name
-                    if not ts:
-                        try:
-                            from .models import TrainingSeminar
-                            ts = TrainingSeminar.objects.filter(name__iexact=getattr(event, 'title', '')).first()
-                        except Exception:
-                            ts = None
-
-                    # As a last resort, create a lightweight TrainingSeminar so
-                    # the DB FK constraint is satisfied. This keeps the admin
-                    # UX smooth and preserves a traceable Seminar row.
-                    if not ts:
-                        try:
-                            from .models import TrainingSeminar
-                            ev_start = getattr(event, 'start_date', None)
-                            ev_end = getattr(event, 'end_date', None)
-                            ev_place = getattr(event, 'address', '') or ''
-                            ts = TrainingSeminar.objects.create(
-                                name=(getattr(event, 'title', None) or f"Migrated from Event {event.pk}"),
-                                start_date=(ev_start.date() if hasattr(ev_start, 'date') else ev_start),
-                                end_date=(ev_end.date() if hasattr(ev_end, 'date') else ev_end),
-                                place=ev_place,
+                        from django.db import connection
+                        ev_start = getattr(event, 'start_date', None)
+                        ev_end = getattr(event, 'end_date', None)
+                        if hasattr(ev_start, 'date'):
+                            ev_start = ev_start.date()
+                        if hasattr(ev_end, 'date'):
+                            ev_end = ev_end.date()
+                        ev_place = getattr(event, 'address', '') or ''
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                "INSERT OR IGNORE INTO api_trainingseminar (id, name, start_date, end_date, place) VALUES (?, ?, ?, ?, ?)",
+                                [event.pk, getattr(event, 'title', '') or f"Event {event.pk}", ev_start, ev_end, ev_place]
                             )
-                        except Exception:
-                            ts = None
-
-                    if ts:
-                        cleaned['seminar'] = ts
+                    except Exception:
+                        pass
+                    cleaned['seminar'] = event
 
                 # If we still don't have a seminar, raise a validation error so
                 # the admin user can correct the form rather than triggering a
@@ -795,8 +936,9 @@ try:
                     except Exception:
                         pass
 
-                if not cleaned.get('seminar'):
-                    raise ValidationError({'seminar': 'Seminar could not be determined from the selected event. Please select a seminar.'})
+                # Only block if neither event nor seminar is provided.
+                if not cleaned.get('seminar') and not cleaned.get('event'):
+                    raise ValidationError({'event': 'Please select an event.'})
 
                 return cleaned
 
@@ -1265,6 +1407,14 @@ class CategoryRefereeAssignmentForm(forms.ModelForm):
     class Meta:
         model = CategoryRefereeAssignment
         fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for i in range(1, 6):
+            field_name = f'referee_{i}'
+            if field_name in self.fields:
+                self.fields[field_name].label = f'Referee {i} (REF {i}):'
+                self.fields[field_name].help_text = ''
     
     def clean(self):
         """Validate all referee assignments"""
@@ -1286,27 +1436,33 @@ class CategoryRefereeAssignmentForm(forms.ModelForm):
         return instance
 
 
-class CategoryRefereeAssignmentInline(admin.TabularInline):
+class CategoryRefereeAssignmentInline(admin.StackedInline):
     """Inline to assign 5 referees (R1-R5) to a category"""
     model = CategoryRefereeAssignment
     form = CategoryRefereeAssignmentForm
-    extra = 0
+    extra = 1
     max_num = 1
     can_delete = False
     autocomplete_fields = ('referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5')
     fields = ('referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5')
-    verbose_name = _('Referee Assignment')
-    verbose_name_plural = _('Assign 5 Referees (R1, R2, R3, R4, R5)')
+    verbose_name = _('Referees')
+    verbose_name_plural = _('Referees')
     
     class Media:
         css = {
-            'all': ('/static/admin/css/referee_assignment_compact.css',)
+            'all': ('/static/admin/css/referee_assignment_compact.css?v=20260206',)
         }
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """Filter autocomplete to show only approved athletes with is_referee=True"""
         if db_field.name.startswith('referee_'):
             kwargs["queryset"] = Athlete.objects.filter(is_referee=True, status='approved')
+            formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+            formfield.widget = autocomplete.ModelSelect2(
+                url='athlete-autocomplete',
+                forward=['category', forward.Const('1', 'only_referees')]
+            )
+            return formfield
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class CategoryAthleteScoreInlineForm(forms.ModelForm):
@@ -1395,6 +1551,16 @@ class CategoryAthleteScoreInline(admin.TabularInline):
             return "No referees assigned"
     
     referee_assignment_display.short_description = 'Referees'
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'athlete':
+            formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+            formfield.widget = autocomplete.ModelSelect2(
+                url='athlete-autocomplete',
+                forward=['category']
+            )
+            return formfield
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     @admin.display(description='Total Score')
     def get_total_score(self, obj):
@@ -1644,11 +1810,11 @@ class EnrolledTeamsInline(admin.TabularInline):
     autocomplete_fields = ['team']  # Add autocomplete for team selection
     fields = ('team', 'ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score', 'total_display', 'place', 'disqualified')
     readonly_fields = ('total_display',)
-    verbose_name_plural = _('TEAMS ENROLLED')  # Rename the section title
+    verbose_name_plural = _('Teams Enrolled')  # Rename the section title
     
     class Media:
         css = {
-            'all': ('/static/admin/css/enrolled_teams_compact.css',)
+            'all': ('/static/admin/css/enrolled_teams_compact.css?v=20260206',)
         }
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
@@ -1862,6 +2028,43 @@ class AthleteFightResultsInline(admin.TabularInline):
 class CityAdmin(admin.ModelAdmin):
     list_display = ('name', 'created', 'modified')
     search_fields = ('name',)
+    ordering = ('name',)
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        if search_term:
+            import unicodedata
+
+            def normalize(value: str) -> str:
+                if not value:
+                    return ''
+                normalized = unicodedata.normalize('NFKD', value)
+                return ''.join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
+
+            norm_query = normalize(search_term.strip())
+            if norm_query:
+                matches = []
+                for row in City.objects.values('id', 'name'):
+                    norm_name = normalize(row['name'])
+                    if norm_query in norm_name:
+                        # score: exact match first, then startswith, then contains
+                        if norm_name == norm_query:
+                            score = 0
+                        elif norm_name.startswith(norm_query):
+                            score = 1
+                        else:
+                            score = 2
+                        matches.append((score, row['name'], row['id']))
+
+                if matches:
+                    matches.sort(key=lambda x: (x[0], x[1]))
+                    ordered_ids = [m[2] for m in matches]
+                    preserved = Case(
+                        *[When(id=pk, then=pos) for pos, pk in enumerate(ordered_ids)],
+                        output_field=IntegerField(),
+                    )
+                    queryset = City.objects.filter(id__in=ordered_ids).annotate(_order=preserved).order_by('_order')
+        return queryset, use_distinct
     
     def has_module_permission(self, request):
         """Hide City from the admin app index/sidebar while keeping it registered for lookups/autocompletes."""
@@ -1876,6 +2079,7 @@ class CityAdmin(admin.ModelAdmin):
 class ClubAdmin(admin.ModelAdmin):
     list_display = ('name', 'city', 'athlete_count', 'coach_count', 'address', 'mobile_number', 'website', 'created', 'modified')
     search_fields = ('name', 'city__name')
+    autocomplete_fields = ('city',)
     filter_horizontal = ('coaches',)  # Add horizontal filter for ManyToManyField
     inlines = [AthleteInline]
 
@@ -1894,6 +2098,9 @@ class ClubAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = ('created', 'modified')  # Mark non-editable fields as read-only
+
+    class Media:
+        js = ('/static/admin/js/club_tabs.js?v=20260206',)
     
     def athlete_count(self, obj):
         """Display the number of athletes in this club"""
@@ -1914,8 +2121,27 @@ class ClubAdmin(admin.ModelAdmin):
     def formfield_for_manytomany(self, db_field, request, **kwargs):
         """Filter coaches to only show athletes who are marked as coaches"""
         if db_field.name == "coaches":
-            kwargs["queryset"] = Athlete.objects.filter(is_coach=True, status='approved').order_by('first_name', 'last_name')
+            club_id = None
+            try:
+                club_id = request.resolver_match.kwargs.get('object_id')
+            except Exception:
+                club_id = None
+            coach_qs = Athlete.objects.filter(is_coach=True, status='approved')
+            if club_id:
+                coach_qs = coach_qs.filter(models.Q(club__isnull=True) | models.Q(club_id=club_id))
+            else:
+                coach_qs = coach_qs.filter(club__isnull=True)
+            kwargs["queryset"] = coach_qs.order_by('first_name', 'last_name')
         return super().formfield_for_manytomany(db_field, request, **kwargs)
+
+    def get_inline_instances(self, request, obj=None):
+        inlines = super().get_inline_instances(request, obj)
+        if obj:
+            athlete_count = obj.athletes.count()
+            for inline in inlines:
+                if isinstance(inline, AthleteInline):
+                    inline.verbose_name_plural = f"Athletes ({athlete_count})"
+        return inlines
 
 
 # ---- Admin dashboard view -------------------------------------------------
@@ -2125,7 +2351,7 @@ class GradeAdmin(admin.ModelAdmin):
 # Updated GradeHistoryAdmin
 @admin.register(GradeHistory)
 class GradeHistoryAdmin(admin.ModelAdmin):
-    list_display = ('athlete', 'grade', 'level', 'event', 'examiner_1', 'examiner_2', 'obtained_date')
+    list_display = ('athlete', 'grade', 'level', 'event', 'obtained_date')
     search_fields = ('athlete__first_name', 'athlete__last_name', 'grade__name', 'level')
     list_filter = ('level', 'event', 'obtained_date')
     # Use Django admin autocomplete for examiner fields and restrict choices to coaches
@@ -2212,14 +2438,21 @@ class GroupInline(admin.TabularInline):
 class CategoryAdminForm(forms.ModelForm):
     class Meta:
         model = Category
-        fields = '__all__'
+        exclude = ('category_number',)
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     """Admin for base Category model to support autocomplete"""
-    list_display = ('id', 'name', 'event')
+    form = CategoryAdminForm
+    list_display = ('id', 'name_link', 'group', 'event')
     search_fields = ('name', 'event__title')
-    list_filter = ('event',)
+    list_filter = ('event', 'group')
+
+    def name_link(self, obj):
+        url = reverse('admin:api_category_change', args=(obj.pk,))
+        return format_html('<a href="{}" style="font-weight: 500;">{}</a>', url, obj.name)
+    name_link.short_description = 'Name'
+    name_link.admin_order_field = 'name'
     
 @admin.register(SoloCategory)
 class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
@@ -2230,8 +2463,8 @@ class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     competition_field = 'event'
     
     fieldsets = [
-        ('CATEGORY DETAILS', {
-            'fields': ('name', 'event', 'group', 'gender', 'status'),
+        ('Category Details', {
+            'fields': ('event', 'group', 'name', 'gender', 'status'),
             'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Athletes inline below.'
         }),
     ]
@@ -2245,7 +2478,7 @@ class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     def category_name_display(self, obj):
         """Display category name as bold clickable link"""
         url = reverse('admin:api_solocategory_change', args=(obj.pk,))
-        return format_html('<a href="{}" style="font-weight: bold;">{}</a>', url, obj.name)
+        return format_html('<a href="{}" style="font-weight: 500;">{}</a>', url, obj.name)
     category_name_display.short_description = 'Category Name'
     category_name_display.admin_order_field = 'name'
     
@@ -2329,8 +2562,8 @@ class TeamCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     competition_field = 'event'
     
     fieldsets = [
-        ('CATEGORY DETAILS', {
-            'fields': ('name', 'event', 'group', 'gender', 'status'),
+        ('Category Details', {
+            'fields': ('event', 'group', 'name', 'gender', 'status'),
             'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Teams inline below.'
         }),
     ]
@@ -2344,7 +2577,7 @@ class TeamCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     def category_name_display(self, obj):
         """Display category name as bold clickable link"""
         url = reverse('admin:api_teamcategory_change', args=(obj.pk,))
-        return format_html('<a href="{}" style="font-weight: bold;">{}</a>', url, obj.name)
+        return format_html('<a href="{}" style="font-weight: 500;">{}</a>', url, obj.name)
     category_name_display.short_description = 'Category Name'
     category_name_display.admin_order_field = 'name'
     
@@ -2429,6 +2662,16 @@ class FightAthleteWeightInline(admin.TabularInline):
     verbose_name = _('Enrolled Athlete')
     verbose_name_plural = _('Enrolled Athletes')
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'athlete':
+            formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+            formfield.widget = autocomplete.ModelSelect2(
+                url='athlete-autocomplete',
+                forward=['category']
+            )
+            return formfield
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
 
 @admin.register(FightCategory)
 class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
@@ -2439,17 +2682,33 @@ class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     competition_field = 'event'
     
     fieldsets = [
-        ('CATEGORY DETAILS', {
-            'fields': ('name', 'event', 'group', 'gender', 'status'),
+        ('Category Details', {
+            'fields': ('event', 'group', 'name', 'gender', 'status'),
             'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Athletes inline below.'
         }),
-        ('BRACKET & TOURNAMENT', {
+        ('Brackets', {
             'fields': ('bracket_display', 'bracket_stats_display'),
             'classes': ('collapse',),
         }),
     ]
     
     readonly_fields = ['bracket_display', 'bracket_stats_display']
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'group':
+            event_id = request.GET.get('event')
+            if event_id:
+                kwargs['queryset'] = Group.objects.filter(event_id=event_id)
+            else:
+                obj_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if obj_id:
+                    try:
+                        current = FightCategory.objects.get(pk=obj_id)
+                        if current.event_id:
+                            kwargs['queryset'] = Group.objects.filter(event_id=current.event_id)
+                    except FightCategory.DoesNotExist:
+                        pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     def category_id_display(self, obj):
         """Display category ID as read-only"""
@@ -2460,7 +2719,9 @@ class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     def category_name_display(self, obj):
         """Display category name as bold clickable link"""
         url = reverse('admin:api_fightcategory_change', args=(obj.pk,))
-        return format_html('<a href="{}" style="font-weight: bold;">{}</a>', url, obj.name)
+        group_name = obj.group.name if obj.group else 'No Group'
+        display_name = f"{obj.name} ({group_name})"
+        return format_html('<a href="{}" style="font-weight: 500;">{}</a>', url, display_name)
     category_name_display.short_description = 'Category Name'
     category_name_display.admin_order_field = 'name'
     
@@ -3582,6 +3843,7 @@ class AthleteAdmin(admin.ModelAdmin):
         'photo_and_name', 'status', 'is_referee', 'is_coach', 'grade_display', 'club', 'get_action_buttons'
     ]
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
+    autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
     search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
     readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'add_enrolled_event_link', 'add_grade_history_link']
     ordering = ['-submitted_date']
@@ -3740,19 +4002,16 @@ class AthleteAdmin(admin.ModelAdmin):
     
     def get_action_buttons(self, obj):
         if obj.status == 'pending':
+            approve_url = reverse('admin:api_athlete_approve', args=(obj.pk,))
+            reject_url = reverse('admin:api_athlete_reject', args=(obj.pk,))
+            revision_url = reverse('admin:api_athlete_request_revision', args=(obj.pk,))
             return format_html(
-                '<a class="button" href="{}approve/">{}</a> '
-                '<a class="button" href="{}reject/">{}</a> '
-                '<a class="button" href="{}request_revision/">{}</a>',
-                obj.pk, _('Approve'), obj.pk, _('Reject'), obj.pk, _('Request Revision')
+                '<a class="button" href="{}">{}</a> '
+                '<a class="button" href="{}">{}</a> '
+                '<a class="button" href="{}">{}</a>',
+                approve_url, _('Approve'), reject_url, _('Reject'), revision_url, _('Request Revision')
             )
-        elif obj.status == 'approved':
-            return format_html('<span style="color: green;">âœ“ Approved</span>')
-        elif obj.status == 'rejected':
-            return format_html('<span style="color: red;">âœ— Rejected</span>')
-        elif obj.status == 'revision_required':
-            return format_html('<span style="color: orange;">âš  Revision Required</span>')
-        return ''
+        return obj.get_status_display()
     get_action_buttons.short_description = _('Actions')
     
     # Team results are now displayed via AthleteTeamResultsInline above.
@@ -4283,6 +4542,13 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         return render(request, 'admin/request_score_revision.html', context)
 
 
+# Hide CategoryAthleteScore from admin for now
+try:
+    admin.site.unregister(CategoryAthleteScore)
+except admin.sites.NotRegistered:
+    pass
+
+
 # ============================================================================
 # Note: CategoryAthleteScore already registered above with @admin.register
 # Removed duplicate admin.site.register to avoid conflicts
@@ -4391,7 +4657,7 @@ class AthletePerformanceVideoAdmin(admin.ModelAdmin):
     list_display = ('athlete_display', 'category_display', 'group_display', 'competition_display', 'recorded_at', 'is_public', 'uploaded_at')
     list_filter = ('is_public', 'recorded_at', 'athlete_score__category__event')
     search_fields = ('athlete_score__athlete__first_name', 'athlete_score__athlete__last_name', 'athlete_score__category__name', 'athlete_score__category__group__name', 'athlete_score__category__event__title')
-    autocomplete_fields = ['athlete_score']
+    # autocomplete_fields removed because CategoryAthleteScore admin is hidden
     
     fieldsets = [
         ('SOLO CATEGORY', {

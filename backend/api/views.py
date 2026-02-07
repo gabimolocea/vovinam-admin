@@ -2132,3 +2132,305 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
             })
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ============================================================================
+# PWA COMPETITION MANAGEMENT VIEWSETS
+# ============================================================================
+
+class CompetitionFieldViewSet(viewsets.ViewSet):
+    """ViewSet for managing competition fields/tatamis"""
+    permission_classes = [IsAdminOrReadOnly]
+    
+    def list(self, request):
+        """List all fields for an event"""
+        event_id = request.query_params.get('event_id')
+        if event_id:
+            fields = CompetitionField.objects.filter(event_id=event_id).order_by('field_number')
+        else:
+            fields = CompetitionField.objects.all().order_by('field_number')
+        
+        serializer = CompetitionFieldSerializer(fields, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request):
+        """Create a new competition field"""
+        serializer = CompetitionFieldSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def retrieve(self, request, pk=None):
+        """Retrieve a single competition field"""
+        try:
+            field = CompetitionField.objects.get(pk=pk)
+            serializer = CompetitionFieldSerializer(field)
+            return Response(serializer.data)
+        except CompetitionField.DoesNotExist:
+            return Response({'error': 'Field not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def update(self, request, pk=None):
+        """Update a competition field"""
+        try:
+            field = CompetitionField.objects.get(pk=pk)
+            serializer = CompetitionFieldSerializer(field, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except CompetitionField.DoesNotExist:
+            return Response({'error': 'Field not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def destroy(self, request, pk=None):
+        """Delete a competition field"""
+        try:
+            field = CompetitionField.objects.get(pk=pk)
+            field.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except CompetitionField.DoesNotExist:
+            return Response({'error': 'Field not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
+    """ViewSet for category-to-field assignments"""
+    permission_classes = [IsAdminOrReadOnly]
+    
+    def list(self, request):
+        """List all category-field assignments"""
+        event_id = request.query_params.get('event_id')
+        field_id = request.query_params.get('field_id')
+        
+        assignments = CategoryFieldAssignment.objects.all()
+        
+        if event_id:
+            assignments = assignments.filter(field__event_id=event_id)
+        if field_id:
+            assignments = assignments.filter(field_id=field_id)
+        
+        assignments = assignments.order_by('order')
+        serializer = CategoryFieldAssignmentSerializer(assignments, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request):
+        """Create a category-field assignment"""
+        serializer = CategoryFieldAssignmentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def retrieve(self, request, pk=None):
+        """Retrieve a single assignment"""
+        try:
+            assignment = CategoryFieldAssignment.objects.get(pk=pk)
+            serializer = CategoryFieldAssignmentSerializer(assignment)
+            return Response(serializer.data)
+        except CategoryFieldAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def update(self, request, pk=None):
+        """Update a category-field assignment"""
+        try:
+            assignment = CategoryFieldAssignment.objects.get(pk=pk)
+            serializer = CategoryFieldAssignmentSerializer(assignment, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except CategoryFieldAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def destroy(self, request, pk=None):
+        """Delete a category-field assignment"""
+        try:
+            assignment = CategoryFieldAssignment.objects.get(pk=pk)
+            assignment.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except CategoryFieldAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class DisplayMonitorSessionViewSet(viewsets.ViewSet):
+    """ViewSet for managing display monitor sessions"""
+    permission_classes = [IsAdminOrReadOnly]
+    
+    def list(self, request):
+        """List all monitor sessions"""
+        event_id = request.query_params.get('event_id')
+        sessions = DisplayMonitorSession.objects.all()
+        
+        if event_id:
+            sessions = sessions.filter(field__event_id=event_id)
+        
+        serializer = DisplayMonitorSessionSerializer(sessions, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request):
+        """Create a new monitor session"""
+        serializer = DisplayMonitorSessionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def retrieve(self, request, pk=None):
+        """Retrieve a single monitor session"""
+        try:
+            session = DisplayMonitorSession.objects.get(pk=pk)
+            serializer = DisplayMonitorSessionSerializer(session)
+            return Response(serializer.data)
+        except DisplayMonitorSession.DoesNotExist:
+            return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def update(self, request, pk=None):
+        """Update a monitor session"""
+        try:
+            session = DisplayMonitorSession.objects.get(pk=pk)
+            serializer = DisplayMonitorSessionSerializer(session, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except DisplayMonitorSession.DoesNotExist:
+            return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def destroy(self, request, pk=None):
+        """Delete a monitor session"""
+        try:
+            session = DisplayMonitorSession.objects.get(pk=pk)
+            session.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except DisplayMonitorSession.DoesNotExist:
+            return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class MatchRoundViewSet(viewsets.ViewSet):
+    """ViewSet for managing match rounds in fighting competitions"""
+    permission_classes = [IsAdminOrReadOnly]
+    
+    def list(self, request):
+        """List all match rounds"""
+        match_id = request.query_params.get('match_id')
+        rounds = MatchRound.objects.all()
+        
+        if match_id:
+            rounds = rounds.filter(match_id=match_id)
+        
+        rounds = rounds.order_by('round_number')
+        serializer = MatchRoundSerializer(rounds, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request):
+        """Create a new match round"""
+        serializer = MatchRoundSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def retrieve(self, request, pk=None):
+        """Retrieve a single match round"""
+        try:
+            round_obj = MatchRound.objects.get(pk=pk)
+            serializer = MatchRoundSerializer(round_obj)
+            return Response(serializer.data)
+        except MatchRound.DoesNotExist:
+            return Response({'error': 'Round not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def update(self, request, pk=None):
+        """Update a match round"""
+        try:
+            round_obj = MatchRound.objects.get(pk=pk)
+            serializer = MatchRoundSerializer(round_obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except MatchRound.DoesNotExist:
+            return Response({'error': 'Round not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def destroy(self, request, pk=None):
+        """Delete a match round"""
+        try:
+            round_obj = MatchRound.objects.get(pk=pk)
+            round_obj.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except MatchRound.DoesNotExist:
+            return Response({'error': 'Round not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class QRCodeAssignmentViewSet(viewsets.ViewSet):
+    """ViewSet for QR code assignments"""
+    permission_classes = [IsAdminOrReadOnly]
+    
+    def list(self, request):
+        """List all QR code assignments"""
+        referee_id = request.query_params.get('referee_id')
+        active_only = request.query_params.get('active_only', 'false').lower() == 'true'
+        
+        qr_codes = QRCodeAssignment.objects.all()
+        
+        if referee_id:
+            qr_codes = qr_codes.filter(referee_id=referee_id)
+        if active_only:
+            qr_codes = qr_codes.filter(is_active=True)
+        
+        serializer = QRCodeAssignmentSerializer(qr_codes, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request):
+        """Create a new QR code assignment"""
+        serializer = QRCodeAssignmentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def retrieve(self, request, pk=None):
+        """Retrieve a single QR code assignment"""
+        try:
+            qr_code = QRCodeAssignment.objects.get(pk=pk)
+            serializer = QRCodeAssignmentSerializer(qr_code)
+            return Response(serializer.data)
+        except QRCodeAssignment.DoesNotExist:
+            return Response({'error': 'QR code not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def update(self, request, pk=None):
+        """Update a QR code assignment"""
+        try:
+            qr_code = QRCodeAssignment.objects.get(pk=pk)
+            serializer = QRCodeAssignmentSerializer(qr_code, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except QRCodeAssignment.DoesNotExist:
+            return Response({'error': 'QR code not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def destroy(self, request, pk=None):
+        """Delete a QR code assignment"""
+        try:
+            qr_code = QRCodeAssignment.objects.get(pk=pk)
+            qr_code.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except QRCodeAssignment.DoesNotExist:
+            return Response({'error': 'QR code not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=False, methods=['post'])
+    def verify_qr_code(self, request):
+        """Verify a QR code and get referee assignment"""
+        code = request.data.get('code')
+        if not code:
+            return Response({'error': 'QR code required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            qr_assignment = QRCodeAssignment.objects.get(code=code, is_active=True)
+            # Check if QR code has expired
+            if qr_assignment.expires_at and timezone.now() > qr_assignment.expires_at:
+                return Response({'error': 'QR code has expired'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            serializer = QRCodeAssignmentSerializer(qr_assignment)
+            return Response(serializer.data)
+        except QRCodeAssignment.DoesNotExist:
+            return Response({'error': 'Invalid or inactive QR code'}, status=status.HTTP_400_BAD_REQUEST)
