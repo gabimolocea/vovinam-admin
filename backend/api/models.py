@@ -276,11 +276,23 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
 
     class Meta:
         indexes = [
+            # Existing indexes (keep these)
             models.Index(fields=['club', 'status']),
             models.Index(fields=['current_grade']),
             models.Index(fields=['is_coach']),
             models.Index(fields=['is_referee']),
             models.Index(fields=['status', 'submitted_date']),
+            
+            # ADD THESE NEW INDEXES:
+            models.Index(fields=['user']),  # For reverse user lookup
+            models.Index(fields=['city']),  # For city filtering
+            models.Index(fields=['registered_date']),  # For date range queries
+            models.Index(fields=['created_at']),  # For ordering by creation date
+            
+            # Compound indexes for common filter combinations
+            models.Index(fields=['club', 'is_coach']),  # Club coaches
+            models.Index(fields=['club', 'status', 'is_referee']),  # Club referees
+            models.Index(fields=['status', 'approved_date']),  # Status filtering
         ]
 
     def update_current_grade(self):
@@ -817,6 +829,11 @@ class CategoryAthlete(models.Model):
 
     class Meta:
         unique_together = ('category', 'athlete')  # Ensure an athlete cannot be added twice to the same category
+        indexes = [
+            models.Index(fields=['category']),
+            models.Index(fields=['athlete']),
+            models.Index(fields=['category', 'disqualified']),
+        ]
 
     def delete(self, *args, **kwargs):
         """
@@ -884,6 +901,10 @@ class CategoryTeam(models.Model):
 
     class Meta:
         unique_together = ('category', 'team')  # Ensure a team cannot be added twice to the same category
+        indexes = [
+            models.Index(fields=['category']),
+            models.Index(fields=['team']),
+        ]
 
     def __str__(self):
         category = self.category
@@ -900,8 +921,9 @@ class CategoryTeam(models.Model):
 class Team(models.Model):
     """
     Represents a team of athletes.
-    Team name is now auto-generated from members for consistency.
+    Team name is stored in database but auto-generated from members for consistency.
     """
+    name = models.CharField(max_length=255, default='Team')  # Will be overridden by property
     categories = models.ManyToManyField(
         'Category',
         through='CategoryTeam',  # Use the existing through model
@@ -951,6 +973,16 @@ class TeamMember(models.Model):
 
 
 class Category(models.Model):
+    @property
+    def type(self):
+        """Return the type of category as a string: 'solo', 'team', or 'fight' based on subclass."""
+        if hasattr(self, 'solocategory'):
+            return 'solo'
+        if hasattr(self, 'teamcategory'):
+            return 'team'
+        if hasattr(self, 'fightcategory'):
+            return 'fight'
+        return 'unknown'
     """
     Base category model using multi-table inheritance.
     Specific category types (Solo, Team, Fight) extend this model.
@@ -961,17 +993,10 @@ class Category(models.Model):
         ('mixt', 'Mixt'),
     ]
     
-    STATUS_CHOICES = [
-        ('not_started', 'Not Started'),
-        ('in_progress', 'In Progress'),
-        ('completed', 'Completed'),
-    ]
-
     category_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this category (e.g., C1, C2, SOLO-M-1)')
     name = models.CharField(max_length=100)
     event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixt')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
     
     # M2M relationships shared across all types - defined here but used by child classes
     athletes = models.ManyToManyField('Athlete', through='CategoryAthlete', related_name='categories', blank=True)
@@ -1001,7 +1026,9 @@ class Category(models.Model):
     @property
     def event_or_competition(self):
         """Return linked Event or fallback to legacy Competition"""
-        return self.event if getattr(self, 'event', None) else self.competition
+        if getattr(self, 'event', None):
+            return self.event
+        return getattr(self, 'competition', None)
     
     def _generate_category_number(self):
         """Auto-generate category number based on type and gender"""
@@ -1180,20 +1207,14 @@ class Match(models.Model):
         ('finals', 'Finals'),
     ]
     
-    STATUS_CHOICES = [
-        ('not_started', 'Not Started'),
-        ('in_progress', 'In Progress'),
-        ('completed', 'Completed'),
-    ]
-
     match_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this match (e.g., M1, M2, F-C1-Q1)')
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='matches')
+    field = models.ForeignKey('CompetitionField', on_delete=models.SET_NULL, null=True, blank=True, related_name='matches')
     match_type = models.CharField(max_length=20, choices=MATCH_TYPE_CHOICES, default='qualifications')
     red_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='red_corner_matches')
     blue_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='blue_corner_matches')
     referees = models.ManyToManyField('Athlete', related_name='refereed_matches', limit_choices_to={'is_referee': True})
     central_referee = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='central_for_matches', limit_choices_to={'is_referee': True})
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
     # Winner is now computed from scoring system - no longer stored
     name = models.CharField(max_length=255, blank=True)  # Automatically generated match name
 
@@ -1216,6 +1237,17 @@ class Match(models.Model):
         except Exception:
             # Fallback to old calculation if scoring system unavailable
             return self._calculate_winner_legacy()
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        try:
+            if self.field_id:
+                MatchFieldAssignment.objects.update_or_create(
+                    match=self,
+                    defaults={'field_id': self.field_id}
+                )
+        except Exception:
+            pass
     
     def calculate_winner_simplified(self):
         """
@@ -1336,7 +1368,11 @@ class RefereeScore(models.Model):
     winner = models.CharField(max_length=10, choices=[('red', 'Red Corner'), ('blue', 'Blue Corner')], null=True, blank=True)
 
     def __str__(self):
-        return f"Referee: {self.referee.first_name} {self.referee.last_name} - Match: {self.match}"
+        if self.referee:
+            ref_name = f"{self.referee.first_name} {self.referee.last_name}"
+        else:
+            ref_name = "Unassigned"
+        return f"Referee: {ref_name} - Match: {self.match}"
 
 
 class RefereePointEvent(models.Model):
@@ -2698,14 +2734,14 @@ class CategoryFieldAssignment(models.Model):
         ('in_progress', 'In Progress'),
         ('completed', 'Completed'),
     ]
-    
+
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default='not_started',
         help_text='Current status of this category on this field'
     )
-    
+
     scheduled_start_time = models.DateTimeField(
         null=True,
         blank=True,
@@ -2742,6 +2778,86 @@ class CategoryFieldAssignment(models.Model):
     
     def __str__(self):
         return f"{self.category.name} → {self.field.name}"
+
+
+class MatchFieldAssignment(models.Model):
+    """
+    Assigns a match to a specific field with status and scheduling info.
+    """
+    match = models.OneToOneField(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='field_assignment',
+        help_text='The match being assigned'
+    )
+
+    field = models.ForeignKey(
+        'CompetitionField',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_assignments',
+        help_text='The field this match is assigned to'
+    )
+
+    STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='not_started',
+        help_text='Current status of this match on this field'
+    )
+
+    scheduled_start_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the match is scheduled to start'
+    )
+
+    actual_start_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the match actually started'
+    )
+
+    actual_end_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the match actually ended'
+    )
+
+    order = models.IntegerField(
+        default=0,
+        help_text='Order in which matches are run on this field'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = 'Match Field Assignment'
+        verbose_name_plural = 'Match Field Assignments'
+        indexes = [
+            models.Index(fields=['field', 'status'], name='api_match_field_status_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.match.name or self.match.pk} → {self.field.name if self.field else 'Unassigned'}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        try:
+            if self.match_id and self.field_id and self.match.field_id != self.field_id:
+                self.match.field_id = self.field_id
+                self.match.save(update_fields=['field'])
+        except Exception:
+            pass
 
 
 class DisplayMonitorSession(models.Model):

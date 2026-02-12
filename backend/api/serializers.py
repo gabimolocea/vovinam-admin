@@ -2,39 +2,125 @@ from rest_framework import serializers
 from .models import *
 from landing.models import Event
 
+# ==================== MINIMAL SERIALIZERS ====================
+# Used for relationships and list views (lightweight, no recursion)
+
+class UserMinimalSerializer(serializers.ModelSerializer):
+    """Minimal user data for relationships"""
+    full_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'username', 'full_name']
+    
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+
+class CityMinimalSerializer(serializers.ModelSerializer):
+    """Minimal city data"""
+    class Meta:
+        model = City
+        fields = ['id', 'name']
+
+
+class ClubMinimalSerializer(serializers.ModelSerializer):
+    """Minimal club data (no athletes list to prevent recursion)"""
+    city = CityMinimalSerializer(read_only=True)
+    
+    class Meta:
+        model = Club
+        fields = ['id', 'name', 'city']
+
+
+class GradeMinimalSerializer(serializers.ModelSerializer):
+    """Minimal grade data"""
+    class Meta:
+        model = Grade
+        fields = ['id', 'name', 'rank_order']
+
+
+class AthleteMinimalSerializer(serializers.ModelSerializer):
+    """Minimal athlete data for lists and relationships"""
+    club = ClubMinimalSerializer(read_only=True)
+    current_grade = GradeMinimalSerializer(read_only=True)
+    full_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Athlete
+        fields = [
+            'id', 'first_name', 'last_name', 'full_name',
+            'club', 'current_grade', 'is_coach', 'is_referee',
+            'status'
+        ]
+    
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+
+class TeamMinimalSerializer(serializers.ModelSerializer):
+    """Minimal team data"""
+    club = ClubMinimalSerializer(read_only=True)
+    
+    class Meta:
+        model = Team
+        fields = ['id', 'name', 'club']
+
+
+# ==================== FULL SERIALIZERS ====================
+# Used for detail views
+
+class AthleteDetailSerializer(serializers.ModelSerializer):
+    """Full athlete data with all relationships"""
+    user = UserMinimalSerializer(read_only=True)
+    club = ClubMinimalSerializer(read_only=True)
+    city = CityMinimalSerializer(read_only=True)
+    current_grade = GradeMinimalSerializer(read_only=True)
+    full_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Athlete
+        fields = [
+            'id', 'user', 'first_name', 'last_name', 'full_name',
+            'date_of_birth', 'club', 'city', 'current_grade',
+            'federation_role', 'title', 'is_coach', 'is_referee',
+            'status', 'registered_date', 'expiration_date',
+            'approved_date', 'profile_image', 'medical_certificate',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+
 class CitySerializer(serializers.ModelSerializer):
     class Meta:
         model = City
         fields = ['id', 'name']
 
 class ClubSerializer(serializers.ModelSerializer):
-    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all())  # Accept city ID only
-    coaches = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Athlete.objects.filter(is_coach=True))  # Include coaches
+    city = CityMinimalSerializer(read_only=True)
+    coaches = serializers.SerializerMethodField()
+    athletes = serializers.SerializerMethodField()
 
     class Meta:
         model = Club
-        fields = ['id', 'name', 'address', 'mobile_number', 'website', 'coaches', 'city', 'logo']
+        fields = ['id', 'name', 'address', 'mobile_number', 'website', 'coaches', 'city', 'logo', 'athletes']
+
+    def get_athletes(self, obj):
+        """Return limited summary of athletes"""
+        athletes = obj.athletes.all()[:10]  # Limit to 10
+        return AthleteMinimalSerializer(athletes, many=True).data
+
+    def get_coaches(self, obj):
+        """Return coaches using minimal serializer"""
+        coaches = obj.coaches.all()
+        return AthleteMinimalSerializer(coaches, many=True).data
 
     def to_representation(self, instance):
-        """Customize the output to include the full city object and coaches."""
         representation = super().to_representation(instance)
-        if instance.city:
-            representation['city'] = {
-                'id': instance.city.id,
-                'name': instance.city.name
-            }
-        else:
-            representation['city'] = None  # Handle cases where city is None
-
-        # Include full coach details
-        representation['coaches'] = [
-            {
-                'id': coach.id,
-                'first_name': coach.first_name,
-                'last_name': coach.last_name
-            }
-            for coach in instance.coaches.all()
-        ]
+        # City already handled by serializer field
         return representation
 
 class AthleteSerializer(serializers.ModelSerializer):
@@ -136,7 +222,6 @@ class GradeHistorySerializer(serializers.ModelSerializer):
 class TeamSerializer(serializers.ModelSerializer):
     categories = serializers.PrimaryKeyRelatedField(many=True, queryset=Category.objects.all(), allow_null=True)  # Accept category IDs only
     members = serializers.PrimaryKeyRelatedField(many=True, queryset=TeamMember.objects.all(), allow_null=True)  # Accept member IDs only
-    name = serializers.ReadOnlyField()  # Team name is now auto-generated from members
     score = serializers.SerializerMethodField()
     club_name = serializers.SerializerMethodField()
     
@@ -219,6 +304,9 @@ class MatchSerializer(serializers.ModelSerializer):
     referee_scores = serializers.SerializerMethodField()  # Detailed referee scores
     central_penalties_red = serializers.SerializerMethodField()
     central_penalties_blue = serializers.SerializerMethodField()
+    field_id = serializers.SerializerMethodField()
+    field_number = serializers.SerializerMethodField()
+    field_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -229,7 +317,9 @@ class MatchSerializer(serializers.ModelSerializer):
             'category',
             'category_name',
             'match_type',
-            'status',
+            'field_id',
+            'field_number',
+            'field_status',
             'red_corner',
             'red_corner_full_name',  # Added full name for red corner
             'red_corner_club_name',
@@ -252,6 +342,24 @@ class MatchSerializer(serializers.ModelSerializer):
         if obj.red_corner:
             return f"{obj.red_corner.first_name} {obj.red_corner.last_name}"
         return "Unknown Athlete"
+
+    def get_field_id(self, obj):
+        assignment = getattr(obj, 'field_assignment', None)
+        if assignment and assignment.field_id:
+            return assignment.field_id
+        return obj.field_id
+
+    def get_field_number(self, obj):
+        assignment = getattr(obj, 'field_assignment', None)
+        if assignment and assignment.field_id:
+            return assignment.field.field_number
+        if obj.field_id:
+            return obj.field.field_number
+        return None
+
+    def get_field_status(self, obj):
+        assignment = getattr(obj, 'field_assignment', None)
+        return assignment.status if assignment else None
 
     def get_blue_corner_full_name(self, obj):
         """Get the full name of the blue corner athlete."""
@@ -456,11 +564,35 @@ class VisaSerializer(serializers.ModelSerializer):
             return False
 
 class CategoryAthleteSerializer(serializers.ModelSerializer):
-    athlete = AthleteSerializer(read_only=True)  # Serialize the related Athlete object
+    athlete = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all())
+    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())
+    athlete_details = AthleteSerializer(source='athlete', read_only=True)
 
     class Meta:
         model = CategoryAthlete
-        fields = ('athlete', 'weight')  # Include the athlete and additional fields like weight
+        fields = ('id', 'athlete', 'category', 'weight', 'athlete_details')
+        read_only_fields = ('id', 'athlete_details')
+
+class CategoryTeamSerializer(serializers.ModelSerializer):
+    team = serializers.PrimaryKeyRelatedField(queryset=Team.objects.all())
+    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())
+    team_details = TeamMinimalSerializer(source='team', read_only=True)
+    category_details = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CategoryTeam
+        fields = ('id', 'category', 'team', 'team_details', 'category_details', 'place', 'disqualified', 'ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score')
+        read_only_fields = ('id', 'team_details', 'category_details')
+
+    def get_category_details(self, obj):
+        """Serialize the related Category object"""
+        if obj.category:
+            return {
+                'id': obj.category.id,
+                'name': obj.category.name,
+                'type': obj.category.type,
+            }
+        return None
 
 class CategorySerializer(serializers.ModelSerializer):
     # Prefer event when available; keep event_name for compatibility
@@ -468,6 +600,8 @@ class CategorySerializer(serializers.ModelSerializer):
     event_name = serializers.CharField(source='event.title', read_only=True)
     enrolled_athletes = CategoryAthleteSerializer(many=True, read_only=True)  # Include enrolled athletes
     enrolled_teams = serializers.SerializerMethodField()  # Include enrolled teams
+    enrolled_athletes_count = serializers.SerializerMethodField()  # Count of enrolled athletes
+    enrolled_teams_count = serializers.SerializerMethodField()  # Count of enrolled teams
     teams = serializers.SerializerMethodField()  # Use method to pass context
     first_place_name = serializers.CharField(source='first_place.first_name', read_only=True, allow_null=True)
     second_place_name = serializers.CharField(source='second_place.first_name', read_only=True, allow_null=True)
@@ -483,8 +617,8 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id', 'category_number', 'name', 'status', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
-            'enrolled_athletes', 'enrolled_teams', 'teams', 'first_place', 'second_place', 'third_place',
+            'id', 'category_number', 'name', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
+            'enrolled_athletes', 'enrolled_athletes_count', 'enrolled_teams', 'enrolled_teams_count', 'teams', 'first_place', 'second_place', 'third_place',
             'first_place_name', 'second_place_name', 'third_place_name',
             'first_place_team', 'second_place_team', 'third_place_team',
         ]
@@ -494,6 +628,14 @@ class CategorySerializer(serializers.ModelSerializer):
         enrolled = obj.enrolled_teams.select_related('team').all()
         return [{'id': ct.team.id, 'team_name': ct.team.name} for ct in enrolled]
 
+    def get_enrolled_athletes_count(self, obj):
+        """Return count of enrolled athletes"""
+        return obj.enrolled_athletes.count()
+
+    def get_enrolled_teams_count(self, obj):
+        """Return count of enrolled teams"""
+        return obj.enrolled_teams.count()
+
     def get_teams(self, obj):
         """Serialize teams with category context for score calculation"""
         teams = obj.teams.all()
@@ -501,20 +643,23 @@ class CategorySerializer(serializers.ModelSerializer):
     
     def get_first_place_team(self, obj):
         """Serialize first place team with category context"""
-        if obj.first_place_team:
-            return TeamSerializer(obj.first_place_team, context={'category_id': obj.id}).data
+        team = getattr(obj, 'first_place_team', None)
+        if team:
+            return TeamSerializer(team, context={'category_id': obj.id}).data
         return None
     
     def get_second_place_team(self, obj):
         """Serialize second place team with category context"""
-        if obj.second_place_team:
-            return TeamSerializer(obj.second_place_team, context={'category_id': obj.id}).data
+        team = getattr(obj, 'second_place_team', None)
+        if team:
+            return TeamSerializer(team, context={'category_id': obj.id}).data
         return None
     
     def get_third_place_team(self, obj):
         """Serialize third place team with category context"""
-        if obj.third_place_team:
-            return TeamSerializer(obj.third_place_team, context={'category_id': obj.id}).data
+        team = getattr(obj, 'third_place_team', None)
+        if team:
+            return TeamSerializer(team, context={'category_id': obj.id}).data
         return None
 
     def get_competition_name(self, obj):
@@ -754,10 +899,26 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 
 class UserSerializer(serializers.ModelSerializer):
+    athlete = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'is_admin', 'date_joined']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'is_admin', 'date_joined', 'athlete']
         read_only_fields = ['id', 'is_admin', 'date_joined']
+
+    def get_athlete(self, obj):
+        """Return athlete details if user has an associated athlete"""
+        if hasattr(obj, 'athlete') and obj.athlete:
+            athlete = obj.athlete
+            return {
+                'id': athlete.id,
+                'first_name': athlete.first_name,
+                'last_name': athlete.last_name,
+                'club': athlete.club_id if hasattr(athlete, 'club_id') else (athlete.club.id if athlete.club else None),
+                'is_coach': athlete.is_coach if hasattr(athlete, 'is_coach') else False,
+                'status': athlete.status,
+            }
+        return None
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -970,11 +1131,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
         
         # Include athlete profile data if exists
         if hasattr(instance, 'athlete') and instance.athlete:
+            athlete = instance.athlete
             representation['athlete'] = {
-                'id': instance.athlete.id,
-                'first_name': instance.athlete.first_name,
-                'last_name': instance.athlete.last_name,
-                'status': instance.athlete.status,
+                'id': athlete.id,
+                'first_name': athlete.first_name,
+                'last_name': athlete.last_name,
+                'status': athlete.status,
+                'club': athlete.club_id if hasattr(athlete, 'club_id') else (athlete.club.id if athlete.club else None),
+                'is_coach': athlete.is_coach if hasattr(athlete, 'is_coach') else False,
             }
         
         return representation
@@ -1265,12 +1429,17 @@ class NotificationActionSerializer(serializers.Serializer):
 
 class CompetitionFieldSerializer(serializers.ModelSerializer):
     """Serializer for competition fields (tatamis/scoring stations)"""
+    event_name = serializers.CharField(source='event.title', read_only=True)
+    category_count = serializers.SerializerMethodField(read_only=True)
+
+    def get_category_count(self, obj):
+        return obj.category_assignments.count()
     
     class Meta:
         model = CompetitionField
         fields = [
-            'id', 'event', 'name', 'field_number', 'is_active',
-            'created_at', 'updated_at'
+            'id', 'event', 'event_name', 'name', 'field_number', 'is_active',
+            'category_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -1293,7 +1462,7 @@ class CategoryFieldAssignmentSerializer(serializers.ModelSerializer):
     
     def get_category_type(self, obj):
         """Get the category type (solo, team, fight)"""
-        return obj.category.get_real_instance().__class__.__name__.lower()
+        return getattr(obj.category, 'type', None) or obj.category.__class__.__name__.lower()
 
 
 class DisplayMonitorSessionSerializer(serializers.ModelSerializer):

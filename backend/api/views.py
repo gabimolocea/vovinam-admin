@@ -1,10 +1,11 @@
 from django.shortcuts import render
 from django.utils import timezone
 from django.db import models
+from django.db.models import Q
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import ValidationError
 from .serializers import *
 from .models import *
@@ -12,8 +13,70 @@ from .permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoach
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
+import logging
+
+# Ensure logger output appears in the console for debugging
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(name)s %(message)s')
 from django.db import IntegrityError
 # Create your views here.
+
+
+class RefereeAssignedCategoriesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            athlete = request.user.athlete
+        except Exception:
+            return Response([], status=status.HTTP_200_OK)
+
+        assignments = CategoryRefereeAssignment.objects.filter(
+            Q(referee_1=athlete) |
+            Q(referee_2=athlete) |
+            Q(referee_3=athlete) |
+            Q(referee_4=athlete) |
+            Q(referee_5=athlete)
+        ).select_related('category')
+
+        data = []
+        for assignment in assignments:
+            cat = assignment.category
+            field_assignment = getattr(cat, 'field_assignment', None)
+            field = field_assignment.field if field_assignment else None
+            data.append({
+                'id': cat.id,
+                'name': cat.name,
+                'type': cat.type,
+                'gender': cat.gender,
+                'field_status': field_assignment.status if field_assignment else None,
+                'field_id': field.id if field else None,
+                'field_name': field.name if field else None,
+                'field_number': field.field_number if field else None,
+            })
+
+        return Response(data)
+
+
+class RefereeAssignedMatchesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            athlete = request.user.athlete
+        except Exception:
+            return Response([], status=status.HTTP_200_OK)
+
+        match_ids = MatchRefereeAssignment.objects.filter(
+            Q(referee_1=athlete) |
+            Q(referee_2=athlete) |
+            Q(referee_3=athlete) |
+            Q(referee_4=athlete) |
+            Q(referee_5=athlete)
+        ).values_list('match_id', flat=True)
+
+        matches = Match.objects.filter(pk__in=match_ids).select_related('category')
+        serializer = MatchSerializer(matches, many=True)
+        return Response(serializer.data)
 
 
 @api_view(['GET'])
@@ -127,17 +190,34 @@ class CompetitionViewSet(viewsets.ViewSet):
     def list(self, request):
         from landing.models import Event
         events = Event.objects.filter(event_type='competition')
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            events = events.filter(status=status_filter)
+        elif request.user.is_authenticated and request.user.role == 'referee' and not request.user.is_admin:
+            events = events.filter(status='ongoing')
         data = []
         for ev in events:
             cats = []
             for cat in Category.objects.filter(event=ev):
-                cats.append({'id': cat.id, 'name': cat.name, 'type': cat.type, 'gender': cat.gender})
+                assignment = getattr(cat, 'field_assignment', None)
+                field = assignment.field if assignment else None
+                cats.append({
+                    'id': cat.id,
+                    'name': cat.name,
+                    'type': cat.type,
+                    'gender': cat.gender,
+                    'field_status': assignment.status if assignment else None,
+                    'field_id': field.id if field else None,
+                    'field_name': field.name if field else None,
+                    'field_number': field.field_number if field else None,
+                })
             data.append({
                 'id': ev.id,
                 'name': ev.title,
                 'place': ev.address,
                 'start_date': ev.start_date,
                 'end_date': ev.end_date,
+                'status': getattr(ev, 'status', None),
                 'categories': cats
             })
         return Response(data)
@@ -146,20 +226,75 @@ class CompetitionViewSet(viewsets.ViewSet):
         from landing.models import Event
         try:
             ev = Event.objects.get(pk=pk, event_type='competition')
+            status_filter = request.query_params.get('status')
+            if status_filter and ev.status != status_filter:
+                return Response({'detail': 'Not found.'}, status=404)
+            if request.user.is_authenticated and request.user.role == 'referee' and not request.user.is_admin:
+                if ev.status != 'ongoing':
+                    return Response({'detail': 'Not found.'}, status=404)
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
         cats = []
         for cat in Category.objects.filter(event=ev):
-            cats.append({'id': cat.id, 'name': cat.name, 'type': cat.type, 'gender': cat.gender})
+            assignment = getattr(cat, 'field_assignment', None)
+            field = assignment.field if assignment else None
+            cats.append({
+                'id': cat.id,
+                'name': cat.name,
+                'type': cat.type,
+                'gender': cat.gender,
+                'field_status': assignment.status if assignment else None,
+                'field_id': field.id if field else None,
+                'field_name': field.name if field else None,
+                'field_number': field.field_number if field else None,
+            })
         data = {
             'id': ev.id,
             'name': ev.title,
             'place': ev.address,
             'start_date': ev.start_date,
             'end_date': ev.end_date,
+            'status': getattr(ev, 'status', None),
             'categories': cats
         }
         return Response(data)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAdminOrReadOnly], url_path='stats')
+    def stats(self, request, pk=None):
+        from landing.models import Event
+        try:
+            ev = Event.objects.get(pk=pk, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        categories = Category.objects.filter(event=ev)
+        fields_active = CompetitionField.objects.filter(event=ev).count()
+
+        referee_ids = set()
+        for assignment in CategoryRefereeAssignment.objects.filter(category__in=categories):
+            for ref in [assignment.referee_1, assignment.referee_2, assignment.referee_3, assignment.referee_4, assignment.referee_5]:
+                if ref_id := getattr(ref, 'id', None):
+                    referee_ids.add(ref_id)
+
+        match_ids = Match.objects.filter(category__in=categories).values_list('id', flat=True)
+        for assignment in MatchRefereeAssignment.objects.filter(match_id__in=match_ids):
+            for ref in [assignment.referee_1, assignment.referee_2, assignment.referee_3, assignment.referee_4, assignment.referee_5]:
+                if ref_id := getattr(ref, 'id', None):
+                    referee_ids.add(ref_id)
+
+        scores_submitted = (
+            CategoryRefereeScore.objects.filter(athlete_score__category__in=categories).count()
+            + MatchRefereeScore.objects.filter(match__category__in=categories).count()
+        )
+
+        pending_approval = CategoryAthleteScore.objects.filter(category__in=categories, status='pending').count()
+
+        return Response({
+            'fields_active': fields_active,
+            'referees_assigned': len(referee_ids),
+            'scores_submitted': scores_submitted,
+            'pending_approval': pending_approval,
+        })
     
 
 class ClubViewSet(viewsets.ViewSet):
@@ -330,27 +465,65 @@ class AthleteViewSet(viewsets.ModelViewSet):
             return [IsClubCoachOrAdmin()]
         return [permissions.IsAuthenticated()]
 
+    def get_serializer_class(self):
+        """Use minimal serializer for list, full for detail"""
+        if self.action == 'retrieve':
+            return AthleteDetailSerializer
+        return AthleteMinimalSerializer
+
+    def get_queryset(self):
+        """Optimize queryset with select_related and prefetch_related"""
+        queryset = Athlete.objects.select_related(
+            'user',
+            'club',
+            'city',
+            'current_grade',
+            'federation_role',
+            'title',
+            'reviewed_by'
+        ).prefetch_related(
+            'grade_history',
+            'visas',
+            'team_members'
+        )
+        
+        # Apply filters
+        club_id = self.request.query_params.get('club')
+        if club_id:
+            queryset = queryset.filter(club_id=club_id)
+        
+        return queryset
+
     def list(self, request):
         # Support optional filtering by coach status and simple search
         is_coach = request.query_params.get('is_coach')
-        queryset = Athlete.objects.all()
+        is_referee = request.query_params.get('is_referee')
+        queryset = self.get_queryset()
         if is_coach is not None:
             if str(is_coach).lower() in ('1', 'true', 'yes'):
                 queryset = queryset.filter(is_coach=True)
             else:
                 queryset = queryset.filter(is_coach=False)
 
+        if is_referee is not None:
+            if str(is_referee).lower() in ('1', 'true', 'yes'):
+                queryset = queryset.filter(is_referee=True)
+            else:
+                queryset = queryset.filter(is_referee=False)
+
         q = request.query_params.get('q')
         if q:
             queryset = queryset.filter(models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q))
 
-        serializer = self.serializer_class(queryset, many=True)
-        return Response(serializer.data)
+        serializer = self.get_serializer_class()
+        ser = serializer(queryset, many=True)
+        return Response(ser.data)
 
     def retrieve(self, request, pk=None):
         athlete = self.get_object()
-        serializer = self.serializer_class(athlete)
-        return Response(serializer.data)
+        serializer = self.get_serializer_class()
+        ser = serializer(athlete)
+        return Response(ser.data)
 
     def create(self, request):
         """Create athlete profile for the current user (uses profile serializer semantics)."""
@@ -644,7 +817,14 @@ class TeamViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        serializer = self.serializer_class(data=request.data)
+        # Ensure name field is provided (required by database)
+        data = request.data.copy()
+        if not data.get('name'):
+            # Generate a temporary name - will be overridden when members are added
+            import uuid
+            data['name'] = f"Team {str(uuid.uuid4())[:8]}"
+        
+        serializer = self.serializer_class(data=data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=201)
@@ -669,6 +849,43 @@ class TeamViewSet(viewsets.ViewSet):
         return Response(status=204)
     
 
+class TeamMemberViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminOrReadOnly]
+    queryset = TeamMember.objects.all()
+    serializer_class = TeamMemberSerializer
+
+    def list(self, request):
+        queryset = self.queryset.all()
+        team_id = request.query_params.get('team_id')
+        if team_id:
+            queryset = queryset.filter(team_id=team_id)
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+    def retrieve(self, request, pk=None):
+        try:
+            instance = self.queryset.get(pk=pk)
+            serializer = self.serializer_class(instance)
+            return Response(serializer.data)
+        except TeamMember.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+    def destroy(self, request, pk=None):
+        try:
+            instance = self.queryset.get(pk=pk)
+            instance.delete()
+            return Response(status=204)
+        except TeamMember.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+
 class MatchViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
     queryset = Match.objects.all()
@@ -676,6 +893,17 @@ class MatchViewSet(viewsets.ViewSet):
 
     def list(self, request):
         queryset = Match.objects.all()
+        event_id = request.query_params.get('event_id')
+        field_id = request.query_params.get('field_id')
+        category_id = request.query_params.get('category_id')
+        if event_id:
+            queryset = queryset.filter(category__event_id=event_id)
+        if field_id:
+            queryset = queryset.filter(
+                Q(field_assignment__field_id=field_id) | Q(field_id=field_id)
+            )
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
@@ -766,7 +994,11 @@ class CategoryViewSet(viewsets.ViewSet):
         queryset = self.get_queryset()
         event_id = request.query_params.get('event')
         if event_id:
-            queryset = queryset.filter(event_id=event_id)
+            try:
+                event_id_int = int(str(event_id).split(':')[0])
+            except (TypeError, ValueError):
+                return Response({'detail': 'Invalid event id.'}, status=400)
+            queryset = queryset.filter(event_id=event_id_int)
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
@@ -787,7 +1019,7 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
     """
     ViewSet for CategoryAthlete - basic enrollment without scores.
     """
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = CategoryAthleteSerializer
 
     def get_queryset(self):
@@ -821,6 +1053,61 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         instance = self.get_queryset().get(pk=pk)
         serializer = self.serializer_class(instance)
         return Response(serializer.data)
+
+    def destroy(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        instance.delete()
+        return Response(status=204)
+
+
+class CategoryTeamViewSet(viewsets.ViewSet):
+    """
+    ViewSet for CategoryTeam - team enrollment in categories.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = CategoryTeamSerializer
+
+    def get_queryset(self):
+        queryset = CategoryTeam.objects.select_related('team', 'category').all()
+        
+        # Filter by category if provided
+        category_id = self.request.query_params.get('category', None)
+        if category_id is not None:
+            queryset = queryset.filter(category_id=category_id)
+
+        # Filter by event if provided
+        event_id = self.request.query_params.get('event', None)
+        if event_id is not None:
+            queryset = queryset.filter(category__event_id=event_id)
+        
+        # Filter by club if provided
+        club_id = self.request.query_params.get('club', None)
+        if club_id is not None:
+            queryset = queryset.filter(team__club_id=club_id)
+        
+        return queryset
+
+    def list(self, request):
+        queryset = self.get_queryset()
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+    def retrieve(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        serializer = self.serializer_class(instance)
+        return Response(serializer.data)
+
+    def destroy(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        instance.delete()
+        return Response(status=204)
 
 
 # FrontendTheme API removed — this viewset was intentionally deleted to disable theme management via the API.
@@ -1029,32 +1316,20 @@ class LoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UserProfileView(APIView):
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
-    
-    def put(self, request):
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        try:
-            refresh_token = request.data["refresh"]
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            return Response({"message": "Successfully logged out"}, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+        refresh_token = request.data.get("refresh")
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except Exception:
+                return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": "Successfully logged out"}, status=status.HTTP_200_OK)
 
 
 class SessionCheckView(APIView):
@@ -1542,6 +1817,10 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         category_id = self.request.query_params.get('category', None)
         if category_id is not None:
             queryset = queryset.filter(category_id=category_id)
+
+        event_id = self.request.query_params.get('event_id')
+        if event_id is not None:
+            queryset = queryset.filter(category__event_id=event_id)
         
         return queryset
 
@@ -2054,6 +2333,20 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Return seminar participations for the current user if athlete, all if admin"""
+        # Allow filtering by event via query param (for coach enrollment workflow)
+        event_param = self.request.query_params.get('event')
+        if event_param:
+            try:
+                event_id = int(event_param)
+            except (TypeError, ValueError):
+                return TrainingSeminarParticipation.objects.none()
+            
+            # Return all approved participations for this event (for coach to see who's already enrolled)
+            return TrainingSeminarParticipation.objects.filter(
+                event__id=event_id,
+                status='approved'
+            ).select_related('athlete', 'event')
+        
         # Allow filtering by athlete via query param when the requester is admin
         athlete_param = self.request.query_params.get('athlete')
         # If an athlete query param is provided and requester is admin, return that athlete's participations
@@ -2132,6 +2425,100 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
             })
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EventEnrollmentViewSet(viewsets.ViewSet):
+    """ViewSet for coaches to enroll their club athletes in events"""
+    permission_classes = [IsAuthenticated]
+    
+    def create(self, request):
+        """Enroll a club athlete in an event"""
+        athlete_id = request.data.get('athlete')
+        event_id = request.data.get('event')
+        
+        if not athlete_id or not event_id:
+            return Response(
+                {'error': 'athlete and event are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            athlete = Athlete.objects.get(id=athlete_id)
+            event = Event.objects.get(id=event_id)
+        except (Athlete.DoesNotExist, Event.DoesNotExist):
+            return Response(
+                {'error': 'Athlete or event not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Verify the requester is a coach in the athlete's club
+        if not hasattr(request.user, 'athlete'):
+            return Response(
+                {'error': 'User is not an athlete/coach'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        coach = request.user.athlete
+        if not coach.is_coach or coach.club_id != athlete.club_id:
+            return Response(
+                {'error': 'You can only enroll athletes from your own club'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if already enrolled
+        from landing.models import Event as LandingEvent
+        existing = TrainingSeminarParticipation.objects.filter(
+            athlete=athlete,
+            event=event
+        ).exists()
+        if existing:
+            return Response(
+                {'error': 'Athlete is already enrolled in this event'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create the event participation
+        participation = TrainingSeminarParticipation.objects.create(
+            athlete=athlete,
+            event=event,
+            submitted_by_athlete=False,
+            status='approved'  # Auto-approve coach enrollments
+        )
+        
+        serializer = TrainingSeminarParticipationSerializer(participation)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    def destroy(self, request, pk=None):
+        """Unenroll a club athlete from an event"""
+        try:
+            participation = TrainingSeminarParticipation.objects.get(pk=pk)
+        except TrainingSeminarParticipation.DoesNotExist:
+            return Response(
+                {'error': 'Enrollment not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Verify the requester is a coach in the athlete's club
+        if not hasattr(request.user, 'athlete'):
+            return Response(
+                {'error': 'User is not an athlete/coach'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        coach = request.user.athlete
+        if not coach.is_coach or coach.club_id != participation.athlete.club_id:
+            return Response(
+                {'error': 'You can only unenroll athletes from your own club'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        athlete_id = participation.athlete_id
+        participation.delete()
+        
+        return Response(
+            {'message': 'Athlete unenrolled successfully', 'athlete_id': athlete_id},
+            status=status.HTTP_200_OK
+        )
 
 
 # ============================================================================

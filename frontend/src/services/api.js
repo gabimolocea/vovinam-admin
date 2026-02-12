@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -10,16 +10,13 @@ const api = axios.create({
   },
 });
 
-// Add auth token to requests
+// Add auth token to requests (always as Bearer)
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('authToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Handle token expiration
+  if (token && typeof token === 'string' && token.length > 0) {
+    config.headers['Authorization'] = `Bearer ${token}`;
+  // This file is intentionally left as a stub after migration to apis.js in club-enrollment.
+  // Remove this file if you are sure no code references it.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -60,7 +57,7 @@ export const monitorAPI = {
   updateFieldSession: (fieldId, data) =>
     api.put(`/display-monitor-sessions/field/${fieldId}/`, data),
   getCompetition: (id) => api.get(`/events/${id}/`),
-  getCompetitionFields: (eventId) => api.get(`/events/${eventId}/fields/`),
+  getCompetitionFields: (eventId) => api.get('/competition-fields/', { params: { event_id: eventId } }),
 };
 
 export const adminAPI = {
@@ -71,26 +68,35 @@ export const adminAPI = {
   generateQRCodes: (categoryId, matchId) =>
     api.post('/qr-code-assignments/', { category_id: categoryId, match_id: matchId }),
   getCompetitionResults: (eventId) =>
-    api.get(`/events/${eventId}/results/`),
+    api.get('/category-athlete-score/', { params: { event_id: eventId } }),
   getCategories: (eventId) =>
-    api.get(`/events/${eventId}/categories/`),
+    api.get('/categories/', { params: { event: eventId } }),
   getMatches: (categoryId) =>
-    api.get(`/categories/${categoryId}/matches/`),
-  assignReferees: (categoryId, data) =>
-    api.post(`/categories/${categoryId}/assign-referees/`, data),
+    api.get('/matches/', { params: { category_id: categoryId } }),
+  listReferees: () => api.get('/athletes/', { params: { is_referee: true } }),
+  getEventStats: (eventId) => api.get(`/events/${eventId}/stats/`),
 };
 
 export const competitionAPI = {
-  list: () => api.get('/competitions/'),
-  get: (id) => api.get(`/competitions/${id}/`),
-  create: (data) => api.post('/competitions/', data),
-  update: (id, data) => api.put(`/competitions/${id}/`, data),
-  delete: (id) => api.delete(`/competitions/${id}/`),
-  getFields: (eventId) => api.get(`/competitions/${eventId}/fields/`),
-  getCategories: (eventId) => api.get(`/competitions/${eventId}/categories/`),
-  getResults: (eventId) => api.get(`/competitions/${eventId}/results/`),
+  listEvents: () => api.get('/events/'),
+  listFields: (eventId) => api.get('/competition-fields/', { params: { event_id: eventId } }),
+  list: () => api.get('/events/'),
+  get: (id) => api.get(`/events/${id}/`),
+  create: (data) => api.post('/events/', data),
+  update: (id, data) => api.put(`/events/${id}/`, data),
+  delete: (id) => api.delete(`/events/${id}/`),
+  getFields: (eventId) => api.get('/competition-fields/', { params: { event_id: eventId } }),
+  getCategories: (eventId) => api.get('/categories/', { params: { event: eventId } }),
+  getResults: (eventId) => api.get(`/events/${eventId}/results/`),
+  createEvent: (data) => api.post('/events/', data),
+  createField: (data) => api.post('/competition-fields/', data),
+  listCategories: (eventId) => api.get('/categories/', { params: { event: eventId } }),
+  listAssignments: (eventId) => api.get('/category-field-assignments/', { params: { event_id: eventId } }),
+  createAssignment: (data) => api.post('/category-field-assignments/', data),
 };
 
+
+// Named export for fieldAPI (do not use default import for this)
 export const fieldAPI = {
   list: () => api.get('/competition-fields/'),
   get: (id) => api.get(`/competition-fields/${id}/`),
@@ -99,4 +105,5 @@ export const fieldAPI = {
   delete: (id) => api.delete(`/competition-fields/${id}/`),
 };
 
+// Default export for raw axios instance (not for API groups)
 export default api;

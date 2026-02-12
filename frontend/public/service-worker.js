@@ -3,9 +3,9 @@
  * Handles offline caching, app shell architecture, and background sync
  */
 
-const CACHE_NAME = 'vovinam-v1';
-const APP_SHELL_CACHE = 'vovinam-app-shell-v1';
-const API_CACHE = 'vovinam-api-v1';
+const CACHE_NAME = 'vovinam-v2';
+const APP_SHELL_CACHE = 'vovinam-app-shell-v2';
+const API_CACHE = 'vovinam-api-v2';
 const OFFLINE_FALLBACK = '/offline.html';
 
 // Files to cache on install (App Shell)

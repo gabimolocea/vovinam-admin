@@ -68,11 +68,12 @@ class NewsPostAdmin(admin.ModelAdmin):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class EventAdmin(admin.ModelAdmin):
-    list_display = ['title', 'start_date', 'city', 'event_type', 'is_featured', 'event_status']
-    list_filter = ['is_featured', 'start_date']
+    list_display = ['title', 'start_date', 'city', 'event_type', 'event_status', 'is_featured']
+    list_filter = ['status', 'is_featured', 'start_date']
     search_fields = ['title', 'description', 'city__name', 'tags']
     autocomplete_fields = ['city']
     prepopulated_fields = {'slug': ('title',)}
+    readonly_fields = ['status']
     # Removed inline editing for `is_featured` to avoid the changelist-wide
     # "Save" button. Use the object change form or admin actions to toggle
     # featured status instead.
@@ -83,7 +84,7 @@ class EventAdmin(admin.ModelAdmin):
             'fields': ('title', 'slug', 'description', 'featured_image', 'featured_image_alt', 'tags')
         }),
         (_('Date & Location'), {
-            'fields': ('start_date', 'end_date', 'city', 'address', 'price', 'event_type')
+            'fields': ('start_date', 'end_date', 'city', 'address', 'price', 'event_type', 'status')
         }),
         (_('Display Settings'), {
             'fields': ('is_featured',)
@@ -96,10 +97,13 @@ class EventAdmin(admin.ModelAdmin):
     )
     
     def event_status(self, obj):
+        if obj.is_past:
+            return format_html('<span style="color: red;">Past</span>')
+        if obj.is_ongoing:
+            return format_html('<span style="color: #0d6efd;">Ongoing</span>')
         if obj.is_upcoming:
             return format_html('<span style="color: green;">Upcoming</span>')
-        else:
-            return format_html('<span style="color: red;">Past</span>')
+        return format_html('<span style="color: gray;">Unknown</span>')
     event_status.short_description = _('Status')
 
 class AboutSectionAdmin(admin.ModelAdmin):

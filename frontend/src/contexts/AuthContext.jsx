@@ -13,17 +13,29 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initAuth = async () => {
       const storedToken = localStorage.getItem('authToken');
+      const cachedUserRaw = localStorage.getItem('authUser');
+      if (cachedUserRaw) {
+        try {
+          setUser(JSON.parse(cachedUserRaw));
+        } catch (e) {
+          localStorage.removeItem('authUser');
+        }
+      }
       if (storedToken) {
         try {
           setToken(storedToken);
           const response = await authAPI.getCurrentUser();
           setUser(response.data);
+          localStorage.setItem('authUser', JSON.stringify(response.data));
           setError(null);
         } catch (err) {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('userRole');
-          setToken(null);
-          setUser(null);
+          if (err.response?.status === 401) {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userRole');
+            localStorage.removeItem('authUser');
+            setToken(null);
+            setUser(null);
+          }
         }
       }
       setLoading(false);
@@ -37,17 +49,24 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       setLoading(true);
       const response = await authAPI.login(email, password);
-      const { access, user: userData } = response.data;
+      console.log('Login response:', response.data); // DEBUG: log full response
+      // Extract access token from response.data.tokens.access
+      const userData = response.data.user;
+      const access = response.data.tokens?.access;
       
+      if (!access) {
+        throw new Error('No access token returned from server');
+      }
       localStorage.setItem('authToken', access);
       localStorage.setItem('userRole', userData.role);
+      localStorage.setItem('authUser', JSON.stringify(userData));
       
       setToken(access);
       setUser(userData);
       
       return userData;
     } catch (err) {
-      const message = err.response?.data?.detail || 'Login failed';
+      const message = err.response?.data?.detail || err.message || 'Login failed';
       setError(message);
       throw new Error(message);
     } finally {
@@ -59,10 +78,13 @@ export const AuthProvider = ({ children }) => {
     try {
       await authAPI.logout();
     } catch (err) {
-      console.error('Logout error:', err);
+      if (err.response?.status !== 400) {
+        console.error('Logout error:', err);
+      }
     } finally {
       localStorage.removeItem('authToken');
       localStorage.removeItem('userRole');
+      localStorage.removeItem('authUser');
       setToken(null);
       setUser(null);
       setError(null);

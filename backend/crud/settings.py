@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-vc)ijbblbx@-*fl+z7gl^z)qol&q9+-_1gu)ug=3vqhu+s#qu8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 # Allow admin modals (admin_interface) to load in iframes on same origin
 X_FRAME_OPTIONS = "SAMEORIGIN"
@@ -187,26 +187,26 @@ CKEDITOR_5_UPLOAD_PATH = "uploads/"
 CKEDITOR_5_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.locale.LocaleMiddleware',
-    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
+    'http://127.0.0.1:5173',
     'http://localhost:5174',
     'http://localhost:5175'
 ]
 
-# Allow credentials to be sent with CORS requests
+ # Allow credentials to be sent with CORS requests
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow all origins for local development (fixes CORS errors instantly)
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Allow specific headers for authentication
 CORS_ALLOW_HEADERS = [

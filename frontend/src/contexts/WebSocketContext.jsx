@@ -11,9 +11,11 @@ export const WebSocketProvider = ({ children }) => {
   const [subscriptions, setSubscriptions] = React.useState({});
 
   const getWsUrl = useCallback(() => {
-    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
     const wsBase = apiBase.replace('http', 'ws').replace('https', 'wss').replace('/api', '');
-    return `${wsBase}/ws/?token=${token}`;
+    // Use a valid Django Channels route: /ws/scoring/field/1/ (field_id=1 as example)
+    // In production, replace 1 with the actual field/event/admin event ID as needed
+    return `${wsBase}/ws/scoring/field/1/?token=${token}`;
   }, [token]);
 
   const connect = useCallback(() => {

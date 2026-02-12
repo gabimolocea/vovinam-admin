@@ -9,6 +9,7 @@ router = DefaultRouter()
 router.register(r'cities', CityViewSet, basename='city')
 router.register('clubs', ClubViewSet, basename='club')
 router.register('competitions', CompetitionViewSet, basename='competition')
+router.register('events', CompetitionViewSet, basename='event')
 router.register('athletes', AthleteViewSet, basename='athlete')
 # 'athlete-profiles' was consolidated into 'athletes' (profile actions moved to AthleteViewSet)
 router.register('supporter-athlete-relations', SupporterAthleteRelationViewSet, basename='supporter-athlete-relation')
@@ -16,10 +17,12 @@ router.register('titles', TitleViewSet, basename='title')
 router.register('federation-roles', FederationRoleViewSet, basename='federation-role')
 router.register('grades', GradeViewSet, basename='grade')
 router.register('teams', TeamViewSet, basename='team')
+router.register('team-members', TeamMemberViewSet, basename='team-member')
 router.register('matches', MatchViewSet, basename='match')
 router.register('annual-visas', AnnualVisaViewSet, basename='annual-visa')
 router.register('categories', CategoryViewSet, basename='category')
 router.register('category-athletes', CategoryAthleteViewSet, basename='category-athlete')
+router.register('category-teams', CategoryTeamViewSet, basename='category-team')
 router.register('grade-histories', GradeHistoryViewSet, basename='grade-history')
 router.register('medical-visas', MedicalVisaViewSet, basename='medical-visa')
 # Training seminars removed - use Events API instead
@@ -30,6 +33,11 @@ router.register('notifications', NotificationViewSet, basename='notification')
 router.register('notification-settings', NotificationSettingsViewSet, basename='notification-settings')
 router.register('grade-submissions', GradeHistorySubmissionViewSet, basename='grade-submission')
 router.register('seminar-submissions', TrainingSeminarParticipationViewSet, basename='seminar-submission')
+router.register('event-participations', TrainingSeminarParticipationViewSet, basename='event-participation')
+
+# Import the new event enrollment viewset
+from .views import EventEnrollmentViewSet
+router.register('event-enrollments', EventEnrollmentViewSet, basename='event-enrollment')
 router.register('coaches', CoachesViewSet, basename='coach')
 # Offline competition sync endpoints
 router.register('offline', OfflineSyncViewSet, basename='offline')
@@ -89,6 +97,8 @@ urlpatterns = autocomplete_urlpatterns + [
     path('auth/session-check/', SessionCheckView.as_view(), name='session-check'),
     path('auth/session-login/', SessionLoginView.as_view(), name='session-login'),
     path('auth/session-logout/', SessionLogoutView.as_view(), name='session-logout'),
+    path('referees/me/assigned-categories/', views.RefereeAssignedCategoriesView.as_view(), name='referee-assigned-categories'),
+    path('referees/me/assigned-matches/', views.RefereeAssignedMatchesView.as_view(), name='referee-assigned-matches'),
     
     # New athlete workflow URLs (must come before router.urls for specific endpoints)
     path('auth/register-enhanced/', UserRegistrationView.as_view(), name='register-enhanced'),

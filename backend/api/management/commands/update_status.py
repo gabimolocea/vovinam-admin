@@ -97,28 +97,24 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS('\nCategories:'))
             self.stdout.write('-' * 80)
             for cat in categories:
+                assignment = getattr(cat, 'field_assignment', None)
+                field_status = assignment.status if assignment else 'n/a'
                 status_color = {
                     'not_started': self.style.WARNING,
                     'in_progress': self.style.HTTP_INFO,
                     'completed': self.style.SUCCESS,
-                }.get(cat.status, self.style.NOTICE)
+                }.get(field_status, self.style.NOTICE)
                 
                 self.stdout.write(
                     f'ID: {cat.id:3d} | {cat.category_number:10s} | '
-                    f'{status_color(cat.status.ljust(12))} | {cat.name}'
+                    f'{status_color(field_status.ljust(12))} | {cat.name}'
                 )
         else:
             matches = Match.objects.all().order_by('id')
             self.stdout.write(self.style.SUCCESS('\nMatches:'))
             self.stdout.write('-' * 80)
             for match in matches:
-                status_color = {
-                    'not_started': self.style.WARNING,
-                    'in_progress': self.style.HTTP_INFO,
-                    'completed': self.style.SUCCESS,
-                }.get(match.status, self.style.NOTICE)
-                
                 self.stdout.write(
                     f'ID: {match.id:3d} | {match.match_number:15s} | '
-                    f'{status_color(match.status.ljust(12))} | {match.name}'
+                    f'{self.style.NOTICE("n/a".ljust(12))} | {match.name}'
                 )

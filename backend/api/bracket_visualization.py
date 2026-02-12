@@ -95,9 +95,8 @@ class BracketVisualizer:
         else:
             html += '<div class="match-competitor" style="color: #ccc;">TBD</div>'
         
-        # Status
-        status = match.get_status_display() if hasattr(match, 'get_status_display') else match.status
-        html += f'<div class="match-status">{status}'
+        # Status (no match status field; show N/A)
+        html += '<div class="match-status">N/A'
         
         if match.winner:
             winner_name = self._get_competitor_name(match.winner, match)
@@ -164,16 +163,19 @@ class BracketStats:
     def get_stats(category):
         """Get bracket statistics"""
         matches = category.matches.all()
-        completed = matches.filter(status='completed').count()
-        scheduled = matches.filter(status='scheduled').count()
-        in_progress = matches.filter(status='in_progress').count()
+        total = matches.count()
+        completed = matches.filter(field_assignment__status='completed').distinct().count()
+        in_progress = matches.filter(field_assignment__status='in_progress').distinct().count()
+        scheduled = matches.filter(
+            Q(field_assignment__isnull=True) | Q(field_assignment__status='not_started')
+        ).distinct().count()
         
         return {
-            'total_matches': matches.count(),
+            'total_matches': total,
             'completed': completed,
             'scheduled': scheduled,
             'in_progress': in_progress,
-            'completion_percentage': int((completed / matches.count() * 100) if matches.count() > 0 else 0),
+            'completion_percentage': int((completed / total * 100) if total > 0 else 0),
         }
     
     @staticmethod

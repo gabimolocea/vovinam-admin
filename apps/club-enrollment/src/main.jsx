@@ -7,9 +7,15 @@ import App from './App.jsx'
 
 const theme = createTheme({
   palette: {
-    primary: { main: '#1976d2' },
-    secondary: { main: '#9c27b0' }
-  }
+    mode: 'light',
+    primary: { main: '#1d4ed8' },
+    secondary: { main: '#0ea5e9' },
+    background: {
+      default: '#f5f7fb',
+      paper: '#ffffff',
+    },
+  },
+  shape: { borderRadius: 10 },
 })
 
 createRoot(document.getElementById('root')).render(

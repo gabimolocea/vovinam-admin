@@ -28,3 +28,4 @@ deployment-config.txt
 
 # VSCode
 .vscode/
+node_modules

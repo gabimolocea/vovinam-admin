@@ -49,6 +49,9 @@ from .models import (
     MatchVideoRecording,
     AthletePerformanceVideo,
     TeamPerformanceVideo,
+    CompetitionField,
+    CategoryFieldAssignment,
+    MatchFieldAssignment,
 )
 
 # Optional grouping configuration used by the admin grouping template tag.
@@ -985,11 +988,12 @@ except Exception:
 
 class MatchInline(admin.TabularInline):
     model = Match
-    extra = 0
+    extra = 1
     autocomplete_fields = ['red_corner', 'blue_corner']  # Winner is now computed
     # Show a quick link to open the full Match change page so admins can view/edit
     # the match details directly from the Category change form.
     fields = ('match_type', 'red_corner', 'blue_corner', 'winner_display', 'match_link')  # Do not show referees
+    exclude = ('field',)
     readonly_fields = ('winner_display', 'match_link')
     show_change_link = False
     verbose_name = "Match"
@@ -1051,6 +1055,18 @@ class RefereeScoreInline(admin.TabularInline):
             if 'referee' in self.fields:
                 self.fields['referee'].required = False
                 self.fields['referee'].widget.attrs = {'style': 'width: 150px;'}
+                try:
+                    inst = getattr(self, 'instance', None)
+                    match = getattr(inst, 'match', None) if inst else None
+                    event_id = getattr(getattr(match, 'category', None), 'event_id', None)
+                    if event_id:
+                        self.fields['referee'].queryset = Athlete.objects.filter(
+                            is_referee=True,
+                            seminar_participations__event_id=event_id,
+                            seminar_participations__status='approved'
+                        ).distinct()
+                except Exception:
+                    pass
             try:
                 # Populate per-round initial values from existing score events
                 inst = getattr(self, 'instance', None)
@@ -1109,7 +1125,7 @@ class RefereeScoreInline(admin.TabularInline):
         'red_total', 'blue_total',
         'winner_combined',
     )
-    autocomplete_fields = ['referee']
+    autocomplete_fields = []
     # per-round inputs are editable on the form; totals and computed displays are read-only
     readonly_fields = ('red_total', 'blue_total', 'winner_combined')
     
@@ -1132,7 +1148,54 @@ class RefereeScoreInline(admin.TabularInline):
     def get_formset(self, request, obj=None, **kwargs):
         """Customize formset to always show exactly 5 forms"""
         formset = super().get_formset(request, obj, **kwargs)
+        if not hasattr(formset, '_unique_referee_wrapped'):
+            original_clean = formset.clean
+
+            def clean(formset_self):
+                original_clean(formset_self)
+                selected = []
+                for form in formset_self.forms:
+                    if not hasattr(form, 'cleaned_data'):
+                        continue
+                    if form.cleaned_data.get('DELETE'):
+                        continue
+                    ref = form.cleaned_data.get('referee')
+                    if ref:
+                        if ref.pk in selected:
+                            raise ValidationError('Each referee can be selected only once.')
+                        selected.append(ref.pk)
+
+            formset.clean = clean
+            formset._unique_referee_wrapped = True
+        try:
+            if obj and obj.category and obj.category.event_id:
+                qs = Athlete.objects.filter(
+                    is_referee=True,
+                    seminar_participations__event_id=obj.category.event_id,
+                    seminar_participations__status='approved'
+                ).distinct()
+                if 'referee' in formset.form.base_fields:
+                    formset.form.base_fields['referee'].queryset = qs
+        except Exception:
+            pass
         return formset
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'referee':
+            qs = Athlete.objects.filter(is_referee=True)
+            try:
+                match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if match_id:
+                    match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+                    if match and match.category and match.category.event_id:
+                        qs = qs.filter(
+                            seminar_participations__event_id=match.category.event_id,
+                            seminar_participations__status='approved'
+                        )
+            except Exception:
+                pass
+            kwargs['queryset'] = qs.distinct()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def red_total(self, obj):
         """Computed RED TOTAL: sum of round scores minus central penalties (read-only)."""
@@ -1420,10 +1483,14 @@ class CategoryRefereeAssignmentForm(forms.ModelForm):
         """Validate all referee assignments"""
         cleaned_data = super().clean()
         # Check that all referee foreign keys reference valid athletes
+        selected = []
         for i in range(1, 6):
             ref_field = f'referee_{i}'
             ref_id = cleaned_data.get(ref_field)
             if ref_id:
+                if ref_id.pk in selected:
+                    raise ValidationError('Each referee can be selected only once.')
+                selected.append(ref_id.pk)
                 # Verify the referee exists
                 if not Athlete.objects.filter(pk=ref_id.pk).exists():
                     raise ValidationError(f"Referee {i} (ID {ref_id.pk}) does not exist in database")
@@ -2348,6 +2415,12 @@ class GradeAdmin(admin.ModelAdmin):
         return '-'
     image_preview.short_description = 'Image Preview'
 
+
+class GradeHistoryAdminForm(forms.ModelForm):
+    class Meta:
+        model = GradeHistory
+        fields = '__all__'
+
 # Updated GradeHistoryAdmin
 @admin.register(GradeHistory)
 class GradeHistoryAdmin(admin.ModelAdmin):
@@ -2440,10 +2513,42 @@ class CategoryAdminForm(forms.ModelForm):
         model = Category
         exclude = ('category_number',)
 
+
+class CategoryFieldAssignmentInline(admin.StackedInline):
+    model = CategoryFieldAssignment
+    extra = 0
+    verbose_name = 'Field Assignment'
+    verbose_name_plural = 'Field Assignment'
+    fields = (
+        'field',
+        'status',
+        'scheduled_start_time',
+        'actual_start_time',
+        'actual_end_time',
+        'order',
+    )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == 'field':
+            qs = CompetitionField.objects.filter(field_number__in=[1, 2, 3])
+            try:
+                object_id = request.resolver_match.kwargs.get('object_id')
+                if object_id:
+                    category = Category.objects.filter(pk=object_id).select_related('event').first()
+                    if category and category.event_id:
+                        qs = qs.filter(event_id=category.event_id)
+            except Exception:
+                pass
+            formfield.queryset = qs
+            formfield.label_from_instance = lambda obj: f"Field {obj.field_number}"
+        return formfield
+
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     """Admin for base Category model to support autocomplete"""
     form = CategoryAdminForm
+    inlines = [CategoryFieldAssignmentInline]
     list_display = ('id', 'name_link', 'group', 'event')
     search_fields = ('name', 'event__title')
     list_filter = ('event', 'group')
@@ -2456,18 +2561,34 @@ class CategoryAdmin(admin.ModelAdmin):
     
 @admin.register(SoloCategory)
 class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
-    list_display = ('category_id_display', 'category_name_display', 'event', 'get_group_display', 'gender', 'status', 'display_winners')
+    list_display = ('category_id_display', 'category_name_display', 'event', 'get_group_display', 'gender', 'display_winners')
     search_fields = ('name', 'event__title', 'gender', 'group__name')
-    list_filter = ('event', 'gender', 'group', 'status')
+    list_filter = ('event', 'gender', 'group')
     autocomplete_fields = ['group']
     competition_field = 'event'
     
     fieldsets = [
         ('Category Details', {
-            'fields': ('event', 'group', 'name', 'gender', 'status'),
+            'fields': ('event', 'group', 'name', 'gender'),
             'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Athletes inline below.'
         }),
     ]
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'group':
+            event_id = request.GET.get('event')
+            if event_id:
+                kwargs['queryset'] = Group.objects.filter(event_id=event_id)
+            else:
+                obj_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if obj_id:
+                    try:
+                        current = SoloCategory.objects.get(pk=obj_id)
+                        if current.event_id:
+                            kwargs['queryset'] = Group.objects.filter(event_id=current.event_id)
+                    except SoloCategory.DoesNotExist:
+                        pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     def category_id_display(self, obj):
         """Display category ID as read-only"""
@@ -2496,6 +2617,7 @@ class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
         """Include referees and athletes for solo categories"""
         inlines = []
         if obj:
+            inlines.append(CategoryFieldAssignmentInline)
             inlines.append(CategoryRefereeAssignmentInline)
             inlines.append(CategoryAthleteInline)
         return inlines
@@ -2555,18 +2677,34 @@ class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
 
 @admin.register(TeamCategory)
 class TeamCategoryAdmin(VersionAdmin, admin.ModelAdmin):
-    list_display = ('category_id_display', 'category_name_display', 'event', 'get_group_display', 'gender', 'status', 'display_winners')
+    list_display = ('category_id_display', 'category_name_display', 'event', 'get_group_display', 'gender', 'display_winners')
     search_fields = ('name', 'event__title', 'gender', 'group__name')
-    list_filter = ('event', 'gender', 'group', 'status')
+    list_filter = ('event', 'gender', 'group')
     autocomplete_fields = ['group']
     competition_field = 'event'
     
     fieldsets = [
         ('Category Details', {
-            'fields': ('event', 'group', 'name', 'gender', 'status'),
+            'fields': ('event', 'group', 'name', 'gender'),
             'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Teams inline below.'
         }),
     ]
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'group':
+            event_id = request.GET.get('event')
+            if event_id:
+                kwargs['queryset'] = Group.objects.filter(event_id=event_id)
+            else:
+                obj_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if obj_id:
+                    try:
+                        current = TeamCategory.objects.get(pk=obj_id)
+                        if current.event_id:
+                            kwargs['queryset'] = Group.objects.filter(event_id=current.event_id)
+                    except TeamCategory.DoesNotExist:
+                        pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     def category_id_display(self, obj):
         """Display category ID as read-only"""
@@ -2595,6 +2733,7 @@ class TeamCategoryAdmin(VersionAdmin, admin.ModelAdmin):
         """Include referees and teams for team categories"""
         inlines = []
         if obj:
+            inlines.append(CategoryFieldAssignmentInline)
             inlines.append(CategoryRefereeAssignmentInline)
             inlines.append(EnrolledTeamsInline)
         return inlines
@@ -2675,15 +2814,15 @@ class FightAthleteWeightInline(admin.TabularInline):
 
 @admin.register(FightCategory)
 class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
-    list_display = ('category_id_display', 'category_name_display', 'event', 'get_group_display', 'gender', 'status', 'display_winners', 'match_progress')
+    list_display = ('category_id_display', 'category_name_display', 'event', 'get_group_display', 'gender', 'display_winners', 'match_progress')
     search_fields = ('name', 'event__title', 'gender', 'group__name')
-    list_filter = ('event', 'gender', 'group', 'status')
+    list_filter = ('event', 'gender', 'group')
     autocomplete_fields = ['group']
     competition_field = 'event'
     
     fieldsets = [
         ('Category Details', {
-            'fields': ('event', 'group', 'name', 'gender', 'status'),
+            'fields': ('event', 'group', 'name', 'gender'),
             'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Athletes inline below.'
         }),
         ('Brackets', {
@@ -3182,21 +3321,88 @@ class MatchVideoRecordingInline(admin.TabularInline):
     show_change_link = True
 
 
+class MatchRefereeAssignmentForm(forms.ModelForm):
+    class Meta:
+        model = MatchRefereeAssignment
+        fields = '__all__'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        selected = []
+        for i in range(1, 6):
+            ref_field = f'referee_{i}'
+            ref = cleaned_data.get(ref_field)
+            if ref:
+                if ref.pk in selected:
+                    raise ValidationError('Each referee can be selected only once.')
+                selected.append(ref.pk)
+        return cleaned_data
+
+
 class MatchRefereeAssignmentInline(admin.TabularInline):
     """Inline for assigning referees to matches in fight categories"""
     model = MatchRefereeAssignment
+    form = MatchRefereeAssignmentForm
     extra = 0
     fields = ('referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5')
     autocomplete_fields = ['referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5']
     verbose_name = _('Referee Assignment')
     verbose_name_plural = _('Referee Assignments')
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name.startswith('referee_'):
+            qs = Athlete.objects.filter(is_referee=True)
+            try:
+                match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if match_id:
+                    match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+                    if match and match.category and match.category.event_id:
+                        qs = qs.filter(
+                            seminar_participations__event_id=match.category.event_id,
+                            seminar_participations__status='approved'
+                        )
+            except Exception:
+                pass
+            kwargs['queryset'] = qs.distinct()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class MatchFieldAssignmentInline(admin.StackedInline):
+    model = MatchFieldAssignment
+    extra = 0
+    verbose_name = 'Field Assignment'
+    verbose_name_plural = 'Field Assignment'
+    fields = (
+        'field',
+        'status',
+        'scheduled_start_time',
+        'actual_start_time',
+        'actual_end_time',
+        'order',
+    )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == 'field':
+            qs = CompetitionField.objects.filter(field_number__in=[1, 2, 3])
+            try:
+                match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if match_id:
+                    match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+                    if match and match.category_id and match.category.event_id:
+                        qs = qs.filter(event_id=match.category.event_id)
+            except Exception:
+                pass
+            formfield.queryset = qs
+            formfield.label_from_instance = lambda obj: f"Field {obj.field_number}"
+        return formfield
+
 
 @admin.register(Match)
 class MatchAdmin(admin.ModelAdmin):
-    list_display = ('get_id_display', 'name_with_corners', 'match_type', 'status', 'get_winner', 'category_link')
+    list_display = ('get_id_display', 'name_with_corners', 'match_type', 'get_winner', 'category_link', 'field')
     search_fields = ('name', 'red_corner__first_name', 'red_corner__last_name', 'blue_corner__first_name', 'blue_corner__last_name', 'category__name', 'category__event__title')
-    list_filter = ('match_type', 'status', 'category__event')
+    list_filter = ('match_type', 'category__event')
     competition_field = 'category'  # Will be filled from category's event
 
     # Use a custom change form template so we can add a quick 'Add central penalty' button
@@ -3206,7 +3412,7 @@ class MatchAdmin(admin.ModelAdmin):
         ('MATCH DETAILS', {
             # Central referee is selected in the Central Penalties inline below
             # Winner is read-only and computed from referee scores/penalties
-            'fields': ('category', 'match_type', 'red_corner', 'blue_corner', 'status', 'winner_display'),
+            'fields': ('category', 'match_type', 'red_corner', 'blue_corner', 'winner_display'),
             'description': 'Identify matches by their primary key (ID). Winner is automatically computed from referee scores and penalties.'
         } ),
     )
@@ -3214,6 +3420,29 @@ class MatchAdmin(admin.ModelAdmin):
     autocomplete_fields = ['red_corner', 'blue_corner']  # Winner is computed and read-only
 
     readonly_fields = ('winner_display',)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'field':
+            qs = CompetitionField.objects.filter(field_number__in=[1, 2, 3])
+            try:
+                category_id = request.GET.get('category')
+                if not category_id:
+                    match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                    if match_id:
+                        match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+                        if match and match.category_id:
+                            category_id = match.category_id
+                if category_id:
+                    category = Category.objects.filter(pk=category_id).select_related('event').first()
+                    if category and category.event_id:
+                        qs = qs.filter(event_id=category.event_id)
+            except Exception:
+                pass
+            kwargs['queryset'] = qs
+            formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+            formfield.label_from_instance = lambda obj: f"Field {obj.field_number}"
+            return formfield
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     def get_changeform_initial_data(self, request):
         """Pre-fill category from current competition if available"""
@@ -3231,6 +3460,32 @@ class MatchAdmin(admin.ModelAdmin):
                 pass
         
         return initial
+
+    def get_form(self, request, obj=None, **kwargs):
+        if obj and obj.field_id:
+            try:
+                assignment = MatchFieldAssignment.objects.filter(match=obj).first()
+                if not assignment:
+                    MatchFieldAssignment.objects.create(match=obj, field_id=obj.field_id)
+                elif not assignment.field_id:
+                    assignment.field_id = obj.field_id
+                    assignment.save(update_fields=['field'])
+            except Exception:
+                pass
+        return super().get_form(request, obj, **kwargs)
+
+    def save_formset(self, request, form, formset, change):
+        if formset.model == MatchFieldAssignment:
+            instances = formset.save(commit=False)
+            for inst in instances:
+                inst.match = form.instance
+                inst.save()
+                if inst.field_id and form.instance.field_id != inst.field_id:
+                    form.instance.field_id = inst.field_id
+                    form.instance.save(update_fields=['field'])
+            formset.save_m2m()
+        else:
+            super().save_formset(request, form, formset, change)
     
     def get_id_display(self, obj):
         """Display match ID"""
@@ -3238,8 +3493,8 @@ class MatchAdmin(admin.ModelAdmin):
     get_id_display.short_description = 'ID'
     get_id_display.admin_order_field = 'pk'
 
-    # Show referee scores, central penalties, and video recordings
-    inlines = [RefereeScoreInline, CentralPenaltyInline, MatchVideoRecordingInline]
+    # Show field assignment, referee scores, central penalties, and video recordings
+    inlines = [MatchFieldAssignmentInline, RefereeScoreInline, CentralPenaltyInline, MatchVideoRecordingInline]
 
     class Media:
         js = ('/static/api/js/referee_inline_winner.js', '/static/api/js/recompute_match_results.js', '/static/api/js/category_scores.js',)
@@ -3252,7 +3507,11 @@ class MatchAdmin(admin.ModelAdmin):
         Display the full names of the athletes with their corner in parentheses as a clickable bold link.
         """
         url = reverse('admin:api_match_change', args=(obj.pk,))
-        match_name = f"{obj.red_corner.first_name} {obj.red_corner.last_name} (Red Corner) vs {obj.blue_corner.first_name} {obj.blue_corner.last_name} (Blue Corner)"
+        red = obj.red_corner
+        blue = obj.blue_corner
+        red_name = f"{red.first_name} {red.last_name}" if red else "TBD"
+        blue_name = f"{blue.first_name} {blue.last_name}" if blue else "TBD"
+        match_name = f"{red_name} (Red Corner) vs {blue_name} (Blue Corner)"
         return format_html('<a href="{}" style="font-weight: bold;">{}</a>', url, match_name)
     name_with_corners.short_description = _('Match Name')
 
@@ -3328,7 +3587,12 @@ class MatchAdmin(admin.ModelAdmin):
                 kwargs['queryset'] = request.obj.category.athletes.all()
         elif db_field.name == 'winner':
             if hasattr(request, 'obj') and isinstance(request.obj, Match):
-                kwargs['queryset'] = Athlete.objects.filter(pk__in=[request.obj.red_corner.pk, request.obj.blue_corner.pk])
+                ids = []
+                if request.obj.red_corner_id:
+                    ids.append(request.obj.red_corner_id)
+                if request.obj.blue_corner_id:
+                    ids.append(request.obj.blue_corner_id)
+                kwargs['queryset'] = Athlete.objects.filter(pk__in=ids)
         elif db_field.name == 'central_referee':
             # Prefer central referee choices from the match.referees if the match exists
             try:
@@ -3768,6 +4032,12 @@ class MatchAdmin(admin.ModelAdmin):
             return JsonResponse({'ok': True, 'match_winner': mv, 'per_ref': persisted})
         except Exception as exc:
             return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+
+class CompetitionFieldAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'field_number', 'event', 'is_active')
+    search_fields = ('name', 'field_number', 'event__title')
+    list_filter = ('event', 'is_active')
+
 
 @admin.register(Group)
 class GroupAdmin(admin.ModelAdmin):

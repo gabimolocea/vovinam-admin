@@ -86,7 +86,7 @@ class Event(SEOModel):
     slug = models.SlugField(unique=True, help_text="URL-friendly version of the title")
     description = CKEditor5Field('Description', config_name='extends')  # Updated field
     start_date = models.DateTimeField()
-    end_date = models.DateTimeField(blank=True, null=True)
+    end_date = models.DateTimeField()
     address = models.TextField(blank=True, help_text="Full address of the event")
     # Use City model (from api app) as a selector instead of free-text 'location'
     city = models.ForeignKey(
@@ -111,6 +111,17 @@ class Event(SEOModel):
         ('training_seminar', 'Training Seminar'),
     ]
     event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES, default='competition', help_text='Type of event')
+    STATUS_CHOICES = [
+        ('upcoming', 'Upcoming'),
+        ('ongoing', 'Ongoing'),
+        ('past', 'Past'),
+    ]
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default='upcoming',
+        help_text='Operational status of the event'
+    )
     # registration fields removed (deprecated)
     price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     tags = models.CharField(
@@ -127,14 +138,28 @@ class Event(SEOModel):
     
     def __str__(self):
         return f"{self.title} - {self.start_date.strftime('%Y-%m-%d')}"
+
+    def clean(self):
+        if self.status == 'ongoing':
+            exists = Event.objects.filter(status='ongoing').exclude(pk=self.pk).exists()
+            if exists:
+                raise ValidationError('Only one event can be ongoing at a time.')
     
     @property
     def is_upcoming(self):
+        """Event hasn't started yet"""
         return self.start_date > timezone.now()
     
     @property
+    def is_ongoing(self):
+        """Event is currently happening"""
+        now = timezone.now()
+        return self.start_date <= now <= self.end_date
+    
+    @property
     def is_past(self):
-        return self.start_date < timezone.now()
+        """Event has ended"""
+        return self.end_date < timezone.now()
 
 class AboutSection(models.Model):
     section_title = models.CharField(max_length=100)

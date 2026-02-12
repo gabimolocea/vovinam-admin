@@ -80,6 +80,23 @@ def validate_and_assign_places(sender, instance, **kwargs):
     # Team placement is now handled through the CategoryAthleteScore system
     # with team_members relationships, so no additional processing needed here
 
+
+@receiver(post_save, sender=Event)
+def create_default_competition_fields(sender, instance, created, **kwargs):
+    """Create default Field 1-3 for competition events when created."""
+    if not created:
+        return
+    if getattr(instance, 'event_type', None) != 'competition':
+        return
+    if CompetitionField.objects.filter(event=instance).exists():
+        return
+
+    CompetitionField.objects.bulk_create([
+        CompetitionField(event=instance, name='Field 1', field_number=1, is_active=True),
+        CompetitionField(event=instance, name='Field 2', field_number=2, is_active=True),
+        CompetitionField(event=instance, name='Field 3', field_number=3, is_active=True),
+    ])
+
 # Signal removed - team.name is now a computed property that auto-generates from members
 # No need to manually update it when TeamMember is saved
 
@@ -134,3 +151,53 @@ def seed_default_cities(sender, **kwargs):
     except Exception:
         call_command("loaddata", "ro_cities_fallback")
 
+
+@receiver(post_migrate)
+def seed_default_competition_fields(sender, **kwargs):
+    if getattr(sender, "name", None) != "api":
+        return
+
+    try:
+        from landing.models import Event
+        competitions = Event.objects.filter(event_type='competition')
+        for ev in competitions:
+            if CompetitionField.objects.filter(event=ev).exists():
+                continue
+            CompetitionField.objects.bulk_create([
+                CompetitionField(event=ev, name='Field 1', field_number=1, is_active=True),
+                CompetitionField(event=ev, name='Field 2', field_number=2, is_active=True),
+                CompetitionField(event=ev, name='Field 3', field_number=3, is_active=True),
+            ])
+    except Exception:
+        pass
+
+
+@receiver(post_save, sender=TeamMember)
+def update_team_name_on_member_add(sender, instance, created, **kwargs):
+    """
+    Update team name when a member is added.
+    This refreshes the name from the @property method.
+    """
+    if created:
+        team = instance.team
+        members = team.members.select_related('athlete', 'athlete__club').all()[:3]
+        if members:
+            names = [f"{m.athlete.first_name} {m.athlete.last_name}" for m in members]
+            base = " & ".join(names)
+            total_members = team.members.count()
+            
+            # Add club name of first athlete if available
+            first_member = team.members.select_related('athlete', 'athlete__club').first()
+            club_suffix = ""
+            if first_member and first_member.athlete.club:
+                club_suffix = f" ({first_member.athlete.club.name})"
+            
+            if total_members > 3:
+                generated_name = f"{base} (+{total_members - 3} more){club_suffix}"
+            else:
+                generated_name = f"{base}{club_suffix}"
+            
+            # Update the team name in database
+            if team.name != generated_name:
+                team.name = generated_name
+                team.save(update_fields=['name'])

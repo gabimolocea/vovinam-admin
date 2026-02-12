@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
 import { competitionAPI } from '../services/api';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Divider,
+  Grid,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
 
 /**
  * Field Management Panel - Create and manage competition fields
@@ -16,9 +28,9 @@ export default function FieldManagementPanel({ event, fields, onFieldsUpdated })
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -27,12 +39,12 @@ export default function FieldManagementPanel({ event, fields, onFieldsUpdated })
     try {
       setLoading(true);
       setError(null);
-      
+
       await competitionAPI.createField({
         ...formData,
-        event_id: event.id
+        event_id: event.id,
       });
-      
+
       setFormData({
         name: '',
         field_number: '',
@@ -48,97 +60,96 @@ export default function FieldManagementPanel({ event, fields, onFieldsUpdated })
   };
 
   return (
-    <div className="field-management-panel">
-      <div className="panel-header">
-        <h3>Fields for {event.name}</h3>
-        <button 
-          className="btn-primary"
-          onClick={() => setShowForm(!showForm)}
-        >
-          {showForm ? 'Cancel' : 'Add Field'}
-        </button>
-      </div>
+    <Stack spacing={2}>
+      <Card variant="outlined">
+        <CardContent>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
+            <Box>
+              <Typography variant="h6" fontWeight={600}>Fields for {event.name || event.title}</Typography>
+              <Typography color="text.secondary">Manage event locations and tatamis.</Typography>
+            </Box>
+            <Button variant={showForm ? 'outlined' : 'contained'} onClick={() => setShowForm(!showForm)}>
+              {showForm ? 'Cancel' : 'Add Field'}
+            </Button>
+          </Stack>
 
-      {error && (
-        <div className="alert alert-error">
-          {error}
-        </div>
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>
+          )}
+
+          {showForm && (
+            <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Field Name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    placeholder="e.g., Ring A, Mat 1"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    fullWidth
+                    type="number"
+                    label="Field Number"
+                    name="field_number"
+                    value={formData.field_number}
+                    onChange={handleInputChange}
+                    placeholder="1"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    fullWidth
+                    label="Location"
+                    name="location_description"
+                    value={formData.location_description}
+                    onChange={handleInputChange}
+                    placeholder="Hall A"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Button type="submit" variant="contained" disabled={loading}>
+                    {loading ? 'Creating...' : 'Add Field'}
+                  </Button>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      <Divider />
+
+      {fields.length === 0 ? (
+        <Alert severity="info">No fields created yet.</Alert>
+      ) : (
+        <Grid container spacing={2}>
+          {fields.map((field) => (
+            <Grid item xs={12} md={6} key={field.id}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle1" fontWeight={600}>{field.name}</Typography>
+                    <Typography color="text.secondary">#{field.field_number}</Typography>
+                  </Stack>
+                  {field.location_description && (
+                    <Typography color="text.secondary" sx={{ mt: 1 }}>📍 {field.location_description}</Typography>
+                  )}
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 1 }}>
+                    <Typography variant="body2">Active Categories: <strong>{field.categories_count || 0}</strong></Typography>
+                    <Typography variant="body2">Referees: <strong>{field.referees_count || 0}</strong></Typography>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
       )}
-
-      {showForm && (
-        <form className="field-form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Field Name *</label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              placeholder="e.g., Ring A, Mat 1"
-              required
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Field Number</label>
-              <input
-                type="number"
-                name="field_number"
-                value={formData.field_number}
-                onChange={handleInputChange}
-                placeholder="1, 2, 3..."
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Location Description</label>
-              <input
-                type="text"
-                name="location_description"
-                value={formData.location_description}
-                onChange={handleInputChange}
-                placeholder="e.g., Hall A, Row 2"
-              />
-            </div>
-          </div>
-
-          <button 
-            type="submit" 
-            className="btn-primary"
-            disabled={loading}
-          >
-            {loading ? 'Creating...' : 'Add Field'}
-          </button>
-        </form>
-      )}
-
-      {/* Fields Grid */}
-      <div className="fields-grid">
-        {fields.length === 0 ? (
-          <p className="empty-state">No fields created yet</p>
-        ) : (
-          fields.map(field => (
-            <div key={field.id} className="field-card">
-              <div className="field-header">
-                <h4>{field.name}</h4>
-                <span className="field-number">#{field.field_number}</span>
-              </div>
-              {field.location_description && (
-                <p className="field-location">📍 {field.location_description}</p>
-              )}
-              <div className="field-stats">
-                <span className="stat">
-                  Active Categories: <strong>{field.categories_count || 0}</strong>
-                </span>
-                <span className="stat">
-                  Referees: <strong>{field.referees_count || 0}</strong>
-                </span>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
+    </Stack>
   );
 }
