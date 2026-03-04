@@ -6,6 +6,9 @@ django-filter==24.3
 django-ckeditor-5==0.1.1
 django-cors-headers==4.0.0
 django-debug-toolbar==5.2
+django-admin-interface
+django-reversion
+django-autocomplete-light
 # Pillow bumped to satisfy pillow-heif and to avoid building older wheels
 Pillow==11.3.0
 requests==2.32.5

@@ -81,7 +81,6 @@ INSTALLED_APPS = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
@@ -193,13 +192,29 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
+]
+
+INTERNAL_IPS = [
+    '127.0.0.1',
 ]
 
 CORS_ALLOWED_ORIGINS = [
+    'http://localhost:5173',   # Competition Admin
+    'http://127.0.0.1:5173',
+    'http://localhost:5174',   # Athlete Enrollment
+    'http://localhost:5175',   # Coach Dashboard
+    'http://localhost:5176',   # Referee Scoring
+    'http://localhost:5177',   # Public Display
+]
+
+CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'http://localhost:5174',
-    'http://localhost:5175'
+    'http://localhost:5175',
+    'http://localhost:5176',
+    'http://localhost:5177',
 ]
 
  # Allow credentials to be sent with CORS requests

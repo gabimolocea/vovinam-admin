@@ -1,0 +1,13 @@
+{
+  "name": "@vovinam/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "peerDependencies": {
+    "axios": "^1.7.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-router-dom": "^6.26.0"
+  }
+}

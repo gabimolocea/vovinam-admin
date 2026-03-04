@@ -111,6 +111,14 @@ def health(request):
         db_status = "failed"
         db_error = str(e)
 
+    payload = {"status": "ok", "database": db_status}
+    if db_error:
+        if getattr(settings, 'DEBUG', False):
+            payload["database_error"] = db_error[:200]
+        else:
+            payload["database_error"] = "unavailable"
+    return Response(payload)
+
 
 @api_view(["GET"])
 def get_csrf_token(request):
@@ -152,14 +160,6 @@ def get_category_referees(request, pk):
     except CategoryAthleteScore.DoesNotExist:
         return Response({'referees': []}, status=404)
 
-    payload = {"status": "ok", "database": db_status}
-    if db_error:
-        # Include detailed error only when DEBUG is True; otherwise mask it
-        if getattr(settings, 'DEBUG', False):
-            payload["database_error"] = db_error[:200]
-        else:
-            payload["database_error"] = "unavailable"
-    return Response(payload)
 
 class CityViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
@@ -195,10 +195,14 @@ class CompetitionViewSet(viewsets.ViewSet):
             events = events.filter(status=status_filter)
         elif request.user.is_authenticated and request.user.role == 'referee' and not request.user.is_admin:
             events = events.filter(status='ongoing')
+        # Prefetch categories + field assignments to avoid N+1 queries
+        events = events.prefetch_related(
+            'categories__field_assignment__field'
+        )
         data = []
         for ev in events:
             cats = []
-            for cat in Category.objects.filter(event=ev):
+            for cat in ev.categories.all():
                 assignment = getattr(cat, 'field_assignment', None)
                 field = assignment.field if assignment else None
                 cats.append({
@@ -222,6 +226,35 @@ class CompetitionViewSet(viewsets.ViewSet):
             })
         return Response(data)
 
+    def _serialize_event(self, ev, include_categories=False):
+        """Helper to serialize an Event into the competition response format."""
+        data = {
+            'id': ev.id,
+            'name': ev.title,
+            'place': ev.address,
+            'start_date': ev.start_date,
+            'end_date': ev.end_date,
+            'status': getattr(ev, 'status', None),
+            'description': ev.description,
+        }
+        if include_categories:
+            cats = []
+            for cat in Category.objects.filter(event=ev).select_related('field_assignment__field'):
+                assignment = getattr(cat, 'field_assignment', None)
+                field = assignment.field if assignment else None
+                cats.append({
+                    'id': cat.id,
+                    'name': cat.name,
+                    'type': cat.type,
+                    'gender': cat.gender,
+                    'field_status': assignment.status if assignment else None,
+                    'field_id': field.id if field else None,
+                    'field_name': field.name if field else None,
+                    'field_number': field.field_number if field else None,
+                })
+            data['categories'] = cats
+        return data
+
     def retrieve(self, request, pk=None):
         from landing.models import Event
         try:
@@ -234,30 +267,67 @@ class CompetitionViewSet(viewsets.ViewSet):
                     return Response({'detail': 'Not found.'}, status=404)
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
-        cats = []
-        for cat in Category.objects.filter(event=ev):
-            assignment = getattr(cat, 'field_assignment', None)
-            field = assignment.field if assignment else None
-            cats.append({
-                'id': cat.id,
-                'name': cat.name,
-                'type': cat.type,
-                'gender': cat.gender,
-                'field_status': assignment.status if assignment else None,
-                'field_id': field.id if field else None,
-                'field_name': field.name if field else None,
-                'field_number': field.field_number if field else None,
-            })
-        data = {
-            'id': ev.id,
-            'name': ev.title,
-            'place': ev.address,
-            'start_date': ev.start_date,
-            'end_date': ev.end_date,
-            'status': getattr(ev, 'status', None),
-            'categories': cats
-        }
-        return Response(data)
+        return Response(self._serialize_event(ev, include_categories=True))
+
+    def create(self, request):
+        from landing.models import Event
+        from django.utils.text import slugify
+        d = request.data
+        title = d.get('name', '').strip()
+        if not title:
+            return Response({'name': ['This field is required.']}, status=400)
+        start_date = d.get('start_date')
+        if not start_date:
+            return Response({'start_date': ['This field is required.']}, status=400)
+        # Build a unique slug
+        base_slug = slugify(title) or 'competition'
+        slug = base_slug
+        counter = 1
+        while Event.objects.filter(slug=slug).exists():
+            slug = f'{base_slug}-{counter}'
+            counter += 1
+        ev = Event.objects.create(
+            title=title,
+            slug=slug,
+            address=d.get('location', '') or d.get('place', ''),
+            start_date=start_date,
+            end_date=d.get('end_date') or start_date,
+            description=d.get('description', ''),
+            event_type='competition',
+            status=d.get('status', 'upcoming'),
+        )
+        return Response(self._serialize_event(ev), status=201)
+
+    def partial_update(self, request, pk=None):
+        from landing.models import Event
+        try:
+            ev = Event.objects.get(pk=pk, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        d = request.data
+        if 'name' in d:
+            ev.title = d['name']
+        if 'location' in d or 'place' in d:
+            ev.address = d.get('location', d.get('place', ev.address))
+        if 'start_date' in d:
+            ev.start_date = d['start_date']
+        if 'end_date' in d:
+            ev.end_date = d['end_date']
+        if 'description' in d:
+            ev.description = d['description']
+        if 'status' in d:
+            ev.status = d['status']
+        ev.save()
+        return Response(self._serialize_event(ev, include_categories=True))
+
+    def destroy(self, request, pk=None):
+        from landing.models import Event
+        try:
+            ev = Event.objects.get(pk=pk, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        ev.delete()
+        return Response(status=204)
 
     @action(detail=True, methods=['get'], permission_classes=[IsAdminOrReadOnly], url_path='stats')
     def stats(self, request, pk=None):
@@ -650,31 +720,7 @@ class CoachesViewSet(viewsets.ViewSet):
         serializer = CoachSimpleSerializer(queryset, many=True)
         return Response(serializer.data)
 
-    def create(self, request):
-        serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
 
-    def retrieve(self, request, pk=None):
-        queryset = self.queryset.get(pk=pk)
-        serializer = self.serializer_class(queryset)
-        return Response(serializer.data)
-
-    def update(self, request, pk=None):
-        instance = self.queryset.get(pk=pk)
-        serializer = self.serializer_class(instance, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=400)
-
-    def destroy(self, request, pk=None):
-        instance = self.queryset.get(pk=pk)
-        instance.delete()
-        return Response(status=204)
-    
 class TitleViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminOrReadOnly]
     queryset = Title.objects.all()
@@ -769,43 +815,7 @@ class GradeViewSet(viewsets.ViewSet):
         instance = self.queryset.get(pk=pk)
         instance.delete()
         return Response(status=204)
-class GradeHistoryViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
-    serializer_class = GradeHistorySerializer
 
-    def get_queryset(self):
-        return GradeHistory.objects.all()
-
-    def list(self, request):
-        queryset = self.get_queryset()
-        serializer = self.serializer_class(queryset, many=True)
-        return Response(serializer.data)
-
-    def create(self, request):
-        serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
-
-    def retrieve(self, request, pk=None):
-        instance = self.get_queryset().get(pk=pk)
-        serializer = self.serializer_class(instance)
-        return Response(serializer.data)
-
-    def update(self, request, pk=None):
-        instance = self.get_queryset().get(pk=pk)
-        serializer = self.serializer_class(instance, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=400)
-
-    def destroy(self, request, pk=None):
-        instance = self.get_queryset().get(pk=pk)
-        instance.delete()
-        return Response(status=204)
-    
 class TeamViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminOrReadOnly]
     queryset = Team.objects.all()
@@ -984,11 +994,21 @@ class AnnualVisaViewSet(viewsets.ViewSet):
 
 class CategoryViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminOrReadOnly]
-    queryset = Category.objects.prefetch_related('enrolled_athletes__athlete').all()  # Prefetch athletes for optimization
     serializer_class = CategorySerializer
 
     def get_queryset(self):
         return Category.objects.all()
+
+    def _create_category(self, data):
+        """Create the right Category subclass based on category_type."""
+        cat_type = data.pop('category_type', 'solo')
+        model_map = {
+            'solo': SoloCategory,
+            'team': TeamCategory,
+            'fight': FightCategory,
+        }
+        model_cls = model_map.get(cat_type, SoloCategory)
+        return model_cls.objects.create(**data)
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -1003,16 +1023,84 @@ class CategoryViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+        d = request.data.copy()
+        name = d.get('name', '').strip()
+        if not name:
+            return Response({'name': ['This field is required.']}, status=400)
+        create_data = {
+            'name': name,
+            'event_id': d.get('event'),
+            'gender': d.get('gender', 'mixt'),
+            'category_type': d.get('category_type', 'solo'),
+        }
+        group_id = d.get('group') or d.get('group_id')
+        if group_id:
+            create_data['group_id'] = group_id
+        cat = self._create_category(create_data)
+        serializer = self.serializer_class(cat)
+        return Response(serializer.data, status=201)
 
     def retrieve(self, request, pk=None):
-        instance = self.get_queryset().get(pk=pk)
+        try:
+            instance = self.get_queryset().get(pk=pk)
+        except Category.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
         serializer = self.serializer_class(instance)
         return Response(serializer.data)
+
+    def destroy(self, request, pk=None):
+        try:
+            cat = self.get_queryset().get(pk=pk)
+        except Category.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        cat.delete()
+        return Response(status=204)
+
+    @action(detail=False, methods=['post'], url_path='bulk-add')
+    def bulk_add(self, request):
+        """Bulk add categories to an event.
+        Accepts { event_id: int, categories: [{ name, category_type, gender, group_id? }] }
+        Skips duplicates (same name + event + group).
+        """
+        event_id = request.data.get('event_id')
+        items = request.data.get('categories', [])
+        if not event_id or not items:
+            return Response({'detail': 'event_id and categories are required.'}, status=400)
+        from landing.models import Event
+        try:
+            Event.objects.get(pk=event_id)
+        except Event.DoesNotExist:
+            return Response({'detail': 'Event not found.'}, status=404)
+
+        # Build set of (name, group_id) pairs that already exist
+        existing_pairs = set(
+            Category.objects.filter(event_id=event_id)
+            .values_list('name', 'group_id')
+        )
+        created = []
+        for item in items:
+            name = item.get('name', '').strip()
+            if not name:
+                continue
+            group_id = item.get('group') or item.get('group_id') or None
+            if group_id:
+                group_id = int(group_id)
+            if (name, group_id) in existing_pairs:
+                continue
+            create_data = {
+                'name': name,
+                'event_id': event_id,
+                'gender': item.get('gender', 'mixt'),
+                'category_type': item.get('category_type', 'solo'),
+            }
+            if group_id:
+                create_data['group_id'] = group_id
+            cat = self._create_category(create_data)
+            created.append(cat)
+            existing_pairs.add((name, group_id))
+
+        serializer = self.serializer_class(created, many=True)
+        return Response(serializer.data, status=201)
 
 
 class CategoryAthleteViewSet(viewsets.ViewSet):
@@ -1208,6 +1296,9 @@ class GroupViewSet(viewsets.ViewSet):
 
     def list(self, request):
         queryset = self.queryset
+        event_id = request.query_params.get('event')
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
@@ -1554,75 +1645,18 @@ def athlete_profiles_compat(request, subpath=''):
     resp['Deprecation'] = 'true'
     resp['Link'] = f'<{new_url}>; rel="replacement"'
     return resp
-    
-    def post(self, request):
-        """Create athlete profile for current user"""
-        # Debug: Print received data
-        print("=== ATHLETE PROFILE CREATION DEBUG ===")
-        print("Request data keys:", list(request.data.keys()))
-        for key, value in request.data.items():
-            print(f"  {key}: {repr(value)} (type: {type(value).__name__})")
-        print("User:", request.user.username, "Role:", request.user.role)
-        print("=" * 40)
-        
-        # Check if user already has an athlete profile
-        if hasattr(request.user, 'athlete') and request.user.athlete:
-            return Response(
-                {'error': 'You already have an athlete profile'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        serializer = AthleteProfileSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            athlete = serializer.save()
-            
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-        # Debug: Print serializer errors to console
-        print("=== ATHLETE PROFILE VALIDATION ERRORS ===")
-        for field, errors in serializer.errors.items():
-            print(f"  {field}: {errors}")
-        print("=" * 42)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    def put(self, request):
-        """Update athlete profile (only if pending or revision required)"""
-        try:
-            athlete = Athlete.objects.get(user=request.user)
-            
-            if athlete.status not in ['pending', 'revision_required']:
-                return Response(
-                    {'error': 'Profile cannot be edited in current status'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            serializer = AthleteProfileSerializer(athlete, data=request.data, partial=True, context={'request': request})
-            if serializer.is_valid():
-                updated_athlete = serializer.save()
-                
-                # Use the resubmit method for revision_required status
-                if athlete.status == 'revision_required':
-                    updated_athlete.resubmit()
-                
-                return Response(serializer.data)
-            
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-        except Athlete.DoesNotExist:
-            return Response(
-                {'error': 'No athlete profile found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
 
 
 # Reference Data Endpoints for Athlete Workflow
 @api_view(['GET'])
 def sports_list(request):
-    """Get list of available sports."""
+    """Get list of available sports/disciplines for Vovinam Viet Vo Dao."""
     sports = [
-        {'id': 1, 'name': 'Volleyball', 'code': 'volleyball'},
-        {'id': 2, 'name': 'Beach Volleyball', 'code': 'beach_volleyball'},
-        {'id': 3, 'name': 'Sitting Volleyball', 'code': 'sitting_volleyball'},
+        {'id': 1, 'name': 'Quyen (Forms)', 'code': 'quyen'},
+        {'id': 2, 'name': 'Song Luyện (Combat Choreography)', 'code': 'song_luyen'},
+        {'id': 3, 'name': 'Đối Kháng (Fighting)', 'code': 'doi_khang'},
+        {'id': 4, 'name': 'Tự Vệ (Self Defense)', 'code': 'tu_ve'},
+        {'id': 5, 'name': 'Biểu Diễn (Performance)', 'code': 'bieu_dien'},
     ]
     return Response(sports)
 
@@ -2045,102 +2079,6 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-# CategoryTeamAthleteScoreViewSet deprecated - team functionality consolidated into CategoryAthleteScoreViewSet
-        """Ensure only athletes can create team scores"""
-        if not hasattr(self.request.user, 'athlete'):
-            raise ValidationError("Only athletes can submit team competition results")
-        
-        # The serializer will handle setting the submitted_by athlete
-        serializer.save()
-
-    def update(self, request, *args, **kwargs):
-        """Only allow team submitters to update their own pending/revision_required scores"""
-        instance = self.get_object()
-        
-        # Check ownership
-        if not hasattr(request.user, 'athlete') or instance.submitted_by != request.user.athlete:
-            return Response(
-                {'error': 'You can only edit team results you submitted'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Check status
-        if instance.status not in ['pending', 'revision_required']:
-            return Response(
-                {'error': 'Can only edit pending or revision-required team results'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Reset status to pending if it was revision_required
-        if instance.status == 'revision_required':
-            instance.status = 'pending'
-            instance.reviewed_date = None
-            instance.reviewed_by = None
-            instance.admin_notes = ''
-            instance.save()
-        
-        return super().update(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        """Only allow submitters to delete their own pending team scores"""
-        instance = self.get_object()
-        
-        # Check ownership
-        if not hasattr(request.user, 'athlete') or instance.submitted_by != request.user.athlete:
-            return Response(
-                {'error': 'You can only delete team results you submitted'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Check status
-        if instance.status != 'pending':
-            return Response(
-                {'error': 'Can only delete pending team results'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        return super().destroy(request, *args, **kwargs)
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
-    def approve(self, request, pk=None):
-        """Admin action to approve a team score"""
-        score = self.get_object()
-        serializer = CategoryScoreApprovalSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            notes = serializer.validated_data.get('notes', '')
-            score.approve()
-            if notes:
-                score.admin_notes = notes
-                score.save()
-            
-            return Response({
-                'message': 'Team result approved successfully',
-                'status': score.status
-            })
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
-    def reject(self, request, pk=None):
-        """Admin action to reject a team score"""
-        score = self.get_object()
-        serializer = CategoryScoreApprovalSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            notes = serializer.validated_data.get('notes', '')
-            score.reject(notes)
-            
-            return Response({
-                'message': 'Team result rejected successfully',
-                'status': score.status
-            })
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    # Team methods moved to CategoryAthleteScoreViewSet - filter by type='teams'
-
-
 # Notification System Views
 class NotificationViewSet(viewsets.ModelViewSet):
     """ViewSet for user notifications"""
@@ -2531,7 +2469,7 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
     
     def list(self, request):
         """List all fields for an event"""
-        event_id = request.query_params.get('event_id')
+        event_id = request.query_params.get('event_id') or request.query_params.get('competition')
         if event_id:
             fields = CompetitionField.objects.filter(event_id=event_id).order_by('field_number')
         else:
@@ -2547,6 +2485,48 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='set-count')
+    def set_count(self, request):
+        """Bulk set the number of fields for an event.
+        Accepts { event_id: int, count: int }.
+        Creates/deletes fields so the event ends up with exactly `count` tatamis.
+        """
+        event_id = request.data.get('event_id') or request.data.get('competition')
+        count = request.data.get('count')
+        if not event_id or count is None:
+            return Response({'detail': 'event_id and count are required.'}, status=400)
+        try:
+            count = int(count)
+            if count < 0 or count > 20:
+                raise ValueError
+        except (ValueError, TypeError):
+            return Response({'detail': 'count must be an integer between 0 and 20.'}, status=400)
+        from landing.models import Event
+        try:
+            Event.objects.get(pk=event_id, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Competition not found.'}, status=404)
+
+        existing = list(CompetitionField.objects.filter(event_id=event_id).order_by('field_number'))
+        current_count = len(existing)
+
+        if count > current_count:
+            # Add fields
+            for i in range(current_count + 1, count + 1):
+                CompetitionField.objects.create(
+                    event_id=event_id,
+                    name=f'Tatami {i}',
+                    field_number=i,
+                )
+        elif count < current_count:
+            # Remove from the end (highest field_number first)
+            to_delete = existing[count:]
+            CompetitionField.objects.filter(id__in=[f.id for f in to_delete]).delete()
+
+        fields = CompetitionField.objects.filter(event_id=event_id).order_by('field_number')
+        serializer = CompetitionFieldSerializer(fields, many=True)
+        return Response(serializer.data)
     
     def retrieve(self, request, pk=None):
         """Retrieve a single competition field"""

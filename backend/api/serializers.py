@@ -110,7 +110,7 @@ class ClubSerializer(serializers.ModelSerializer):
 
     def get_athletes(self, obj):
         """Return limited summary of athletes"""
-        athletes = obj.athletes.all()[:10]  # Limit to 10
+        athletes = obj.athletes.select_related('club', 'current_grade').all()[:10]  # Limit to 10
         return AthleteMinimalSerializer(athletes, many=True).data
 
     def get_coaches(self, obj):
@@ -210,15 +210,7 @@ class CoachSimpleSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
 
-class GradeHistorySerializer(serializers.ModelSerializer):
-    athlete = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all())  # Accept athlete ID only
-    grade = serializers.PrimaryKeyRelatedField(queryset=Grade.objects.all())  # Accept grade ID only
-    obtained_date = serializers.DateField()
-    class Meta:
-        model = GradeHistory
-        fields = ['id', 'athlete', 'grade', 'obtained_date']
 
-    
 class TeamSerializer(serializers.ModelSerializer):
     categories = serializers.PrimaryKeyRelatedField(many=True, queryset=Category.objects.all(), allow_null=True)  # Accept category IDs only
     members = serializers.PrimaryKeyRelatedField(many=True, queryset=TeamMember.objects.all(), allow_null=True)  # Accept member IDs only
@@ -887,7 +879,7 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
 class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
-        fields = ['id', 'name', 'competition', 'categories']
+        fields = ['id', 'name', 'event', 'birth_year_start', 'birth_year_end']
         read_only_fields = ['id']
 
 
@@ -919,25 +911,6 @@ class UserSerializer(serializers.ModelSerializer):
                 'status': athlete.status,
             }
         return None
-
-
-class UserRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, validators=[validate_password])
-    password_confirm = serializers.CharField(write_only=True)
-
-    class Meta:
-        model = User
-        fields = ['username', 'email', 'first_name', 'last_name', 'password', 'password_confirm']
-
-    def validate(self, attrs):
-        if attrs['password'] != attrs['password_confirm']:
-            raise serializers.ValidationError("Passwords don't match.")
-        return attrs
-
-    def create(self, validated_data):
-        validated_data.pop('password_confirm', None)
-        user = User.objects.create_user(**validated_data)
-        return user
 
 
 class UserLoginSerializer(serializers.Serializer):
