@@ -34,10 +34,19 @@ export default function App() {
         <Route index element={<CompetitionList />} />
         <Route path="competitions/new" element={<CompetitionForm />} />
         <Route path="competitions/:id" element={<CompetitionDetail />} />
-        <Route path="competitions/:id/categories" element={<CategoriesPage />} />
         <Route path="competitions/:id/fields" element={<FieldsPage />} />
         <Route path="competitions/:id/results" element={<ResultsPage />} />
       </Route>
+
+      {/* Categories page renders full-screen without sidebar */}
+      <Route
+        path="/competitions/:id/categories"
+        element={
+          <ProtectedRoute roles={['admin']}>
+            <CategoriesPage />
+          </ProtectedRoute>
+        }
+      />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

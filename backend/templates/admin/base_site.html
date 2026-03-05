@@ -223,6 +223,44 @@
 <link rel="stylesheet"  href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v27.2.2/dist/font-face.css">
 {% endif %}
 
+  <style>
+    /* Fix compressed change-list tables: always allow horizontal scroll */
+    #content-main,
+    #changelist {
+      overflow-x: auto;
+    }
+    #changelist #result_list {
+      overflow-x: auto;
+    }
+    #changelist table#result_list {
+      min-width: 900px;
+      table-layout: auto;
+    }
+    #result_list th,
+    #result_list td {
+      white-space: nowrap;
+      padding: 6px 10px;
+    }
+    /* Prevent action buttons from collapsing */
+    .button, a.button {
+      white-space: nowrap;
+      display: inline-block;
+      margin: 1px;
+    }
+    /* Ensure main content area doesn't get crushed by filter panel */
+    #changelist {
+      min-width: 0;
+    }
+    #changelist-filter {
+      flex-shrink: 0;
+    }
+    /* Fix the main content container to use proper flex layout */
+    .main > #content {
+      min-width: 0;
+      overflow-x: auto;
+    }
+  </style>
+
 {% endblock extrastyle %}
 
 {% block blockbots %}

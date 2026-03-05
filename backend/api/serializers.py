@@ -50,6 +50,7 @@ class AthleteMinimalSerializer(serializers.ModelSerializer):
         model = Athlete
         fields = [
             'id', 'first_name', 'last_name', 'full_name',
+            'date_of_birth',
             'club', 'current_grade', 'is_coach', 'is_referee',
             'status'
         ]
@@ -106,7 +107,7 @@ class ClubSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Club
-        fields = ['id', 'name', 'address', 'mobile_number', 'website', 'coaches', 'city', 'logo', 'athletes']
+        fields = ['id', 'name', 'address', 'mobile_number', 'website', 'coaches', 'city', 'logo', 'athletes', 'display_order']
 
     def get_athletes(self, obj):
         """Return limited summary of athletes"""
@@ -610,6 +611,7 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = [
             'id', 'category_number', 'name', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
+            'display_order',
             'enrolled_athletes', 'enrolled_athletes_count', 'enrolled_teams', 'enrolled_teams_count', 'teams', 'first_place', 'second_place', 'third_place',
             'first_place_name', 'second_place_name', 'third_place_name',
             'first_place_team', 'second_place_team', 'third_place_team',
@@ -879,7 +881,7 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
 class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
-        fields = ['id', 'name', 'event', 'birth_year_start', 'birth_year_end']
+        fields = ['id', 'name', 'event', 'birth_year_start', 'birth_year_end', 'birth_date_start', 'birth_date_end', 'allow_younger', 'display_order']
         read_only_fields = ['id']
 
 

@@ -55,15 +55,19 @@ export const categoryAPI = {
   list: (params) => api.get('/categories/', { params }),
   get: (id) => api.get(`/categories/${id}/`),
   create: (data) => api.post('/categories/', data),
+  update: (id, data) => api.patch(`/categories/${id}/`, data),
   delete: (id) => api.delete(`/categories/${id}/`),
   bulkAdd: (eventId, categories) => api.post('/categories/bulk-add/', { event_id: eventId, categories }),
+  reorder: (order) => api.post('/categories/reorder/', { order }),
 };
 
 // ── Groups ────────────────────────────────────────────
 export const groupAPI = {
   list: (params) => api.get('/groups/', { params }),
   create: (data) => api.post('/groups/', data),
+  update: (id, data) => api.put(`/groups/${id}/`, data),
   delete: (id) => api.delete(`/groups/${id}/`),
+  reorder: (order) => api.post('/groups/reorder/', { order }),
 };
 
 // ── Athletes ──────────────────────────────────────────
@@ -81,6 +85,7 @@ export const athleteAPI = {
 export const clubAPI = {
   list: () => api.get('/clubs/'),
   get: (id) => api.get(`/clubs/${id}/`),
+  reorder: (order) => api.post('/clubs/reorder/', { order }),
 };
 
 // ── Grades ────────────────────────────────────────────
@@ -98,6 +103,7 @@ export const enrollmentAPI = {
   categoryAthletes: {
     list: (params) => api.get('/category-athletes/', { params }),
     create: (data) => api.post('/category-athletes/', data),
+    update: (id, data) => api.patch(`/category-athletes/${id}/`, data),
     delete: (id) => api.delete(`/category-athletes/${id}/`),
   },
   categoryTeams: {

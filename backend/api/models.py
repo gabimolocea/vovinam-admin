@@ -145,8 +145,12 @@ class Club(models.Model):
         related_name='coached_clubs', 
         blank=True
     )  # Replace coach field with ManyToManyField to Athlete
+    display_order = models.IntegerField(default=0, help_text='Order for display in centralizator')
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
 
     def __str__(self):
         return self.name
@@ -1009,11 +1013,13 @@ class Category(models.Model):
         blank=True,
         related_name='categories'
     )
+    display_order = models.IntegerField(default=0, help_text="Order within the group for display purposes")
 
     class Meta:
         indexes = [
             models.Index(fields=['event']),
         ]
+        ordering = ['display_order', 'id']
         verbose_name_plural = 'Categories'
 
     def __str__(self):
@@ -2210,6 +2216,21 @@ class Group(models.Model):
         blank=True,
         help_text="Ending birth year for this age group (e.g., 2018)"
     )
+    birth_date_start = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Exact start date for age eligibility (inclusive). If set, takes priority over birth_year_start."
+    )
+    birth_date_end = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Exact end date for age eligibility (inclusive). If set, takes priority over birth_year_end."
+    )
+    allow_younger = models.BooleanField(
+        default=False,
+        help_text="Allow athletes younger than the minimum age (who want to compete in a higher age category)"
+    )
+    display_order = models.IntegerField(default=0, help_text="Order within the event for display purposes")
 
     class Meta:
         constraints = [
@@ -2219,7 +2240,7 @@ class Group(models.Model):
                 condition=models.Q(event__isnull=False)
             ),
         ]
-        ordering = ['event', '-birth_year_end', 'name']
+        ordering = ['event', 'display_order', 'id']
 
     def __str__(self):
         age_range = ""

@@ -373,7 +373,7 @@ class ClubViewSet(viewsets.ViewSet):
     serializer_class = ClubSerializer
 
     def list(self, request):
-        queryset = Club.objects.all()
+        queryset = Club.objects.all().order_by('display_order', 'name')
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
@@ -401,6 +401,19 @@ class ClubViewSet(viewsets.ViewSet):
         instance = self.queryset.get(pk=pk)
         instance.delete()
         return Response(status=204)
+
+    @action(detail=False, methods=['post'], url_path='reorder')
+    def reorder(self, request):
+        """Bulk reorder clubs.
+        Accepts { order: [id1, id2, id3, ...] }
+        Updates display_order for each club based on position in the list.
+        """
+        order = request.data.get('order', [])
+        if not order:
+            return Response({'detail': 'order list is required.'}, status=400)
+        for idx, club_id in enumerate(order):
+            Club.objects.filter(pk=club_id).update(display_order=idx)
+        return Response({'status': 'ok'})
 
     @action(detail=True, methods=['get', 'post'], permission_classes=[IsAdminOrReadOnly])
     def point_events(self, request, pk=None):
@@ -1048,6 +1061,23 @@ class CategoryViewSet(viewsets.ViewSet):
         serializer = self.serializer_class(instance)
         return Response(serializer.data)
 
+    def update(self, request, pk=None):
+        try:
+            instance = self.get_queryset().get(pk=pk)
+        except Category.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        # Only allow updating safe fields (name, gender, display_order)
+        allowed = {'name', 'gender', 'display_order'}
+        data = {k: v for k, v in request.data.items() if k in allowed}
+        for field, value in data.items():
+            setattr(instance, field, value)
+        instance.save(update_fields=list(data.keys()))
+        serializer = self.serializer_class(instance)
+        return Response(serializer.data)
+
+    def partial_update(self, request, pk=None):
+        return self.update(request, pk)
+
     def destroy(self, request, pk=None):
         try:
             cat = self.get_queryset().get(pk=pk)
@@ -1102,6 +1132,19 @@ class CategoryViewSet(viewsets.ViewSet):
         serializer = self.serializer_class(created, many=True)
         return Response(serializer.data, status=201)
 
+    @action(detail=False, methods=['post'], url_path='reorder')
+    def reorder(self, request):
+        """Bulk reorder categories within a group.
+        Accepts { order: [id1, id2, id3, ...] }
+        Updates display_order for each category based on position in the list.
+        """
+        order = request.data.get('order', [])
+        if not order:
+            return Response({'detail': 'order list is required.'}, status=400)
+        for idx, cat_id in enumerate(order):
+            Category.objects.filter(pk=cat_id).update(display_order=idx)
+        return Response({'status': 'ok'})
+
 
 class CategoryAthleteViewSet(viewsets.ViewSet):
     """
@@ -1141,6 +1184,14 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         instance = self.get_queryset().get(pk=pk)
         serializer = self.serializer_class(instance)
         return Response(serializer.data)
+
+    def partial_update(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        serializer = self.serializer_class(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
 
     def destroy(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
@@ -1326,6 +1377,19 @@ class GroupViewSet(viewsets.ViewSet):
         instance = self.queryset.get(pk=pk)
         instance.delete()
         return Response(status=204)
+
+    @action(detail=False, methods=['post'], url_path='reorder')
+    def reorder(self, request):
+        """Bulk reorder groups within an event.
+        Accepts { order: [id1, id2, id3, ...] }
+        Updates display_order for each group based on position in the list.
+        """
+        order = request.data.get('order', [])
+        if not order:
+            return Response({'detail': 'order list is required.'}, status=400)
+        for idx, group_id in enumerate(order):
+            Group.objects.filter(pk=group_id).update(display_order=idx)
+        return Response({'status': 'ok'})
 
 @api_view(['GET'])
 def api_root(request, format=None):

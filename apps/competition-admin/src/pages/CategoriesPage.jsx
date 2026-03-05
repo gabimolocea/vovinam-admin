@@ -1,56 +1,12 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
-import { categoryAPI, groupAPI } from '@shared/lib/api';
-import { PageHeader, Card, Spinner, EmptyState } from '@shared/components/ui';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { categoryAPI, groupAPI, clubAPI, enrollmentAPI, athleteAPI, competitionAPI } from '@shared/lib/api';
+import { Spinner } from '@shared/components/ui';
 
-/* ── Standard Vovinam age-group presets ─────────────── */
-const currentYear = new Date().getFullYear();
 
-const AGE_GROUP_PRESETS = [
-  { name: 'Grupa 0 (8-9 ani)',      birth_year_start: currentYear - 9,  birth_year_end: currentYear - 8 },
-  { name: 'Grupa 1 (10-13 ani)',     birth_year_start: currentYear - 13, birth_year_end: currentYear - 10 },
-  { name: 'Grupa 2 (14-15 ani)',     birth_year_start: currentYear - 15, birth_year_end: currentYear - 14 },
-  { name: 'Grupa 3 (16-18 ani)',     birth_year_start: currentYear - 18, birth_year_end: currentYear - 16 },
-  { name: 'Seniori Grade Mici',      birth_year_start: currentYear - 35, birth_year_end: currentYear - 19 },
-  { name: 'Seniori Grade Mari',      birth_year_start: currentYear - 50, birth_year_end: currentYear - 19 },
-];
-
-/* ── Standard category presets for bulk-adding ── */
-const STANDARD_CATEGORIES = [
-  { name: 'Quyền - Masculin',       category_type: 'solo',  gender: 'male' },
-  { name: 'Quyền - Feminin',        category_type: 'solo',  gender: 'female' },
-  { name: 'Song Luyện - Masculin',   category_type: 'team',  gender: 'male' },
-  { name: 'Song Luyện - Feminin',    category_type: 'team',  gender: 'female' },
-  { name: 'Song Luyện - Mixt',       category_type: 'team',  gender: 'mixt' },
-  { name: 'Đa Luyện - Masculin',    category_type: 'team',  gender: 'male' },
-  { name: 'Đa Luyện - Feminin',     category_type: 'team',  gender: 'female' },
-  { name: 'Đa Luyện - Mixt',        category_type: 'team',  gender: 'mixt' },
-  { name: 'Đối Kháng -54kg M',      category_type: 'fight', gender: 'male' },
-  { name: 'Đối Kháng -60kg M',      category_type: 'fight', gender: 'male' },
-  { name: 'Đối Kháng -68kg M',      category_type: 'fight', gender: 'male' },
-  { name: 'Đối Kháng -75kg M',      category_type: 'fight', gender: 'male' },
-  { name: 'Đối Kháng -82kg M',      category_type: 'fight', gender: 'male' },
-  { name: 'Đối Kháng +82kg M',      category_type: 'fight', gender: 'male' },
-  { name: 'Đối Kháng -48kg F',      category_type: 'fight', gender: 'female' },
-  { name: 'Đối Kháng -55kg F',      category_type: 'fight', gender: 'female' },
-  { name: 'Đối Kháng -62kg F',      category_type: 'fight', gender: 'female' },
-  { name: 'Đối Kháng +62kg F',      category_type: 'fight', gender: 'female' },
-];
 
 const GENDER_LABELS = { male: 'MASCULIN', female: 'FEMININ', mixt: 'MIXT' };
 const TYPE_LABELS = { solo: 'Solo', team: 'Echipă', fight: 'Luptă' };
-
-/* ── Color schemes for groups ── */
-const GROUP_COLORS = [
-  { bg: 'bg-blue-600',    text: 'text-white',    light: 'bg-blue-50',    border: 'border-blue-200' },
-  { bg: 'bg-emerald-600', text: 'text-white',    light: 'bg-emerald-50', border: 'border-emerald-200' },
-  { bg: 'bg-purple-600',  text: 'text-white',    light: 'bg-purple-50',  border: 'border-purple-200' },
-  { bg: 'bg-orange-600',  text: 'text-white',    light: 'bg-orange-50',  border: 'border-orange-200' },
-  { bg: 'bg-rose-600',    text: 'text-white',    light: 'bg-rose-50',    border: 'border-rose-200' },
-  { bg: 'bg-teal-600',    text: 'text-white',    light: 'bg-teal-50',    border: 'border-teal-200' },
-  { bg: 'bg-yellow-600',  text: 'text-white',    light: 'bg-yellow-50',  border: 'border-yellow-200' },
-  { bg: 'bg-indigo-600',  text: 'text-white',    light: 'bg-indigo-50',  border: 'border-indigo-200' },
-];
 
 const GENDER_BG = { male: 'bg-blue-100', female: 'bg-pink-100', mixt: 'bg-amber-100' };
 
@@ -59,39 +15,83 @@ export default function CategoriesPage() {
 
   const [groups, setGroups]         = useState([]);
   const [categories, setCategories] = useState([]);
+  const [clubs, setClubs]           = useState([]);
+  const [eventData, setEventData]   = useState(null); // { start_date, name, ... }
   const [loading, setLoading]       = useState(true);
   const [busy, setBusy]             = useState(false);
 
   // UI state for group/category management
-  const [showGroupForm, setShowGroupForm] = useState(false);
-  const [customGroup, setCustomGroup]     = useState({ name: '', birth_year_start: '', birth_year_end: '' });
-  const [showSetup, setShowSetup]         = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState(null); // group being renamed
+  const [editingGroupName, setEditingGroupName] = useState('');
+  const [editingCatId, setEditingCatId] = useState(null); // category being renamed
+  const [editingCatName, setEditingCatName] = useState('');
+  const navigate = useNavigate();
+
+  // Modal state for group creation
+  const [groupModal, setGroupModal] = useState(null); // { atIndex } or null
+  const [groupForm, setGroupForm]   = useState({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false });
+  // Modal state for category creation
+  const [catModal, setCatModal] = useState(null); // { groupId } or null
+  const [catForm, setCatForm]   = useState({ name: '', category_type: 'solo', gender: 'male' });
+  // Confirmation modal for delete actions
+  // { title, message, detail?, icon, color, confirmLabel, onConfirm } or null
+  const [confirmModal, setConfirmModal] = useState(null);
+
+  // Sheet tabs
+  const [activeSheet, setActiveSheet] = useState('centralizator');
+
+  // Drag & drop state
+  const [dragType, setDragType] = useState(null); // 'group' | 'category' | 'club'
+  const [dragId, setDragId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+
+  // Enrollment picker state
+  const [enrollPickerCell, setEnrollPickerCell] = useState(null); // { clubId, catId, rect }
+  const [clubAthleteCache, setClubAthleteCache] = useState({});   // { clubId: [athletes] }
+  const enrollPickerRef = useRef(null);
+
+  // Inline weight editing state for Tehnica/Lupta sheets
+  const [editingWeight, setEditingWeight] = useState(null); // { enrollmentId, value }
 
   /* ── data fetching ── */
   const fetchAll = useCallback(async () => {
-    const [gRes, cRes] = await Promise.all([
+    const [gRes, cRes, clRes, evRes] = await Promise.all([
       groupAPI.list({ event: eventId }),
       categoryAPI.list({ event: eventId }),
+      clubAPI.list(),
+      competitionAPI.get(eventId).catch(() => ({ data: null })),
     ]);
     const g = Array.isArray(gRes.data) ? gRes.data : gRes.data.results ?? [];
     const c = Array.isArray(cRes.data) ? cRes.data : cRes.data.results ?? [];
+    const cl = Array.isArray(clRes.data) ? clRes.data : clRes.data.results ?? [];
     setGroups(g);
     setCategories(c);
+    setClubs(cl);
+    if (evRes.data) setEventData(evRes.data);
     setLoading(false);
   }, [eventId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   /* ── derived data ── */
-  const existingGroupNames = useMemo(() => new Set(groups.map(g => g.name)), [groups]);
+  const eventYear = useMemo(() => {
+    if (eventData?.start_date) return new Date(eventData.start_date).getFullYear();
+    return new Date().getFullYear();
+  }, [eventData]);
+  const eventDateStr = useMemo(() => {
+    if (eventData?.start_date) return new Date(eventData.start_date).toISOString().slice(0, 10);
+    return null;
+  }, [eventData]);
+
 
   // Categories sorted by group, then by gender label, then by name
   const sortedCategories = useMemo(() => {
+    const genderPriority = { male: 0, female: 1, mixt: 2 };
     return [...categories].sort((a, b) => {
       if (a.group !== b.group) return (a.group ?? 0) - (b.group ?? 0);
       const ga = a.gender || 'mixt', gb = b.gender || 'mixt';
-      if (ga !== gb) return ga.localeCompare(gb);
-      return (a.name || '').localeCompare(b.name || '');
+      if (ga !== gb) return (genderPriority[ga] ?? 3) - (genderPriority[gb] ?? 3);
+      return (a.display_order ?? 0) - (b.display_order ?? 0) || a.id - b.id;
     });
   }, [categories]);
 
@@ -130,9 +130,9 @@ export default function CategoriesPage() {
   const allCols = useMemo(() => columnStructure.flatMap(s => s.cats), [columnStructure]);
 
   // Build the ROW data: one row per (club, athlete) combination
-  // Collect all athletes across all categories, keyed by athlete id
+  // Uses backend clubs list so ALL clubs are shown, ordered by display_order
   const { clubRows, athleteMap } = useMemo(() => {
-    const aMap = {};   // athleteId → { name, club, details, enrollments: { catId → enrollmentData } }
+    const aMap = {};   // athleteId → { name, club, clubId, enrollments: { catId → enrollmentData } }
     for (const cat of categories) {
       for (const enrollment of (cat.enrolled_athletes || [])) {
         const a = enrollment.athlete_details;
@@ -151,23 +151,22 @@ export default function CategoriesPage() {
       }
     }
 
-    // Group athletes by club
-    const clubMap = {};
+    // Group enrolled athletes by club ID
+    const athletesByClubId = {};
     for (const ath of Object.values(aMap)) {
-      if (!clubMap[ath.club]) clubMap[ath.club] = [];
-      clubMap[ath.club].push(ath);
+      if (!athletesByClubId[ath.clubId]) athletesByClubId[ath.clubId] = [];
+      athletesByClubId[ath.clubId].push(ath);
     }
 
-    // Sort clubs alphabetically, athletes within club alphabetically
-    const rows = Object.entries(clubMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([club, athletes]) => ({
-        club,
-        athletes: athletes.sort((a, b) => a.name.localeCompare(b.name)),
-      }));
+    // Build rows from backend clubs list (keeps display_order from backend)
+    const rows = clubs.map(club => ({
+      clubId: club.id,
+      club: club.name,
+      athletes: (athletesByClubId[club.id] || []).sort((a, b) => a.name.localeCompare(b.name)),
+    }));
 
     return { clubRows: rows, athleteMap: aMap };
-  }, [categories]);
+  }, [categories, clubs]);
 
   // Count per category (for footer)
   const countPerCat = useMemo(() => {
@@ -183,334 +182,1263 @@ export default function CategoriesPage() {
   /* ════════════════════════════════════════════════════
      HANDLERS
      ════════════════════════════════════════════════════ */
-  const handleAddGroupPreset = async (preset) => {
-    if (existingGroupNames.has(preset.name)) return;
-    setBusy(true);
-    try { await groupAPI.create({ ...preset, event: eventId }); await fetchAll(); }
-    finally { setBusy(false); }
-  };
-
-  const handleAddAllPresets = async () => {
-    const toAdd = AGE_GROUP_PRESETS.filter(p => !existingGroupNames.has(p.name));
-    if (!toAdd.length) return;
-    setBusy(true);
-    try {
-      for (const p of toAdd) await groupAPI.create({ ...p, event: eventId });
-      await fetchAll();
-    } finally { setBusy(false); }
-  };
-
   const handleCustomGroup = async (e) => {
     e.preventDefault();
-    if (!customGroup.name.trim()) return;
+    if (!groupForm.name.trim()) return;
     setBusy(true);
     try {
-      await groupAPI.create({
-        name: customGroup.name.trim(), event: eventId,
-        birth_year_start: customGroup.birth_year_start ? Number(customGroup.birth_year_start) : null,
-        birth_year_end:   customGroup.birth_year_end   ? Number(customGroup.birth_year_end)   : null,
-      });
-      setCustomGroup({ name: '', birth_year_start: '', birth_year_end: '' });
-      setShowGroupForm(false);
+      const payload = {
+        name: groupForm.name.trim(), event: eventId,
+        birth_date_start: groupForm.birth_date_start || null,
+        birth_date_end:   groupForm.birth_date_end   || null,
+        allow_younger:    groupForm.allow_younger || false,
+      };
+      if (payload.birth_date_start) payload.birth_year_start = new Date(payload.birth_date_start).getFullYear();
+      if (payload.birth_date_end) payload.birth_year_end = new Date(payload.birth_date_end).getFullYear();
+      const res = await groupAPI.create(payload);
+      const atIndex = groupModal?.atIndex ?? null;
+      if (atIndex !== null) {
+        const newId = res.data.id;
+        const currentOrder = groups.map(g => g.id);
+        currentOrder.splice(atIndex, 0, newId);
+        await groupAPI.reorder(currentOrder);
+      }
+      setGroupModal(null);
+      setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false });
       await fetchAll();
     } finally { setBusy(false); }
   };
 
-  const handleDeleteGroup = async (id) => {
+  const handleDeleteGroup = (id) => {
+    const group = groups.find(g => g.id === id);
     const groupCats = categories.filter(c => c.group === id);
-    const msg = groupCats.length
-      ? `Ștergi grupa și cele ${groupCats.length} categorii asociate?`
-      : 'Ștergi această grupă de vârstă?';
-    if (!confirm(msg)) return;
+    const groupName = group?.name || 'această grupă';
+    setConfirmModal({
+      title: 'Șterge grupa',
+      message: groupCats.length
+        ? `Ești sigur că vrei să ștergi grupa „${groupName}" împreună cu cele ${groupCats.length} categori${groupCats.length === 1 ? 'e' : 'i'} asociate?`
+        : `Ești sigur că vrei să ștergi grupa „${groupName}"?`,
+      detail: groupCats.length ? groupCats.map(c => c.name).join(', ') : null,
+      icon: '🗑️',
+      color: 'red',
+      confirmLabel: 'Șterge grupa',
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          for (const c of groupCats) await categoryAPI.delete(c.id);
+          await groupAPI.delete(id);
+          await fetchAll();
+        } finally { setBusy(false); setConfirmModal(null); }
+      },
+    });
+  };
+
+  const handleAddCustomCat = async (e) => {
+    e.preventDefault();
+    if (!catForm.name.trim() || !catModal) return;
     setBusy(true);
     try {
-      for (const c of groupCats) await categoryAPI.delete(c.id);
-      await groupAPI.delete(id);
+      await categoryAPI.create({
+        name: catForm.name.trim(),
+        category_type: catForm.category_type,
+        gender: catForm.gender,
+        group_id: catModal.groupId,
+        event: Number(eventId),
+      });
+      setCatModal(null);
+      setCatForm({ name: '', category_type: 'solo', gender: 'male' });
       await fetchAll();
     } finally { setBusy(false); }
   };
 
-  const handleAddStandardCats = async (groupId) => {
-    const existing = new Set(categories.filter(c => c.group === groupId).map(c => c.name));
-    const toAdd = STANDARD_CATEGORIES.filter(c => !existing.has(c.name));
-    if (!toAdd.length) return;
+  /* ── Unenroll athlete directly from cell ── */
+  const handleUnenroll = (enrollmentId, athleteName, catName, e) => {
+    e.stopPropagation();
+    setConfirmModal({
+      title: 'Scoate sportivul',
+      message: `Ești sigur că vrei să scoți sportivul „${athleteName}" din categoria „${catName}"?`,
+      icon: '🚫',
+      color: 'orange',
+      confirmLabel: 'Scoate din categorie',
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          await enrollmentAPI.categoryAthletes.delete(enrollmentId);
+          await fetchAll();
+        } finally { setBusy(false); setConfirmModal(null); }
+      },
+    });
+  };
+
+  /* ── Update weight on enrollment (inline edit from Tehnica/Lupta) ── */
+  const handleWeightSave = async (enrollmentId) => {
+    if (!editingWeight || editingWeight.enrollmentId !== enrollmentId) return;
+    const newWeight = editingWeight.value?.trim() || null;
+    setEditingWeight(null);
+    try {
+      await enrollmentAPI.categoryAthletes.update(enrollmentId, { weight: newWeight });
+      // Update local state to avoid full refetch
+      setCategories(prev => prev.map(cat => ({
+        ...cat,
+        enrolled_athletes: (cat.enrolled_athletes || []).map(ea =>
+          ea.id === enrollmentId ? { ...ea, weight: newWeight } : ea
+        ),
+      })));
+    } catch (err) {
+      console.error('Weight update failed:', err);
+      await fetchAll();
+    }
+  };
+
+  const handleDeleteCat = (id) => {
+    const cat = categories.find(c => c.id === id);
+    const catName = cat?.name || 'această categorie';
+    const enrolledCount = cat?.enrolled_athletes?.length || 0;
+    setConfirmModal({
+      title: 'Șterge categoria',
+      message: enrolledCount
+        ? `Ești sigur că vrei să ștergi categoria „${catName}"? ${enrolledCount} sportiv${enrolledCount === 1 ? '' : 'i'} înscriși vor fi eliminați.`
+        : `Ești sigur că vrei să ștergi categoria „${catName}"?`,
+      icon: '🗑️',
+      color: 'red',
+      confirmLabel: 'Șterge categoria',
+      onConfirm: async () => {
+        setBusy(true);
+        try { await categoryAPI.delete(id); await fetchAll(); }
+        finally { setBusy(false); setConfirmModal(null); }
+      },
+    });
+  };
+
+  /* ── Inline rename handlers ── */
+  const handleGroupRenameStart = (group) => {
+    setEditingGroupId(group.id);
+    setEditingGroupName(group.name);
+  };
+
+  const handleGroupRenameSubmit = async (group) => {
+    const newName = editingGroupName.trim();
+    setEditingGroupId(null);
+    if (!newName || newName === group.name) return;
+    setGroups(prev => prev.map(g => g.id === group.id ? { ...g, name: newName } : g));
+    try { await groupAPI.update(group.id, { ...group, name: newName }); }
+    catch { await fetchAll(); }
+  };
+
+  const handleToggleAllowYounger = async (group) => {
+    const newVal = !group.allow_younger;
+    setGroups(prev => prev.map(g => g.id === group.id ? { ...g, allow_younger: newVal } : g));
+    try { await groupAPI.update(group.id, { ...group, allow_younger: newVal }); }
+    catch { await fetchAll(); }
+  };
+
+  const handleCatRenameStart = (cat) => {
+    setEditingCatId(cat.id);
+    setEditingCatName(cat.name);
+  };
+
+  const handleCatRenameSubmit = async (cat) => {
+    const newName = editingCatName.trim();
+    setEditingCatId(null);
+    if (!newName || newName === cat.name) return;
+    setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, name: newName } : c));
+    try { await categoryAPI.update(cat.id, { name: newName }); }
+    catch { await fetchAll(); }
+  };
+
+  /* ── Group drag & drop ── */
+  const handleGroupDragStart = (e, groupId) => {
+    setDragType('group');
+    setDragId(groupId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleGroupDragOver = (e, groupId) => {
+    if (dragType !== 'group' || dragId === groupId) return;
+    e.preventDefault();
+    setDragOverId(groupId);
+  };
+
+  const handleGroupDrop = async (e, targetGroupId) => {
+    e.preventDefault();
+    if (dragType !== 'group' || !dragId || dragId === targetGroupId) return;
+    const oldOrder = groups.map(g => g.id);
+    const fromIdx = oldOrder.indexOf(dragId);
+    const toIdx = oldOrder.indexOf(targetGroupId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const newOrder = [...oldOrder];
+    newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, dragId);
+    const reordered = newOrder.map((id, idx) => ({ ...groups.find(g => g.id === id), display_order: idx }));
+    setGroups(reordered);
+    setDragType(null); setDragId(null); setDragOverId(null);
+    try { await groupAPI.reorder(newOrder); } catch { await fetchAll(); }
+  };
+
+  /* ── Category drag & drop ── */
+  const handleCatDragStart = (e, catId) => {
+    setDragType('category');
+    setDragId(catId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleCatDragOver = (e, catId) => {
+    if (dragType !== 'category' || dragId === catId) return;
+    const src = categories.find(c => c.id === dragId);
+    const tgt = categories.find(c => c.id === catId);
+    if (!src || !tgt || src.group !== tgt.group) return;
+    e.preventDefault();
+    setDragOverId(catId);
+  };
+
+  const handleCatDrop = async (e, targetCatId) => {
+    e.preventDefault();
+    if (dragType !== 'category' || !dragId || dragId === targetCatId) return;
+    const src = categories.find(c => c.id === dragId);
+    const tgt = categories.find(c => c.id === targetCatId);
+    if (!src || !tgt || src.group !== tgt.group) return;
+    const groupCats = sortedCategories.filter(c => c.group === src.group);
+    const oldOrder = groupCats.map(c => c.id);
+    const fromIdx = oldOrder.indexOf(dragId);
+    const toIdx = oldOrder.indexOf(targetCatId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const newOrder = [...oldOrder];
+    newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, dragId);
+    const updated = categories.map(c => {
+      const idx = newOrder.indexOf(c.id);
+      return idx !== -1 ? { ...c, display_order: idx } : c;
+    });
+    setCategories(updated);
+    setDragType(null); setDragId(null); setDragOverId(null);
+    try { await categoryAPI.reorder(newOrder); } catch { await fetchAll(); }
+  };
+
+  const handleDragEnd = () => { setDragType(null); setDragId(null); setDragOverId(null); };
+
+  /* ── Club drag & drop ── */
+  const handleClubDragStart = (e, clubId) => {
+    setDragType('club');
+    setDragId(clubId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleClubDragOver = (e, clubId) => {
+    if (dragType !== 'club' || dragId === clubId) return;
+    e.preventDefault();
+    setDragOverId(clubId);
+  };
+
+  const handleClubDrop = async (e, targetClubId) => {
+    e.preventDefault();
+    if (dragType !== 'club' || !dragId || dragId === targetClubId) return;
+    const oldOrder = clubs.map(c => c.id);
+    const fromIdx = oldOrder.indexOf(dragId);
+    const toIdx = oldOrder.indexOf(targetClubId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const newOrder = [...oldOrder];
+    newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, dragId);
+    const reordered = newOrder.map((id, idx) => ({ ...clubs.find(c => c.id === id), display_order: idx }));
+    setClubs(reordered);
+    setDragType(null); setDragId(null); setDragOverId(null);
+    try { await clubAPI.reorder(newOrder); } catch { await fetchAll(); }
+  };
+
+  /* ── Enrollment picker ── */
+  const handleCellClick = async (clubId, catId, e) => {
+    e.stopPropagation();
+    // Toggle picker
+    if (enrollPickerCell && enrollPickerCell.clubId === clubId && enrollPickerCell.catId === catId) {
+      setEnrollPickerCell(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setEnrollPickerCell({ clubId, catId, rect });
+    // Fetch club athletes if not cached
+    const cacheKey = clubId ?? '__all__';
+    if (!clubAthleteCache[cacheKey]) {
+      try {
+        const params = clubId ? { club: clubId } : {};
+        const res = await athleteAPI.list(params);
+        const athletes = Array.isArray(res.data) ? res.data : res.data.results ?? [];
+        setClubAthleteCache(prev => ({ ...prev, [cacheKey]: athletes }));
+      } catch (err) { console.error('Failed to fetch athletes', err); }
+    }
+  };
+
+  const handleToggleEnroll = async (athleteId, catId) => {
     setBusy(true);
     try {
-      const cats = toAdd.map(c => ({ ...c, group_id: groupId }));
-      await categoryAPI.bulkAdd(eventId, cats);
+      const cat = categories.find(c => c.id === catId);
+      const existing = cat?.enrolled_athletes?.find(ea => (ea.athlete_details?.id || ea.athlete) === athleteId);
+      if (existing) {
+        await enrollmentAPI.categoryAthletes.delete(existing.id);
+      } else {
+        await enrollmentAPI.categoryAthletes.create({ athlete: athleteId, category: catId });
+      }
       await fetchAll();
     } finally { setBusy(false); }
   };
 
-  const handleDeleteCat = async (id) => {
-    if (!confirm('Ștergi această categorie?')) return;
-    setBusy(true);
-    try { await categoryAPI.delete(id); await fetchAll(); }
-    finally { setBusy(false); }
-  };
+  /* ── close menus on outside click ── */
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (enrollPickerCell && enrollPickerRef.current && !enrollPickerRef.current.contains(e.target)) setEnrollPickerCell(null);
+    };
+    const handleKey = (e) => {
+      if (e.key === 'Escape') { setGroupModal(null); setCatModal(null); setEnrollPickerCell(null); setConfirmModal(null); }
+    };
+    document.addEventListener('keydown', handleKey);
+    document.addEventListener('mousedown', handleClick);
+    return () => { document.removeEventListener('mousedown', handleClick); document.removeEventListener('keydown', handleKey); };
+  }, [enrollPickerCell]);
 
   /* ════════════════════════════════════════════════════
-     RENDER
+     RENDER — full-screen, no sidebar, no padding
      ════════════════════════════════════════════════════ */
-  if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><Spinner /></div>;
 
-  const hasData = groups.length > 0 && categories.length > 0;
+  /* total columns = CLUB + all categories (or 1 per empty group) + insert zones (1 per group + 1 trailing) */
+  const totalColSpan = 1 + (allCols.length || columnStructure.length) + columnStructure.length + 1;
 
   return (
-    <div className="space-y-4">
-      {/* ═══ HEADER ═══ */}
-      <PageHeader title="Centralizator" subtitle={`Competiția #${eventId}`}>
+    <div className="flex h-screen flex-col bg-gray-100">
+      {/* ═══ TOP BAR ═══ */}
+      <div className="flex items-center justify-between border-b border-gray-300 bg-white px-3 py-1.5 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-gray-500">{groups.length} grupe</span>
-            <span className="text-gray-300">·</span>
-            <span className="text-gray-500">{categories.length} categorii</span>
-            <span className="text-gray-300">·</span>
-            <span className="font-semibold text-blue-600">{totalAthletes} sportivi</span>
-          </div>
-          <button
-            onClick={() => setShowSetup(!showSetup)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              showSetup ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            ⚙ Configurare
+          <button onClick={() => navigate(`/competitions/${eventId}`)}
+            className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition">
+            ← Înapoi
           </button>
+          <div className="h-4 w-px bg-gray-300" />
+          <h1 className="text-sm font-bold text-gray-900">
+            {activeSheet === 'centralizator' ? 'Centralizator' : activeSheet === 'tehnica' ? 'Tehnică' : 'Luptă'}
+          </h1>
+          <span className="text-xs text-gray-400">{eventData?.name || `Competiția #${eventId}`}</span>
+          {eventDateStr && <span className="text-[10px] text-blue-500 bg-blue-50 rounded px-1.5 py-0.5">📅 {eventDateStr}</span>}
         </div>
-      </PageHeader>
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="text-gray-500">{groups.length} grupe</span>
+          <span className="text-gray-300">·</span>
+          <span className="text-gray-500">{categories.length} categorii</span>
+          <span className="text-gray-300">·</span>
+          <span className="text-gray-500">{clubs.length} cluburi</span>
+          <span className="text-gray-300">·</span>
+          <span className="font-semibold text-blue-600">{totalAthletes} sportivi</span>
+        </div>
+      </div>
 
-      {/* ═══ SETUP PANEL (collapsible) ═══ */}
-      {showSetup && (
-        <Card>
-          <h3 className="font-semibold text-gray-900 text-sm mb-3">⚙ Configurare grupe și categorii</h3>
+      {/* ═══ TABLE — fills remaining space, always visible ═══ */}
+      {activeSheet === 'centralizator' && (
+      <div className="flex-1 overflow-auto">
+        <table className="border-collapse text-[11px] w-max min-w-full">
 
-          {/* Age group presets */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-gray-500 font-medium">Grupe de vârstă</p>
-              <div className="flex gap-2">
-                <button onClick={() => setShowGroupForm(!showGroupForm)}
-                  className="rounded-lg bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-700">+ Grupă nouă</button>
-                {AGE_GROUP_PRESETS.some(p => !existingGroupNames.has(p.name)) && (
-                  <button onClick={handleAddAllPresets} disabled={busy}
-                    className="rounded-lg bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50">
-                    Adaugă toate
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {showGroupForm && (
-              <form onSubmit={handleCustomGroup} className="mb-3 rounded-lg bg-gray-50 p-3 space-y-2 max-w-lg">
-                <input required placeholder="Nume grupă" value={customGroup.name}
-                  onChange={e => setCustomGroup(g => ({ ...g, name: e.target.value }))}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="number" placeholder="An naștere de la" value={customGroup.birth_year_start}
-                    onChange={e => setCustomGroup(g => ({ ...g, birth_year_start: e.target.value }))}
-                    className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
-                  <input type="number" placeholder="An naștere până la" value={customGroup.birth_year_end}
-                    onChange={e => setCustomGroup(g => ({ ...g, birth_year_end: e.target.value }))}
-                    className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
-                </div>
-                <div className="flex gap-2">
-                  <button type="submit" disabled={busy}
-                    className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Salvează</button>
-                  <button type="button" onClick={() => setShowGroupForm(false)}
-                    className="text-xs text-gray-500 hover:text-gray-700">Anulează</button>
-                </div>
-              </form>
-            )}
-
-            <div className="flex flex-wrap gap-1.5">
-              {AGE_GROUP_PRESETS.map(p => {
-                const exists = existingGroupNames.has(p.name);
+          {/* ═══ ROW 1: Group headers + "+" add-group column ═══ */}
+          <thead className="sticky top-0 z-20">
+            <tr>
+              <th className="sticky left-0 z-40 bg-gray-800 text-white border border-gray-600 px-3 py-2 text-left font-bold text-xs min-w-[140px]"
+                rowSpan={3}>
+                CLUB
+              </th>
+              {columnStructure.map((col, ci) => {
                 return (
-                  <button key={p.name} disabled={exists || busy} onClick={() => handleAddGroupPreset(p)}
-                    className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition ${
-                      exists ? 'border-gray-200 bg-gray-50 text-gray-300 cursor-default'
-                             : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                    }`}>
-                    {exists ? '✓ ' : '+ '}{p.name}
-                  </button>
+                  <React.Fragment key={col.group.id}>
+                    {/* ── Between-group insert zone ── */}
+                    <th className="border-none p-0 w-0 relative group/insert" rowSpan={3}>
+                      <div className="absolute inset-y-0 -left-2 -right-2 z-30 flex items-center justify-center">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: ci }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
+                          className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-full bg-blue-500 text-white text-[9px] font-semibold shadow-lg px-2.5 py-1 transition-all hover:scale-105 hover:bg-blue-600 whitespace-nowrap"
+                          title="Adaugă grupă aici"
+                        >+ Adaugă grupă</button>
+                      </div>
+                    </th>
+
+                    {/* ── Group header ── */}
+                    <th colSpan={col.colSpan}
+                      draggable
+                      onDragStart={(e) => handleGroupDragStart(e, col.group.id)}
+                      onDragOver={(e) => handleGroupDragOver(e, col.group.id)}
+                      onDrop={(e) => handleGroupDrop(e, col.group.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`bg-gray-700 text-white border border-gray-500 px-2 py-1.5 text-center font-bold text-xs whitespace-nowrap relative cursor-grab active:cursor-grabbing transition-all ${
+                        dragType === 'group' && dragId === col.group.id ? 'opacity-40 scale-95' : ''
+                      } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-blue-400 ring-inset' : ''}`}>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span className="opacity-40 text-[10px] select-none">⠿</span>
+                        {editingGroupId === col.group.id ? (
+                          <input
+                            value={editingGroupName}
+                            onChange={(e) => setEditingGroupName(e.target.value)}
+                            onBlur={() => handleGroupRenameSubmit(col.group)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleGroupRenameSubmit(col.group); if (e.key === 'Escape') setEditingGroupId(null); }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-white/20 border border-white/40 rounded px-1 py-0.5 text-white text-xs font-bold text-center w-28 outline-none focus:bg-white/30"
+                            autoFocus
+                          />
+                        ) : (
+                          <span onDoubleClick={(e) => { e.stopPropagation(); handleGroupRenameStart(col.group); }}
+                            className="cursor-text" title="Dublu-click pentru a redenumi">
+                            {col.group.name}
+                            {(col.group.birth_date_start || col.group.birth_year_start) && (col.group.birth_date_end || col.group.birth_year_end) && (
+                              <span className="font-normal opacity-70 text-[10px] ml-1">
+                                ({col.group.birth_date_start
+                                  ? `${col.group.birth_date_start} – ${col.group.birth_date_end}`
+                                  : `${col.group.birth_year_start}–${col.group.birth_year_end}`})
+                              </span>
+                            )}
+                          </span>
+                        )}
+                        {/* Allow younger toggle */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleToggleAllowYounger(col.group); }}
+                          className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[8px] font-medium transition ${
+                            col.group.allow_younger
+                              ? 'bg-amber-400/30 text-amber-200 hover:bg-amber-400/50'
+                              : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white/70'
+                          }`}
+                          title={col.group.allow_younger ? 'Acceptă vârste mai mici (activ) — click pentru a dezactiva' : 'Permite sportivi mai tineri să urce la categorie superioară'}
+                        >
+                          <span>{col.group.allow_younger ? '⬆' : '⬆'}</span>
+                          <span className="hidden sm:inline">{col.group.allow_younger ? 'Tineri ✓' : 'Tineri'}</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCatModal({ groupId: col.group.id }); setCatForm({ name: '', category_type: 'solo', gender: 'male' }); }}
+                          className="inline-flex items-center gap-0.5 rounded-full bg-white/20 hover:bg-white/40 text-white text-[8px] font-semibold px-1.5 py-0.5 transition"
+                          title="Adaugă categorie"
+                        >+ Categorie</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteGroup(col.group.id); }}
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/15 hover:bg-red-500/80 text-white/60 hover:text-white text-xs font-bold transition"
+                          title="Șterge grupa"
+                        >×</button>
+                      </div>
+                    </th>
+                  </React.Fragment>
                 );
               })}
-            </div>
-          </div>
 
-          {/* Existing groups — add/remove categories */}
-          {groups.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-500 font-medium mb-2">Categorii per grupă</p>
-              <div className="space-y-2">
-                {groups.map((g, gi) => {
-                  const color = GROUP_COLORS[gi % GROUP_COLORS.length];
-                  const groupCats = categories.filter(c => c.group === g.id);
-                  return (
-                    <div key={g.id} className={`rounded-lg border ${color.border} p-2`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-block w-3 h-3 rounded ${color.bg}`}></span>
-                          <span className="text-xs font-bold text-gray-800">{g.name}</span>
-                          <span className="text-[10px] text-gray-400">
-                            {g.birth_year_start && g.birth_year_end ? `(${g.birth_year_start}–${g.birth_year_end})` : ''}
-                          </span>
-                          <span className="text-[10px] text-gray-500">{groupCats.length} categorii</span>
-                        </div>
-                        <div className="flex gap-1">
-                          <button onClick={() => handleAddStandardCats(g.id)} disabled={busy}
-                            className="rounded bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700 hover:bg-green-200 disabled:opacity-40">
-                            + Standard
-                          </button>
-                          <button onClick={() => handleDeleteGroup(g.id)} disabled={busy}
-                            className="rounded bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-500 hover:bg-red-100 disabled:opacity-40">
-                            Șterge grupa
-                          </button>
-                        </div>
-                      </div>
-                      {groupCats.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {groupCats.map(cat => (
-                            <span key={cat.id} className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-700">
-                              {cat.name}
-                              <button onClick={() => handleDeleteCat(cat.id)} disabled={busy}
-                                className="text-red-400 hover:text-red-600 ml-0.5">×</button>
-                            </span>
-                          ))}
-                        </div>
+              {/* ═══ Trailing insert zone (after last group) ═══ */}
+              <th className="border-none p-0 w-0 relative group/insert" rowSpan={3}>
+                <div className="absolute inset-y-0 -left-2 right-0 z-30 flex items-center justify-center" style={{ minWidth: '24px' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: columnStructure.length }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
+                    className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-full bg-blue-500 text-white text-[9px] font-semibold shadow-lg px-2.5 py-1 transition-all hover:scale-105 hover:bg-blue-600 whitespace-nowrap"
+                    title="Adaugă grupă"
+                  >+ Adaugă grupă</button>
+                </div>
+              </th>
+            </tr>
+
+            {/* ═══ ROW 2: Gender sub-headers ═══ */}
+            <tr>
+              {columnStructure.map(col =>
+                col.genderSections.length === 0
+                  ? <th key={`g-empty-${col.group.id}`} className="bg-gray-100 border border-gray-300 px-1 py-1 text-center text-[9px] text-gray-400 italic">
+                      Fără categorii
+                    </th>
+                  : col.genderSections.map(gs => (
+                      <th key={`${col.group.id}-${gs.gender}`} colSpan={gs.colSpan}
+                        className={`${GENDER_BG[gs.gender] || 'bg-gray-100'} border border-gray-300 px-1 py-1 text-center font-bold text-[10px] uppercase tracking-wide text-gray-700`}>
+                        {GENDER_LABELS[gs.gender] || gs.gender}
+                      </th>
+                    ))
+              )}
+            </tr>
+
+            {/* ═══ ROW 3: Individual category names with delete ═══ */}
+            <tr>
+              {allCols.length === 0 && columnStructure.length > 0 ? (
+                columnStructure.map(col => (
+                  <th key={`empty-${col.group.id}`} className="bg-gray-50 border border-gray-300 px-1 py-1 text-center text-[9px] text-gray-300 italic min-w-[80px]">
+                    click + sus
+                  </th>
+                ))
+              ) : (
+                allCols.map(cat => (
+                  <th key={cat.id}
+                    draggable
+                    onDragStart={(e) => handleCatDragStart(e, cat.id)}
+                    onDragOver={(e) => handleCatDragOver(e, cat.id)}
+                    onDrop={(e) => handleCatDrop(e, cat.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`bg-gray-50 border border-gray-300 px-1 py-1 text-center font-medium text-[10px] text-gray-700 min-w-[80px] group/cat cursor-grab active:cursor-grabbing transition-all ${
+                      dragType === 'category' && dragId === cat.id ? 'opacity-40 scale-95' : ''
+                    } ${dragType === 'category' && dragOverId === cat.id ? 'ring-2 ring-blue-400 ring-inset bg-blue-50' : ''}`}
+                    title={`${cat.name} (${TYPE_LABELS[cat.type] || cat.type}) — trage pentru a reordona`}
+                  >
+                    <div className="leading-tight whitespace-normal relative">
+                      {editingCatId === cat.id ? (
+                        <input
+                          value={editingCatName}
+                          onChange={(e) => setEditingCatName(e.target.value)}
+                          onBlur={() => handleCatRenameSubmit(cat)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleCatRenameSubmit(cat); if (e.key === 'Escape') setEditingCatId(null); }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="bg-white border border-gray-400 rounded px-1 py-0.5 text-[10px] text-gray-800 font-medium text-center w-full outline-none focus:border-blue-400"
+                          autoFocus
+                        />
+                      ) : (
+                        <span onDoubleClick={(e) => { e.stopPropagation(); handleCatRenameStart(cat); }}
+                          className="cursor-text" title="Dublu-click pentru a redenumi">
+                          {cat.name.replace(/ - (Masculin|Feminin|Mixt)/i, '')}
+                        </span>
                       )}
+                      <button onClick={() => handleDeleteCat(cat.id)} disabled={busy}
+                        className="absolute -top-2 -right-2 hidden group-hover/cat:inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold leading-none hover:bg-red-600"
+                        title="Șterge categoria">×</button>
+                    </div>
+                  </th>
+                ))
+              )}
+            </tr>
+          </thead>
+
+          {/* ═══ BODY: One row per athlete, grouped by club ═══ */}
+          <tbody>
+            {clubRows.length === 0 ? (
+              <tr>
+                <td colSpan={totalColSpan} className="px-4 py-12 text-center text-sm text-gray-400 italic">
+                  {groups.length === 0
+                    ? <><span className="text-2xl block mb-2">📋</span>Treci cu mouse-ul între coloane pentru a adăuga prima grupă de vârstă.</>
+                    : allCols.length === 0
+                    ? 'Apasă + pe header-ul fiecărei grupe pentru a adăuga categorii.'
+                    : 'Niciun club în baza de date.'}
+                </td>
+              </tr>
+            ) : (
+              clubRows.map(({ clubId, club, athletes }) => {
+                const rowCount = Math.max(athletes.length, 1);
+                const isDraggedClub = dragType === 'club' && dragId === clubId;
+                const isDragOverClub = dragType === 'club' && dragOverId === clubId;
+                return athletes.length === 0 ? (
+                  /* Club with no enrolled athletes — single empty row */
+                  <tr key={`club-${clubId}`}
+                    className={`border-t-2 border-gray-400 hover:bg-yellow-50/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
+                  >
+                    <td className="sticky left-0 z-10 bg-white border border-gray-300 px-3 py-1.5 font-bold text-xs text-gray-900 align-middle cursor-grab active:cursor-grabbing select-none"
+                      draggable
+                      onDragStart={(e) => handleClubDragStart(e, clubId)}
+                      onDragOver={(e) => handleClubDragOver(e, clubId)}
+                      onDrop={(e) => handleClubDrop(e, clubId)}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="opacity-40 text-[10px]">⠿</span>
+                        <span className="text-blue-600">🏛</span>
+                        {club}
+                      </div>
+                    </td>
+                    {columnStructure.map(col => (
+                      <React.Fragment key={`grp-${col.group.id}`}>
+                        <td className="p-0 w-0 border-none"></td>
+                        {col.cats.length === 0 ? (
+                          <td className="border border-gray-200 text-gray-200"></td>
+                        ) : col.cats.map(cat => {
+                          const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
+                          return (
+                            <td key={cat.id}
+                              onClick={(e) => handleCellClick(clubId, cat.id, e)}
+                              className={`border border-gray-200 px-1 py-1 text-center text-[10px] cursor-pointer transition-colors ${
+                                isPickerOpen ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset' : 'hover:bg-blue-50'
+                              }`}
+                            ></td>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                    <td className="border border-gray-100"></td>
+                  </tr>
+                ) : (
+                  athletes.map((ath, athIdx) => (
+                    <tr key={ath.id}
+                      className={`${athIdx === 0 ? 'border-t-2 border-gray-400' : ''} hover:bg-yellow-50/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub && athIdx === 0 ? 'ring-t-2 ring-blue-400' : ''}`}
+                    >
+                      {athIdx === 0 && (
+                        <td className="sticky left-0 z-10 bg-white border border-gray-300 px-3 py-1.5 font-bold text-xs text-gray-900 align-top cursor-grab active:cursor-grabbing select-none"
+                          rowSpan={rowCount}
+                          draggable
+                          onDragStart={(e) => handleClubDragStart(e, clubId)}
+                          onDragOver={(e) => handleClubDragOver(e, clubId)}
+                          onDrop={(e) => handleClubDrop(e, clubId)}
+                          onDragEnd={handleDragEnd}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="opacity-40 text-[10px]">⠿</span>
+                            <span className="text-blue-600">🏛</span>
+                            {club}
+                          </div>
+                        </td>
+                      )}
+                      {columnStructure.map(col => (
+                        <React.Fragment key={`grp-${col.group.id}`}>
+                          <td className="p-0 w-0 border-none"></td>
+                          {col.cats.length === 0 ? (
+                            <td className="border border-gray-200 text-gray-200"></td>
+                          ) : col.cats.map(cat => {
+                            const enrollment = ath.enrollments[cat.id];
+                            const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
+                            return (
+                              <td key={cat.id}
+                                onClick={(e) => handleCellClick(clubId, cat.id, e)}
+                                className={`border border-gray-200 px-1 py-1 text-center text-[10px] cursor-pointer transition-colors ${
+                                  isPickerOpen
+                                    ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset'
+                                    : enrollment ? 'bg-green-50 text-gray-800 hover:bg-green-100' : 'hover:bg-blue-50'
+                                }`}
+                              >
+                                {enrollment ? (
+                                  <span className="font-medium leading-tight block relative group/athlete" title={ath.name}>
+                                    {ath.name}
+                                    <button
+                                      onClick={(e) => handleUnenroll(enrollment.id, ath.name, cat.name, e)}
+                                      disabled={busy}
+                                      className="absolute -top-1 -right-1 hidden group-hover/athlete:inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold leading-none hover:bg-red-600 disabled:opacity-40"
+                                      title="Scoate sportivul din categorie"
+                                    >×</button>
+                                  </span>
+                                ) : null}
+                              </td>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                      <td className="border border-gray-100"></td>
+                    </tr>
+                  ))
+                );
+              })
+            )}
+          </tbody>
+
+          {/* ═══ FOOTER: participant count per category ═══ */}
+          {allCols.length > 0 && (
+            <tfoot>
+              <tr className="bg-gray-100 border-t-2 border-gray-400">
+                <td className="sticky left-0 z-10 bg-gray-100 border border-gray-300 px-3 py-2 font-bold text-xs text-gray-700">
+                  Număr participanți
+                </td>
+                {columnStructure.map(col => (
+                  <React.Fragment key={`f-${col.group.id}`}>
+                    <td className="p-0 w-0 border-none bg-gray-100"></td>
+                    {col.cats.length === 0 ? (
+                      <td className="border border-gray-300 bg-gray-100"></td>
+                    ) : col.cats.map(cat => (
+                      <td key={cat.id} className="border border-gray-300 px-1 py-2 text-center font-bold text-xs text-gray-700">
+                        {countPerCat[cat.id] || 0}
+                      </td>
+                    ))}
+                  </React.Fragment>
+                ))}
+                <td className="border border-gray-100 bg-gray-100"></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      )}
+
+      {/* ═══ TEHNICA SHEET — Solo + Team categories detailed view ═══ */}
+      {activeSheet === 'tehnica' && (
+      <div className="flex-1 overflow-auto bg-white p-2">
+        {(() => {
+          // Collect solo/team categories that have enrolled athletes, deduplicated
+          const seenCatIds = new Set();
+          const techGroups = columnStructure
+            .map(col => ({
+              group: col.group,
+              cats: col.cats.filter(c => {
+                if (seenCatIds.has(c.id)) return false;
+                if (c.type !== 'solo' && c.type !== 'team') return false;
+                if (!c.enrolled_athletes || c.enrolled_athletes.length === 0) return false;
+                seenCatIds.add(c.id);
+                return true;
+              }),
+            }))
+            .filter(g => g.cats.length > 0);
+
+          if (techGroups.length === 0) {
+            return (
+              <div className="flex items-center justify-center h-full text-gray-400 text-sm italic">
+                <span>📋 Nu există sportivi înscriși în categorii de tip Solo sau Echipă. Înscrie-i din tab-ul Centralizator.</span>
+              </div>
+            );
+          }
+
+          // For each group, chunk categories in rows of MAX_COLS_PER_ROW for readability
+          const MAX_COLS_PER_ROW = 4;
+
+          return techGroups.map(({ group, cats }) => {
+            // Split categories into chunks
+            const chunks = [];
+            for (let i = 0; i < cats.length; i += MAX_COLS_PER_ROW) {
+              chunks.push(cats.slice(i, i + MAX_COLS_PER_ROW));
+            }
+
+            return (
+              <React.Fragment key={`tech-grp-${group.id}`}>
+                {chunks.map((chunk, chunkIdx) => {
+                  const maxEnrolled = Math.max(1, ...chunk.map(c => (c.enrolled_athletes?.length || 0)));
+
+                  return (
+                    <div key={`tech-${group.id}-${chunkIdx}`} className="mb-8">
+                      <table className="border-collapse text-[11px]">
+                        <thead>
+                          {/* Group header — yellow */}
+                          <tr>
+                            {chunk.map(cat => (
+                              <th key={cat.id} colSpan={2}
+                                className="bg-yellow-300 border border-gray-500 px-3 py-1.5 text-center font-bold text-xs text-gray-900">
+                                {group.name}
+                                {(group.birth_date_start || group.birth_year_start) && (
+                                  <span className="font-normal ml-1">
+                                    ( {group.birth_date_start
+                                      ? `${new Date(group.birth_date_start).getFullYear()}–${new Date(group.birth_date_end).getFullYear()}`
+                                      : `${group.birth_year_start}–${group.birth_year_end}`} )
+                                  </span>
+                                )}
+                              </th>
+                            ))}
+                          </tr>
+                          {/* PROBA + Category name row */}
+                          <tr>
+                            {chunk.map(cat => (
+                              <React.Fragment key={cat.id}>
+                                <th className="bg-gray-200 border border-gray-500 px-2 py-1.5 text-left font-bold text-[10px] text-gray-700 uppercase tracking-wide w-[60px]">
+                                  PROBA
+                                </th>
+                                <th className={`border border-gray-500 px-2 py-1.5 text-left font-bold text-[10px] uppercase tracking-wide min-w-[200px] ${
+                                  cat.gender === 'male' ? 'bg-blue-100 text-blue-900' : cat.gender === 'female' ? 'bg-pink-100 text-pink-900' : 'bg-amber-100 text-amber-900'
+                                }`}>
+                                  {cat.name} - {GENDER_LABELS[cat.gender] || cat.gender}
+                                </th>
+                              </React.Fragment>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {/* Enrolled athlete rows — only actual athletes, no empty filler rows */}
+                          {Array.from({ length: maxEnrolled }).map((_, rowIdx) => (
+                            <tr key={rowIdx}>
+                              {chunk.map(cat => {
+                                const enrolled = (cat.enrolled_athletes || []).slice().sort((a, b) => {
+                                  const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
+                                  const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
+                                  return na.localeCompare(nb);
+                                });
+                                const ath = enrolled[rowIdx];
+                                const athleteDetails = ath?.athlete_details;
+                                const athleteName = athleteDetails
+                                  ? `${athleteDetails.last_name || ''} ${athleteDetails.first_name || ''}`.trim()
+                                  : '';
+                                const clubName = athleteDetails?.club?.name || '';
+                                return (
+                                  <React.Fragment key={cat.id}>
+                                    <td className="border border-gray-300 px-1 py-0.5 text-[10px] w-[30px] text-center text-gray-400 bg-gray-50">
+                                      {ath ? rowIdx + 1 : ''}
+                                    </td>
+                                    <td className={`border border-gray-300 px-1 py-0.5 text-[11px] min-w-[200px] ${ath ? 'text-gray-800' : ''}`}>
+                                      {ath ? (
+                                        <span className="flex items-center justify-between group/ath">
+                                          <span>
+                                            {athleteName}
+                                            {clubName && <span className="text-gray-400 ml-1">({clubName})</span>}
+                                          </span>
+                                          <button
+                                            onClick={(e) => handleUnenroll(ath.id, athleteName, cat.name, e)}
+                                            disabled={busy}
+                                            className="hidden group-hover/ath:inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none hover:bg-red-600 disabled:opacity-40 shrink-0 ml-1"
+                                            title="Scoate sportivul din categorie"
+                                          >×</button>
+                                        </span>
+                                      ) : null}
+                                    </td>
+                                  </React.Fragment>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                          {/* + Adaugă row — one empty row per category with hover action */}
+                          <tr>
+                            {chunk.map(cat => (
+                              <React.Fragment key={cat.id}>
+                                <td className="border border-gray-200 px-1 py-0.5 w-[30px] bg-gray-50"></td>
+                                <td
+                                  className="border border-gray-200 px-1 py-1 min-w-[200px] cursor-pointer group/add hover:bg-blue-50 transition-colors"
+                                  onClick={(e) => handleCellClick(null, cat.id, e)}
+                                >
+                                  <span className="hidden group-hover/add:inline-flex items-center gap-1 text-[10px] text-blue-500 font-medium">
+                                    <span className="text-blue-400">＋</span> Adaugă sportiv
+                                  </span>
+                                </td>
+                              </React.Fragment>
+                            ))}
+                          </tr>
+                          {/* Total row */}
+                          <tr className="border-t-2 border-gray-500">
+                            {chunk.map(cat => (
+                              <React.Fragment key={cat.id}>
+                                <td className="border border-gray-500 px-2 py-1.5 font-bold text-[10px] text-gray-700 bg-gray-100 text-center">
+                                  TOTAL
+                                </td>
+                                <td className="border border-gray-500 px-2 py-1.5 font-bold text-xs text-gray-900 bg-gray-100">
+                                  {cat.enrolled_athletes?.length || 0}
+                                </td>
+                              </React.Fragment>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   );
                 })}
-              </div>
-            </div>
-          )}
-        </Card>
+              </React.Fragment>
+            );
+          });
+        })()}
+      </div>
       )}
 
-      {/* ═══ THE CENTRALIZATOR TABLE (Excel-style) ═══ */}
-      {!hasData ? (
-        <EmptyState icon="📋" title="Nicio categorie configurată"
-          message="Deschide ⚙ Configurare pentru a adăuga grupe de vârstă și categorii." />
-      ) : (
-        <div className="rounded-xl border border-gray-300 bg-white shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="border-collapse text-[11px] min-w-full">
+      {/* ═══ LUPTA SHEET — Fight categories detailed view ═══ */}
+      {activeSheet === 'lupta' && (
+      <div className="flex-1 overflow-auto bg-white p-2">
+        {(() => {
+          // Collect fight categories that have enrolled athletes, deduplicated
+          const seenFightIds = new Set();
+          const fightGroups = columnStructure
+            .map(col => ({
+              group: col.group,
+              cats: col.cats.filter(c => {
+                if (seenFightIds.has(c.id)) return false;
+                if (c.type !== 'fight') return false;
+                if (!c.enrolled_athletes || c.enrolled_athletes.length === 0) return false;
+                seenFightIds.add(c.id);
+                return true;
+              }),
+            }))
+            .filter(g => g.cats.length > 0);
 
-              {/* ═══ ROW 1: Group headers (big colored row) ═══ */}
-              <thead>
-                <tr>
-                  <th className="sticky left-0 z-30 bg-gray-800 text-white border border-gray-600 px-3 py-2 text-left font-bold text-xs min-w-[140px]"
-                    rowSpan={3}>
-                    CLUB
-                  </th>
-                  {columnStructure.map((col, ci) => {
-                    const color = GROUP_COLORS[ci % GROUP_COLORS.length];
-                    return (
-                      <th key={col.group.id} colSpan={col.colSpan}
-                        className={`${color.bg} ${color.text} border border-gray-400 px-2 py-2 text-center font-bold text-xs whitespace-nowrap`}>
-                        {col.group.name}
-                        {col.group.birth_year_start && col.group.birth_year_end && (
-                          <span className="font-normal opacity-80 text-[10px] ml-1">
-                            ({col.group.birth_year_start}–{col.group.birth_year_end})
-                          </span>
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
+          if (fightGroups.length === 0) {
+            return (
+              <div className="flex items-center justify-center h-full text-gray-400 text-sm italic">
+                <span>📋 Nu există sportivi înscriși în categorii de tip Luptă. Înscrie-i din tab-ul Centralizator.</span>
+              </div>
+            );
+          }
 
-                {/* ═══ ROW 2: Gender sub-headers ═══ */}
-                <tr>
-                  {columnStructure.map(col =>
-                    col.genderSections.length === 0
-                      ? <th key={`g-empty-${col.group.id}`} className="bg-gray-100 border border-gray-300 px-1 py-1"></th>
-                      : col.genderSections.map(gs => (
-                          <th key={`${col.group.id}-${gs.gender}`} colSpan={gs.colSpan}
-                            className={`${GENDER_BG[gs.gender] || 'bg-gray-100'} border border-gray-300 px-1 py-1.5 text-center font-bold text-[10px] uppercase tracking-wide text-gray-700`}>
-                            {GENDER_LABELS[gs.gender] || gs.gender}
+          return fightGroups.map(({ group, cats }) => {
+            // Group by gender
+            const genderOrder = ['male', 'female', 'mixt'];
+            const catsByGender = {};
+            for (const cat of cats) {
+              const g = cat.gender || 'mixt';
+              if (!catsByGender[g]) catsByGender[g] = [];
+              catsByGender[g].push(cat);
+            }
+
+            return (
+              <div key={`fight-${group.id}`} className="mb-8">
+                {genderOrder.filter(g => catsByGender[g]).map(gender => {
+                  const genderCats = catsByGender[gender];
+                  const totalGroupRows = genderCats.reduce((sum, c) => sum + Math.max((c.enrolled_athletes?.length || 0), 1), 0);
+
+                  const flatRows = [];
+                  let globalRowIdx = 0;
+                  for (const cat of genderCats) {
+                    const enrolled = (cat.enrolled_athletes || []).slice().sort((a, b) => {
+                      const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
+                      const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
+                      return na.localeCompare(nb);
+                    });
+                    const catLabel = cat.name.replace(/ - (Masculin|Feminin|Mixt)/i, '').replace(/Đối Kháng\s*/i, '').trim() || cat.name;
+                    if (enrolled.length === 0) {
+                      flatRows.push({ cat, catLabel, enrollment: null, enrolledCount: 0, isFirstInCat: true, isFirstRow: globalRowIdx === 0, totalGroupRows });
+                      globalRowIdx++;
+                    } else {
+                      enrolled.forEach((enrollment, idx) => {
+                        flatRows.push({ cat, catLabel, enrollment, enrolledCount: enrolled.length, isFirstInCat: idx === 0, isFirstRow: globalRowIdx === 0, totalGroupRows });
+                        globalRowIdx++;
+                      });
+                    }
+                  }
+
+                  return (
+                    <table key={`${group.id}-${gender}`} className="border-collapse text-[11px] mb-4">
+                      <thead>
+                        <tr>
+                          <th colSpan={5}
+                            className={`border border-gray-500 px-3 py-1 text-center font-bold text-xs uppercase tracking-wide ${
+                              gender === 'male' ? 'bg-blue-200 text-blue-900' : gender === 'female' ? 'bg-pink-200 text-pink-900' : 'bg-amber-200 text-amber-900'
+                            }`}>
+                            {GENDER_LABELS[gender]}
                           </th>
-                        ))
-                  )}
-                </tr>
-
-                {/* ═══ ROW 3: Individual category names (vertical) ═══ */}
-                <tr>
-                  {allCols.map(cat => (
-                    <th key={cat.id}
-                      className="bg-gray-50 border border-gray-300 px-1 py-1 text-center font-medium text-[10px] text-gray-700 min-w-[80px] max-w-[110px]"
-                      title={`${cat.name} (${TYPE_LABELS[cat.type] || cat.type})`}
-                    >
-                      <div className="leading-tight whitespace-normal">
-                        {cat.name.replace(/ - (Masculin|Feminin|Mixt)/i, '')}
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-
-              {/* ═══ BODY: One row per athlete, grouped by club ═══ */}
-              <tbody>
-                {clubRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={allCols.length + 1} className="px-4 py-8 text-center text-sm text-gray-400 italic">
-                      Niciun sportiv înscris. Sportivii vor apărea aici când sunt adăugați la categorii.
-                    </td>
-                  </tr>
-                ) : (
-                  clubRows.map(({ club, athletes }) => (
-                    athletes.map((ath, athIdx) => (
-                      <tr key={ath.id} className={`${athIdx === 0 ? 'border-t-2 border-gray-400' : ''} hover:bg-yellow-50/40 transition-colors`}>
-                        {/* Club cell — spans all rows for this club */}
-                        {athIdx === 0 && (
-                          <td className="sticky left-0 z-10 bg-white border border-gray-300 px-3 py-1.5 font-bold text-xs text-gray-900 align-top"
-                            rowSpan={athletes.length}>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-blue-600">🏛</span>
-                              {club}
-                            </div>
-                          </td>
-                        )}
-                        {/* Category cells — show athlete name if enrolled */}
-                        {allCols.map(cat => {
-                          const enrollment = ath.enrollments[cat.id];
+                        </tr>
+                        <tr>
+                          <th className="bg-gray-200 border border-gray-500 px-3 py-1.5 text-center font-bold text-xs text-gray-800 min-w-[130px]">
+                            GRUPA
+                          </th>
+                          <th className="bg-gray-200 border border-gray-500 px-3 py-1.5 text-center font-bold text-[10px] text-gray-800 min-w-[120px]">
+                            ÎNSCRIS LA<br/>CATEGORIA (KG)
+                          </th>
+                          <th className="bg-gray-200 border border-gray-500 px-3 py-1.5 text-center font-bold text-[10px] text-gray-800 min-w-[220px]">
+                            NUME PRACTICANT
+                          </th>
+                          <th className="bg-gray-200 border border-gray-500 px-3 py-1.5 text-center font-bold text-[10px] text-gray-800 min-w-[70px]">
+                            KG
+                          </th>
+                          <th className="bg-gray-200 border border-gray-500 px-1 py-1.5 text-center font-bold text-[10px] text-gray-800 w-[30px]">
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {flatRows.map((row, ri) => {
+                          const a = row.enrollment?.athlete_details;
+                          const name = a ? `${a.last_name || ''} ${a.first_name || ''}`.trim() : '';
+                          const club = a?.club?.name || '';
+                          const enrollId = row.enrollment?.id;
+                          const isEditing = editingWeight?.enrollmentId === enrollId;
+                          const weight = row.enrollment?.weight || '';
                           return (
-                            <td key={cat.id}
-                              className={`border border-gray-200 px-1 py-1 text-center text-[10px] ${
-                                enrollment ? 'bg-green-50 text-gray-800' : 'text-gray-200'
-                              }`}
-                            >
-                              {enrollment ? (
-                                <span className="font-medium leading-tight block" title={ath.name}>
-                                  {ath.name}
-                                </span>
-                              ) : null}
-                            </td>
+                            <tr key={ri}>
+                              {row.isFirstRow && (
+                                <td className="border border-gray-400 px-2 py-1 text-xs font-bold text-gray-800 align-top bg-white"
+                                  rowSpan={row.totalGroupRows}>
+                                  {group.name}
+                                  {(group.birth_date_start || group.birth_year_start) && (
+                                    <span className="font-normal text-[10px] block text-gray-500 mt-0.5">
+                                      ({group.birth_date_start
+                                        ? `${new Date(group.birth_date_start).getFullYear()}–${new Date(group.birth_date_end).getFullYear()}`
+                                        : `${group.birth_year_start}–${group.birth_year_end}`})
+                                    </span>
+                                  )}
+                                </td>
+                              )}
+                              {row.isFirstInCat && (
+                                <td className="border border-gray-400 px-2 py-1 text-center text-[10px] font-semibold text-gray-700 bg-gray-50"
+                                  rowSpan={row.enrolledCount || 1}>
+                                  {row.catLabel}
+                                </td>
+                              )}
+                              <td className="border border-gray-300 px-2 py-1 text-[11px] text-gray-800">
+                                {name}
+                                {club && name && <span className="text-gray-400 ml-1">({club})</span>}
+                              </td>
+                              <td className="border border-gray-300 px-1 py-0.5 text-center text-[11px] text-gray-700 font-medium min-w-[70px]"
+                                onDoubleClick={() => enrollId && setEditingWeight({ enrollmentId: enrollId, value: weight.toString() })}>
+                                {enrollId ? (
+                                  isEditing ? (
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      className="w-full text-center text-[11px] border border-blue-400 rounded px-1 py-0.5 outline-none bg-blue-50"
+                                      value={editingWeight.value}
+                                      onChange={(e) => setEditingWeight({ enrollmentId: enrollId, value: e.target.value })}
+                                      onBlur={() => handleWeightSave(enrollId)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleWeightSave(enrollId);
+                                        if (e.key === 'Escape') setEditingWeight(null);
+                                      }}
+                                    />
+                                  ) : (
+                                    <span className="cursor-pointer hover:bg-blue-50 px-1 rounded" title="Dublu-click pentru a edita">
+                                      {weight || '–'}
+                                    </span>
+                                  )
+                                ) : null}
+                              </td>
+                              <td className="border border-gray-300 px-0.5 py-0.5 text-center w-[30px]">
+                                {enrollId && (
+                                  <button
+                                    onClick={(e) => handleUnenroll(enrollId, name, row.cat.name, e)}
+                                    disabled={busy}
+                                    className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-500 text-[9px] font-bold leading-none hover:bg-red-500 hover:text-white disabled:opacity-40 transition-colors"
+                                    title="Scoate sportivul din categorie"
+                                  >×</button>
+                                )}
+                              </td>
+                            </tr>
                           );
                         })}
-                      </tr>
-                    ))
-                  ))
-                )}
-              </tbody>
+                      </tbody>
+                    </table>
+                  );
+                })}
+              </div>
+            );
+          });
+        })()}
+      </div>
+      )}
 
-              {/* ═══ FOOTER: participant count per category ═══ */}
-              <tfoot>
-                <tr className="bg-gray-100 border-t-2 border-gray-400">
-                  <td className="sticky left-0 z-10 bg-gray-100 border border-gray-300 px-3 py-2 font-bold text-xs text-gray-700">
-                    Număr participanți
-                  </td>
-                  {allCols.map(cat => (
-                    <td key={cat.id} className="border border-gray-300 px-1 py-2 text-center font-bold text-xs text-gray-700">
-                      {countPerCat[cat.id] || 0}
-                    </td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
+      {/* ═══ BOTTOM TAB BAR (Google Sheets style) ═══ */}
+      <div className="shrink-0 flex items-center border-t border-gray-300 bg-gray-200 px-1 h-9 gap-0.5 select-none">
+        {[
+          { key: 'centralizator', label: 'CENTRALIZATOR', icon: '📊' },
+          { key: 'tehnica',       label: 'Tehnica',       icon: '🥋' },
+          { key: 'lupta',         label: 'Lupta',         icon: '🥊' },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveSheet(tab.key)}
+            className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-t-md text-xs font-semibold transition-all border border-b-0 ${
+              activeSheet === tab.key
+                ? 'bg-white text-gray-900 border-gray-300 shadow-sm -mb-px z-10'
+                : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-50 hover:text-gray-700'
+            }`}
+          >
+            <span className="text-sm">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
+        <div className="flex-1" />
+        <span className="text-[10px] text-gray-400 pr-2">
+          {groups.length} grupe · {categories.length} categorii · {totalAthletes} sportivi
+        </span>
+      </div>
+
+      {/* ═══ GROUP CREATION MODAL ═══ */}
+      {groupModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => setGroupModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <h2 className="text-sm font-bold text-gray-900">Grupă personalizată</h2>
+              <button onClick={() => setGroupModal(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+            </div>
+            <form onSubmit={handleCustomGroup} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nume grupă *</label>
+                <input required value={groupForm.name}
+                  onChange={e => setGroupForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="ex: U16 Special, Masters 40+"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" autoFocus />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Data nașterii — de la</label>
+                  <input type="date" value={groupForm.birth_date_start}
+                    onChange={e => setGroupForm(f => ({ ...f, birth_date_start: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Data nașterii — până la</label>
+                  <input type="date" value={groupForm.birth_date_end}
+                    onChange={e => setGroupForm(f => ({ ...f, birth_date_end: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={groupForm.allow_younger}
+                  onChange={e => setGroupForm(f => ({ ...f, allow_younger: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                <span className="text-xs text-gray-700">Permite sportivi mai tineri să urce la categorie superioară</span>
+              </label>
+              {eventDateStr && (
+                <p className="text-[10px] text-gray-400">📅 Data evenimentului: {eventDateStr} (anul de referință: {eventYear})</p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setGroupModal(null)}
+                  className="rounded-lg px-4 py-2 text-xs text-gray-600 hover:bg-gray-100 transition">Anulează</button>
+                <button type="submit" disabled={busy}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition">Creează grupă</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      {/* ═══ CATEGORY CREATION MODAL ═══ */}
+      {catModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => setCatModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <h2 className="text-sm font-bold text-gray-900">Categorie personalizată</h2>
+              <button onClick={() => setCatModal(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+            </div>
+            <form onSubmit={handleAddCustomCat} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nume categorie *</label>
+                <input required value={catForm.name}
+                  onChange={e => setCatForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="ex: Quyền Duo Mixt"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" autoFocus />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tip</label>
+                  <select value={catForm.category_type}
+                    onChange={e => setCatForm(f => ({ ...f, category_type: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                    <option value="solo">Solo (Quyền)</option>
+                    <option value="team">Echipă (Song Luyện / Đa Luyện)</option>
+                    <option value="fight">Luptă (Đối Kháng)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Gen</label>
+                  <select value={catForm.gender}
+                    onChange={e => setCatForm(f => ({ ...f, gender: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                    <option value="male">Masculin</option>
+                    <option value="female">Feminin</option>
+                    <option value="mixt">Mixt</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setCatModal(null)}
+                  className="rounded-lg px-4 py-2 text-xs text-gray-600 hover:bg-gray-100 transition">Anulează</button>
+                <button type="submit" disabled={busy}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition">Creează categorie</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ CONFIRMATION MODAL (delete / unenroll) ═══ */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setConfirmModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="text-4xl mb-3">{confirmModal.icon || '⚠️'}</div>
+              <h3 className="text-base font-bold text-gray-900 mb-2">{confirmModal.title}</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">{confirmModal.message}</p>
+              {confirmModal.detail && (
+                <p className="mt-2 text-[11px] text-gray-400 bg-gray-50 rounded-lg px-3 py-2 max-h-20 overflow-y-auto">
+                  {confirmModal.detail}
+                </p>
+              )}
+            </div>
+            <div className="flex border-t border-gray-200">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 transition border-r border-gray-200"
+              >Anulează</button>
+              <button
+                onClick={confirmModal.onConfirm}
+                disabled={busy}
+                className={`flex-1 px-4 py-3 text-sm font-bold transition disabled:opacity-50 ${
+                  confirmModal.color === 'orange'
+                    ? 'text-orange-600 hover:bg-orange-50'
+                    : 'text-red-600 hover:bg-red-50'
+                }`}
+              >{confirmModal.confirmLabel || 'Confirmă'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ ENROLLMENT PICKER POPOVER ═══ */}
+      {enrollPickerCell && (() => {
+        const { clubId, catId, rect } = enrollPickerCell;
+        const isAllMode = clubId === null;
+        const cacheKey = clubId ?? '__all__';
+        const clubName = isAllMode ? 'Toți sportivii' : (clubs.find(c => c.id === clubId)?.name || '—');
+        const cat = categories.find(c => c.id === catId);
+        const catName = cat?.name || '—';
+        const allClubAthletes = clubAthleteCache[cacheKey] || [];
+        const isLoading = !clubAthleteCache[cacheKey];
+        const enrolledIds = new Set(
+          (cat?.enrolled_athletes || [])
+            .filter(ea => {
+              if (isAllMode) return true;
+              const aClub = ea.athlete_details?.club;
+              return aClub?.id === clubId || aClub === clubId;
+            })
+            .map(ea => ea.athlete_details?.id || ea.athlete)
+        );
+
+        // Find the group for this category and its date range
+        const group = groups.find(g => g.id === cat?.group);
+        const dateStart = group?.birth_date_start || (group?.birth_year_start ? `${group.birth_year_start}-01-01` : null);
+        const dateEnd = group?.birth_date_end || (group?.birth_year_end ? `${group.birth_year_end}-12-31` : null);
+        const hasDateRange = dateStart && dateEnd;
+        const allowYounger = group?.allow_younger || false;
+
+        // Filter athletes by date range if group has one
+        // dateStart = earliest birth date (oldest athletes), dateEnd = latest birth date (youngest athletes)
+        // When allow_younger: skip the upper bound (dateEnd) so younger athletes can enter a higher age group
+        const athleteList = hasDateRange
+          ? allClubAthletes.filter(ath => {
+              if (!ath.date_of_birth) return false;
+              // Must be born on or after dateStart (not too old)
+              if (ath.date_of_birth < dateStart) return false;
+              // If allow_younger is OFF, must be born on or before dateEnd (not too young)
+              if (!allowYounger && ath.date_of_birth > dateEnd) return false;
+              return true;
+            })
+          : allClubAthletes;
+
+        const outOfRangeCount = hasDateRange ? allClubAthletes.length - athleteList.length : 0;
+
+        // Position: below the cell, clamped to viewport
+        const top = Math.min(rect.bottom + 4, window.innerHeight - 360);
+        const left = Math.min(rect.left, window.innerWidth - 280);
+
+        return (
+          <div ref={enrollPickerRef}
+            onClick={(e) => e.stopPropagation()}
+            className="fixed z-[100] w-72 rounded-lg border border-gray-200 bg-white shadow-2xl"
+            style={{ top, left }}
+          >
+            <div className="p-2 border-b border-gray-100">
+              <p className="text-[10px] font-bold text-gray-700 uppercase tracking-wide truncate">{isAllMode ? '👥' : '🏛'} {clubName}</p>
+              <p className="text-[9px] text-gray-400 truncate">{catName}</p>
+              {hasDateRange && (
+                <p className="text-[8px] text-blue-500 mt-0.5">
+                  📅 Născuți {dateStart} – {allowYounger ? '∞ (tineri acceptați)' : dateEnd}
+                  {eventDateStr && <span className="text-gray-400 ml-1">· Eveniment: {eventDateStr}</span>}
+                </p>
+              )}
+            </div>
+            <div className="max-h-56 overflow-y-auto">
+              {isLoading ? (
+                <div className="p-4 text-center text-[10px] text-gray-400">Se încarcă…</div>
+              ) : athleteList.length === 0 ? (
+                <div className="p-4 text-center text-[10px] text-gray-400 italic">
+                  {hasDateRange
+                    ? `Niciun sportiv din acest club nu se încadrează în intervalul de vârstă (${outOfRangeCount} exclu${outOfRangeCount === 1 ? 's' : 'și'}).`
+                    : 'Niciun sportiv în acest club.'}
+                </div>
+              ) : (
+                athleteList.map(ath => {
+                  const isEnrolled = enrolledIds.has(ath.id);
+                  const dob = ath.date_of_birth;
+                  return (
+                    <button key={ath.id}
+                      onClick={() => handleToggleEnroll(ath.id, catId)}
+                      disabled={busy}
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors disabled:opacity-50 ${
+                        isEnrolled
+                          ? 'bg-green-50 hover:bg-green-100 text-gray-800'
+                          : 'hover:bg-gray-50 text-gray-600'
+                      }`}
+                    >
+                      <span className={`inline-flex items-center justify-center w-4 h-4 rounded border text-[9px] font-bold ${
+                        isEnrolled
+                          ? 'bg-green-500 border-green-500 text-white'
+                          : 'border-gray-300 text-transparent'
+                      }`}>✓</span>
+                      <span className="truncate flex-1">{ath.last_name} {ath.first_name}</span>
+                      {dob && <span className="text-[8px] text-gray-400 shrink-0">{dob}</span>}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            {outOfRangeCount > 0 && (
+              <div className="px-2 py-1 border-t border-gray-100 text-[8px] text-gray-400">
+                {outOfRangeCount} sportiv{outOfRangeCount === 1 ? '' : 'i'} din club nu se încadrează în vârstă
+              </div>
+            )}
+            <div className="p-1.5 border-t border-gray-100 text-center">
+              <button onClick={() => setEnrollPickerCell(null)}
+                className="text-[9px] text-gray-400 hover:text-gray-600 transition">Închide</button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
