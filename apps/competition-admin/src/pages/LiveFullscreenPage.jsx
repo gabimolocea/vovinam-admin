@@ -499,6 +499,7 @@ function FullscreenMatchPanel({
   const [showRoundResetConfirm, setShowRoundResetConfirm] = useState(null); // round id
   const [showStopRoundConfirm, setShowStopRoundConfirm] = useState(null); // round id for stop confirm
   const [showWinnerConfirm, setShowWinnerConfirm] = useState(false);
+  const [locked, setLocked] = useState(true); // locked when match is finalized
   const [breakTimers, setBreakTimers] = useState({});
   const [refModalData, setRefModalData] = useState(null); // { ref, matchId }
   const prevRoundStatusRef = useRef({});
@@ -551,6 +552,11 @@ function FullscreenMatchPanel({
   const totalRounds = matchRounds.length;
   const isMatchFinalized = match.status === 'completed';
 
+  // Determine winner corner from referee decisions
+  const redVotes = decisionsSubmitted.filter(s => s.winner_choice === 'red').length;
+  const blueVotes = decisionsSubmitted.filter(s => s.winner_choice === 'blue').length;
+  const matchWinner = disqualifiedRed ? 'blue' : disqualifiedBlue ? 'red' : redVotes > blueVotes ? 'red' : blueVotes > redVotes ? 'blue' : null;
+
   // ── Infraction handler: auto-converts 3 infractions → 1 warning ──
   const handleInfraction = async (corner) => {
     await addInfraction(match.id, corner, activeRound?.id);
@@ -593,7 +599,31 @@ function FullscreenMatchPanel({
   };
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-4 relative">
+      {/* Finalized alert + lock overlay */}
+      {isMatchFinalized && (
+        <div className="w-full bg-green-100 border border-green-400 px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-green-700 text-lg">✓</span>
+            <span className="text-sm font-bold text-green-800">Meci finalizat — rezultatele au fost salvate</span>
+          </div>
+          {locked ? (
+            <button onClick={() => setLocked(false)} className="text-xs bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 font-bold transition">
+              🔓 Deblochează pentru modificări
+            </button>
+          ) : (
+            <button onClick={() => setLocked(true)} className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 font-bold transition">
+              🔒 Blochează
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Lock overlay — blocks all interactions when finalized & locked */}
+      {isMatchFinalized && locked && (
+        <div className="absolute inset-0 bg-white/60 z-40 cursor-not-allowed" style={{ top: '52px' }} />
+      )}
+
       {/* Reset round confirm dialog */}
       {showStopRoundConfirm && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setShowStopRoundConfirm(null)}>
@@ -723,7 +753,8 @@ function FullscreenMatchPanel({
 
       {/* ── ATHLETE NAMES HEADER (only names, centered) ── */}
       <div className="flex items-center justify-center gap-6 py-3">
-        <div className="text-center">
+        <div className={`text-center px-4 py-2 ${isMatchFinalized && matchWinner === 'red' ? 'border-4 border-green-500 bg-green-50 shadow-lg' : ''}`}>
+          {isMatchFinalized && matchWinner === 'red' && <span className="block text-xs font-bold text-green-600 mb-1">CÂȘTIGĂTOR</span>}
           <span className="text-3xl font-black text-red-600">{match.red_corner_full_name || 'TBD'}</span>
           {match.red_corner_club_name && <p className="text-sm text-gray-500 font-medium">({match.red_corner_club_name})</p>}
         </div>
@@ -734,7 +765,8 @@ function FullscreenMatchPanel({
             ⇄ Swap
           </button>
         </div>
-        <div className="text-center">
+        <div className={`text-center px-4 py-2 ${isMatchFinalized && matchWinner === 'blue' ? 'border-4 border-green-500 bg-green-50 shadow-lg' : ''}`}>
+          {isMatchFinalized && matchWinner === 'blue' && <span className="block text-xs font-bold text-green-600 mb-1">CÂȘTIGĂTOR</span>}
           <span className="text-3xl font-black text-blue-600">{match.blue_corner_full_name || 'TBD'}</span>
           {match.blue_corner_club_name && <p className="text-sm text-gray-500 font-medium">({match.blue_corner_club_name})</p>}
         </div>
@@ -1118,13 +1150,7 @@ function FullscreenMatchPanel({
               </button>
             </div>
           )}
-          {isMatchFinalized && (
-            <div className="mt-3 text-center">
-              <span className="inline-flex items-center gap-2 text-sm font-bold text-green-700 bg-green-100 px-5 py-2.5 border border-green-300">
-                ✓ Meci finalizat — rezultatele au fost salvate
-              </span>
-            </div>
-          )}
+
         </div>
       )}
 
