@@ -22,6 +22,7 @@ router.register('matches', MatchViewSet, basename='match')
 router.register('annual-visas', AnnualVisaViewSet, basename='annual-visa')
 router.register('categories', CategoryViewSet, basename='category')
 router.register('category-athletes', CategoryAthleteViewSet, basename='category-athlete')
+router.register('fight-athlete-weights', FightAthleteWeightViewSet, basename='fight-athlete-weight')
 router.register('category-teams', CategoryTeamViewSet, basename='category-team')
 router.register('grade-histories', GradeHistoryViewSet, basename='grade-history')
 router.register('medical-visas', MedicalVisaViewSet, basename='medical-visa')
@@ -43,9 +44,16 @@ router.register('coaches', CoachesViewSet, basename='coach')
 router.register('offline', OfflineSyncViewSet, basename='offline')
 # PWA competition management endpoints
 router.register('competition-fields', CompetitionFieldViewSet, basename='competition-field')
+router.register('field-breaks', FieldBreakViewSet, basename='field-break')
 router.register('category-field-assignments', CategoryFieldAssignmentViewSet, basename='category-field-assignment')
+router.register('match-field-assignments', MatchFieldAssignmentViewSet, basename='match-field-assignment')
+router.register('category-referee-assignments', CategoryRefereeAssignmentViewSet, basename='category-referee-assignment')
+router.register('match-referee-assignments', MatchRefereeAssignmentViewSet, basename='match-referee-assignment')
+router.register('competition-referees', CompetitionRefereeViewSet, basename='competition-referee')
 router.register('monitor-sessions', DisplayMonitorSessionViewSet, basename='monitor-session')
 router.register('match-rounds', MatchRoundViewSet, basename='match-round')
+router.register('match-referee-scores', MatchRefereeScoreViewSet, basename='match-referee-score')
+router.register('match-events', MatchEventViewSet, basename='match-event')
 router.register('qr-codes', QRCodeAssignmentViewSet, basename='qr-code')
 # team-scores endpoint deprecated - use category-athlete-score with type='teams' filter
 
@@ -108,6 +116,10 @@ urlpatterns = autocomplete_urlpatterns + [
     
     # Reference data endpoints (non-conflicting with router)
     path('sports/', views.sports_list, name='sports-list'),
+    
+    # Bracket generation endpoints
+    path('categories/<int:category_id>/generate-brackets/', views.generate_brackets, name='generate-brackets'),
+    path('matches/<int:match_id>/advance-winner/', views.advance_match_winner, name='advance-match-winner'),
     
     # Router URLs (should come last to avoid conflicts)
     path('', include(router.urls)),  # This will handle the actual endpoints including athletes CRUD

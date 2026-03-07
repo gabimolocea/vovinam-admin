@@ -1013,6 +1013,14 @@ class Category(models.Model):
         blank=True,
         related_name='categories'
     )
+    birth_year_start = models.IntegerField(
+        null=True, blank=True,
+        help_text="Optional sub-range start (oldest birth year). Used for fight categories within a group."
+    )
+    birth_year_end = models.IntegerField(
+        null=True, blank=True,
+        help_text="Optional sub-range end (newest birth year). Used for fight categories within a group."
+    )
     display_order = models.IntegerField(default=0, help_text="Order within the group for display purposes")
 
     class Meta:
@@ -1209,16 +1217,30 @@ class FightAthleteWeight(models.Model):
 class Match(models.Model):
     MATCH_TYPE_CHOICES = [
         ('qualifications', 'Qualifications'),
+        ('quarter-finals', 'Quarter-Finals'),
         ('semi-finals', 'Semi-Finals'),
         ('finals', 'Finals'),
+        ('bronze', 'Bronze Match'),
+    ]
+
+    MATCH_STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
     ]
     
     match_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this match (e.g., M1, M2, F-C1-Q1)')
+    status = models.CharField(max_length=20, choices=MATCH_STATUS_CHOICES, default='scheduled', help_text='Current status of the match')
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='matches')
     field = models.ForeignKey('CompetitionField', on_delete=models.SET_NULL, null=True, blank=True, related_name='matches')
     match_type = models.CharField(max_length=20, choices=MATCH_TYPE_CHOICES, default='qualifications')
-    red_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='red_corner_matches')
-    blue_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='blue_corner_matches')
+    round_number = models.PositiveIntegerField(default=1, help_text='Round number within the bracket (1=first round, 2=second, etc.)')
+    bracket_position = models.PositiveIntegerField(default=0, help_text='Position within the round (0-based, for visual layout)')
+    next_match = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='previous_matches', help_text='Winner advances to this match')
+    loser_next_match = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='previous_loser_matches', help_text='Loser advances to this match (consolation/bronze)')
+    red_corner = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='red_corner_matches')
+    blue_corner = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='blue_corner_matches')
     referees = models.ManyToManyField('Athlete', related_name='refereed_matches', limit_choices_to={'is_referee': True})
     central_referee = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='central_for_matches', limit_choices_to={'is_referee': True})
     # Winner is now computed from scoring system - no longer stored
@@ -1510,18 +1532,15 @@ class MatchRefereeAssignment(models.Model):
     def clean(self):
         """Validate referee assignments"""
         super().clean()
-        
-        # Check for duplicate referees
-        referees = [r for r in [self.referee_1, self.referee_2, self.referee_3, self.referee_4, self.referee_5] if r]
-        if len(referees) != len(set(referees)):
-            raise ValidationError("Cannot assign the same referee to multiple positions")
+        # Note: duplicate referees are allowed (same referee can be assigned to multiple positions)
 
 
 class MatchRefereeScore(models.Model):
     """
     Stores individual referee scores for fighters in matches.
-    Each referee scores both red and blue corner.
-    The winner is determined by which corner has more referee votes after excluding high/low scores.
+    Each referee can score per-round (round is set) or submit a final
+    winner decision (round is null). The winner is determined by which
+    corner has more referee votes.
     """
     match = models.ForeignKey(
         'Match',
@@ -1536,6 +1555,15 @@ class MatchRefereeScore(models.Model):
         limit_choices_to={'is_referee': True},
         related_name='given_match_scores',
         help_text='The referee providing this score'
+    )
+    
+    round = models.ForeignKey(
+        'MatchRound',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='referee_scores',
+        help_text='The round being scored (null = final/overall decision)'
     )
     
     red_corner_score = models.DecimalField(
@@ -1557,13 +1585,14 @@ class MatchRefereeScore(models.Model):
     notes = models.TextField(blank=True, null=True, help_text='Optional notes from referee')
     
     class Meta:
-        unique_together = ('match', 'referee')  # Each referee scores each match once
+        unique_together = ('match', 'referee', 'round')  # Each referee scores each round once
         indexes = [
             models.Index(fields=['match', 'referee']),
         ]
     
     def __str__(self):
-        return f"{self.referee} - {self.match}: Red {self.red_corner_score} vs Blue {self.blue_corner_score}"
+        rnd = f" R{self.round.round_number}" if self.round else " Final"
+        return f"{self.referee} - {self.match}{rnd}: Red {self.red_corner_score} vs Blue {self.blue_corner_score}"
     
     @property
     def winner_choice(self):
@@ -1666,10 +1695,7 @@ class CategoryRefereeAssignment(models.Model):
                     f"Referee assignments are only for solo and team categories, not {category_type}"
                 )
         
-        # Check for duplicate referees
-        referees = [r for r in [self.referee_1, self.referee_2, self.referee_3, self.referee_4, self.referee_5] if r]
-        if len(referees) != len(set(referees)):
-            raise ValidationError("Cannot assign the same referee to multiple positions")
+        # Note: duplicate referees are allowed (same referee can be assigned to multiple positions)
 
 
 class CategoryRefereeScore(models.Model):
@@ -2230,6 +2256,17 @@ class Group(models.Model):
         default=False,
         help_text="Allow athletes younger than the minimum age (who want to compete in a higher age category)"
     )
+    GRADE_TYPE_CHOICES = [
+        ('all', 'All grades'),
+        ('inferior', 'Inferior grades only'),
+        ('superior', 'Superior grades only'),
+    ]
+    allowed_grade_type = models.CharField(
+        max_length=10,
+        choices=GRADE_TYPE_CHOICES,
+        default='all',
+        help_text="Restrict participation by grade type. 'inferior' = only inferior grades, 'superior' = only superior grades."
+    )
     display_order = models.IntegerField(default=0, help_text="Order within the event for display purposes")
 
     class Meta:
@@ -2717,6 +2754,12 @@ class CompetitionField(models.Model):
         default=True,
         help_text='Whether this field is currently being used'
     )
+
+    start_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text='Planned start time for this field (e.g., 09:00)'
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -2729,6 +2772,42 @@ class CompetitionField(models.Model):
     
     def __str__(self):
         return f"{self.name} (Event: {self.event.title})"
+
+
+class FieldBreak(models.Model):
+    """
+    A break/pause in a competition field schedule (e.g., lunch break).
+    Appears in the schedule timeline between categories/matches.
+    """
+    field = models.ForeignKey(
+        'CompetitionField',
+        on_delete=models.CASCADE,
+        related_name='breaks',
+        help_text='The field this break belongs to'
+    )
+    label = models.CharField(
+        max_length=100,
+        default='Pauză',
+        help_text='Label for the break (e.g., "Pauză de masă")'
+    )
+    duration = models.IntegerField(
+        default=60,
+        help_text='Duration in minutes'
+    )
+    order = models.IntegerField(
+        default=0,
+        help_text='Order position in the field schedule (mixed with category/match assignments)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = 'Field Break'
+        verbose_name_plural = 'Field Breaks'
+
+    def __str__(self):
+        return f"{self.label} ({self.duration}min) - {self.field.name}"
 
 
 class CategoryFieldAssignment(models.Model):
@@ -2784,6 +2863,11 @@ class CategoryFieldAssignment(models.Model):
     order = models.IntegerField(
         default=0,
         help_text='Order in which categories are run on this field'
+    )
+    
+    estimated_duration = models.IntegerField(
+        default=15,
+        help_text='Estimated duration in minutes'
     )
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2857,6 +2941,11 @@ class MatchFieldAssignment(models.Model):
         help_text='Order in which matches are run on this field'
     )
 
+    estimated_duration = models.IntegerField(
+        default=10,
+        help_text='Estimated duration in minutes'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2924,6 +3013,8 @@ class DisplayMonitorSession(models.Model):
         ('idle', 'Idle'),
         ('displaying', 'Displaying'),
         ('scores_revealed', 'Scores Revealed'),
+        ('decisions_revealed', 'Decisions Revealed'),
+        ('winner_revealed', 'Winner Revealed'),
     ]
     
     status = models.CharField(
@@ -2931,6 +3022,20 @@ class DisplayMonitorSession(models.Model):
         choices=STATUS_CHOICES,
         default='idle',
         help_text='Current display status'
+    )
+
+    # Break timer sync fields (admin ↔ public display)
+    break_end_time = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Absolute UTC time when break should end'
+    )
+    break_paused = models.BooleanField(
+        default=False,
+        help_text='Whether the break timer is currently paused'
+    )
+    break_paused_remaining = models.IntegerField(
+        default=0,
+        help_text='Seconds remaining when break was paused'
     )
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2992,6 +3097,22 @@ class MatchRound(models.Model):
         help_text='When the round ended'
     )
     
+    paused_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the round was paused (null = not paused)'
+    )
+    
+    accumulated_pause_seconds = models.IntegerField(
+        default=0,
+        help_text='Total seconds spent paused in this round'
+    )
+    
+    extra_seconds = models.IntegerField(
+        default=0,
+        help_text='Extra seconds added/removed by admin during this round'
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
@@ -3002,6 +3123,104 @@ class MatchRound(models.Model):
     
     def __str__(self):
         return f"{self.match.match_number or self.match.id} - Round {self.round_number}"
+    
+    @property
+    def is_paused(self):
+        return self.paused_at is not None
+    
+    @property
+    def effective_duration(self):
+        """Total round duration including time adjustments"""
+        return self.duration_seconds + self.extra_seconds
+
+
+class MatchEvent(models.Model):
+    """
+    Tracks real-time events during a fighting match:
+    warnings, penalties (-2 points from central referee), pauses, time adjustments.
+    """
+    EVENT_TYPE_CHOICES = [
+        ('warning_red', 'Warning Red Corner'),
+        ('warning_blue', 'Warning Blue Corner'),
+        ('penalty_red', 'Penalty Red Corner'),
+        ('penalty_blue', 'Penalty Blue Corner'),
+        ('bonus_red', 'Bonus Red Corner'),
+        ('bonus_blue', 'Bonus Blue Corner'),
+        ('infraction_red', 'Infraction Red Corner'),
+        ('infraction_blue', 'Infraction Blue Corner'),
+        ('disqualify_red', 'Disqualify Red Corner'),
+        ('disqualify_blue', 'Disqualify Blue Corner'),
+        ('pause', 'Pause'),
+        ('resume', 'Resume'),
+        ('time_add', 'Time Added'),
+        ('time_remove', 'Time Removed'),
+    ]
+    
+    CORNER_CHOICES = [
+        ('red', 'Red Corner'),
+        ('blue', 'Blue Corner'),
+        ('none', 'No Corner'),
+    ]
+    
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='events',
+        help_text='The match this event belongs to'
+    )
+    
+    round = models.ForeignKey(
+        'MatchRound',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='events',
+        help_text='The round this event occurred in'
+    )
+    
+    event_type = models.CharField(
+        max_length=20,
+        choices=EVENT_TYPE_CHOICES,
+        help_text='Type of event'
+    )
+    
+    corner = models.CharField(
+        max_length=10,
+        choices=CORNER_CHOICES,
+        default='none',
+        help_text='Which corner this event applies to'
+    )
+    
+    value = models.IntegerField(
+        default=0,
+        help_text='Numeric value (e.g., seconds added/removed, penalty points)'
+    )
+    
+    notes = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='Optional notes about the event'
+    )
+    
+    created_by = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_match_events',
+        help_text='Who created this event (usually central referee or admin)'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = 'Match Event'
+        verbose_name_plural = 'Match Events'
+    
+    def __str__(self):
+        return f"{self.match} - {self.get_event_type_display()} ({self.created_at})"
 
 
 class QRCodeAssignment(models.Model):
@@ -3074,6 +3293,42 @@ class QRCodeAssignment(models.Model):
             raise ValidationError("QR code must be assigned to either a category or a match")
         if self.category and self.match:
             raise ValidationError("QR code cannot be assigned to both a category and a match")
+
+
+class CompetitionReferee(models.Model):
+    """
+    Tracks which referees are participating in a competition.
+    Acts as the roster from which referees can be assigned to categories/matches.
+    """
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.CASCADE,
+        related_name='competition_referees',
+        help_text='The event this referee is participating in'
+    )
+    athlete = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        related_name='competition_referee_entries',
+        limit_choices_to={'is_referee': True},
+        help_text='The referee athlete'
+    )
+    notes = models.TextField(
+        blank=True,
+        default='',
+        help_text='Additional notes'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('event', 'athlete')
+        ordering = ['athlete__last_name']
+        verbose_name = 'Competition Referee'
+        verbose_name_plural = 'Competition Referees'
+
+    def __str__(self):
+        return f"{self.athlete.last_name} {self.athlete.first_name} - {self.event.title}"
 
 
 # DISABLED FEATURES (for future use):

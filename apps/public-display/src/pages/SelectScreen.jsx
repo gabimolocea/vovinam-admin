@@ -10,7 +10,7 @@ export default function SelectScreen() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/competitions/', { params: { status: 'active' } }).catch(() => ({ data: [] })),
+      api.get('/competitions/').catch(() => ({ data: [] })),
       api.get('/competition-fields/').catch(() => ({ data: [] })),
     ]).then(([compRes, fieldRes]) => {
       setCompetitions(Array.isArray(compRes.data) ? compRes.data : compRes.data.results ?? []);
@@ -19,55 +19,36 @@ export default function SelectScreen() {
     });
   }, []);
 
-  const goFullscreen = () => {
-    document.documentElement.requestFullscreen?.();
-    document.body.classList.remove('interactive');
-  };
-
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-900 px-4 text-white">
-      <div className="mb-8 text-center">
-        <h1 className="text-4xl font-black tracking-tight">🥋 FRVV Live Scores</h1>
-        <p className="mt-2 text-gray-400">Federația Română de Vovinam Viet Vo Dao</p>
-      </div>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-white px-6">
+      <img src="/frvv-logo.png" alt="FRVV" className="w-24 h-24 object-contain mb-4" />
+      <h1 className="text-2xl font-black text-gray-900 tracking-tight">FRVV Public Display</h1>
+      <p className="text-sm text-gray-500 mt-1 mb-8">Federația Română de Vovinam Viet-Vo-Dao</p>
 
       {loading ? (
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+      ) : fields.length === 0 ? (
+        <p className="text-gray-400 text-sm">Nu există tatami-uri configurate.</p>
       ) : (
-        <div className="w-full max-w-lg space-y-6">
-          {/* Global view */}
-          <button
-            onClick={() => { goFullscreen(); navigate('/live'); }}
-            className="w-full rounded-xl bg-blue-700 px-6 py-4 text-left text-lg font-semibold transition-colors hover:bg-blue-600"
-          >
-            📊 All Live Scores
-            <span className="mt-1 block text-sm font-normal text-blue-200">
-              Auto-refreshing overview of all fields
-            </span>
-          </button>
-
-          {/* Per-field views */}
-          {fields.length > 0 && (
-            <div>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">
-                Or select a specific field
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {fields.map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => { goFullscreen(); navigate(`/field/${f.id}`); }}
-                    className="rounded-xl bg-gray-800 px-4 py-3 text-left transition-colors hover:bg-gray-700"
-                  >
-                    <span className="font-semibold">{f.name}</span>
-                    <span className="mt-0.5 block text-xs text-gray-400">
-                      Field #{f.field_number}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="w-full max-w-lg">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+            Selectează tatami-ul pentru afișare
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {fields.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => {
+                  document.documentElement.requestFullscreen?.();
+                  navigate(`/display/${f.id}`);
+                }}
+                className="rounded-xl border-2 border-gray-200 bg-white px-5 py-4 text-left hover:border-blue-400 hover:shadow-lg transition-all"
+              >
+                <span className="text-lg font-bold text-gray-900">{f.name}</span>
+                <span className="block text-xs text-gray-400 mt-0.5">Tatami #{f.field_number}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

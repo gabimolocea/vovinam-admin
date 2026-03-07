@@ -2801,16 +2801,6 @@ class FightAthleteWeightInline(admin.TabularInline):
     verbose_name = _('Enrolled Athlete')
     verbose_name_plural = _('Enrolled Athletes')
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == 'athlete':
-            formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
-            formfield.widget = autocomplete.ModelSelect2(
-                url='athlete-autocomplete',
-                forward=['category']
-            )
-            return formfield
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
 
 @admin.register(FightCategory)
 class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):

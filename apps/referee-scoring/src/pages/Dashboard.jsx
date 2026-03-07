@@ -12,14 +12,22 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      refereeAPI.assignedCategories().catch(() => ({ data: [] })),
-      refereeAPI.assignedMatches().catch(() => ({ data: [] })),
-    ]).then(([catRes, matchRes]) => {
-      setCategories(Array.isArray(catRes.data) ? catRes.data : catRes.data.results ?? []);
-      setMatches(Array.isArray(matchRes.data) ? matchRes.data : matchRes.data.results ?? []);
-      setLoading(false);
-    });
+    const fetchAssignments = () => {
+      Promise.all([
+        refereeAPI.assignedCategories().catch(() => ({ data: [] })),
+        refereeAPI.assignedMatches().catch(() => ({ data: [] })),
+      ]).then(([catRes, matchRes]) => {
+        const allCats = Array.isArray(catRes.data) ? catRes.data : catRes.data.results ?? [];
+        const allMatches = Array.isArray(matchRes.data) ? matchRes.data : matchRes.data.results ?? [];
+        // Only show categories/matches that are currently in progress
+        setCategories(allCats.filter(c => c.field_status === 'in_progress'));
+        setMatches(allMatches.filter(m => m.field_status === 'in_progress'));
+        setLoading(false);
+      });
+    };
+    fetchAssignments();
+    const interval = setInterval(fetchAssignments, 4000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleLogout = async () => {
@@ -88,10 +96,12 @@ export default function Dashboard() {
                 >
                   <div onClick={() => navigate(`/match/${match.id}/score`)}>
                     <h3 className="font-semibold text-gray-900">
-                      {match.athlete1_name || 'Athlete 1'} vs {match.athlete2_name || 'Athlete 2'}
+                      <span className="text-red-600">{match.red_corner_full_name || 'TBD'}</span>
+                      {' vs '}
+                      <span className="text-blue-600">{match.blue_corner_full_name || 'TBD'}</span>
                     </h3>
-                    <p className="text-xs text-gray-500">{match.category_name || `Match #${match.id}`}</p>
-                    <p className="mt-2 text-sm font-medium text-blue-600">Tap to score →</p>
+                    <p className="text-xs text-gray-500">{match.category_name || `Meci #${match.id}`}</p>
+                    <p className="mt-2 text-sm font-medium text-blue-600">Apasă pentru a puncta →</p>
                   </div>
                 </Card>
               ))}

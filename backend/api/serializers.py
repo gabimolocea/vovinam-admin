@@ -83,7 +83,10 @@ class AthleteDetailSerializer(serializers.ModelSerializer):
         model = Athlete
         fields = [
             'id', 'user', 'first_name', 'last_name', 'full_name',
-            'date_of_birth', 'club', 'city', 'current_grade',
+            'date_of_birth', 'address', 'mobile_number',
+            'emergency_contact_name', 'emergency_contact_phone',
+            'previous_experience',
+            'club', 'city', 'current_grade',
             'federation_role', 'title', 'is_coach', 'is_referee',
             'status', 'registered_date', 'expiration_date',
             'approved_date', 'profile_image', 'medical_certificate',
@@ -307,6 +310,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'id',
             'match_number',
             'name',
+            'status',
             'category',
             'category_name',
             'match_type',
@@ -327,6 +331,10 @@ class MatchSerializer(serializers.ModelSerializer):
             'central_referee_name',
             'winner',
             'winner_name',  # Dynamically determine the winner name
+            'round_number',
+            'bracket_position',
+            'next_match',
+            'loser_next_match',
         ]
         read_only_fields = ['name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name', 'referee_scores', 'central_penalties_red', 'central_penalties_blue', 'winner', 'winner_name']
 
@@ -334,7 +342,7 @@ class MatchSerializer(serializers.ModelSerializer):
         """Get the full name of the red corner athlete."""
         if obj.red_corner:
             return f"{obj.red_corner.first_name} {obj.red_corner.last_name}"
-        return "Unknown Athlete"
+        return None
 
     def get_field_id(self, obj):
         assignment = getattr(obj, 'field_assignment', None)
@@ -358,7 +366,7 @@ class MatchSerializer(serializers.ModelSerializer):
         """Get the full name of the blue corner athlete."""
         if obj.blue_corner:
             return f"{obj.blue_corner.first_name} {obj.blue_corner.last_name}"
-        return "Unknown Athlete"
+        return None
 
     def get_winner(self, obj):
         """Get winner ID from scoring system property"""
@@ -563,8 +571,29 @@ class CategoryAthleteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CategoryAthlete
-        fields = ('id', 'athlete', 'category', 'weight', 'athlete_details')
+        fields = ('id', 'athlete', 'category', 'weight', 'disqualified', 'athlete_details')
         read_only_fields = ('id', 'athlete_details')
+
+
+class FightAthleteWeightSerializer(serializers.ModelSerializer):
+    athlete_details = AthleteSerializer(source='athlete', read_only=True)
+    weight_loss_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FightAthleteWeight
+        fields = (
+            'id', 'category', 'athlete',
+            'pre_weight_kg', 'current_weight_kg',
+            'weight_loss_percentage',
+            'is_disqualified', 'disqualification_reason',
+            'place', 'recorded_at',
+            'athlete_details', 'weight_loss_display',
+        )
+        read_only_fields = ('id', 'weight_loss_percentage', 'recorded_at', 'athlete_details', 'weight_loss_display')
+
+    def get_weight_loss_display(self, obj):
+        return obj.get_weight_loss_display()
+
 
 class CategoryTeamSerializer(serializers.ModelSerializer):
     team = serializers.PrimaryKeyRelatedField(queryset=Team.objects.all())
@@ -611,7 +640,7 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = [
             'id', 'category_number', 'name', 'competition_name', 'event', 'event_name', 'group', 'group_name', 'type', 'gender',
-            'display_order',
+            'display_order', 'birth_year_start', 'birth_year_end',
             'enrolled_athletes', 'enrolled_athletes_count', 'enrolled_teams', 'enrolled_teams_count', 'teams', 'first_place', 'second_place', 'third_place',
             'first_place_name', 'second_place_name', 'third_place_name',
             'first_place_team', 'second_place_team', 'third_place_team',
@@ -881,7 +910,7 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
 class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
-        fields = ['id', 'name', 'event', 'birth_year_start', 'birth_year_end', 'birth_date_start', 'birth_date_end', 'allow_younger', 'display_order']
+        fields = ['id', 'name', 'event', 'birth_year_start', 'birth_year_end', 'birth_date_start', 'birth_date_end', 'allow_younger', 'allowed_grade_type', 'display_order']
         read_only_fields = ['id']
 
 
@@ -1114,7 +1143,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 'status': athlete.status,
                 'club': athlete.club_id if hasattr(athlete, 'club_id') else (athlete.club.id if athlete.club else None),
                 'is_coach': athlete.is_coach if hasattr(athlete, 'is_coach') else False,
+                'is_referee': athlete.is_referee if hasattr(athlete, 'is_referee') else False,
             }
+            representation['athlete_id'] = athlete.id
         
         return representation
 
@@ -1153,6 +1184,26 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
                 'athlete_score': 'Referee scoring is only applicable to solo and team categories.'
             })
         return data
+
+
+class MatchRefereeScoreSerializer(serializers.ModelSerializer):
+    """Serializer for individual referee scores in fighting matches"""
+    referee_name = serializers.SerializerMethodField(read_only=True)
+    winner_choice = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = MatchRefereeScore
+        fields = [
+            'id', 'match', 'referee', 'referee_name', 'round',
+            'red_corner_score', 'blue_corner_score', 'winner_choice',
+            'submitted_date', 'notes'
+        ]
+        read_only_fields = ['submitted_date']
+    
+    def get_referee_name(self, obj):
+        if obj.referee:
+            return f"{obj.referee.first_name} {obj.referee.last_name}"
+        return None
 
 
 class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
@@ -1414,7 +1465,20 @@ class CompetitionFieldSerializer(serializers.ModelSerializer):
         model = CompetitionField
         fields = [
             'id', 'event', 'event_name', 'name', 'field_number', 'is_active',
-            'category_count', 'created_at', 'updated_at'
+            'start_time', 'category_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class FieldBreakSerializer(serializers.ModelSerializer):
+    """Serializer for field breaks/pauses"""
+    field_name = serializers.CharField(source='field.name', read_only=True)
+
+    class Meta:
+        model = FieldBreak
+        fields = [
+            'id', 'field', 'field_name', 'label', 'duration', 'order',
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -1431,7 +1495,7 @@ class CategoryFieldAssignmentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'category', 'category_name', 'category_type', 'field', 'field_name',
             'status', 'scheduled_start_time', 'actual_start_time', 'actual_end_time',
-            'order', 'created_at', 'updated_at'
+            'order', 'estimated_duration', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
     
@@ -1453,7 +1517,8 @@ class DisplayMonitorSessionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'field', 'field_name', 'current_category', 'current_category_name',
             'current_match', 'current_match_number', 'current_athlete', 'current_athlete_name',
-            'status', 'created_at', 'updated_at'
+            'status', 'break_end_time', 'break_paused', 'break_paused_remaining',
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
     
@@ -1468,14 +1533,39 @@ class MatchRoundSerializer(serializers.ModelSerializer):
     """Serializer for match rounds in fighting competitions"""
     
     match_number = serializers.CharField(source='match.match_number', read_only=True)
+    is_paused = serializers.BooleanField(read_only=True)
+    effective_duration = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = MatchRound
         fields = [
             'id', 'match', 'match_number', 'round_number', 'duration_seconds',
-            'status', 'started_at', 'ended_at', 'created_at'
+            'status', 'started_at', 'ended_at', 'paused_at',
+            'accumulated_pause_seconds', 'extra_seconds',
+            'is_paused', 'effective_duration', 'created_at'
         ]
         read_only_fields = ['created_at']
+
+
+class MatchEventSerializer(serializers.ModelSerializer):
+    """Serializer for match events (warnings, penalties, pauses)"""
+    
+    event_type_display = serializers.CharField(source='get_event_type_display', read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = MatchEvent
+        fields = [
+            'id', 'match', 'round', 'event_type', 'event_type_display',
+            'corner', 'value', 'notes', 'created_by', 'created_by_name',
+            'created_at'
+        ]
+        read_only_fields = ['created_at']
+    
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}"
+        return None
 
 
 class QRCodeAssignmentSerializer(serializers.ModelSerializer):
@@ -1538,3 +1628,130 @@ class CategoryRefereeScorerWithDeductionsSerializer(serializers.ModelSerializer)
             total_deduction = sum(deductions.values()) if deductions else 0
             validated_data['score'] = 100 - total_deduction
         return super().update(instance, validated_data)
+
+
+# ── Match Field Assignment ─────────────────────────────
+
+class MatchFieldAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for assigning matches to fields"""
+
+    match_name = serializers.CharField(source='match.name', read_only=True)
+    match_number = serializers.CharField(source='match.match_number', read_only=True)
+    match_type = serializers.CharField(source='match.match_type', read_only=True)
+    category_id = serializers.IntegerField(source='match.category_id', read_only=True)
+    category_name = serializers.CharField(source='match.category.name', read_only=True)
+    red_corner_name = serializers.SerializerMethodField(read_only=True)
+    blue_corner_name = serializers.SerializerMethodField(read_only=True)
+    field_name = serializers.CharField(source='field.name', read_only=True, allow_null=True)
+
+    class Meta:
+        model = MatchFieldAssignment
+        fields = [
+            'id', 'match', 'match_name', 'match_number', 'match_type',
+            'category_id', 'category_name',
+            'red_corner_name', 'blue_corner_name',
+            'field', 'field_name',
+            'status', 'scheduled_start_time', 'actual_start_time', 'actual_end_time',
+            'order', 'estimated_duration', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_red_corner_name(self, obj):
+        rc = obj.match.red_corner
+        return f"{rc.last_name} {rc.first_name}" if rc else None
+
+    def get_blue_corner_name(self, obj):
+        bc = obj.match.blue_corner
+        return f"{bc.last_name} {bc.first_name}" if bc else None
+
+
+# ── Category Referee Assignment ────────────────────────
+
+class CategoryRefereeAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for assigning 5 referees to a solo/team category"""
+
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    referee_1_name = serializers.SerializerMethodField(read_only=True)
+    referee_2_name = serializers.SerializerMethodField(read_only=True)
+    referee_3_name = serializers.SerializerMethodField(read_only=True)
+    referee_4_name = serializers.SerializerMethodField(read_only=True)
+    referee_5_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CategoryRefereeAssignment
+        fields = [
+            'id', 'category', 'category_name',
+            'referee_1', 'referee_1_name',
+            'referee_2', 'referee_2_name',
+            'referee_3', 'referee_3_name',
+            'referee_4', 'referee_4_name',
+            'referee_5', 'referee_5_name',
+        ]
+
+    def _referee_name(self, ref):
+        return f"{ref.last_name} {ref.first_name}" if ref else None
+
+    def get_referee_1_name(self, obj): return self._referee_name(obj.referee_1)
+    def get_referee_2_name(self, obj): return self._referee_name(obj.referee_2)
+    def get_referee_3_name(self, obj): return self._referee_name(obj.referee_3)
+    def get_referee_4_name(self, obj): return self._referee_name(obj.referee_4)
+    def get_referee_5_name(self, obj): return self._referee_name(obj.referee_5)
+
+
+# ── Match Referee Assignment ──────────────────────────
+
+class MatchRefereeAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for assigning 5 referees to a fight match"""
+
+    match_name = serializers.CharField(source='match.name', read_only=True)
+    referee_1_name = serializers.SerializerMethodField(read_only=True)
+    referee_2_name = serializers.SerializerMethodField(read_only=True)
+    referee_3_name = serializers.SerializerMethodField(read_only=True)
+    referee_4_name = serializers.SerializerMethodField(read_only=True)
+    referee_5_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = MatchRefereeAssignment
+        fields = [
+            'id', 'match', 'match_name',
+            'referee_1', 'referee_1_name',
+            'referee_2', 'referee_2_name',
+            'referee_3', 'referee_3_name',
+            'referee_4', 'referee_4_name',
+            'referee_5', 'referee_5_name',
+        ]
+
+    def _referee_name(self, ref):
+        return f"{ref.last_name} {ref.first_name}" if ref else None
+
+    def get_referee_1_name(self, obj): return self._referee_name(obj.referee_1)
+    def get_referee_2_name(self, obj): return self._referee_name(obj.referee_2)
+    def get_referee_3_name(self, obj): return self._referee_name(obj.referee_3)
+    def get_referee_4_name(self, obj): return self._referee_name(obj.referee_4)
+    def get_referee_5_name(self, obj): return self._referee_name(obj.referee_5)
+
+
+class CompetitionRefereeSerializer(serializers.ModelSerializer):
+    """Serializer for competition referee roster"""
+    athlete_name = serializers.SerializerMethodField(read_only=True)
+    club_name = serializers.SerializerMethodField(read_only=True)
+    grade = serializers.CharField(source='athlete.current_grade', read_only=True)
+
+    class Meta:
+        model = CompetitionReferee
+        fields = [
+            'id', 'event', 'athlete', 'athlete_name', 'club_name',
+            'grade', 'notes',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_athlete_name(self, obj):
+        if obj.athlete:
+            return f"{obj.athlete.last_name} {obj.athlete.first_name}"
+        return None
+
+    def get_club_name(self, obj):
+        if obj.athlete and obj.athlete.club:
+            return obj.athlete.club.name
+        return None

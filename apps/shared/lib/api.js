@@ -88,6 +88,11 @@ export const clubAPI = {
   reorder: (order) => api.post('/clubs/reorder/', { order }),
 };
 
+// ── Cities ────────────────────────────────────────────
+export const cityAPI = {
+  list: (params) => api.get('/cities/', { params }),
+};
+
 // ── Grades ────────────────────────────────────────────
 export const gradeAPI = {
   list: () => api.get('/grades/'),
@@ -115,6 +120,15 @@ export const enrollmentAPI = {
     create: (data) => api.post('/event-enrollments/', data),
     delete: (id) => api.delete(`/event-enrollments/${id}/`),
   },
+};
+
+// ── Fight Athlete Weights ─────────────────────────────
+export const fightWeightAPI = {
+  list: (params) => api.get('/fight-athlete-weights/', { params }),
+  create: (data) => api.post('/fight-athlete-weights/', data),
+  get: (id) => api.get(`/fight-athlete-weights/${id}/`),
+  update: (id, data) => api.patch(`/fight-athlete-weights/${id}/`, data),
+  delete: (id) => api.delete(`/fight-athlete-weights/${id}/`),
 };
 
 // ── Teams ─────────────────────────────────────────────
@@ -150,7 +164,17 @@ export const fieldAPI = {
     create: (data) => api.post('/category-field-assignments/', data),
     update: (id, data) => api.patch(`/category-field-assignments/${id}/`, data),
     delete: (id) => api.delete(`/category-field-assignments/${id}/`),
+    bulkReorder: (items) => api.post('/category-field-assignments/bulk-reorder/', { items }),
   },
+};
+
+// ── Field Breaks (pauses) ──────────────────────────────
+export const fieldBreakAPI = {
+  list: (params) => api.get('/field-breaks/', { params }),
+  create: (data) => api.post('/field-breaks/', data),
+  update: (id, data) => api.patch(`/field-breaks/${id}/`, data),
+  delete: (id) => api.delete(`/field-breaks/${id}/`),
+  bulkReorder: (items) => api.post('/field-breaks/bulk-reorder/', { items }),
 };
 
 // ── Referee Scoring ───────────────────────────────────
@@ -196,6 +220,21 @@ export const roundAPI = {
   update: (id, data) => api.patch(`/match-rounds/${id}/`, data),
 };
 
+// ── Match Referee Scores ──────────────────────────────
+export const matchRefereeScoreAPI = {
+  list: (params) => api.get('/match-referee-scores/', { params }),
+  create: (data) => api.post('/match-referee-scores/', data),
+  update: (id, data) => api.patch(`/match-referee-scores/${id}/`, data),
+  delete: (id) => api.delete(`/match-referee-scores/${id}/`),
+};
+
+// ── Match Events (warnings, penalties, pauses, time) ──
+export const matchEventAPI = {
+  list: (params) => api.get('/match-events/', { params }),
+  create: (data) => api.post('/match-events/', data),
+  delete: (id) => api.delete(`/match-events/${id}/`),
+};
+
 // ── Visas ─────────────────────────────────────────────
 export const visaAPI = {
   annual: {
@@ -225,4 +264,37 @@ export const notificationAPI = {
   unreadCount: () => api.get('/notifications/unread_count/'),
   markRead: (id) => api.post(`/notifications/${id}/mark_read/`),
   markAllRead: () => api.post('/notifications/mark_all_read/'),
+};
+
+// ── Match Field Assignments ───────────────────────────
+export const matchFieldAssignmentAPI = {
+  list: (params) => api.get('/match-field-assignments/', { params }),
+  create: (data) => api.post('/match-field-assignments/', data),
+  update: (id, data) => api.patch(`/match-field-assignments/${id}/`, data),
+  delete: (id) => api.delete(`/match-field-assignments/${id}/`),
+  bulkReorder: (items) => api.post('/match-field-assignments/bulk-reorder/', { items }),
+};
+
+// ── Category Referee Assignments ──────────────────────
+export const categoryRefereeAssignmentAPI = {
+  list: (params) => api.get('/category-referee-assignments/', { params }),
+  create: (data) => api.post('/category-referee-assignments/', data),
+  update: (id, data) => api.patch(`/category-referee-assignments/${id}/`, data),
+  delete: (id) => api.delete(`/category-referee-assignments/${id}/`),
+};
+
+// ── Match Referee Assignments ─────────────────────────
+export const matchRefereeAssignmentAPI = {
+  list: (params) => api.get('/match-referee-assignments/', { params }),
+  create: (data) => api.post('/match-referee-assignments/', data),
+  update: (id, data) => api.patch(`/match-referee-assignments/${id}/`, data),
+  delete: (id) => api.delete(`/match-referee-assignments/${id}/`),
+};
+
+// ── Competition Referees (roster) ─────────────────────
+export const competitionRefereeAPI = {
+  list: (params) => api.get('/competition-referees/', { params }),
+  create: (data) => api.post('/competition-referees/', data),
+  update: (id, data) => api.patch(`/competition-referees/${id}/`, data),
+  delete: (id) => api.delete(`/competition-referees/${id}/`),
 };

@@ -10,14 +10,17 @@ django.setup()
 from api.models import Grade
 
 grades_data = [
-    ('Alb - White Belt', 1, 'inferior'),
-    ('Albastru 1 - Blue Belt 1', 2, 'inferior'),
-    ('Albastru 2 - Blue Belt 2', 3, 'inferior'),
-    ('Galben 1 - Yellow Belt 1', 4, 'inferior'),
-    ('Galben 2 - Yellow Belt 2', 5, 'inferior'),
-    ('Roșu 1 - Red Belt 1', 6, 'superior'),
-    ('Roșu 2 - Red Belt 2', 7, 'superior'),
-    ('Negru 1 Dan', 8, 'superior'),
+    ('Centura Alba', 1, 'inferior'),
+    ('Centura Albastra', 2, 'inferior'),
+    ('Centura Albastra 1 Dang', 3, 'inferior'),
+    ('Centura Galbena', 4, 'inferior'),
+    ('Centura Galbena 1 Dang', 5, 'inferior'),
+    ('Centura Galbena 2 Dang', 6, 'inferior'),
+    ('Centura Galbena 3 Dang', 7, 'inferior'),
+    ('Centura Rosie', 8, 'superior'),
+    ('Centura Rosie 1 Dang', 9, 'superior'),
+    ('Centura Rosie 2 Dang', 10, 'superior'),
+    ('Centura Rosie 3 Dang', 11, 'superior'),
 ]
 
 for name, rank_order, grade_type in grades_data:

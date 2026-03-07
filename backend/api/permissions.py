@@ -4,13 +4,14 @@ from rest_framework import permissions
 class IsAdminOrReadOnly(permissions.BasePermission):
     """
     Custom permission to only allow admins to edit/delete objects.
-    Regular users can only read.
+    Read-only access is allowed to anyone (including unauthenticated users)
+    so that public-facing apps (e.g. public-display) can fetch data.
     """
 
     def has_permission(self, request, view):
-        # Read permissions are allowed to any authenticated user
+        # Read permissions are allowed to anyone
         if request.method in permissions.SAFE_METHODS:
-            return request.user and request.user.is_authenticated
+            return True
         
         # Write permissions are only allowed to admin users
         return request.user and request.user.is_authenticated and request.user.is_admin

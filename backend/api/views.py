@@ -66,17 +66,49 @@ class RefereeAssignedMatchesView(APIView):
         except Exception:
             return Response([], status=status.HTTP_200_OK)
 
-        match_ids = MatchRefereeAssignment.objects.filter(
+        assignments = MatchRefereeAssignment.objects.filter(
             Q(referee_1=athlete) |
             Q(referee_2=athlete) |
             Q(referee_3=athlete) |
             Q(referee_4=athlete) |
             Q(referee_5=athlete)
-        ).values_list('match_id', flat=True)
+        ).select_related('match', 'match__category')
 
+        match_ids = assignments.values_list('match_id', flat=True)
         matches = Match.objects.filter(pk__in=match_ids).select_related('category')
         serializer = MatchSerializer(matches, many=True)
-        return Response(serializer.data)
+        result = serializer.data
+
+        # Build set of match IDs currently live on a monitor
+        live_match_ids = set(
+            DisplayMonitorSession.objects.filter(
+                current_match__in=match_ids,
+                status='displaying',
+            ).values_list('current_match_id', flat=True)
+        )
+
+        # Annotate field_status: check MatchFieldAssignment, monitor session,
+        # and CategoryFieldAssignment (in priority order)
+        for item in result:
+            mid = item.get('id')
+            # 1. If the match is currently displayed on a monitor → in_progress
+            if mid in live_match_ids:
+                item['field_status'] = 'in_progress'
+                continue
+            # 2. Check the match's own MatchFieldAssignment
+            match_field_ass = MatchFieldAssignment.objects.filter(match_id=mid).first()
+            if match_field_ass and match_field_ass.status:
+                item['field_status'] = match_field_ass.status
+                continue
+            # 3. Fallback: check CategoryFieldAssignment
+            cat_id = item.get('category')
+            if cat_id:
+                cat_field_ass = CategoryFieldAssignment.objects.filter(category_id=cat_id).first()
+                item['field_status'] = cat_field_ass.status if cat_field_ass else None
+            else:
+                item['field_status'] = None
+
+        return Response(result)
 
 
 @api_view(['GET'])
@@ -574,6 +606,15 @@ class AthleteViewSet(viewsets.ModelViewSet):
         club_id = self.request.query_params.get('club')
         if club_id:
             queryset = queryset.filter(club_id=club_id)
+
+        # my_club filter — returns athletes from the authenticated user's club
+        my_club = self.request.query_params.get('my_club')
+        if my_club and str(my_club).lower() in ('1', 'true', 'yes'):
+            user = self.request.user
+            if user and user.is_authenticated and hasattr(user, 'athlete') and user.athlete and user.athlete.club_id:
+                queryset = queryset.filter(club_id=user.athlete.club_id)
+            else:
+                queryset = queryset.none()
         
         return queryset
 
@@ -609,11 +650,32 @@ class AthleteViewSet(viewsets.ModelViewSet):
         return Response(ser.data)
 
     def create(self, request):
-        """Create athlete profile for the current user (uses profile serializer semantics)."""
+        """Create athlete profile.
+        
+        - Coaches can create athletes for their own club (no user link).
+        - Regular users create their own profile (linked to their user account).
+        """
         if not request.user or not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Prevent creating more than one profile per user
+        # Check if this is a coach creating an athlete for their club
+        is_coach = hasattr(request.user, 'athlete') and request.user.athlete and request.user.athlete.is_coach
+        coach_create = request.data.get('coach_create', False)
+
+        if is_coach and coach_create:
+            # Coach creating athlete for their club
+            serializer = AthleteSerializer(data=request.data, context={'request': request})
+            if serializer.is_valid():
+                club = request.user.athlete.club
+                athlete = serializer.save(club=club, status='approved')
+                # Handle profile image upload
+                if 'profile_image' in request.FILES:
+                    athlete.profile_image = request.FILES['profile_image']
+                    athlete.save()
+                return Response(AthleteSerializer(athlete).data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Regular user creating their own profile
         if hasattr(request.user, 'athlete') and request.user.athlete:
             return Response({'error': 'You already have an athlete profile.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -950,6 +1012,14 @@ class MatchViewSet(viewsets.ViewSet):
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
 
+    def partial_update(self, request, pk=None):
+        instance = self.queryset.get(pk=pk)
+        serializer = self.serializer_class(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
     def destroy(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
         instance.delete()
@@ -1149,6 +1219,7 @@ class CategoryViewSet(viewsets.ViewSet):
 class CategoryAthleteViewSet(viewsets.ViewSet):
     """
     ViewSet for CategoryAthlete - basic enrollment without scores.
+    Coaches can only enroll athletes from their own club.
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = CategoryAthleteSerializer
@@ -1165,6 +1236,15 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         event_id = self.request.query_params.get('event', None)
         if event_id is not None:
             queryset = queryset.filter(category__event_id=event_id)
+
+        # Filter by club — coaches see only their club's enrollments
+        my_club = self.request.query_params.get('my_club', None)
+        if my_club and str(my_club).lower() in ('1', 'true', 'yes'):
+            user = self.request.user
+            if user and hasattr(user, 'athlete') and user.athlete and user.athlete.club_id:
+                queryset = queryset.filter(athlete__club_id=user.athlete.club_id)
+            else:
+                queryset = queryset.none()
         
         return queryset
 
@@ -1174,6 +1254,19 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        # Non-admin users (coaches) can only enroll athletes from their own club
+        user = request.user
+        if not user.is_admin:
+            athlete_id = request.data.get('athlete')
+            if athlete_id:
+                try:
+                    target_athlete = Athlete.objects.get(pk=athlete_id)
+                except Athlete.DoesNotExist:
+                    return Response({'error': 'Sportivul nu a fost găsit.'}, status=404)
+                user_club = getattr(getattr(user, 'athlete', None), 'club_id', None)
+                if not user_club or target_athlete.club_id != user_club:
+                    return Response({'error': 'Poți înscrie doar sportivi din clubul tău.'}, status=403)
+
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1197,6 +1290,64 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         instance = self.get_queryset().get(pk=pk)
         instance.delete()
         return Response(status=204)
+
+
+class FightAthleteWeightViewSet(viewsets.ViewSet):
+    """
+    ViewSet for FightAthleteWeight - fight category weigh-in data.
+    Tracks registered weight, match day weight, disqualification.
+    """
+    permission_classes = [permissions.AllowAny]
+    serializer_class = FightAthleteWeightSerializer
+
+    def get_queryset(self):
+        queryset = FightAthleteWeight.objects.select_related('athlete', 'athlete__club', 'category').all()
+        category_id = self.request.query_params.get('category')
+        event_id = self.request.query_params.get('event')
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        if event_id:
+            queryset = queryset.filter(category__event_id=event_id)
+        return queryset
+
+    def list(self, request):
+        serializer = self.serializer_class(self.get_queryset(), many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+    def retrieve(self, request, pk=None):
+        try:
+            instance = self.get_queryset().get(pk=pk)
+            return Response(self.serializer_class(instance).data)
+        except FightAthleteWeight.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+    def partial_update(self, request, pk=None):
+        try:
+            instance = self.get_queryset().get(pk=pk)
+            serializer = self.serializer_class(instance, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=400)
+        except FightAthleteWeight.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+    def update(self, request, pk=None):
+        return self.partial_update(request, pk)
+
+    def destroy(self, request, pk=None):
+        try:
+            self.get_queryset().get(pk=pk).delete()
+            return Response(status=204)
+        except FightAthleteWeight.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
 
 
 class CategoryTeamViewSet(viewsets.ViewSet):
@@ -1748,32 +1899,50 @@ def clubs_list(request):
 
 
 class CategoryRefereeScoreViewSet(viewsets.ViewSet):
-    """ViewSet for referees to submit scores for athletes/teams in solo/team categories"""
-    permission_classes = [IsAuthenticated]
+    """ViewSet for referees to submit scores for athletes/teams in solo/team categories.
+    Read access allowed for public display; write requires authentication.
+    """
+    permission_classes = [IsAdminOrReadOnly]
     
     def list(self, request):
-        """List referee scores - referees see their own, admins see all"""
+        """List referee scores - unauthenticated/public see all (read-only),
+        referees see their own, admins see all"""
         user = request.user
         
-        if user.is_staff or (hasattr(user, 'role') and user.role == 'admin'):
+        if not user or not user.is_authenticated:
+            # Public / display access — return all (read-only, filtered by params)
+            queryset = CategoryRefereeScore.objects.all()
+        elif user.is_staff or (hasattr(user, 'role') and user.role == 'admin'):
             # Admins see all referee scores
             queryset = CategoryRefereeScore.objects.all()
         elif hasattr(user, 'athlete') and user.athlete.is_referee:
             # Referees see only their own scores
             queryset = CategoryRefereeScore.objects.filter(referee=user.athlete)
         else:
-            # Non-referees cannot access
-            return Response(
-                {'error': 'Only referees and admins can access referee scores'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            # Other authenticated users — return all (read-only)
+            queryset = CategoryRefereeScore.objects.all()
         
         queryset = queryset.select_related('athlete_score__athlete', 'athlete_score__category', 'referee')
+
+        # Filter by category
+        category_id = request.query_params.get('category')
+        if category_id:
+            queryset = queryset.filter(athlete_score__category_id=category_id)
+
+        # Filter by event
+        event_id = request.query_params.get('event_id')
+        if event_id:
+            queryset = queryset.filter(athlete_score__category__event_id=event_id)
+
         serializer = CategoryRefereeScoreSerializer(queryset, many=True)
         return Response(serializer.data)
     
     def create(self, request):
-        """Create a new referee score"""
+        """Create a new referee score.
+        Accepts either:
+          - athlete_score (ID) directly, OR
+          - category + athlete (IDs) — will find/create the CategoryAthleteScore automatically
+        """
         user = request.user
         
         # Validate user is a referee
@@ -1783,11 +1952,40 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Auto-assign referee to current user's athlete
-        data = request.data.copy()
-        data['referee'] = user.athlete.id
+        # Build a clean plain dict for the serializer
+        incoming = request.data
+        clean = {
+            'referee': user.athlete.id,
+            'score': incoming.get('score', 100),
+        }
+        if incoming.get('notes'):
+            clean['notes'] = incoming['notes']
         
-        serializer = CategoryRefereeScoreSerializer(data=data)
+        # Resolve athlete_score
+        if incoming.get('athlete_score'):
+            clean['athlete_score'] = incoming['athlete_score']
+        elif incoming.get('category') and incoming.get('athlete'):
+            # Frontend sends category + athlete IDs — resolve to CategoryAthleteScore
+            category_id = incoming['category']
+            athlete_id = incoming['athlete']
+            try:
+                cat = Category.objects.get(pk=category_id)
+            except Category.DoesNotExist:
+                return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+            athlete_score_obj, _ = CategoryAthleteScore.objects.get_or_create(
+                category_id=category_id,
+                athlete_id=athlete_id,
+                defaults={'type': cat.type or 'solo', 'status': 'approved'}
+            )
+            clean['athlete_score'] = athlete_score_obj.id
+        else:
+            return Response(
+                {'error': 'Provide either athlete_score or both category and athlete'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = CategoryRefereeScoreSerializer(data=clean)
         if serializer.is_valid():
             # Validate that the athlete_score is for solo/team category
             athlete_score = serializer.validated_data['athlete_score']
@@ -1797,20 +1995,34 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Check if referee already scored this athlete
+            # If referee already scored this athlete, update instead of error
             existing = CategoryRefereeScore.objects.filter(
                 athlete_score=athlete_score,
                 referee=user.athlete
             ).first()
             
             if existing:
-                return Response(
-                    {'error': 'You have already scored this athlete/team'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                existing.score = serializer.validated_data.get('score', existing.score)
+                existing.notes = serializer.validated_data.get('notes', existing.notes)
+                existing.save()
+                return Response(CategoryRefereeScoreSerializer(existing).data)
             
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        # If serializer failed due to unique_together, try updating the existing record
+        if 'non_field_errors' in serializer.errors:
+            try:
+                existing = CategoryRefereeScore.objects.get(
+                    athlete_score_id=clean['athlete_score'],
+                    referee_id=clean['referee']
+                )
+                existing.score = clean.get('score', existing.score)
+                existing.notes = clean.get('notes', existing.notes)
+                existing.save()
+                return Response(CategoryRefereeScoreSerializer(existing).data)
+            except CategoryRefereeScore.DoesNotExist:
+                pass
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -2612,6 +2824,10 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except CompetitionField.DoesNotExist:
             return Response({'error': 'Field not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def partial_update(self, request, pk=None):
+        """Partial update a competition field (PATCH)"""
+        return self.update(request, pk)
     
     def destroy(self, request, pk=None):
         """Delete a competition field"""
@@ -2621,6 +2837,68 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except CompetitionField.DoesNotExist:
             return Response({'error': 'Field not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class FieldBreakViewSet(viewsets.ViewSet):
+    """ViewSet for managing breaks/pauses in field schedules"""
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        event_id = request.query_params.get('event_id')
+        field_id = request.query_params.get('field_id')
+        qs = FieldBreak.objects.select_related('field')
+        if event_id:
+            qs = qs.filter(field__event_id=event_id)
+        if field_id:
+            qs = qs.filter(field_id=field_id)
+        qs = qs.order_by('order')
+        serializer = FieldBreakSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = FieldBreakSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        try:
+            obj = FieldBreak.objects.get(pk=pk)
+            return Response(FieldBreakSerializer(obj).data)
+        except FieldBreak.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def update(self, request, pk=None):
+        try:
+            obj = FieldBreak.objects.get(pk=pk)
+            serializer = FieldBreakSerializer(obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except FieldBreak.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def partial_update(self, request, pk=None):
+        return self.update(request, pk)
+
+    def destroy(self, request, pk=None):
+        try:
+            FieldBreak.objects.get(pk=pk).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except FieldBreak.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['post'], url_path='bulk-reorder')
+    def bulk_reorder(self, request):
+        """Bulk update order for multiple field breaks.
+        Body: { items: [{ id, order }, ...] }
+        """
+        items = request.data.get('items', [])
+        for item in items:
+            FieldBreak.objects.filter(pk=item['id']).update(order=item.get('order', 0))
+        return Response({'status': 'ok'})
 
 
 class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
@@ -2671,6 +2949,10 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except CategoryFieldAssignment.DoesNotExist:
             return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def partial_update(self, request, pk=None):
+        """Partial update a category-field assignment (PATCH)"""
+        return self.update(request, pk)
     
     def destroy(self, request, pk=None):
         """Delete a category-field assignment"""
@@ -2681,18 +2963,38 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
         except CategoryFieldAssignment.DoesNotExist:
             return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    @action(detail=False, methods=['post'], url_path='bulk-reorder')
+    def bulk_reorder(self, request):
+        """Bulk update order and field for multiple category-field assignments.
+        Body: { items: [{ id, field, order, estimated_duration }, ...] }
+        """
+        items = request.data.get('items', [])
+        for item in items:
+            updates = {'order': item.get('order', 0)}
+            if 'field' in item:
+                updates['field_id'] = item['field']
+            if 'estimated_duration' in item:
+                updates['estimated_duration'] = item['estimated_duration']
+            CategoryFieldAssignment.objects.filter(pk=item['id']).update(**updates)
+        return Response({'status': 'ok'})
+
 
 class DisplayMonitorSessionViewSet(viewsets.ViewSet):
-    """ViewSet for managing display monitor sessions"""
-    permission_classes = [IsAdminOrReadOnly]
+    """ViewSet for managing display monitor sessions.
+    Public read access needed for public-display app (no auth).
+    """
+    permission_classes = [permissions.AllowAny]
     
     def list(self, request):
         """List all monitor sessions"""
         event_id = request.query_params.get('event_id')
+        field_id = request.query_params.get('field')
         sessions = DisplayMonitorSession.objects.all()
         
         if event_id:
             sessions = sessions.filter(field__event_id=event_id)
+        if field_id:
+            sessions = sessions.filter(field_id=field_id)
         
         serializer = DisplayMonitorSessionSerializer(sessions, many=True)
         return Response(serializer.data)
@@ -2725,6 +3027,10 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except DisplayMonitorSession.DoesNotExist:
             return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def partial_update(self, request, pk=None):
+        """Partial update (PATCH) a monitor session"""
+        return self.update(request, pk)
     
     def destroy(self, request, pk=None):
         """Delete a monitor session"""
@@ -2743,10 +3049,13 @@ class MatchRoundViewSet(viewsets.ViewSet):
     def list(self, request):
         """List all match rounds"""
         match_id = request.query_params.get('match_id')
+        event_id = request.query_params.get('event_id')
         rounds = MatchRound.objects.all()
         
         if match_id:
             rounds = rounds.filter(match_id=match_id)
+        if event_id:
+            rounds = rounds.filter(match__category__event_id=event_id)
         
         rounds = rounds.order_by('round_number')
         serializer = MatchRoundSerializer(rounds, many=True)
@@ -2781,6 +3090,10 @@ class MatchRoundViewSet(viewsets.ViewSet):
         except MatchRound.DoesNotExist:
             return Response({'error': 'Round not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    def partial_update(self, request, pk=None):
+        """Partial update a match round (PATCH)"""
+        return self.update(request, pk)
+    
     def destroy(self, request, pk=None):
         """Delete a match round"""
         try:
@@ -2789,6 +3102,135 @@ class MatchRoundViewSet(viewsets.ViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchRound.DoesNotExist:
             return Response({'error': 'Round not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class MatchEventViewSet(viewsets.ViewSet):
+    """ViewSet for match events: warnings, penalties, pauses, time adjustments"""
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        match_id = request.query_params.get('match_id')
+        event_id = request.query_params.get('event_id')
+        event_type = request.query_params.get('event_type')
+        qs = MatchEvent.objects.all()
+        if match_id:
+            qs = qs.filter(match_id=match_id)
+        if event_id:
+            qs = qs.filter(match__category__event_id=event_id)
+        if event_type:
+            qs = qs.filter(event_type=event_type)
+        serializer = MatchEventSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        # Auto-set created_by to current user's athlete if available
+        if hasattr(request.user, 'athlete'):
+            data.setdefault('created_by', request.user.athlete.id)
+        serializer = MatchEventSerializer(data=data)
+        if serializer.is_valid():
+            event = serializer.save()
+
+            # Handle side-effects for pause/resume/time events
+            round_obj = event.round
+            if round_obj and event.event_type == 'pause' and round_obj.status == 'active' and not round_obj.paused_at:
+                from django.utils import timezone
+                round_obj.paused_at = timezone.now()
+                round_obj.save(update_fields=['paused_at'])
+            elif round_obj and event.event_type == 'resume' and round_obj.paused_at:
+                from django.utils import timezone
+                pause_duration = int((timezone.now() - round_obj.paused_at).total_seconds())
+                round_obj.accumulated_pause_seconds += pause_duration
+                round_obj.paused_at = None
+                round_obj.save(update_fields=['paused_at', 'accumulated_pause_seconds'])
+            elif round_obj and event.event_type in ('time_add', 'time_remove'):
+                round_obj.extra_seconds += event.value
+                round_obj.save(update_fields=['extra_seconds'])
+
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        try:
+            obj = MatchEvent.objects.get(pk=pk)
+            return Response(MatchEventSerializer(obj).data)
+        except MatchEvent.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def destroy(self, request, pk=None):
+        try:
+            obj = MatchEvent.objects.get(pk=pk)
+            obj.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except MatchEvent.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class MatchRefereeScoreViewSet(viewsets.ViewSet):
+    """ViewSet for managing individual referee scores in fighting matches"""
+    permission_classes = [IsAdminOrReadOnly]
+    
+    def list(self, request):
+        match_id = request.query_params.get('match_id')
+        event_id = request.query_params.get('event_id')
+        round_id = request.query_params.get('round_id')
+        qs = MatchRefereeScore.objects.all()
+        if match_id:
+            qs = qs.filter(match_id=match_id)
+        if event_id:
+            qs = qs.filter(match__category__event_id=event_id)
+        if round_id:
+            qs = qs.filter(round_id=round_id)
+        serializer = MatchRefereeScoreSerializer(qs, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request):
+        data = request.data.copy()
+        # Auto-populate referee from authenticated user's athlete profile
+        if 'referee' not in data or not data['referee']:
+            try:
+                data['referee'] = request.user.athlete.id
+            except Exception:
+                return Response(
+                    {'error': 'Nu aveți un profil de arbitru asociat.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        serializer = MatchRefereeScoreSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def retrieve(self, request, pk=None):
+        try:
+            obj = MatchRefereeScore.objects.get(pk=pk)
+            return Response(MatchRefereeScoreSerializer(obj).data)
+        except MatchRefereeScore.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def update(self, request, pk=None):
+        try:
+            obj = MatchRefereeScore.objects.get(pk=pk)
+            serializer = MatchRefereeScoreSerializer(obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except MatchRefereeScore.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    def partial_update(self, request, pk=None):
+        """Partial update (PATCH)"""
+        return self.update(request, pk)
+
+    def destroy(self, request, pk=None):
+        """Delete a referee score"""
+        try:
+            obj = MatchRefereeScore.objects.get(pk=pk)
+            obj.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except MatchRefereeScore.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class QRCodeAssignmentViewSet(viewsets.ViewSet):
@@ -2865,3 +3307,435 @@ class QRCodeAssignmentViewSet(viewsets.ViewSet):
             return Response(serializer.data)
         except QRCodeAssignment.DoesNotExist:
             return Response({'error': 'Invalid or inactive QR code'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ═══════════════════════════════════════════════════════
+# Match Field Assignment ViewSet
+# ═══════════════════════════════════════════════════════
+
+class MatchFieldAssignmentViewSet(viewsets.ViewSet):
+    """ViewSet for assigning matches to competition fields"""
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        event_id = request.query_params.get('event_id')
+        field_id = request.query_params.get('field_id')
+        qs = MatchFieldAssignment.objects.select_related(
+            'match', 'match__category', 'match__red_corner', 'match__blue_corner', 'field'
+        )
+        if event_id:
+            qs = qs.filter(field__event_id=event_id)
+        if field_id:
+            qs = qs.filter(field_id=field_id)
+        qs = qs.order_by('order')
+        serializer = MatchFieldAssignmentSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = MatchFieldAssignmentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        try:
+            obj = MatchFieldAssignment.objects.select_related(
+                'match', 'match__category', 'match__red_corner', 'match__blue_corner', 'field'
+            ).get(pk=pk)
+            return Response(MatchFieldAssignmentSerializer(obj).data)
+        except MatchFieldAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def update(self, request, pk=None):
+        try:
+            obj = MatchFieldAssignment.objects.get(pk=pk)
+            serializer = MatchFieldAssignmentSerializer(obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except MatchFieldAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def partial_update(self, request, pk=None):
+        """Partial update (PATCH)"""
+        return self.update(request, pk)
+
+    def destroy(self, request, pk=None):
+        try:
+            MatchFieldAssignment.objects.get(pk=pk).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except MatchFieldAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['post'], url_path='bulk-reorder')
+    def bulk_reorder(self, request):
+        """Bulk update order and field for multiple match-field assignments.
+        Body: { items: [{ id, field, order }, ...] }
+        """
+        items = request.data.get('items', [])
+        for item in items:
+            MatchFieldAssignment.objects.filter(pk=item['id']).update(
+                field_id=item.get('field'), order=item.get('order', 0)
+            )
+        return Response({'status': 'ok'})
+
+
+# ═══════════════════════════════════════════════════════
+# Category Referee Assignment ViewSet
+# ═══════════════════════════════════════════════════════
+
+class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
+    """ViewSet for assigning 5 referees to solo/team categories"""
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        event_id = request.query_params.get('event_id')
+        qs = CategoryRefereeAssignment.objects.select_related(
+            'category', 'referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5'
+        )
+        if event_id:
+            qs = qs.filter(category__event_id=event_id)
+        serializer = CategoryRefereeAssignmentSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = CategoryRefereeAssignmentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        try:
+            obj = CategoryRefereeAssignment.objects.select_related(
+                'category', 'referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5'
+            ).get(pk=pk)
+            return Response(CategoryRefereeAssignmentSerializer(obj).data)
+        except CategoryRefereeAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def update(self, request, pk=None):
+        try:
+            obj = CategoryRefereeAssignment.objects.get(pk=pk)
+            serializer = CategoryRefereeAssignmentSerializer(obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except CategoryRefereeAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def partial_update(self, request, pk=None):
+        """Partial update (PATCH)"""
+        return self.update(request, pk)
+
+    def destroy(self, request, pk=None):
+        try:
+            CategoryRefereeAssignment.objects.get(pk=pk).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except CategoryRefereeAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ═══════════════════════════════════════════════════════
+# Match Referee Assignment ViewSet
+# ═══════════════════════════════════════════════════════
+
+class MatchRefereeAssignmentViewSet(viewsets.ViewSet):
+    """ViewSet for assigning 5 referees to fight matches"""
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        event_id = request.query_params.get('event_id')
+        match_id = request.query_params.get('match_id')
+        qs = MatchRefereeAssignment.objects.select_related(
+            'match', 'referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5'
+        )
+        if event_id:
+            qs = qs.filter(match__category__event_id=event_id)
+        if match_id:
+            qs = qs.filter(match_id=match_id)
+        serializer = MatchRefereeAssignmentSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = MatchRefereeAssignmentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        try:
+            obj = MatchRefereeAssignment.objects.select_related(
+                'match', 'referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5'
+            ).get(pk=pk)
+            return Response(MatchRefereeAssignmentSerializer(obj).data)
+        except MatchRefereeAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def update(self, request, pk=None):
+        try:
+            obj = MatchRefereeAssignment.objects.get(pk=pk)
+            serializer = MatchRefereeAssignmentSerializer(obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except MatchRefereeAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def partial_update(self, request, pk=None):
+        """Partial update (PATCH)"""
+        return self.update(request, pk)
+
+    def destroy(self, request, pk=None):
+        try:
+            MatchRefereeAssignment.objects.get(pk=pk).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except MatchRefereeAssignment.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class CompetitionRefereeViewSet(viewsets.ViewSet):
+    """ViewSet for managing referee roster for a competition"""
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        event_id = request.query_params.get('event_id')
+        qs = CompetitionReferee.objects.select_related('athlete', 'athlete__club')
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+        serializer = CompetitionRefereeSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = CompetitionRefereeSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        try:
+            obj = CompetitionReferee.objects.select_related('athlete', 'athlete__club').get(pk=pk)
+            return Response(CompetitionRefereeSerializer(obj).data)
+        except CompetitionReferee.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def update(self, request, pk=None):
+        try:
+            obj = CompetitionReferee.objects.get(pk=pk)
+            serializer = CompetitionRefereeSerializer(obj, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except CompetitionReferee.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def partial_update(self, request, pk=None):
+        """Partial update (PATCH)"""
+        return self.update(request, pk)
+
+    def destroy(self, request, pk=None):
+        try:
+            CompetitionReferee.objects.get(pk=pk).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except CompetitionReferee.DoesNotExist:
+            return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# BRACKET GENERATION
+# ═══════════════════════════════════════════════════════════════════
+
+import math
+from rest_framework.decorators import api_view, permission_classes as perm_dec
+
+
+@api_view(['POST'])
+@perm_dec([permissions.AllowAny])
+def generate_brackets(request, category_id):
+    """
+    Auto-generate bracket matches for a fight category.
+    Supports bracket_type: 'single_elimination' (default) or 'consolation'.
+    Consolation adds a bronze match for semi-final/final losers.
+    Deletes existing matches for the category and recreates them.
+    """
+    try:
+        category = Category.objects.get(pk=category_id)
+    except Category.DoesNotExist:
+        return Response({'error': 'Categoria nu a fost gasita.'}, status=404)
+
+    bracket_type = request.data.get('bracket_type', 'single_elimination')
+
+    # Get enrolled athletes for this category
+    enrollments = CategoryAthlete.objects.filter(
+        category=category, disqualified=False
+    ).select_related('athlete')
+    athletes = [e.athlete for e in enrollments]
+
+    if len(athletes) < 2:
+        return Response({'error': 'Sunt necesari minim 2 sportivi pentru a genera bracket-ul.'}, status=400)
+
+    # Delete existing matches for this category
+    category.matches.all().delete()
+
+    # Determine bracket size (next power of 2)
+    n = len(athletes)
+    bracket_size = 1
+    while bracket_size < n:
+        bracket_size *= 2
+    
+    num_rounds = int(math.log2(bracket_size))
+    
+    # Seed athletes (simple 1 vs N, 2 vs N-1, etc.)
+    import random
+    seeded = list(athletes)
+    random.shuffle(seeded)  # Random seeding
+    
+    # Pad with None for byes
+    while len(seeded) < bracket_size:
+        seeded.append(None)
+
+    # Build matches round by round
+    all_matches = {}  # {(round, position): match}
+    
+    # Create all match slots from finals backwards
+    for rnd in range(num_rounds, 0, -1):
+        matches_in_round = bracket_size // (2 ** rnd)
+        if rnd == num_rounds:
+            match_type = 'finals'
+        elif rnd == num_rounds - 1 and num_rounds > 1:
+            match_type = 'semi-finals'
+        elif rnd == num_rounds - 2 and num_rounds > 2:
+            match_type = 'quarter-finals'
+        else:
+            match_type = 'qualifications'
+        
+        for pos in range(matches_in_round):
+            next_match_obj = None
+            if rnd < num_rounds:
+                next_key = (rnd + 1, pos // 2)
+                next_match_obj = all_matches.get(next_key)
+            
+            match = Match.objects.create(
+                category=category,
+                match_type=match_type,
+                round_number=rnd,
+                bracket_position=pos,
+                next_match=next_match_obj,
+                match_number=f"R{rnd}-M{pos+1}",
+            )
+            all_matches[(rnd, pos)] = match
+    
+    # Now fill in round 1 with seeded athletes
+    round1_matches = {k: v for k, v in all_matches.items() if k[0] == 1}
+    for (rnd, pos), match in sorted(round1_matches.items()):
+        idx1 = pos * 2
+        idx2 = pos * 2 + 1
+        athlete1 = seeded[idx1] if idx1 < len(seeded) else None
+        athlete2 = seeded[idx2] if idx2 < len(seeded) else None
+        
+        match.red_corner = athlete1
+        match.blue_corner = athlete2
+        match.save()
+        
+        # If one athlete has a bye (opponent is None), auto-advance them
+        if athlete1 and not athlete2 and match.next_match:
+            _advance_to_next(match.next_match, match, athlete1)
+        elif athlete2 and not athlete1 and match.next_match:
+            _advance_to_next(match.next_match, match, athlete2)
+
+    # ── Consolation / Bronze match ──
+    if bracket_type == 'consolation':
+        # Find semi-final matches
+        semi_matches = [m for m in all_matches.values() if m.match_type == 'semi-finals']
+        finals_match = [m for m in all_matches.values() if m.match_type == 'finals']
+
+        if len(semi_matches) >= 2:
+            # Standard case: 4+ athletes → bronze match between 2 semi-final losers
+            bronze = Match.objects.create(
+                category=category,
+                match_type='bronze',
+                round_number=num_rounds,  # Same round as finals
+                bracket_position=1,       # Position after finals
+                match_number='BRONZE',
+            )
+            # Link semi-final losers to bronze match
+            for sm in semi_matches:
+                sm.loser_next_match = bronze
+                sm.save()
+
+        elif len(semi_matches) == 1 and finals_match:
+            # 3-athlete case: 1 semi + 1 final
+            # Bronze: loser(semi) vs loser(final)
+            bronze = Match.objects.create(
+                category=category,
+                match_type='bronze',
+                round_number=num_rounds + 1,  # After finals
+                bracket_position=0,
+                match_number='BRONZE',
+            )
+            semi_matches[0].loser_next_match = bronze
+            semi_matches[0].save()
+            finals_match[0].loser_next_match = bronze
+            finals_match[0].save()
+
+        elif n == 2 and not semi_matches and finals_match:
+            # 2-athlete edge case: no semis, just finals — no bronze possible
+            pass
+
+    # Serialize and return
+    final_matches = Match.objects.filter(category=category).order_by('round_number', 'bracket_position')
+    serializer = MatchSerializer(final_matches, many=True)
+    return Response(serializer.data, status=201)
+
+
+def _advance_to_next(next_match, from_match, athlete):
+    """Place an athlete into the correct slot of the next match."""
+    if from_match.bracket_position % 2 == 0:
+        next_match.red_corner = athlete
+    else:
+        next_match.blue_corner = athlete
+    next_match.save()
+
+
+@api_view(['POST'])
+@perm_dec([permissions.AllowAny])
+def advance_match_winner(request, match_id):
+    """
+    After scoring is complete, advance the winner to the next match in the bracket.
+    Also advances the loser to the consolation/bronze match if applicable.
+    """
+    try:
+        match = Match.objects.select_related('red_corner', 'blue_corner', 'next_match', 'loser_next_match').get(pk=match_id)
+    except Match.DoesNotExist:
+        return Response({'error': 'Meciul nu a fost gasit.'}, status=404)
+
+    winner = match.winner
+    if not winner:
+        return Response({'error': 'Nu exista un castigator pentru acest meci.'}, status=400)
+
+    result = {}
+
+    # Advance winner to next match
+    if match.next_match:
+        _advance_to_next(match.next_match, match, winner)
+        result['status'] = 'advanced'
+        result['next_match_id'] = match.next_match.id
+    else:
+        result['status'] = 'final'
+        result['winner'] = f"{winner.first_name} {winner.last_name}"
+
+    # Advance loser to consolation/bronze match
+    if match.loser_next_match:
+        loser = match.blue_corner if winner == match.red_corner else match.red_corner
+        if loser:
+            _advance_to_next(match.loser_next_match, match, loser)
+            result['loser_advanced_to'] = match.loser_next_match.id
+
+    return Response(result)

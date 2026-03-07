@@ -47,7 +47,9 @@ export default function ScoringPanel() {
         score,
       });
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to submit score');
+      const d = err.response?.data;
+      const msg = d?.detail || d?.error || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Failed to submit score';
+      alert(msg);
     } finally {
       setSubmitting(null);
     }
@@ -83,7 +85,9 @@ export default function ScoringPanel() {
         ) : (
           athletes.map((entry) => {
             const athleteId = entry.athlete || entry.id;
-            const name = entry.athlete_name || entry.full_name || `Athlete #${athleteId}`;
+            const d = entry.athlete_details || {};
+            const name = `${d.last_name || ''} ${d.first_name || ''}`.trim() || entry.athlete_name || entry.full_name || `Sportiv #${athleteId}`;
+            const clubName = d.club?.name || entry.club_name || '';
             const submitted = submitting === athleteId;
             return (
               <div
@@ -92,7 +96,7 @@ export default function ScoringPanel() {
               >
                 <div className="flex-1">
                   <p className="font-semibold text-gray-900">{name}</p>
-                  <p className="text-xs text-gray-500">{entry.club_name || ''}</p>
+                  {clubName && <p className="text-xs text-gray-500">{clubName}</p>}
                 </div>
                 <input
                   type="number"

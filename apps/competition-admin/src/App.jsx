@@ -3,11 +3,17 @@ import { useAuth, ProtectedRoute } from '@shared';
 import LoginPage from '@shared/components/LoginPage';
 import Layout from './components/Layout';
 import CompetitionList from './pages/CompetitionList';
-import CompetitionDetail from './pages/CompetitionDetail';
 import CompetitionForm from './pages/CompetitionForm';
-import CategoriesPage from './pages/CategoriesPage';
-import FieldsPage from './pages/FieldsPage';
+import CategoriesLayout from './pages/CategoriesLayout';
+import CentralizatorPage from './pages/CentralizatorPage';
+import TehnicaPage from './pages/TehnicaPage';
+import LuptaPage from './pages/LuptaPage';
+import ProgramarePage from './pages/ProgramarePage';
+import ArbitriPage from './pages/ArbitriPage';
+import BracketPage from './pages/BracketPage';
 import ResultsPage from './pages/ResultsPage';
+import LivePage from './pages/LivePage';
+import LiveFullscreenPage from './pages/LiveFullscreenPage';
 
 export default function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -33,20 +39,41 @@ export default function App() {
       >
         <Route index element={<CompetitionList />} />
         <Route path="competitions/new" element={<CompetitionForm />} />
-        <Route path="competitions/:id" element={<CompetitionDetail />} />
-        <Route path="competitions/:id/fields" element={<FieldsPage />} />
         <Route path="competitions/:id/results" element={<ResultsPage />} />
       </Route>
 
-      {/* Categories page renders full-screen without sidebar */}
+      {/* Categories pages render full-screen without top bar, with bottom tab navigation */}
       <Route
         path="/competitions/:id/categories"
         element={
           <ProtectedRoute roles={['admin']}>
-            <CategoriesPage />
+            <CategoriesLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<CentralizatorPage />} />
+        <Route path="tehnica" element={<TehnicaPage />} />
+        <Route path="lupta" element={<LuptaPage />} />
+        <Route path="brackets" element={<BracketPage />} />
+        <Route path="programare" element={<ProgramarePage />} />
+        <Route path="arbitri" element={<ArbitriPage />} />
+        <Route path="live" element={<LivePage />} />
+      </Route>
+
+      {/* Fullscreen live view — outside CategoriesLayout, no bottom tabs */}
+      <Route
+        path="/competitions/:id/live-fullscreen"
+        element={
+          <ProtectedRoute roles={['admin']}>
+            <LiveFullscreenPage />
           </ProtectedRoute>
         }
       />
+
+      {/* Redirect old /competitions/:id to centralizator */}
+      <Route path="/competitions/:id" element={<Navigate to="categories" replace />} />
+      {/* Redirect old /competitions/:id/fields to programare */}
+      <Route path="/competitions/:id/fields" element={<Navigate to="../categories/programare" replace />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
