@@ -44,6 +44,7 @@ export default function LiveFullscreenPage() {
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [showResetCategoryConfirm, setShowResetCategoryConfirm] = useState(false);
   const [showStopCategoryConfirm, setShowStopCategoryConfirm] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
   const pollRef = useRef(null);
 
   const arr = r => r.data?.results || r.data || [];
@@ -358,6 +359,13 @@ export default function LiveFullscreenPage() {
               <button onClick={() => setShowStopCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Oprește</button>
             </>
           )}
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
+            <button onClick={() => setShowResetCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Resetează Proba</button>
+          )}
+          {/* QR code button for category */}
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
+            <button onClick={() => setShowQRCode(true)} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium transition">QR Arbitri</button>
+          )}
           {/* START / ÎNCHEIE for categories */}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
             <button
@@ -492,6 +500,31 @@ export default function LiveFullscreenPage() {
                 }
               }} disabled={busy} className="text-sm bg-red-600 text-white px-6 py-2.5 font-bold hover:bg-red-700 disabled:opacity-40">Oprește</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code modal for referees */}
+      {showQRCode && currentCat && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={() => setShowQRCode(false)}>
+          <div className="bg-white shadow-2xl rounded-xl p-8 max-w-sm w-full text-center space-y-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-900">QR Code Arbitri</h3>
+            <p className="text-sm text-gray-600">Scanează codul pentru a accesa pagina de punctaj pentru <span className="font-bold text-gray-900">{currentCat.name}</span></p>
+            <div className="flex items-center justify-center p-4 bg-white border-2 border-gray-100 rounded-lg">
+              <QRCodeSVG
+                value={`${window.location.protocol}//${window.location.hostname}:${REFEREE_SCORING_PORT}/category/${currentCat.id}/score`}
+                size={220}
+                level="M"
+                includeMargin={false}
+              />
+            </div>
+            <p className="text-[11px] text-gray-400 font-mono break-all">
+              {window.location.protocol}//{window.location.hostname}:{REFEREE_SCORING_PORT}/category/{currentCat.id}/score
+            </p>
+            <button onClick={() => setShowQRCode(false)}
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 py-2.5 rounded-lg font-bold text-sm transition">
+              Închide
+            </button>
           </div>
         </div>
       )}
@@ -708,6 +741,17 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     } catch(e) { console.error(e); }
   };
 
+  // Determine which referees have submitted at least one score for this category
+  const connectedRefIds = new Set();
+  if (refAssignment) {
+    for (const rs of refScores) {
+      const as = athleteScores.find(a => a.id === rs.athlete_score);
+      if (as && as.category === cat.id) {
+        connectedRefIds.add(rs.referee);
+      }
+    }
+  }
+
   return (
     <div className="w-full space-y-4">
       {/* ── Category info header (like match info tags) ── */}
@@ -722,16 +766,23 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <span className="text-xs font-bold bg-indigo-100 border border-indigo-200 text-indigo-700 px-2.5 py-1 uppercase">{cat.type === 'teams' ? 'Echipe' : 'Solo'}</span>
             </div>
           </div>
-          {/* Right: referee badges */}
+          {/* Right: referee badges with connection status */}
           <div className="flex flex-col items-end gap-2">
             {referees.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 justify-end">
-                {referees.map(r => (
-                  <span key={r.pos} className="text-xs bg-gray-50 border border-gray-200 px-2.5 py-1 font-medium text-gray-600">
-                    A{r.pos}: <span className="text-gray-900 font-bold">{r.name}</span>
-                  </span>
-                ))}
-              </div>
+              <>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Arbitri</span>
+                <div className="flex flex-wrap gap-1.5 justify-end">
+                  {referees.map(r => {
+                    const isConnected = connectedRefIds.has(r.id);
+                    return (
+                      <span key={r.pos} className={`text-xs border px-2.5 py-1 font-medium flex items-center gap-1.5 ${isConnected ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                        <span className={`inline-block w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                        A{r.pos}: <span className="font-bold">{r.name}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </div>
