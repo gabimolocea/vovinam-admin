@@ -1946,6 +1946,11 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         if category_id:
             queryset = queryset.filter(athlete_score__category_id=category_id)
 
+        # Filter by athlete
+        athlete_id = request.query_params.get('athlete')
+        if athlete_id:
+            queryset = queryset.filter(athlete_score__athlete_id=athlete_id)
+
         # Filter by event
         event_id = request.query_params.get('event_id')
         if event_id:

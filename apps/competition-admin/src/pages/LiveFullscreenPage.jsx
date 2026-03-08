@@ -93,28 +93,37 @@ export default function LiveFullscreenPage() {
     }
   }, [eventId]);
 
-  // Lightweight fetch — match + category score state (polled every 2s)
+  // Lightweight fetch — only scores + sessions (polled every 2s)
   const fetchMatchState = useCallback(async () => {
     if (!eventId) return;
     try {
-      const [rR, mrsR, meR, sR, mR, rsR, asR, cR, gR] = await Promise.all([
+      const [sR, rsR, asR, rR, mrsR, meR] = await Promise.all([
+        monitorAPI.sessions.list({ event_id: eventId }),
+        refereeAPI.categoryScores.list({ event_id: eventId }),
+        scoreAPI.list({ event_id: eventId }),
         roundAPI.list({ event_id: eventId }),
         matchRefereeScoreAPI.list({ event_id: eventId }),
         matchEventAPI.list({ event_id: eventId }),
-        monitorAPI.sessions.list({ event_id: eventId }),
-        matchAPI.list({ event_id: eventId }),
-        refereeAPI.categoryScores.list({ event_id: eventId }),
-        scoreAPI.list({ event_id: eventId }),
-        categoryAPI.list({ event_id: eventId }),
-        groupAPI.list({ event_id: eventId }),
       ]);
+      setSessions(arr(sR));
+      setRefScores(arr(rsR));
+      setAthleteScores(arr(asR));
       setRounds(arr(rR));
       setMatchRefScores(arr(mrsR));
       setMatchEvents(arr(meR));
-      setSessions(arr(sR));
-      setMatches(arr(mR));
-      setRefScores(arr(rsR));
-      setAthleteScores(arr(asR));
+    } catch (err) {
+      console.error('Match state fetch error:', err);
+    }
+  }, [eventId]);
+
+  // Targeted category refresh (for DQ status updates etc.)
+  const refreshCategories = useCallback(async () => {
+    if (!eventId) return;
+    try {
+      const [cR, gR] = await Promise.all([
+        categoryAPI.list({ event_id: eventId }),
+        groupAPI.list({ event_id: eventId }),
+      ]);
       const gs = arr(gR);
       setGroups(gs);
       const cats = arr(cR).map(c => {
@@ -123,7 +132,7 @@ export default function LiveFullscreenPage() {
       });
       setAllCats(cats);
     } catch (err) {
-      console.error('Match state fetch error:', err);
+      console.error('Category refresh error:', err);
     }
   }, [eventId]);
 
@@ -454,6 +463,7 @@ export default function LiveFullscreenPage() {
             setIdle={setIdle}
             revealScores={revealScores}
             onRefresh={fetchMatchState}
+            refreshCategories={refreshCategories}
           />
         ) : panelType === 'match' && currentMatch ? (
           <FullscreenMatchPanel
@@ -521,7 +531,7 @@ export default function LiveFullscreenPage() {
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
-function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, busy, switchDisplay, setIdle, revealScores, onRefresh }) {
+function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, busy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories }) {
   const enrolled = cat.enrolled_athletes || [];
   const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
 
@@ -630,7 +640,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   const toggleDisqualify = async (row) => {
     try {
       await enrollmentAPI.categoryAthletes.update(row.enrollmentId, { disqualified: !row.isDisqualified });
-      await onRefresh();
+      await Promise.all([onRefresh(), refreshCategories()]);
     } catch(e) { console.error(e); }
   };
 
