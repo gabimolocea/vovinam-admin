@@ -133,20 +133,7 @@ export default function LiveFullscreenPage() {
     return () => clearInterval(pollRef.current);
   }, [fetchData, fetchMatchState]);
 
-  // ── Auto-pause: set session to idle when leaving fullscreen ──
-  // (only if session was started from this page)
-  const sessionRef = useRef(null);
-  useEffect(() => { sessionRef.current = sessions.find(s => s.field === fieldId); }, [sessions, fieldId]);
-  useEffect(() => {
-    return () => {
-      const s = sessionRef.current;
-      if (s && s.status !== 'idle') {
-        monitorAPI.sessions.update(s.id, {
-          current_category: null, current_match: null, current_athlete: null, status: 'idle',
-        }).catch(console.error);
-      }
-    };
-  }, [fieldId]);
+  // NOTE: No auto-idle on unmount — navigating back keeps display visible on public screen
 
   const field = fields.find(f => f.id === fieldId);
   const session = sessions.find(s => s.field === fieldId);
@@ -596,22 +583,35 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   const activeRow = rows.find(r => r.isActive);
 
   // ── Smart highlight: determine which athlete/action to suggest ──
-  // Priority 1: athlete with all scores ready to reveal
-  // Priority 2: next athlete to present
+  // Priority 1: active athlete → highlight their row & stop button
+  // Priority 2: athlete with all scores ready to reveal
+  // Priority 3: next athlete to present
   let highlightAthleteId = null;
-  let highlightAction = null; // 'present' | 'reveal'
+  let highlightAction = null; // 'active' | 'reveal' | 'present'
 
-  // Find first athlete whose scores are ready to reveal (finished or active, all scores in, not yet revealed)
-  const revealCandidate = rows.find(r => !r.isDisqualified && r.allScoresIn && !r.isRevealed && (r.isActive || finishedAthletes.has(r.athleteId)));
-  if (revealCandidate) {
-    highlightAthleteId = revealCandidate.athleteId;
-    highlightAction = 'reveal';
-  } else if (!activeRow) {
-    // No active athlete and no pending reveal → suggest next athlete to present
-    const nextCandidate = rows.find(r => !r.isDisqualified && !finishedAthletes.has(r.athleteId) && !r.isActive && !r.isRevealed);
-    if (nextCandidate) {
-      highlightAthleteId = nextCandidate.athleteId;
-      highlightAction = 'present';
+  if (activeRow) {
+    // Active athlete is presenting — highlight them
+    if (activeRow.allScoresIn && !activeRow.isRevealed) {
+      // Scores are in while presenting → suggest reveal
+      highlightAthleteId = activeRow.athleteId;
+      highlightAction = 'reveal';
+    } else {
+      highlightAthleteId = activeRow.athleteId;
+      highlightAction = 'active';
+    }
+  } else {
+    // No active athlete → check for pending reveals first
+    const revealCandidate = rows.find(r => !r.isDisqualified && r.allScoresIn && !r.isRevealed && finishedAthletes.has(r.athleteId));
+    if (revealCandidate) {
+      highlightAthleteId = revealCandidate.athleteId;
+      highlightAction = 'reveal';
+    } else {
+      // No pending reveal → suggest next athlete to present
+      const nextCandidate = rows.find(r => !r.isDisqualified && !finishedAthletes.has(r.athleteId) && !r.isActive && !r.isRevealed);
+      if (nextCandidate) {
+        highlightAthleteId = nextCandidate.athleteId;
+        highlightAction = 'present';
+      }
     }
   }
 
@@ -847,7 +847,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                 const rank = getRank(row.athleteId);
                 return (
                   <tr key={row.athleteId} className={`${
-                    row.isDisqualified ? 'bg-red-50 opacity-60' : row.isRevealed ? 'bg-yellow-50 ring-2 ring-yellow-300 ring-inset' : row.isActive ? 'bg-green-100 ring-2 ring-green-300 ring-inset' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                    row.isDisqualified ? 'bg-red-50 opacity-60' : row.isRevealed ? 'bg-yellow-50 ring-2 ring-yellow-300 ring-inset' : row.isActive ? 'bg-green-50 ring-2 ring-green-500 ring-inset border-l-4 border-l-green-600' : highlightAthleteId === row.athleteId && highlightAction === 'present' ? 'bg-green-50/50 ring-1 ring-green-200 ring-inset' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                   } hover:bg-yellow-50/50 transition`}>
                     <td className="px-3 py-2.5 border-b border-gray-200 text-gray-400 text-xs">{idx + 1}</td>
                     <td className="px-3 py-2.5 border-b border-gray-200">
@@ -892,7 +892,9 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         {/* Prezintă / Oprește prezentarea */}
                         {row.isActive ? (
                           <button onClick={() => { switchDisplay(cat.id, null, null); setFinishedAthletes(prev => new Set(prev).add(row.athleteId)); }} disabled={busy}
-                            className="text-sm px-4 py-2 font-bold rounded disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600 whitespace-nowrap">
+                            className={`text-sm px-4 py-2 font-bold rounded disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600 whitespace-nowrap ${
+                              highlightAthleteId === row.athleteId && highlightAction === 'active' ? 'ring-2 ring-orange-400 ring-offset-1' : ''
+                            }`}>
                             ⏹ Oprește
                           </button>
                         ) : (
