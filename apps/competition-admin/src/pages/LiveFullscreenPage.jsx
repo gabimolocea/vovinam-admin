@@ -42,6 +42,7 @@ export default function LiveFullscreenPage() {
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [showResetCategoryConfirm, setShowResetCategoryConfirm] = useState(false);
   const [showStopCategoryConfirm, setShowStopCategoryConfirm] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
   const pollRef = useRef(null);
 
   const arr = r => r.data?.results || r.data || [];
@@ -363,6 +364,12 @@ export default function LiveFullscreenPage() {
             className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2  font-medium transition">
             Public Display
           </a>
+          <button
+            onClick={() => setShowPreview(p => !p)}
+            className={`text-sm px-4 py-2 font-medium transition ${showPreview ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+          >
+            {showPreview ? '📺 Ascunde preview' : '📺 Preview'}
+          </button>
         </div>
       </div>
 
@@ -504,6 +511,21 @@ export default function LiveFullscreenPage() {
           </div>
         )}
       </div>
+
+      {/* ── Floating Public Display preview ── */}
+      {showPreview && (
+        <div className="fixed bottom-4 right-4 z-40 shadow-2xl border-2 border-gray-700 bg-black overflow-hidden" style={{ width: '400px', height: '225px' }}>
+          <div className="absolute top-0 left-0 right-0 bg-gray-900/80 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex items-center justify-between z-10">
+            <span>📺 Public Display — Preview</span>
+            <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-white text-xs leading-none">✕</button>
+          </div>
+          <iframe
+            src={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fieldId}`}
+            className="w-full h-full border-0 pointer-events-none"
+            title="Public Display Preview"
+          />
+        </div>
+      )}
     </div>
   );
 }
