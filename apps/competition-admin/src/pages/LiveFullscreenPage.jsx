@@ -544,6 +544,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   const [finishedAthletes, setFinishedAthletes] = useState(new Set());
   const [resetConfirmData, setResetConfirmData] = useState(null);
   const [dqConfirmData, setDqConfirmData] = useState(null);
+  const [revealConfirmData, setRevealConfirmData] = useState(null); // { athleteId, athleteName, row }
 
   // Build referee list from category referee assignment
   const referees = [];
@@ -593,6 +594,26 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
   // Check if active athlete has all scores
   const activeRow = rows.find(r => r.isActive);
+
+  // ── Smart highlight: determine which athlete/action to suggest ──
+  // Priority 1: athlete with all scores ready to reveal
+  // Priority 2: next athlete to present
+  let highlightAthleteId = null;
+  let highlightAction = null; // 'present' | 'reveal'
+
+  // Find first athlete whose scores are ready to reveal (finished or active, all scores in, not yet revealed)
+  const revealCandidate = rows.find(r => !r.isDisqualified && r.allScoresIn && !r.isRevealed && (r.isActive || finishedAthletes.has(r.athleteId)));
+  if (revealCandidate) {
+    highlightAthleteId = revealCandidate.athleteId;
+    highlightAction = 'reveal';
+  } else if (!activeRow) {
+    // No active athlete and no pending reveal → suggest next athlete to present
+    const nextCandidate = rows.find(r => !r.isDisqualified && !finishedAthletes.has(r.athleteId) && !r.isActive && !r.isRevealed);
+    if (nextCandidate) {
+      highlightAthleteId = nextCandidate.athleteId;
+      highlightAction = 'present';
+    }
+  }
 
   // Reset single athlete scores
   const resetAthleteScores = async (row) => {
@@ -773,6 +794,37 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         </div>
       )}
 
+      {/* ── Reveal scores confirmation modal ── */}
+      {revealConfirmData && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setRevealConfirmData(null)}>
+          <div className="bg-white shadow-2xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="text-center">
+              <span className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-yellow-100 mb-3">
+                <span className="text-3xl">📊</span>
+              </span>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 text-center">Afișează scorurile public?</h3>
+            <p className="text-sm text-gray-600 text-center">
+              Scorurile pentru <span className="font-bold text-gray-900">{revealConfirmData.athleteName}</span> vor fi afișate pe ecranul public pentru spectatori.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { switchDisplay(cat.id, null, revealConfirmData.athleteId, 'scores_revealed'); setRevealConfirmData(null); }}
+                className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black px-4 py-3 font-bold text-base transition rounded"
+              >
+                Da, afișează
+              </button>
+              <button
+                onClick={() => setRevealConfirmData(null)}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-3 font-bold text-base transition rounded"
+              >
+                Nu, anulează
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Athletes table — all participants ── */}
       <div className="border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-gray-100 border-b border-gray-200">
@@ -837,28 +889,39 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                     </td>
                     <td className="text-center px-2 py-2.5 border-b border-gray-200">
                       <div className="flex items-center justify-center gap-1.5 flex-nowrap">
-                        {/* Start / Încheie button */}
+                        {/* Prezintă / Oprește prezentarea */}
                         {row.isActive ? (
                           <button onClick={() => { switchDisplay(cat.id, null, null); setFinishedAthletes(prev => new Set(prev).add(row.athleteId)); }} disabled={busy}
                             className="text-sm px-4 py-2 font-bold rounded disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600 whitespace-nowrap">
-                            Încheie
+                            ⏹ Oprește
                           </button>
                         ) : (
                           <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
-                            className="text-sm px-4 py-2 font-bold rounded disabled:opacity-40 bg-green-600 text-white hover:bg-green-700 whitespace-nowrap">
-                            Start
+                            className={`text-sm px-4 py-2 font-bold rounded disabled:opacity-40 whitespace-nowrap ${
+                              highlightAthleteId === row.athleteId && highlightAction === 'present'
+                                ? 'bg-green-600 text-white hover:bg-green-700 ring-2 ring-green-400 ring-offset-1 animate-pulse'
+                                : 'bg-green-600 text-white hover:bg-green-700'
+                            }`}>
+                            📺 Prezintă
                           </button>
                         )}
-                        {/* Reveal scores on TV */}
+                        {/* Afișează Scorul on TV — with confirmation popup */}
                         {row.allScoresIn && (
                           <button
-                            onClick={() => switchDisplay(cat.id, null, row.athleteId, 'scores_revealed')}
-                            disabled={busy}
+                            onClick={() => {
+                              if (row.isRevealed) return;
+                              setRevealConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row });
+                            }}
+                            disabled={busy || row.isRevealed}
                             className={`text-sm px-4 py-2 font-bold rounded disabled:opacity-40 whitespace-nowrap ${
-                              row.isRevealed ? 'bg-yellow-400 text-black' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                              row.isRevealed
+                                ? 'bg-yellow-400 text-black cursor-default'
+                                : highlightAthleteId === row.athleteId && highlightAction === 'reveal'
+                                  ? 'bg-yellow-400 text-black hover:bg-yellow-500 ring-2 ring-yellow-500 ring-offset-1 animate-pulse'
+                                  : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
                             }`}
                           >
-                            {row.isRevealed ? '✓ Afișat' : 'Afișează'}
+                            {row.isRevealed ? '✓ Scor afișat' : '📊 Afișează Scorul'}
                           </button>
                         )}
                         {/* Reset scores */}
