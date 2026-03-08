@@ -15,6 +15,7 @@ import { QRCodeSVG } from 'qrcode.react';
    ═══════════════════════════════════════════════════════ */
 
 const PUBLIC_DISPLAY_PORT = 5177;
+const REFEREE_SCORING_PORT = 5176;
 
 export default function LiveFullscreenPage() {
   const { id: eventId } = useParams();
