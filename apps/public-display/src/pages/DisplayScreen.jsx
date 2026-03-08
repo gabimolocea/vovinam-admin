@@ -277,7 +277,7 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
 
             return (
               <div key={i} className="flex flex-col items-center gap-[1vh]">
-                <div className={`w-[16vw] h-[30vh] flex flex-col items-center justify-center transition-all duration-500 ${
+                <div className={`relative w-[16vw] h-[30vh] flex flex-col items-center justify-center transition-all duration-500 ${
                   hasScore
                     ? isCancelled ? 'bg-red-600/30 border-4 border-red-500' : 'bg-green-600/30 border-4 border-green-500'
                     : 'bg-gray-700'
@@ -285,11 +285,19 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
                   <span className="text-[1.5vw] font-black text-gray-400 mb-[1vh]">A{i + 1}</span>
                   <span className={`text-[5vw] font-black tabular-nums ${
                     hasScore
-                      ? isCancelled ? 'text-red-400 line-through' : 'text-white'
+                      ? isCancelled ? 'text-red-400' : 'text-white'
                       : 'text-gray-600'
                   }`}>
                     {hasScore ? score.toFixed(1) : '—'}
                   </span>
+                  {/* Red diagonal slash for cancelled (min/max) scores */}
+                  {hasScore && isCancelled && (
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                      <div className="absolute inset-0" style={{
+                        background: 'linear-gradient(to top right, transparent calc(50% - 3px), #ef4444 calc(50% - 3px), #ef4444 calc(50% + 3px), transparent calc(50% + 3px))'
+                      }} />
+                    </div>
+                  )}
                 </div>
               </div>
             );

@@ -753,11 +753,18 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                     </td>
                     <td className="text-center px-2 py-2.5 border-b border-gray-200">
                       <div className="flex items-center justify-center gap-1">
-                        {/* TV button — switch display to this athlete */}
-                        <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
-                          className={`text-xs px-2 py-1 font-bold disabled:opacity-40 ${row.isActive ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-                          {row.isActive ? '●' : 'START'}
-                        </button>
+                        {/* TV button — switch display / pause */}
+                        {row.isActive ? (
+                          <button onClick={() => setIdle()} disabled={busy}
+                            className="text-xs px-2 py-1 font-bold disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600">
+                            PAUZĂ
+                          </button>
+                        ) : (
+                          <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
+                            className="text-xs px-2 py-1 font-bold disabled:opacity-40 bg-gray-200 text-gray-600 hover:bg-gray-300">
+                            START
+                          </button>
+                        )}
                         {/* Reveal button — switch to athlete + reveal scores on TV */}
                         {row.allScoresIn && (
                           <button
