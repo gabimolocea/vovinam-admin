@@ -320,14 +320,14 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
           </div>
         )}
 
-        {/* ═══ PHASE 2: Total screen — large box replacing referee boxes after 7s ═══ */}
+        {/* ═══ PHASE 2: Total box — same size as a referee box, green ═══ */}
         {revealed && showTotalScreen && total != null && (
           <div className="flex flex-col items-center justify-center animate-[fadeScaleIn_0.8s_ease-out]">
-            <div className="border-4 border-yellow-400 bg-yellow-400/10 px-[10vw] py-[6vh] flex flex-col items-center justify-center">
-              <p className="text-[2.5vw] font-black text-yellow-300 uppercase tracking-[0.3em] mb-[2vh]">TOTAL</p>
-              <p className="text-[14vw] font-black text-yellow-400 tabular-nums leading-none" style={{ textShadow: '0 0 60px rgba(250,204,21,0.4)' }}>
+            <div className="relative w-[16vw] h-[30vh] flex flex-col items-center justify-center bg-green-600/30 border-4 border-green-500">
+              <span className="text-[1.5vw] font-black text-green-300 mb-[1vh] uppercase tracking-wider">TOTAL</span>
+              <span className="text-[5vw] font-black text-white tabular-nums leading-none">
                 {Math.round(total)}
-              </p>
+              </span>
             </div>
           </div>
         )}
