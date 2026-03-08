@@ -136,11 +136,11 @@ export default function LivePage() {
   return (
     <div className={`flex-1 overflow-auto bg-gray-100 ${isSingle ? 'flex flex-col p-2' : 'p-3'}`}>
       {/* ═══ VIEW MODE TOOLBAR ═══ */}
-      <div className="flex items-center gap-3 mb-3 bg-white rounded-lg border border-gray-200 px-4 py-3 shadow-sm overflow-x-auto shrink-0">
+      <div className="flex items-center gap-3 mb-3 bg-white border border-gray-200 px-4 py-3 shadow-sm overflow-x-auto shrink-0">
         <span className="text-sm font-bold text-gray-500 uppercase tracking-wider mr-1 shrink-0">Vizualizare:</span>
         <button
           onClick={() => setViewMode('all')}
-          className={`text-base px-5 py-2.5 rounded-lg font-semibold transition shrink-0 ${
+          className={`text-base px-5 py-2.5 font-semibold transition shrink-0 ${
             viewMode === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
@@ -153,7 +153,7 @@ export default function LivePage() {
             <button
               key={f.id}
               onClick={() => setViewMode(f.id)}
-              className={`text-base px-5 py-2.5 rounded-lg font-semibold transition shrink-0 ${
+              className={`text-base px-5 py-2.5 font-semibold transition shrink-0 ${
                 viewMode === f.id
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : isActive
@@ -215,6 +215,18 @@ function FieldPanel({
   const currentCat = fieldCats.find(c => c.id === session?.current_category);
   const currentMatch = fieldMatches.find(m => m.id === session?.current_match)
                     || matches.find(m => m.id === session?.current_match);
+
+  // ── Auto-mark match assignments as 'completed' when match is finalized ──
+  useEffect(() => {
+    if (!matchAssignments?.length || !matches?.length) return;
+    const fieldMatchAss = matchAssignments.filter(a => a.field === field.id);
+    for (const a of fieldMatchAss) {
+      const m = matches.find(mm => mm.id === a.match);
+      if (m && m.status === 'completed' && a.status !== 'completed') {
+        matchFieldAssignmentAPI.update(a.id, { status: 'completed' }).catch(console.error);
+      }
+    }
+  }, [matches, matchAssignments, field.id]);
 
   // ── API helpers ──
   const wrap = fn => async (...a) => {
@@ -344,7 +356,7 @@ function FieldPanel({
   };
 
   return (
-    <div className={`rounded-xl border border-gray-300 bg-white shadow-sm overflow-hidden ${singleView ? 'flex-1 flex flex-col min-h-0' : ''}`}>
+    <div className={`border border-gray-300 bg-white shadow-sm overflow-hidden ${singleView ? 'flex-1 flex flex-col min-h-0' : ''}`}>
       {/* ═══ HEADER ═══ */}
       <div className="flex items-center justify-between bg-gray-800 text-white px-5 py-3 shrink-0">
         <div className="flex items-center gap-3">
@@ -356,7 +368,7 @@ function FieldPanel({
         </div>
         <button
           onClick={() => window.open(displayUrl, '_blank')}
-          className="flex items-center gap-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold transition"
+          className="flex items-center gap-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 px-5 py-2.5 font-semibold transition border border-gray-600"
         >
           📺 Public Display
         </button>
@@ -389,7 +401,7 @@ function FieldPanel({
 
                   {item.type === 'break' ? (
                     /* ─── Break item ─── */
-                    <div className="flex items-center gap-2 rounded-lg px-4 py-3 bg-orange-50 border border-orange-200 text-sm text-orange-700 cursor-grab"
+                    <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 border border-orange-200 text-sm text-orange-700 cursor-grab"
                       draggable onDragStart={e => handleDragStart(e, item)} onDragEnd={handleDragEnd} onDragOver={e => handleItemDragOver(e, idx)}>
                       <span className="text-base text-orange-600 font-medium">&bull;</span>
                       <span className="font-semibold flex-1 truncate">{item.data?.label || 'Pauză'}</span>
@@ -397,7 +409,7 @@ function FieldPanel({
                     </div>
                   ) : (
                     /* ─── Category / Match item ─── */
-                    <div className={`flex items-center gap-2.5 rounded-lg border px-4 py-3 transition cursor-grab ${
+                    <div className={`flex flex-wrap items-center gap-2.5 border px-4 py-3 transition cursor-grab ${
                       isActiveItem ? 'border-green-400 bg-green-50 ring-2 ring-green-300 shadow-sm' : idx === nextItemIndex ? st.border + ' bg-orange-50/50 ring-2 ring-orange-200 shadow-sm' : st.border + ' ' + st.bg + ' hover:shadow-sm'
                     }`}
                       draggable onDragStart={e => handleDragStart(e, item)} onDragEnd={handleDragEnd} onDragOver={e => handleItemDragOver(e, idx)}>
@@ -436,7 +448,7 @@ function FieldPanel({
 
                       {/* URMEAZĂ badge */}
                       {idx === nextItemIndex && !isActiveItem && (
-                        <span className="text-xs font-bold text-orange-700 bg-orange-100 border border-orange-200 px-2.5 py-1 rounded-lg shrink-0 uppercase">Urmează</span>
+                        <span className="text-xs font-bold text-orange-700 bg-orange-100 border border-orange-200 px-2.5 py-1 shrink-0 uppercase">Urmează</span>
                       )}
 
                       {/* Status dropdown */}
@@ -447,7 +459,7 @@ function FieldPanel({
                           else updateMatchAssignmentStatus(item.assignmentId, e.target.value);
                         }}
                         disabled={busy}
-                        className={`text-xs font-bold uppercase rounded-lg px-2.5 py-1.5 border-none cursor-pointer ${st.badge}`}
+                        className={`text-xs font-bold uppercase px-2.5 py-1.5 border-none cursor-pointer ${st.badge}`}
                         onClick={e => e.stopPropagation()}
                       >
                         <option value="not_started">Neînceput</option>
@@ -455,10 +467,17 @@ function FieldPanel({
                         <option value="completed">Gata</option>
                       </select>
 
-                      {/* Play / Stop */}
+                      {/* START / CONTINUA / Stop */}
                       {isActiveItem ? (
-                        <button onClick={setIdle} disabled={busy} className="text-sm bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 disabled:opacity-40 shrink-0">Stop</button>
-                      ) : (
+                        <>
+                          <button
+                            onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
+                            disabled={busy}
+                            className="text-sm bg-green-600 text-white px-4 py-2 font-bold hover:bg-green-700 disabled:opacity-40 shrink-0"
+                          >CONTINUĂ PROBA</button>
+                          <button onClick={setIdle} disabled={busy} className="text-sm bg-red-100 text-red-600 px-4 py-2 font-bold hover:bg-red-200 disabled:opacity-40 shrink-0">Stop</button>
+                        </>
+                      ) : item.status === 'in_progress' ? (
                         <button
                           onClick={() => {
                             if (item.type === 'category') {
@@ -470,8 +489,24 @@ function FieldPanel({
                             }
                           }}
                           disabled={busy}
-                          className="text-sm bg-green-100 text-green-700 px-4 py-2 rounded-lg font-bold hover:bg-green-200 disabled:opacity-40 shrink-0"
-                        >▶ Play</button>
+                          className="text-sm bg-green-600 text-white px-4 py-2 font-bold hover:bg-green-700 disabled:opacity-40 shrink-0"
+                        >CONTINUĂ PROBA</button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            if (item.type === 'category') {
+                              await switchDisplay(item.id, null, null);
+                              await updateAssignmentStatus(item.assignmentId, 'in_progress');
+                              goFullscreen('category');
+                            } else {
+                              await switchDisplay(item.data.category, item.id, null);
+                              await updateMatchAssignmentStatus(item.assignmentId, 'in_progress');
+                              goFullscreen('match');
+                            }
+                          }}
+                          disabled={busy}
+                          className="text-sm bg-green-600 text-white px-5 py-2 font-bold hover:bg-green-700 disabled:opacity-40 shrink-0"
+                        >START PROBA</button>
                       )}
                     </div>
                   )}

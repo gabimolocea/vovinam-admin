@@ -116,6 +116,20 @@ export default function LiveFullscreenPage() {
     return () => clearInterval(pollRef.current);
   }, [fetchData, fetchMatchState]);
 
+  // ── Auto-pause: set session to idle when leaving fullscreen ──
+  const sessionRef = useRef(null);
+  useEffect(() => { sessionRef.current = sessions.find(s => s.field === fieldId); }, [sessions, fieldId]);
+  useEffect(() => {
+    return () => {
+      const s = sessionRef.current;
+      if (s && s.status !== 'idle') {
+        monitorAPI.sessions.update(s.id, {
+          current_category: null, current_match: null, current_athlete: null, status: 'idle',
+        }).catch(console.error);
+      }
+    };
+  }, [fieldId]);
+
   const field = fields.find(f => f.id === fieldId);
   const session = sessions.find(s => s.field === fieldId);
   const fieldCats = catAssignments
