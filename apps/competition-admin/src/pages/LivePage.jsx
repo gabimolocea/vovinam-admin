@@ -16,7 +16,7 @@ const PUBLIC_DISPLAY_PORT = 5177;
 const STATUS_CFG = {
   not_started:  { label: 'Neînceput',      dot: 'bg-gray-400',  bg: 'bg-gray-50',  border: 'border-gray-200', badge: 'bg-gray-100 text-gray-600' },
   in_progress:  { label: 'În desfășurare', dot: 'bg-green-500 animate-pulse', bg: 'bg-green-50', border: 'border-green-300', badge: 'bg-green-100 text-green-700' },
-  completed:    { label: 'Finalizat',      dot: 'bg-blue-500',  bg: 'bg-blue-50',  border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700' },
+  completed:    { label: 'Finalizat',      dot: 'bg-emerald-500',  bg: 'bg-emerald-50',  border: 'border-emerald-300', badge: 'bg-emerald-100 text-emerald-700' },
 };
 
 export default function LivePage() {
@@ -210,6 +210,7 @@ function FieldPanel({
   const [busy, setBusy] = useState(false);
   const dragItemRef = useRef(null);
   const [dropIndicator, setDropIndicator] = useState(null); // null | 'category' | 'match'
+  const [statusConfirmData, setStatusConfirmData] = useState(null); // { item, newStatus }
 
   const isIdle = !session || session.status === 'idle';
   const currentCat = fieldCats.find(c => c.id === session?.current_category);
@@ -247,8 +248,8 @@ function FieldPanel({
     await fieldAPI.assignments.update(assignmentId, { status: newStatus });
   });
 
-  const goFullscreen = (panelType) => {
-    navigate(`/competitions/${eventId}/live-fullscreen?field=${field.id}&panel=${panelType}`);
+  const goFullscreen = (panelType, itemId) => {
+    navigate(`/competitions/${eventId}/live-fullscreen?field=${field.id}&panel=${panelType}${itemId ? `&id=${itemId}` : ''}`);
   };
 
   // Public display URL
@@ -416,8 +417,12 @@ function FieldPanel({
                       {/* Drag handle */}
                       <span className="text-gray-300 text-sm cursor-grab mr-0.5 select-none">⠿</span>
 
-                      {/* Status dot */}
-                      <span className={`h-3 w-3 rounded-full shrink-0 ${st.dot}`} />
+                      {/* Status dot / checkmark */}
+                      {item.status === 'completed' ? (
+                        <span className="h-5 w-5 rounded-full shrink-0 bg-emerald-500 flex items-center justify-center text-white text-xs font-black">✓</span>
+                      ) : (
+                        <span className={`h-3 w-3 rounded-full shrink-0 ${st.dot}`} />
+                      )}
 
                       {/* Name + info */}
                       <div className="flex-1 min-w-0">
@@ -459,6 +464,12 @@ function FieldPanel({
                         value={item.status || 'not_started'}
                         onChange={async e => {
                           const newStatus = e.target.value;
+                          // If changing FROM completed, ask for confirmation
+                          if (item.status === 'completed' && newStatus !== 'completed') {
+                            setStatusConfirmData({ item, newStatus });
+                            e.target.value = 'completed'; // reset select visually
+                            return;
+                          }
                           // If setting to in_progress, first reset other active items on this field
                           if (newStatus === 'in_progress') {
                             for (const si of scheduleItems) {
@@ -481,66 +492,11 @@ function FieldPanel({
                         <option value="completed">Finalizat</option>
                       </select>
 
-                      {/* START / CONTINUA / Stop / VEZI DETALII */}
-                      {isActiveItem ? (
-                        <>
-                          <button
-                            onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
-                            disabled={busy}
-                            className="text-sm bg-green-600 text-white px-4 py-2 font-bold hover:bg-green-700 disabled:opacity-40 shrink-0"
-                          >CONTINUĂ PROBA</button>
-                          <button onClick={setIdle} disabled={busy} className="text-sm bg-red-100 text-red-600 px-4 py-2 font-bold hover:bg-red-200 disabled:opacity-40 shrink-0">Stop</button>
-                        </>
-                      ) : item.status === 'in_progress' ? (
-                        <>
-                          <button
-                            onClick={() => {
-                              if (item.type === 'category') {
-                                switchDisplay(item.id, null, null);
-                                goFullscreen('category');
-                              } else {
-                                switchDisplay(item.data.category, item.id, null);
-                                goFullscreen('match');
-                              }
-                            }}
-                            disabled={busy || !isIdle}
-                            title={!isIdle ? 'Oprește proba activă înainte de a continua alta' : ''}
-                            className={`text-sm px-4 py-2 font-bold shrink-0 disabled:opacity-40 ${!isIdle ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
-                          >CONTINUĂ PROBA</button>
-                          <button
-                            onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
-                            className="text-sm bg-gray-100 text-gray-600 px-3 py-2 font-bold hover:bg-gray-200 shrink-0"
-                          >VEZI DETALII</button>
-                        </>
-                      ) : item.status === 'completed' ? (
-                        <button
-                          onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
-                          className="text-sm bg-gray-100 text-gray-600 px-4 py-2 font-bold hover:bg-gray-200 shrink-0"
-                        >VEZI DETALII</button>
-                      ) : (
-                        <>
-                          <button
-                            onClick={async () => {
-                              if (item.type === 'category') {
-                                await switchDisplay(item.id, null, null);
-                                await updateAssignmentStatus(item.assignmentId, 'in_progress');
-                                goFullscreen('category');
-                              } else {
-                                await switchDisplay(item.data.category, item.id, null);
-                                await updateMatchAssignmentStatus(item.assignmentId, 'in_progress');
-                                goFullscreen('match');
-                              }
-                            }}
-                            disabled={busy || !isIdle}
-                            title={!isIdle ? 'Oprește proba activă înainte de a începe alta' : ''}
-                            className={`text-sm px-5 py-2 font-bold shrink-0 disabled:opacity-40 ${!isIdle ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
-                          >START PROBA</button>
-                          <button
-                            onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
-                            className="text-sm bg-gray-100 text-gray-600 px-3 py-2 font-bold hover:bg-gray-200 shrink-0"
-                          >VEZI DETALII</button>
-                        </>
-                      )}
+                      {/* VEZI DETALII — always shown */}
+                      <button
+                        onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match', item.id)}
+                        className="text-sm bg-gray-100 text-gray-600 px-4 py-2 font-bold hover:bg-gray-200 shrink-0"
+                      >VEZI DETALII</button>
                     </div>
                   )}
                 </React.Fragment>
@@ -552,6 +508,37 @@ function FieldPanel({
             )}
           </div>
       </div>
+
+      {/* ── Status change from Finalizat confirmation modal ── */}
+      {statusConfirmData && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setStatusConfirmData(null)}>
+          <div className="bg-white shadow-2xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-900 text-center">Schimbă statusul</h3>
+            <p className="text-sm text-gray-600 text-center">
+              Această probă este marcată ca <span className="font-bold text-emerald-600">Finalizată</span>. Ești sigur că vrei să schimbi statusul în <span className="font-bold text-gray-900">{statusConfirmData.newStatus === 'not_started' ? 'Neînceput' : 'Activ'}</span>?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  const { item, newStatus } = statusConfirmData;
+                  setStatusConfirmData(null);
+                  if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
+                  else updateMatchAssignmentStatus(item.assignmentId, newStatus);
+                }}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white px-4 py-3 font-bold text-base transition"
+              >
+                Da, schimbă
+              </button>
+              <button
+                onClick={() => setStatusConfirmData(null)}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-3 font-bold text-base transition"
+              >
+                Anulează
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

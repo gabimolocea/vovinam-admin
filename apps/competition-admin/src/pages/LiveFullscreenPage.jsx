@@ -20,6 +20,7 @@ export default function LiveFullscreenPage() {
   const [searchParams] = useSearchParams();
   const fieldId = Number(searchParams.get('field'));
   const panelType = searchParams.get('panel'); // 'category' | 'match'
+  const itemId = Number(searchParams.get('id')); // category or match ID
 
   const [fields, setFields] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -132,6 +133,7 @@ export default function LiveFullscreenPage() {
   }, [fetchData, fetchMatchState]);
 
   // ── Auto-pause: set session to idle when leaving fullscreen ──
+  // (only if session was started from this page)
   const sessionRef = useRef(null);
   useEffect(() => { sessionRef.current = sessions.find(s => s.field === fieldId); }, [sessions, fieldId]);
   useEffect(() => {
@@ -156,9 +158,17 @@ export default function LiveFullscreenPage() {
     .map(a => matches.find(m => m.id === a.match))
     .filter(Boolean);
 
-  const currentCat = fieldCats.find(c => c.id === session?.current_category);
+  const currentCat = fieldCats.find(c => c.id === session?.current_category)
+    || (panelType === 'category' && itemId ? allCats.find(c => c.id === itemId) : null);
   const currentMatch = fieldMatches.find(m => m.id === session?.current_match)
-                    || matches.find(m => m.id === session?.current_match);
+    || matches.find(m => m.id === session?.current_match)
+    || (panelType === 'match' && itemId ? matches.find(m => m.id === itemId) : null);
+  const isSessionActive = panelType === 'category'
+    ? !!(session && session.current_category === (currentCat?.id) && session.status !== 'idle')
+    : !!(session && session.current_match === (currentMatch?.id) && session.status !== 'idle');
+  const currentAssignment = panelType === 'category'
+    ? catAssignments.find(a => a.field === fieldId && a.category === currentCat?.id)
+    : matchAssignments.find(a => a.field === fieldId && a.match === currentMatch?.id);
   const matchRoundsForMatch = currentMatch
     ? rounds.filter(r => r.match === currentMatch.id).sort((a, b) => a.round_number - b.round_number)
     : [];
@@ -314,11 +324,40 @@ export default function LiveFullscreenPage() {
             </>
           )}
           {/* Category control buttons in top nav */}
-          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && isSessionActive && (
             <>
               <button onClick={() => setShowResetCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Resetează Proba</button>
               <button onClick={() => setShowStopCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Oprește</button>
             </>
+          )}
+          {/* START / ÎNCHEIE for categories */}
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
+            <button
+              onClick={async () => {
+                await switchDisplay(currentCat.id, null, null);
+                if (currentAssignment) {
+                  setBusy(true);
+                  try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+              className="text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
+            >▶ START PROBA</button>
+          )}
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && isSessionActive && (
+            <button
+              onClick={async () => {
+                setIdle();
+                if (currentAssignment) {
+                  setBusy(true);
+                  try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'completed' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+              className="text-sm bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
+            >✓ ÎNCHEIE PROBA</button>
           )}
           <a href={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
             className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2  font-medium transition">
@@ -412,7 +451,7 @@ export default function LiveFullscreenPage() {
         {panelType === 'category' && currentCat && currentCat.type !== 'fight' ? (
           <FullscreenCategoryPanel
             cat={currentCat}
-            session={session}
+            session={isSessionActive ? session : null}
             refAssignment={refAssignments.find(ra => ra.category === currentCat.id)}
             athleteScores={athleteScores.filter(as => as.category === currentCat.id)}
             refScores={refScores}
