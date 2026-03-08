@@ -21,6 +21,8 @@ export default function ScoringPanel() {
   const [draftScore, setDraftScore] = useState(MAX_SCORE);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showFinishedPopup, setShowFinishedPopup] = useState(false);
+  const finishedShownRef = useRef(false);
   const pollRef = useRef(null);
 
   const myAthleteId = user?.athlete_id || user?.athlete?.id;
@@ -137,6 +139,14 @@ export default function ScoringPanel() {
   const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
   const hasActiveScoring = activeAthleteId && !getMyScore(activeAthleteId);
   const allScored = athletes.length > 0 && athletes.every(a => getMyScore(a.athlete || a.id));
+
+  // Auto-show finished popup once when all athletes scored
+  useEffect(() => {
+    if (allScored && !finishedShownRef.current) {
+      finishedShownRef.current = true;
+      setShowFinishedPopup(true);
+    }
+  }, [allScored]);
 
   return (
     <div className="flex flex-col bg-gray-50 text-gray-900" style={{ height: '100dvh' }}>
@@ -335,6 +345,27 @@ export default function ScoringPanel() {
                 Trimite
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Finished popup — all athletes scored */}
+      {showFinishedPopup && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white shadow-2xl rounded-xl p-8 max-w-sm w-full text-center space-y-5">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+              <span className="text-green-600 text-3xl font-black">✓</span>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Mulțumim!</h3>
+            <p className="text-sm text-gray-600">Ați evaluat toți sportivii din această probă. Puteți reveni la pagina principală.</p>
+            <button onClick={() => { setShowFinishedPopup(false); navigate('/'); }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-base transition">
+              Pagina principală
+            </button>
+            <button onClick={() => setShowFinishedPopup(false)}
+              className="w-full text-sm text-gray-500 hover:text-gray-700 font-medium transition">
+              Rămâi pe această pagină
+            </button>
           </div>
         </div>
       )}
