@@ -20,6 +20,7 @@ export default function ScoringPanel() {
   const [submitSuccess, setSubmitSuccess] = useState(null);
   const [draftScore, setDraftScore] = useState(MAX_SCORE);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const pollRef = useRef(null);
 
   const myAthleteId = user?.athlete_id || user?.athlete?.id;
@@ -233,7 +234,6 @@ export default function ScoringPanel() {
             <div className="relative flex items-center justify-center px-4 py-2 bg-green-50 border-b border-green-200 shrink-0">
               <div className="text-center">
                 <p className="text-5xl font-black text-gray-900 tabular-nums leading-none">{draftScore}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">din {MAX_SCORE}</p>
               </div>
               <button onClick={() => setShowResetConfirm(true)} disabled={busy}
                 className="absolute right-3 text-[10px] font-bold text-gray-500 bg-gray-200 hover:bg-gray-300 active:bg-gray-400 px-2 py-1 disabled:opacity-40 transition-all">
@@ -269,7 +269,7 @@ export default function ScoringPanel() {
 
               {/* Submit row */}
               <div className="shrink-0">
-                <button onClick={() => submitScore(activeAthleteId)} disabled={busy}
+                <button onClick={() => setShowSubmitConfirm(true)} disabled={busy}
                   className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white py-3 text-lg font-black disabled:opacity-40 transition-all active:scale-[0.98]">
                   TRIMITE SCOR
                 </button>
@@ -294,6 +294,29 @@ export default function ScoringPanel() {
                   <button onClick={() => { setShowResetConfirm(false); resetScore(); }}
                     className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 font-bold text-base transition">
                     Resetează
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Submit confirm modal */}
+          {showSubmitConfirm && (
+            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowSubmitConfirm(false)}>
+              <div className="bg-white shadow-2xl p-6 max-w-sm w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="w-14 h-14 bg-green-100 flex items-center justify-center mx-auto">
+                  <span className="text-green-600 text-2xl font-black">✓</span>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Trimite scorul?</h3>
+                <p className="text-sm text-gray-600">Vei trimite scorul de <span className="font-black text-2xl text-gray-900">{draftScore}</span> puncte.</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowSubmitConfirm(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 font-bold text-base transition">
+                    Anulează
+                  </button>
+                  <button onClick={() => { setShowSubmitConfirm(false); submitScore(activeAthleteId); }}
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 font-bold text-base transition">
+                    Trimite
                   </button>
                 </div>
               </div>
