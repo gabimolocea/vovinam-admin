@@ -491,8 +491,9 @@ function FieldPanel({
                               goFullscreen('match');
                             }
                           }}
-                          disabled={busy}
-                          className="text-sm bg-green-600 text-white px-4 py-2 font-bold hover:bg-green-700 disabled:opacity-40 shrink-0"
+                          disabled={busy || !isIdle}
+                          title={!isIdle ? 'Oprește proba activă înainte de a continua alta' : ''}
+                          className={`text-sm px-4 py-2 font-bold shrink-0 disabled:opacity-40 ${!isIdle ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
                         >CONTINUĂ PROBA</button>
                       ) : (
                         <button
@@ -507,8 +508,9 @@ function FieldPanel({
                               goFullscreen('match');
                             }
                           }}
-                          disabled={busy}
-                          className="text-sm bg-green-600 text-white px-5 py-2 font-bold hover:bg-green-700 disabled:opacity-40 shrink-0"
+                          disabled={busy || !isIdle}
+                          title={!isIdle ? 'Oprește proba activă înainte de a începe alta' : ''}
+                          className={`text-sm px-5 py-2 font-bold shrink-0 disabled:opacity-40 ${!isIdle ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
                         >START PROBA</button>
                       )}
                     </div>
