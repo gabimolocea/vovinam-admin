@@ -6,6 +6,7 @@ import {
   categoryRefereeAssignmentAPI, matchEventAPI, fieldBreakAPI,
   matchRefereeAssignmentAPI, groupAPI, categoryAPI, enrollmentAPI,
 } from '@shared/lib/api';
+import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 
 /* ═══════════════════════════════════════════════════════
    LIVE FULLSCREEN PAGE — full-screen view for a field
@@ -21,6 +22,7 @@ export default function LiveFullscreenPage() {
   const fieldId = Number(searchParams.get('field'));
   const panelType = searchParams.get('panel'); // 'category' | 'match'
   const itemId = Number(searchParams.get('id')); // category or match ID
+  const preview = useDisplayPreview();
 
   const [fields, setFields] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -42,7 +44,6 @@ export default function LiveFullscreenPage() {
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [showResetCategoryConfirm, setShowResetCategoryConfirm] = useState(false);
   const [showStopCategoryConfirm, setShowStopCategoryConfirm] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
   const pollRef = useRef(null);
 
   const arr = r => r.data?.results || r.data || [];
@@ -138,6 +139,7 @@ export default function LiveFullscreenPage() {
 
   useEffect(() => {
     fetchData();
+    if (eventId) preview.loadFields(eventId);
     pollRef.current = setInterval(fetchMatchState, 2000);
     return () => clearInterval(pollRef.current);
   }, [fetchData, fetchMatchState]);
@@ -340,7 +342,7 @@ export default function LiveFullscreenPage() {
               }}
               disabled={busy}
               className="text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
-            >▶ START PROBA</button>
+            >START PROBA</button>
           )}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && isSessionActive && (
             <button
@@ -354,17 +356,17 @@ export default function LiveFullscreenPage() {
               }}
               disabled={busy}
               className="text-sm bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
-            >✓ ÎNCHEIE PROBA</button>
+            >ÎNCHEIE PROBA</button>
           )}
           <a href={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
             className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2  font-medium transition">
             Public Display
           </a>
           <button
-            onClick={() => setShowPreview(p => !p)}
-            className={`text-sm px-4 py-2 font-medium transition ${showPreview ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+            onClick={() => preview.togglePreview(fieldId)}
+            className={`text-sm px-4 py-2 font-medium transition ${preview.isOpen(fieldId) ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
           >
-            {showPreview ? '📺 Ascunde preview' : '📺 Preview'}
+            {preview.isOpen(fieldId) ? 'Ascunde preview' : 'Preview'}
           </button>
         </div>
       </div>
@@ -508,22 +510,6 @@ export default function LiveFullscreenPage() {
           </div>
         )}
       </div>
-
-      {/* ── Floating Public Display preview ── */}
-      {showPreview && (
-        <div className="fixed bottom-4 right-4 z-40 shadow-2xl border-2 border-gray-700 bg-black overflow-hidden rounded" style={{ width: '400px', height: '225px' }}>
-          <div className="absolute top-0 left-0 right-0 bg-gray-900/80 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex items-center justify-between z-10">
-            <span>📺 Public Display — Preview</span>
-            <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-white text-xs leading-none">✕</button>
-          </div>
-          <iframe
-            src={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fieldId}`}
-            className="border-0 pointer-events-none"
-            title="Public Display Preview"
-            style={{ width: '1920px', height: '1080px', transform: 'scale(0.2083)', transformOrigin: 'top left' }}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -810,7 +796,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           <div className="bg-white shadow-2xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
             <div className="text-center">
               <span className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-yellow-100 mb-3">
-                <span className="text-3xl">📊</span>
+                <span className="text-3xl">?</span>
               </span>
             </div>
             <h3 className="text-lg font-bold text-gray-900 text-center">Afișează scorurile public?</h3>
@@ -905,7 +891,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                             className={`text-sm px-4 py-2 font-bold rounded disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600 whitespace-nowrap ${
                               highlightAthleteId === row.athleteId && highlightAction === 'active' ? 'ring-2 ring-orange-400 ring-offset-1' : ''
                             }`}>
-                            ⏹ Oprește
+                            Oprește
                           </button>
                         ) : (
                           <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
@@ -914,7 +900,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                                 ? 'bg-green-600 text-white hover:bg-green-700 ring-2 ring-green-400 ring-offset-1 animate-pulse'
                                 : 'bg-green-600 text-white hover:bg-green-700'
                             }`}>
-                            📺 Prezintă
+                            Prezintă
                           </button>
                         )}
                         {/* Afișează Scorul on TV — with confirmation popup */}
@@ -933,7 +919,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                                   : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
                             }`}
                           >
-                            {row.isRevealed ? '✓ Scor afișat' : '📊 Afișează Scorul'}
+                            {row.isRevealed ? '✓ Scor afișat' : 'Afișează Scorul'}
                           </button>
                         )}
                         {/* Reset scores */}

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { Spinner } from '@shared/components/ui';
 import Logo from '@shared/components/Logo';
 import useCentralizator from '../hooks/useCentralizator';
+import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 
 const GENDER_LABELS = { male: 'MASCULIN', female: 'FEMININ', mixt: 'MIXT' };
 const GENDER_BG     = { male: 'bg-blue-100', female: 'bg-pink-100', mixt: 'bg-amber-100' };
@@ -19,6 +20,12 @@ export default function CategoriesLayout() {
   const ctx = useCentralizator();
   const navigate = useNavigate();
   const { id: eventId } = useParams();
+  const preview = useDisplayPreview();
+
+  // Load fields for preview toggles
+  useEffect(() => {
+    if (eventId) preview.loadFields(eventId);
+  }, [eventId]);
 
   if (ctx.loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><Spinner /></div>;
 
@@ -55,6 +62,25 @@ export default function CategoriesLayout() {
             )}
           </div>
           <div className="hidden sm:flex items-center gap-2 text-[11px] shrink-0">
+            {/* Display Preview toggles */}
+            {preview.fields.length > 0 && (
+              <div className="flex items-center gap-1 mr-2">
+                {preview.fields.map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => preview.togglePreview(f.id)}
+                    className={`text-[10px] font-bold px-2 py-1 rounded transition ${
+                      preview.isOpen(f.id)
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                    }`}
+                    title={`${preview.isOpen(f.id) ? 'Ascunde' : 'Afișează'} preview ${f.name}`}
+                  >
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            )}
             <span className="text-gray-500">{ctx.groups.length} grupe</span>
             <span className="text-gray-300">·</span>
             <span className="text-gray-500">{ctx.categories.length} categorii</span>
