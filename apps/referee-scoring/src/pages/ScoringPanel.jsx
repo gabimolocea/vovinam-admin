@@ -154,7 +154,7 @@ export default function ScoringPanel() {
       </div>
 
       {/* ── Athletes table ── */}
-      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: hasActiveScoring ? '52dvh' : '0' }}>
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: '52dvh' }}>
         <div className="w-full overflow-x-auto">
           <table className="w-full border-collapse border border-gray-300">
             <thead className="sticky top-0 z-10">
@@ -221,110 +221,100 @@ export default function ScoringPanel() {
         </div>
       </div>
 
-      {/* ── Bottom: Active athlete scoring panel (fixed, half screen) ── */}
-      {hasActiveScoring && (() => {
-        const entry = athletes.find(a => (a.athlete || a.id) === activeAthleteId);
-        if (!entry) return null;
-        const d = entry.athlete_details || {};
-        const name = `${d.last_name || ''} ${d.first_name || ''}`.trim() || `Sportiv #${activeAthleteId}`;
-        return (
-          <>
-          <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col" style={{ height: '50dvh' }}>
-            {/* Score display — centered large score + small reset button */}
-            <div className="relative flex items-center justify-center px-4 py-2 bg-green-50 border-b border-green-200 shrink-0">
-              <div className="text-center">
-                <p className="text-5xl font-black text-gray-900 tabular-nums leading-none">{draftScore}</p>
-              </div>
-              <button onClick={() => setShowResetConfirm(true)} disabled={busy}
-                className="absolute right-3 text-[10px] font-bold text-gray-500 bg-gray-200 hover:bg-gray-300 active:bg-gray-400 px-2 py-1 disabled:opacity-40 transition-all">
-                Resetează Scor
-              </button>
-            </div>
+      {/* ── Bottom: Scoring panel (always visible, disabled when no active athlete) ── */}
+      <div className={`fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col ${!hasActiveScoring ? 'opacity-60' : ''}`} style={{ height: '50dvh' }}>
+        {/* Score display — centered large score + small reset button */}
+        <div className={`relative flex items-center justify-center px-4 py-2 border-b shrink-0 ${hasActiveScoring ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
+          <div className="text-center">
+            <p className={`text-5xl font-black tabular-nums leading-none ${hasActiveScoring ? 'text-gray-900' : 'text-gray-400'}`}>{draftScore}</p>
+          </div>
+          <button onClick={() => setShowResetConfirm(true)} disabled={busy || !hasActiveScoring}
+            className="absolute right-3 text-[10px] font-bold text-gray-500 bg-gray-200 hover:bg-gray-300 active:bg-gray-400 px-2 py-1 disabled:opacity-40 transition-all">
+            Resetează Scor
+          </button>
+        </div>
 
-            {/* Scoring buttons — fills remaining space */}
-            <div className="flex-1 min-h-0 flex flex-col p-3 gap-2">
-              {/* -1 / -2 buttons (top, larger) */}
-              <div className="grid grid-cols-2 gap-2 flex-[3] min-h-0">
-                <button onClick={() => adjustScore(-1)} disabled={busy || draftScore <= 0}
-                  className="bg-red-400 hover:bg-red-500 active:bg-red-600 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
-                  -1
-                </button>
-                <button onClick={() => adjustScore(-2)} disabled={busy || draftScore <= 0}
-                  className="bg-red-500 hover:bg-red-600 active:bg-red-700 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
-                  -2
-                </button>
-              </div>
-
-              {/* +1 / +2 buttons (bottom, smaller) */}
-              <div className="grid grid-cols-2 gap-2 flex-[1] min-h-0">
-                <button onClick={() => adjustScore(1)} disabled={busy || draftScore >= MAX_SCORE}
-                  className="bg-green-400 hover:bg-green-500 active:bg-green-600 active:scale-[0.98] text-white text-2xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
-                  +1
-                </button>
-                <button onClick={() => adjustScore(2)} disabled={busy || draftScore >= MAX_SCORE}
-                  className="bg-green-500 hover:bg-green-600 active:bg-green-700 active:scale-[0.98] text-white text-2xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
-                  +2
-                </button>
-              </div>
-
-              {/* Submit row */}
-              <div className="shrink-0">
-                <button onClick={() => setShowSubmitConfirm(true)} disabled={busy}
-                  className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white py-3 text-lg font-black disabled:opacity-40 transition-all active:scale-[0.98]">
-                  TRIMITE SCOR
-                </button>
-              </div>
-            </div>
+        {/* Scoring buttons — fills remaining space */}
+        <div className="flex-1 min-h-0 flex flex-col p-3 gap-2">
+          {/* -1 / -2 buttons (top, larger) */}
+          <div className="grid grid-cols-2 gap-2 flex-[3] min-h-0">
+            <button onClick={() => adjustScore(-1)} disabled={!hasActiveScoring || busy || draftScore <= 0}
+              className="bg-red-400 hover:bg-red-500 active:bg-red-600 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              -1
+            </button>
+            <button onClick={() => adjustScore(-2)} disabled={!hasActiveScoring || busy || draftScore <= 0}
+              className="bg-red-500 hover:bg-red-600 active:bg-red-700 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              -2
+            </button>
           </div>
 
-          {/* Reset confirm modal */}
-          {showResetConfirm && (
-            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowResetConfirm(false)}>
-              <div className="bg-white shadow-2xl p-6 max-w-sm w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
-                <div className="w-14 h-14 bg-amber-100 flex items-center justify-center mx-auto">
-                  <span className="text-amber-600 text-2xl font-black">!</span>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Resetează scorul?</h3>
-                <p className="text-sm text-gray-600">Scorul va fi resetat la <span className="font-bold">{MAX_SCORE}</span> puncte.</p>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowResetConfirm(false)}
-                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 font-bold text-base transition">
-                    Anulează
-                  </button>
-                  <button onClick={() => { setShowResetConfirm(false); resetScore(); }}
-                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 font-bold text-base transition">
-                    Resetează
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* +1 / +2 buttons (bottom, smaller) */}
+          <div className="grid grid-cols-2 gap-2 flex-[1] min-h-0">
+            <button onClick={() => adjustScore(1)} disabled={!hasActiveScoring || busy || draftScore >= MAX_SCORE}
+              className="bg-green-400 hover:bg-green-500 active:bg-green-600 active:scale-[0.98] text-white text-2xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              +1
+            </button>
+            <button onClick={() => adjustScore(2)} disabled={!hasActiveScoring || busy || draftScore >= MAX_SCORE}
+              className="bg-green-500 hover:bg-green-600 active:bg-green-700 active:scale-[0.98] text-white text-2xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              +2
+            </button>
+          </div>
 
-          {/* Submit confirm modal */}
-          {showSubmitConfirm && (
-            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowSubmitConfirm(false)}>
-              <div className="bg-white shadow-2xl p-6 max-w-sm w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
-                <div className="w-14 h-14 bg-green-100 flex items-center justify-center mx-auto">
-                  <span className="text-green-600 text-2xl font-black">✓</span>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Trimite scorul?</h3>
-                <p className="text-sm text-gray-600">Vei trimite scorul de <span className="font-black text-2xl text-gray-900">{draftScore}</span> puncte.</p>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowSubmitConfirm(false)}
-                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 font-bold text-base transition">
-                    Anulează
-                  </button>
-                  <button onClick={() => { setShowSubmitConfirm(false); submitScore(activeAthleteId); }}
-                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 font-bold text-base transition">
-                    Trimite
-                  </button>
-                </div>
-              </div>
+          {/* Submit row */}
+          <div className="shrink-0">
+            <button onClick={() => setShowSubmitConfirm(true)} disabled={!hasActiveScoring || busy}
+              className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white py-3 text-lg font-black disabled:opacity-40 transition-all active:scale-[0.98]">
+              TRIMITE SCOR
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Reset confirm modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowResetConfirm(false)}>
+          <div className="bg-white shadow-2xl p-6 max-w-sm w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="w-14 h-14 bg-amber-100 flex items-center justify-center mx-auto">
+              <span className="text-amber-600 text-2xl font-black">!</span>
             </div>
-          )}
-          </>
-        );
-      })()}
+            <h3 className="text-lg font-bold text-gray-900">Resetează scorul?</h3>
+            <p className="text-sm text-gray-600">Scorul va fi resetat la <span className="font-bold">{MAX_SCORE}</span> puncte.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowResetConfirm(false)}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 font-bold text-base transition">
+                Anulează
+              </button>
+              <button onClick={() => { setShowResetConfirm(false); resetScore(); }}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 font-bold text-base transition">
+                Resetează
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submit confirm modal */}
+      {showSubmitConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowSubmitConfirm(false)}>
+          <div className="bg-white shadow-2xl p-6 max-w-sm w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="w-14 h-14 bg-green-100 flex items-center justify-center mx-auto">
+              <span className="text-green-600 text-2xl font-black">✓</span>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">Trimite scorul?</h3>
+            <p className="text-sm text-gray-600">Vei trimite scorul de <span className="font-black text-2xl text-gray-900">{draftScore}</span> puncte.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowSubmitConfirm(false)}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 font-bold text-base transition">
+                Anulează
+              </button>
+              <button onClick={() => { setShowSubmitConfirm(false); submitScore(activeAthleteId); }}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 font-bold text-base transition">
+                Trimite
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
