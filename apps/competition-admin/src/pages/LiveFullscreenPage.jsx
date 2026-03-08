@@ -304,7 +304,7 @@ export default function LiveFullscreenPage() {
           <button onClick={goBack} className="text-sm bg-gray-700 hover:bg-gray-600 px-4 py-2  font-medium transition"><span className="inline-block mr-1">&larr;</span> Inapoi</button>
           <span className="text-xl font-bold">{field.name}</span>
           {/* Live indicator in top nav */}
-          {panelType === 'match' && currentMatch && (
+          {isSessionActive && (
             <span className="flex items-center gap-2">
               <span className="relative flex h-3 w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full  bg-green-400 opacity-75"></span>
@@ -316,11 +316,40 @@ export default function LiveFullscreenPage() {
         </div>
         <div className="flex items-center gap-2">
           {/* Match control buttons in top nav */}
-          {panelType === 'match' && currentMatch && (
+          {panelType === 'match' && currentMatch && isSessionActive && (
             <>
               <button onClick={() => setShowResetConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2  font-medium disabled:opacity-40 transition">Resetare meci</button>
               <button onClick={() => setShowStopConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2  font-medium disabled:opacity-40 transition">Opreste</button>
             </>
+          )}
+          {/* START / ÎNCHEIE for matches */}
+          {panelType === 'match' && currentMatch && !isSessionActive && (
+            <button
+              onClick={async () => {
+                await switchDisplay(null, currentMatch.id, null);
+                if (currentAssignment) {
+                  setBusy(true);
+                  try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+              className="text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
+            >START PROBA</button>
+          )}
+          {panelType === 'match' && currentMatch && isSessionActive && (
+            <button
+              onClick={async () => {
+                setIdle();
+                if (currentAssignment) {
+                  setBusy(true);
+                  try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'completed' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+              className="text-sm bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
+            >ÎNCHEIE PROBA</button>
           )}
           {/* Category control buttons in top nav */}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && isSessionActive && (

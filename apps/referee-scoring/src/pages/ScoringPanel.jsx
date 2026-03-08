@@ -5,6 +5,7 @@ import { useAuth } from '@shared';
 import { Spinner } from '@shared/components/ui';
 
 const POLL_INTERVAL = 2000;
+const MAX_SCORE = 100;
 
 export default function ScoringPanel() {
   const { categoryId } = useParams();
@@ -15,9 +16,9 @@ export default function ScoringPanel() {
   const [myScores, setMyScores] = useState([]); // CategoryRefereeScore[] for this referee
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [draftScore, setDraftScore] = useState('');
   const [activeAthleteId, setActiveAthleteId] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
+  const [draftScore, setDraftScore] = useState(MAX_SCORE);
   const pollRef = useRef(null);
 
   const myAthleteId = user?.athlete_id || user?.athlete?.id;
@@ -62,6 +63,16 @@ export default function ScoringPanel() {
     return () => clearInterval(pollRef.current);
   }, [fetchAll]);
 
+  // Reset draft score when active athlete changes
+  const prevActiveRef = useRef(null);
+  useEffect(() => {
+    if (activeAthleteId && activeAthleteId !== prevActiveRef.current) {
+      const existing = myScores.find(s => s.athlete === activeAthleteId);
+      setDraftScore(existing ? Math.round(Number(existing.score)) : MAX_SCORE);
+    }
+    prevActiveRef.current = activeAthleteId;
+  }, [activeAthleteId, myScores]);
+
   // Clear success indicator after 3 seconds
   useEffect(() => {
     if (submitSuccess != null) {
@@ -77,9 +88,17 @@ export default function ScoringPanel() {
     return null;
   };
 
+  const adjustScore = (amount) => {
+    setDraftScore(prev => {
+      const next = prev + amount;
+      return Math.max(0, Math.min(MAX_SCORE, next));
+    });
+  };
+
+  const resetScore = () => setDraftScore(MAX_SCORE);
+
   const submitScore = async (athleteId) => {
-    const scoreVal = parseFloat(draftScore);
-    if (isNaN(scoreVal) || scoreVal < 0 || scoreVal > 100) {
+    if (draftScore < 0 || draftScore > MAX_SCORE) {
       alert('Scorul trebuie să fie între 0 și 100');
       return;
     }
@@ -88,9 +107,8 @@ export default function ScoringPanel() {
       await refereeAPI.categoryScores.create({
         category: parseInt(categoryId),
         athlete: athleteId,
-        score: scoreVal,
+        score: draftScore,
       });
-      setDraftScore('');
       setSubmitSuccess(athleteId);
       fetchAll();
     } catch (err) {
@@ -115,129 +133,151 @@ export default function ScoringPanel() {
   }
 
   const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
+  const hasActiveScoring = activeAthleteId && !getMyScore(activeAthleteId);
 
   return (
-    <div className="flex flex-col bg-gray-50 text-gray-900" style={{ minHeight: '100dvh' }}>
-      {/* ── Header ── */}
-      <header className="flex items-center justify-between bg-gray-900 text-white px-3 py-2.5 shrink-0">
-        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-white text-sm font-bold flex items-center gap-1">&larr; ÎNAPOI</button>
-        <h1 className="font-bold text-sm truncate">{category.name}</h1>
+    <div className="flex flex-col bg-gray-50 text-gray-900" style={{ height: '100dvh' }}>
+      {/* ── Header — similar to MatchScoring ── */}
+      <header className="flex items-center justify-between bg-white border-b border-gray-200 px-3 py-2 shrink-0">
+        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800 text-sm font-bold flex items-center gap-1">&larr; ÎNAPOI</button>
+        <h1 className="font-bold text-sm text-gray-600 truncate">{category.name}</h1>
         <div className="w-8" />
       </header>
 
       {/* Category info tags */}
-      <div className="flex items-center justify-center gap-2 px-3 py-2 bg-white border-b border-gray-200 shrink-0 flex-wrap">
-        {category.group_name && <span className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-0.5">{category.group_name}</span>}
-        {category.gender && <span className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-0.5">{genderLabels[category.gender] || category.gender}</span>}
+      <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-100 shrink-0 flex-wrap">
+        {category.group_name && <span className="text-xs font-bold text-gray-600 bg-gray-200 px-2 py-0.5">{category.group_name}</span>}
+        {category.gender && <span className="text-xs font-bold text-gray-600 bg-gray-200 px-2 py-0.5">{genderLabels[category.gender] || category.gender}</span>}
         <span className="text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 uppercase">{category.type === 'teams' ? 'Echipe' : 'Solo'}</span>
       </div>
 
       {/* ── Athletes table ── */}
-      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: activeAthleteId && !getMyScore(activeAthleteId) ? '10rem' : '0' }}>
-        <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-10">
-            <tr className="bg-gray-100">
-              <th className="text-left px-3 py-2.5 text-xs font-bold text-gray-600 border-b-2 border-gray-300">#</th>
-              <th className="text-left px-3 py-2.5 text-xs font-bold text-gray-600 border-b-2 border-gray-300">Sportiv</th>
-              <th className="text-center px-3 py-2.5 text-xs font-bold text-gray-600 border-b-2 border-gray-300 w-20">Scor</th>
-              <th className="text-center px-2 py-2.5 text-xs font-bold text-gray-600 border-b-2 border-gray-300 w-12">✓</th>
-            </tr>
-          </thead>
-          <tbody>
-            {athletes.length === 0 && (
-              <tr><td colSpan={4} className="text-center py-8 text-gray-400 italic">Niciun sportiv înscris.</td></tr>
-            )}
-            {athletes.map((entry, idx) => {
-              const athleteId = entry.athlete || entry.id;
-              const d = entry.athlete_details || {};
-              const name = `${d.last_name || ''} ${d.first_name || ''}`.trim() || entry.athlete_name || entry.full_name || `Sportiv #${athleteId}`;
-              const clubName = d.club?.name || d.club_name || entry.club_name || '';
-              const isActive = athleteId === activeAthleteId;
-              const existingScore = getMyScore(athleteId);
-              const justSubmitted = submitSuccess === athleteId;
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: hasActiveScoring ? '52dvh' : '0' }}>
+        <div className="w-full overflow-x-auto">
+          <table className="w-full border-collapse border border-gray-300">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-gray-100">
+                <th className="text-center px-1.5 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-8">#</th>
+                <th className="text-left px-3 py-2 text-xs font-bold text-gray-600 border border-gray-300">Sportiv</th>
+                <th className="text-center px-2 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-16">Scor</th>
+                <th className="text-center px-1.5 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-10">✓</th>
+              </tr>
+            </thead>
+            <tbody>
+              {athletes.length === 0 && (
+                <tr><td colSpan={4} className="text-center py-8 text-gray-400 italic">Niciun sportiv înscris.</td></tr>
+              )}
+              {athletes.map((entry, idx) => {
+                const athleteId = entry.athlete || entry.id;
+                const d = entry.athlete_details || {};
+                const name = `${d.last_name || ''} ${d.first_name || ''}`.trim() || entry.athlete_name || entry.full_name || `Sportiv #${athleteId}`;
+                const clubName = d.club?.name || d.club_name || entry.club_name || '';
+                const isActive = athleteId === activeAthleteId;
+                const existingScore = getMyScore(athleteId);
+                const justSubmitted = submitSuccess === athleteId;
 
-              return (
-                <tr key={athleteId} className={`${
-                  isActive ? 'bg-green-50 ring-2 ring-green-300 ring-inset' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                } transition`}>
-                  <td className="px-3 py-3 border-b border-gray-200 text-gray-400 text-xs">{idx + 1}</td>
-                  <td className="px-3 py-3 border-b border-gray-200">
-                    <div className="flex items-center gap-2">
-                      {isActive && (
-                        <span className="relative flex h-2 w-2 shrink-0">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                        </span>
-                      )}
-                      <div>
-                        <p className={`font-semibold ${isActive ? 'text-green-800' : 'text-gray-900'} text-sm`}>{name}</p>
-                        {clubName && <p className="text-[10px] text-gray-400">{clubName}</p>}
+                return (
+                  <tr key={athleteId} className={`${
+                    isActive ? 'bg-green-50' : 'bg-white'
+                  } transition`}>
+                    <td className="px-1.5 py-2.5 border border-gray-300 text-center text-gray-400 text-xs tabular-nums">{idx + 1}</td>
+                    <td className="px-3 py-2.5 border border-gray-300">
+                      <div className="flex items-center gap-2">
+                        {isActive && (
+                          <span className="relative flex h-2 w-2 shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                          </span>
+                        )}
+                        <div>
+                          <p className={`font-semibold ${isActive ? 'text-green-800' : 'text-gray-900'} text-sm`}>{name}</p>
+                          {clubName && <p className="text-[10px] text-gray-400">{clubName}</p>}
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 border-b border-gray-200 text-center">
-                    {existingScore ? (
-                      <span className="text-lg font-black text-gray-900 tabular-nums">{Number(existingScore.score).toFixed(1)}</span>
-                    ) : (
-                      <span className="text-gray-300 text-sm">—</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-3 border-b border-gray-200 text-center">
-                    {existingScore || justSubmitted ? (
-                      <span className="text-green-600 text-sm font-bold">✓</span>
-                    ) : isActive ? (
-                      <span className="text-xs text-green-600 font-bold animate-pulse">LIVE</span>
-                    ) : (
-                      <span className="text-gray-300 text-xs">—</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    </td>
+                    <td className="px-2 py-2.5 border border-gray-300 text-center">
+                      {existingScore ? (
+                        <span className="text-lg font-black text-gray-900 tabular-nums">{Math.round(Number(existingScore.score))}</span>
+                      ) : (
+                        <span className="text-gray-300 text-sm">—</span>
+                      )}
+                    </td>
+                    <td className="px-1.5 py-2.5 border border-gray-300 text-center">
+                      {existingScore || justSubmitted ? (
+                        <span className="text-green-600 text-sm font-bold">✓</span>
+                      ) : isActive ? (
+                        <span className="text-xs text-green-600 font-bold animate-pulse">LIVE</span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* ── Bottom: Active athlete scoring panel (fixed) ── */}
-      {activeAthleteId && !getMyScore(activeAthleteId) && (() => {
+      {/* ── Bottom: Active athlete scoring panel (fixed, half screen) ── */}
+      {hasActiveScoring && (() => {
         const entry = athletes.find(a => (a.athlete || a.id) === activeAthleteId);
         if (!entry) return null;
         const d = entry.athlete_details || {};
         const name = `${d.last_name || ''} ${d.first_name || ''}`.trim() || `Sportiv #${activeAthleteId}`;
         return (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-green-400 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-green-600 font-bold uppercase">Prezintă acum</p>
-                <p className="text-base font-black text-gray-900">{name}</p>
-              </div>
+          <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col" style={{ height: '50dvh' }}>
+            {/* Active athlete indicator */}
+            <div className="flex items-center justify-between px-4 py-2 bg-green-50 border-b border-green-200 shrink-0">
               <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={draftScore}
-                  onChange={(e) => setDraftScore(e.target.value)}
-                  className="w-20 border-2 border-green-400 px-2 py-2.5 text-center text-xl font-black focus:border-green-600 focus:ring-1 focus:ring-green-600"
-                  placeholder="0-100"
-                  autoFocus
-                />
-                <button
-                  onClick={() => submitScore(activeAthleteId)}
-                  disabled={busy || !draftScore}
-                  className="bg-green-600 text-white px-6 py-2.5 text-base font-black hover:bg-green-700 disabled:opacity-40 active:scale-95 transition"
-                >Trimite</button>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                <div>
+                  <p className="text-xs text-green-600 font-bold uppercase">Prezintă acum</p>
+                  <p className="text-base font-black text-gray-900">{name}</p>
+                </div>
+              </div>
+              <div className="text-center">
+                <p className="text-4xl font-black text-gray-900 tabular-nums leading-none">{draftScore}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">din {MAX_SCORE}</p>
               </div>
             </div>
-            {/* Quick score buttons */}
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {[10, 20, 30, 40, 50, 60, 70, 80, 85, 90, 95, 100].map(v => (
-                <button key={v} onClick={() => setDraftScore(String(v))}
-                  className={`shrink-0 px-3 py-1.5 text-sm font-bold border transition ${
-                    draftScore === String(v) ? 'bg-green-600 text-white border-green-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                  }`}>{v}</button>
-              ))}
+
+            {/* Scoring buttons — fills remaining space */}
+            <div className="flex-1 min-h-0 flex flex-col p-3 gap-2">
+              {/* -2 / -1 / +1 / +2 buttons */}
+              <div className="grid grid-cols-4 gap-2 flex-1 min-h-0">
+                <button onClick={() => adjustScore(-2)} disabled={busy || draftScore <= 0}
+                  className="bg-red-500 hover:bg-red-600 active:bg-red-700 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+                  -2
+                </button>
+                <button onClick={() => adjustScore(-1)} disabled={busy || draftScore <= 0}
+                  className="bg-red-400 hover:bg-red-500 active:bg-red-600 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+                  -1
+                </button>
+                <button onClick={() => adjustScore(1)} disabled={busy || draftScore >= MAX_SCORE}
+                  className="bg-green-400 hover:bg-green-500 active:bg-green-600 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+                  +1
+                </button>
+                <button onClick={() => adjustScore(2)} disabled={busy || draftScore >= MAX_SCORE}
+                  className="bg-green-500 hover:bg-green-600 active:bg-green-700 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+                  +2
+                </button>
+              </div>
+
+              {/* Reset + Submit row */}
+              <div className="grid grid-cols-[1fr_2fr] gap-2 shrink-0">
+                <button onClick={resetScore} disabled={busy}
+                  className="bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-700 py-3 text-sm font-black disabled:opacity-40 transition-all active:scale-[0.98]">
+                  RESET ({MAX_SCORE})
+                </button>
+                <button onClick={() => submitScore(activeAthleteId)} disabled={busy}
+                  className="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white py-3 text-lg font-black disabled:opacity-40 transition-all active:scale-[0.98]">
+                  TRIMITE SCOR
+                </button>
+              </div>
             </div>
           </div>
         );
