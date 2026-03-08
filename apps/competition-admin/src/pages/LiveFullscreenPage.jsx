@@ -514,15 +514,16 @@ export default function LiveFullscreenPage() {
 
       {/* ── Floating Public Display preview ── */}
       {showPreview && (
-        <div className="fixed bottom-4 right-4 z-40 shadow-2xl border-2 border-gray-700 bg-black overflow-hidden" style={{ width: '400px', height: '225px' }}>
+        <div className="fixed bottom-4 right-4 z-40 shadow-2xl border-2 border-gray-700 bg-black overflow-hidden rounded" style={{ width: '400px', height: '225px' }}>
           <div className="absolute top-0 left-0 right-0 bg-gray-900/80 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex items-center justify-between z-10">
             <span>📺 Public Display — Preview</span>
             <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-white text-xs leading-none">✕</button>
           </div>
           <iframe
             src={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fieldId}`}
-            className="w-full h-full border-0 pointer-events-none"
+            className="border-0 pointer-events-none"
             title="Public Display Preview"
+            style={{ width: '1920px', height: '1080px', transform: 'scale(0.2083)', transformOrigin: 'top left' }}
           />
         </div>
       )}
