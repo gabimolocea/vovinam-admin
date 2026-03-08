@@ -136,6 +136,12 @@ export default function ScoringPanel() {
 
   const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
   const hasActiveScoring = activeAthleteId && !getMyScore(activeAthleteId);
+  const allScored = athletes.length > 0 && athletes.every(a => getMyScore(a.athlete || a.id));
+  const disabledMessage = allScored
+    ? 'Toți sportivii au fost evaluați'
+    : activeAthleteId && getMyScore(activeAthleteId)
+      ? 'Ai evaluat acest sportiv. Se așteaptă următorul...'
+      : 'Se așteaptă următorul sportiv...';
 
   return (
     <div className="flex flex-col bg-gray-50 text-gray-900" style={{ height: '100dvh' }}>
@@ -235,7 +241,17 @@ export default function ScoringPanel() {
         </div>
 
         {/* Scoring buttons — fills remaining space */}
-        <div className="flex-1 min-h-0 flex flex-col p-3 gap-2">
+        <div className="flex-1 min-h-0 flex flex-col p-3 gap-2 relative">
+          {/* Info message when disabled */}
+          {!hasActiveScoring && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+              <div className={`px-6 py-3 rounded-xl shadow-lg text-center ${allScored ? 'bg-green-100 border border-green-300' : 'bg-blue-100 border border-blue-300'}`}>
+                <p className={`text-sm font-bold ${allScored ? 'text-green-700' : 'text-blue-700'}`}>
+                  {allScored ? '✓ ' : ''}{disabledMessage}
+                </p>
+              </div>
+            </div>
+          )}
           {/* -1 / -2 buttons (top, larger) */}
           <div className="grid grid-cols-2 gap-2 flex-[3] min-h-0">
             <button onClick={() => adjustScore(-1)} disabled={!hasActiveScoring || busy || draftScore <= 0}
