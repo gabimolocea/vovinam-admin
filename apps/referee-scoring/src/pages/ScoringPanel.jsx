@@ -247,22 +247,26 @@ export default function ScoringPanel() {
 
             {/* Scoring buttons — fills remaining space */}
             <div className="flex-1 min-h-0 flex flex-col p-3 gap-2">
-              {/* -2 / -1 / +1 / +2 buttons */}
-              <div className="grid grid-cols-4 gap-2 flex-1 min-h-0">
-                <button onClick={() => adjustScore(-2)} disabled={busy || draftScore <= 0}
-                  className="bg-red-500 hover:bg-red-600 active:bg-red-700 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
-                  -2
-                </button>
+              {/* -1 / -2 buttons (top, larger) */}
+              <div className="grid grid-cols-2 gap-2 flex-[3] min-h-0">
                 <button onClick={() => adjustScore(-1)} disabled={busy || draftScore <= 0}
-                  className="bg-red-400 hover:bg-red-500 active:bg-red-600 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+                  className="bg-red-400 hover:bg-red-500 active:bg-red-600 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
                   -1
                 </button>
+                <button onClick={() => adjustScore(-2)} disabled={busy || draftScore <= 0}
+                  className="bg-red-500 hover:bg-red-600 active:bg-red-700 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+                  -2
+                </button>
+              </div>
+
+              {/* +1 / +2 buttons (bottom, smaller) */}
+              <div className="grid grid-cols-2 gap-2 flex-[1] min-h-0">
                 <button onClick={() => adjustScore(1)} disabled={busy || draftScore >= MAX_SCORE}
-                  className="bg-green-400 hover:bg-green-500 active:bg-green-600 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+                  className="bg-green-400 hover:bg-green-500 active:bg-green-600 active:scale-[0.98] text-white text-2xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
                   +1
                 </button>
                 <button onClick={() => adjustScore(2)} disabled={busy || draftScore >= MAX_SCORE}
-                  className="bg-green-500 hover:bg-green-600 active:bg-green-700 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+                  className="bg-green-500 hover:bg-green-600 active:bg-green-700 active:scale-[0.98] text-white text-2xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
                   +2
                 </button>
               </div>
