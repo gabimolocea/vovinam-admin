@@ -185,6 +185,7 @@ export const refereeAPI = {
     list: (params) => api.get('/category-referee-score/', { params }),
     create: (data) => api.post('/category-referee-score/', data),
     update: (id, data) => api.patch(`/category-referee-score/${id}/`, data),
+    delete: (id) => api.delete(`/category-referee-score/${id}/`),
   },
   pointEvents: {
     list: (matchId) => api.get(`/clubs/${matchId}/point_events/`),

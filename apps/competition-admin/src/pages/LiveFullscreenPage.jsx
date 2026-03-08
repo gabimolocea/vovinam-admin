@@ -39,6 +39,8 @@ export default function LiveFullscreenPage() {
   const [busy, setBusy] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [showResetCategoryConfirm, setShowResetCategoryConfirm] = useState(false);
+  const [showStopCategoryConfirm, setShowStopCategoryConfirm] = useState(false);
   const pollRef = useRef(null);
 
   const arr = r => r.data?.results || r.data || [];
@@ -302,6 +304,13 @@ export default function LiveFullscreenPage() {
               <button onClick={() => setShowStopConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2  font-medium disabled:opacity-40 transition">Opreste</button>
             </>
           )}
+          {/* Category control buttons in top nav */}
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
+            <>
+              <button onClick={() => setShowResetCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Resetează Proba</button>
+              <button onClick={() => setShowStopCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Oprește</button>
+            </>
+          )}
           <a href={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
             className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2  font-medium transition">
             Public Display
@@ -343,6 +352,52 @@ export default function LiveFullscreenPage() {
         </div>
       )}
 
+      {/* Reset category confirm */}
+      {showResetCategoryConfirm && currentCat && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setShowResetCategoryConfirm(false)}>
+          <div className="bg-white shadow-2xl p-8 max-w-md text-center space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 bg-amber-100 flex items-center justify-center mx-auto">
+              <span className="text-amber-600 text-2xl font-black">!</span>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Resetează proba</h3>
+            <p className="text-base text-gray-600">Ești sigur că vrei să resetezi toate scorurile din această probă? Toate scorurile arbitrilor vor fi șterse. Acțiunea este ireversibilă.</p>
+            <div className="flex gap-3 justify-center pt-2">
+              <button onClick={() => setShowResetCategoryConfirm(false)} className="text-sm bg-gray-200 text-gray-700 px-6 py-2.5 font-medium hover:bg-gray-300">Anulează</button>
+              <button onClick={async () => {
+                setShowResetCategoryConfirm(false);
+                setBusy(true);
+                try {
+                  const catScores = refScores.filter(rs => {
+                    const as = athleteScores.find(a => a.id === rs.athlete_score);
+                    return as && as.category === currentCat.id;
+                  });
+                  for (const s of catScores) { try { await refereeAPI.categoryScores.delete(s.id); } catch {} }
+                  await fetchMatchState();
+                } catch(e) { console.error(e); }
+                setBusy(false);
+              }} disabled={busy} className="text-sm bg-red-600 text-white px-6 py-2.5 font-bold hover:bg-red-700 disabled:opacity-40">Resetează tot</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stop category confirm */}
+      {showStopCategoryConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setShowStopCategoryConfirm(false)}>
+          <div className="bg-white shadow-2xl p-8 max-w-md text-center space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 bg-red-100 flex items-center justify-center mx-auto">
+              <span className="text-red-600 text-2xl font-black">!</span>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Oprește proba</h3>
+            <p className="text-base text-gray-600">Acest buton va opri afișarea probei pe tatami și va reveni la ecranul de așteptare. Scorurile rămân salvate.</p>
+            <div className="flex gap-3 justify-center pt-2">
+              <button onClick={() => setShowStopCategoryConfirm(false)} className="text-sm bg-gray-200 text-gray-700 px-6 py-2.5 font-medium hover:bg-gray-300">Anulează</button>
+              <button onClick={() => { setShowStopCategoryConfirm(false); setIdle(); }} disabled={busy} className="text-sm bg-red-600 text-white px-6 py-2.5 font-bold hover:bg-red-700 disabled:opacity-40">Oprește</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Content ── */}
       <div className="flex-1 min-h-0 overflow-auto p-4">
         {panelType === 'category' && currentCat && currentCat.type !== 'fight' ? (
@@ -356,6 +411,7 @@ export default function LiveFullscreenPage() {
             switchDisplay={switchDisplay}
             setIdle={setIdle}
             revealScores={revealScores}
+            onRefresh={fetchMatchState}
           />
         ) : panelType === 'match' && currentMatch ? (
           <FullscreenMatchPanel
@@ -407,9 +463,13 @@ export default function LiveFullscreenPage() {
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
-function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, busy, switchDisplay, setIdle, revealScores }) {
+function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, busy, switchDisplay, setIdle, revealScores, onRefresh }) {
   const enrolled = cat.enrolled_athletes || [];
   const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
+
+  // Modal state for admin score input per referee
+  const [catRefModalData, setCatRefModalData] = useState(null); // { refId, refName, refPos, athleteId, athleteName, currentScore, existingScoreId }
+  const [catScoreInput, setCatScoreInput] = useState('');
 
   // Build referee list from category referee assignment
   const referees = [];
@@ -432,8 +492,10 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     const catScoreId = catScore?.id;
     const rScores = catScoreId ? refScores.filter(rs => rs.athlete_score === catScoreId) : [];
     const scoreByRef = {};
-    for (const rs of rScores) scoreByRef[rs.referee] = rs.score;
+    const scoreIdByRef = {};
+    for (const rs of rScores) { scoreByRef[rs.referee] = rs.score; scoreIdByRef[rs.referee] = rs.id; }
     const vals = refCols.map(r => r.id ? scoreByRef[r.id] : undefined);
+    const scoreIds = refCols.map(r => r.id ? scoreIdByRef[r.id] : undefined);
     const numericVals = vals.filter(v => v != null).map(Number);
     let marks = vals.map(() => 'mid');
     let total = null;
@@ -447,7 +509,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     const allScoresIn = numericVals.length >= 5;
     const isActive = session?.current_athlete === athleteId;
     const isRevealed = isActive && session?.status === 'scores_revealed';
-    return { athleteId, athleteName, clubName, vals, marks, total, allScoresIn, scoreCount: numericVals.length, isActive, isRevealed };
+    return { athleteId, athleteName, clubName, vals, marks, total, allScoresIn, scoreCount: numericVals.length, isActive, isRevealed, scoreIds, catScoreId };
   });
 
   // Sort by total descending for ranking
@@ -456,6 +518,49 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
   // Check if active athlete has all scores
   const activeRow = rows.find(r => r.isActive);
+
+  // Reset single athlete scores
+  const resetAthleteScores = async (row) => {
+    try {
+      for (const sid of row.scoreIds) {
+        if (sid) { try { await refereeAPI.categoryScores.delete(sid); } catch {} }
+      }
+      await onRefresh();
+    } catch(e) { console.error(e); }
+  };
+
+  // Submit admin score for a referee
+  const submitCatRefScore = async () => {
+    if (!catRefModalData) return;
+    const val = parseFloat(catScoreInput);
+    if (isNaN(val) || val < 0 || val > 100) return;
+    try {
+      if (catRefModalData.existingScoreId) {
+        await refereeAPI.categoryScores.update(catRefModalData.existingScoreId, { score: val });
+      } else {
+        await refereeAPI.categoryScores.create({
+          category: cat.id,
+          athlete: catRefModalData.athleteId,
+          referee: catRefModalData.refId,
+          score: val,
+        });
+      }
+      setCatRefModalData(null);
+      setCatScoreInput('');
+      await onRefresh();
+    } catch(e) { console.error(e); }
+  };
+
+  // Delete a referee's score
+  const deleteCatRefScore = async () => {
+    if (!catRefModalData?.existingScoreId) return;
+    try {
+      await refereeAPI.categoryScores.delete(catRefModalData.existingScoreId);
+      setCatRefModalData(null);
+      setCatScoreInput('');
+      await onRefresh();
+    } catch(e) { console.error(e); }
+  };
 
   return (
     <div className="w-full space-y-4">
@@ -494,8 +599,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${activeRow.isRevealed ? 'text-yellow-600' : 'text-green-600'}`}>
                 {activeRow.isRevealed ? '✓ Scoruri afișate pe TV' : 'Prezintă acum'}
               </p>
-              <h2 className="text-xl font-black text-gray-900">{activeRow.athleteName}</h2>
-              {activeRow.clubName && <p className="text-sm text-gray-500">{activeRow.clubName}</p>}
+              <h2 className="text-xl font-black text-gray-900">{activeRow.athleteName} {activeRow.clubName && <span className="text-base font-medium text-gray-500">({activeRow.clubName})</span>}</h2>
             </div>
             <div className="flex items-center gap-3">
               <div className="text-right">
@@ -505,30 +609,53 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               {/* Reveal button for active athlete */}
               {activeRow.isRevealed ? (
                 <span className="text-sm bg-green-100 text-green-700 px-4 py-2 font-bold border border-green-300">✓ Afișat</span>
-              ) : activeRow.allScoresIn ? (
-                <button onClick={revealScores} disabled={busy} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-black px-5 py-2.5 font-bold disabled:opacity-40 transition">
-                  🏆 Reveal pe TV
+              ) : (
+                <button
+                  onClick={() => switchDisplay(cat.id, null, activeRow.athleteId, 'scores_revealed')}
+                  disabled={busy}
+                  className="text-sm bg-yellow-500 hover:bg-yellow-600 text-black px-5 py-2.5 font-bold disabled:opacity-40 transition"
+                >
+                  🏆 Afișează rezultate
                 </button>
-              ) : null}
+              )}
             </div>
           </div>
-          {/* Active athlete referee scores boxes (like fight referee boxes) */}
+          {/* Active athlete referee scores boxes — CLICKABLE for admin score input */}
           <div className="grid grid-cols-5 gap-2">
-            {activeRow.vals.map((v, i) => {
+            {refCols.map((r, i) => {
+              const v = activeRow.vals[i];
               const mark = activeRow.marks[i];
               const isCancelled = mark === 'low' || mark === 'high';
               const hasScore = v != null;
+              const scoreId = activeRow.scoreIds[i];
               return (
-                <div key={i} className={`flex flex-col items-center justify-center py-3 border-2 transition-all ${
-                  hasScore
-                    ? isCancelled ? 'border-red-300 bg-red-50' : 'border-green-400 bg-white'
-                    : 'border-gray-200 bg-gray-50'
-                }`}>
-                  <span className="text-xs font-bold text-gray-400 mb-1">A{i + 1}</span>
+                <button
+                  key={i}
+                  onClick={() => {
+                    if (!r.id) return;
+                    setCatRefModalData({
+                      refId: r.id,
+                      refName: r.name,
+                      refPos: r.pos,
+                      athleteId: activeRow.athleteId,
+                      athleteName: activeRow.athleteName,
+                      currentScore: hasScore ? Number(v) : null,
+                      existingScoreId: scoreId || null,
+                    });
+                    setCatScoreInput(hasScore ? Number(v).toString() : '');
+                  }}
+                  className={`flex flex-col items-center justify-center py-3 border-2 transition-all cursor-pointer hover:ring-2 hover:ring-indigo-400 ${
+                    hasScore
+                      ? isCancelled ? 'border-red-300 bg-red-50' : 'border-green-400 bg-white'
+                      : 'border-gray-200 bg-gray-50 border-dashed'
+                  }`}
+                >
+                  <span className="text-xs font-bold text-gray-400 mb-1">A{r.pos}</span>
                   <span className={`text-xl font-black tabular-nums ${
                     isCancelled ? 'text-red-400 line-through' : hasScore ? 'text-gray-900' : 'text-gray-300'
                   }`}>{hasScore ? Number(v).toFixed(1) : '—'}</span>
-                </div>
+                  <span className="text-[10px] text-indigo-400 mt-1">click = editează</span>
+                </button>
               );
             })}
           </div>
@@ -539,6 +666,49 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <span className="text-2xl font-black text-green-700 tabular-nums">{activeRow.total.toFixed(1)}</span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Admin referee score input modal ── */}
+      {catRefModalData && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => { setCatRefModalData(null); setCatScoreInput(''); }}>
+          <div className="bg-white shadow-2xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-900 text-center">A{catRefModalData.refPos} — {catRefModalData.refName}</h3>
+            <p className="text-sm text-gray-500 text-center">Scor pentru: <span className="font-bold text-gray-800">{catRefModalData.athleteName}</span></p>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-gray-600">Scor (0 – 100)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={catScoreInput}
+                onChange={e => setCatScoreInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitCatRefScore(); }}
+                autoFocus
+                className="w-full border-2 border-gray-300 px-4 py-3 text-2xl font-black text-center tabular-nums focus:border-indigo-500 focus:outline-none"
+                placeholder="ex: 8.5"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={submitCatRefScore}
+                disabled={!catScoreInput || isNaN(parseFloat(catScoreInput)) || parseFloat(catScoreInput) < 0 || parseFloat(catScoreInput) > 100}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 font-bold text-base disabled:opacity-40 transition"
+              >
+                {catRefModalData.existingScoreId ? 'Actualizează' : 'Salvează'}
+              </button>
+              {catRefModalData.existingScoreId && (
+                <button
+                  onClick={deleteCatRefScore}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 font-bold text-base transition"
+                >
+                  Șterge
+                </button>
+              )}
+            </div>
+            <button onClick={() => { setCatRefModalData(null); setCatScoreInput(''); }} className="w-full text-sm text-gray-500 hover:text-gray-700 py-2 font-medium">Închide</button>
+          </div>
         </div>
       )}
 
@@ -553,11 +723,10 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <tr className="bg-gray-50">
                 <th className="text-left px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-10">#</th>
                 <th className="text-left px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300">Sportiv</th>
-                <th className="text-left px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 hidden sm:table-cell">Club</th>
                 {refCols.map(r => (<th key={r.pos} className="text-center px-2 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-16">A{r.pos}</th>))}
                 <th className="text-center px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-20">TOTAL</th>
                 <th className="text-center px-2 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-12">Loc</th>
-                <th className="text-center px-2 py-2.5 border-b-2 border-gray-300 w-28">Acțiuni</th>
+                <th className="text-center px-2 py-2.5 border-b-2 border-gray-300 w-36">Acțiuni</th>
               </tr>
             </thead>
             <tbody>
@@ -570,9 +739,8 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                     <td className="px-3 py-2.5 border-b border-gray-200 text-gray-400 text-xs">{idx + 1}</td>
                     <td className="px-3 py-2.5 border-b border-gray-200">
                       <span className="text-gray-900 font-semibold">{row.athleteName}</span>
-                      <span className="text-gray-400 text-xs sm:hidden block">{row.clubName}</span>
+                      {row.clubName && <span className="text-gray-400 text-xs ml-1">({row.clubName})</span>}
                     </td>
-                    <td className="px-3 py-2.5 border-b border-gray-200 text-gray-500 text-xs hidden sm:table-cell">{row.clubName}</td>
                     {row.vals.map((v, ri) => {
                       const mark = row.marks[ri]; const isCancelled = mark === 'low' || mark === 'high';
                       return (<td key={ri} className={`text-center px-2 py-2.5 border-b border-gray-200 tabular-nums text-sm ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{v != null ? Number(v).toFixed(1) : '—'}</td>);
@@ -588,7 +756,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         {/* TV button — switch display to this athlete */}
                         <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
                           className={`text-xs px-2 py-1 font-bold disabled:opacity-40 ${row.isActive ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-                          {row.isActive ? '●' : '▶'}
+                          {row.isActive ? '●' : 'START'}
                         </button>
                         {/* Reveal button — switch to athlete + reveal scores on TV */}
                         {row.allScoresIn && (
@@ -601,6 +769,17 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                             title="Reveal scoruri pe TV"
                           >
                             {row.isRevealed ? '✓' : '👁'}
+                          </button>
+                        )}
+                        {/* Reset button — delete this athlete's scores */}
+                        {row.scoreCount > 0 && (
+                          <button
+                            onClick={() => resetAthleteScores(row)}
+                            disabled={busy}
+                            className="text-xs px-2 py-1 font-bold bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-40"
+                            title="Resetează scorurile acestui sportiv"
+                          >
+                            ↺
                           </button>
                         )}
                       </div>

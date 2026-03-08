@@ -1959,20 +1959,33 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         Accepts either:
           - athlete_score (ID) directly, OR
           - category + athlete (IDs) — will find/create the CategoryAthleteScore automatically
+        Admins can also supply a 'referee' field to score on behalf of a specific referee.
         """
         user = request.user
         
-        # Validate user is a referee
-        if not (hasattr(user, 'athlete') and user.athlete.is_referee):
+        # Determine the referee ID
+        is_admin = user.is_staff or (hasattr(user, 'role') and user.role == 'admin')
+        
+        if is_admin and request.data.get('referee'):
+            # Admin scoring on behalf of a referee
+            referee_id = request.data['referee']
+        elif hasattr(user, 'athlete') and user.athlete.is_referee:
+            referee_id = user.athlete.id
+        elif is_admin:
             return Response(
-                {'error': 'Only referees can submit scores'},
+                {'error': 'Admin must specify a referee ID'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        else:
+            return Response(
+                {'error': 'Only referees or admins can submit scores'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
         # Build a clean plain dict for the serializer
         incoming = request.data
         clean = {
-            'referee': user.athlete.id,
+            'referee': referee_id,
             'score': incoming.get('score', 100),
         }
         if incoming.get('notes'):
@@ -2015,7 +2028,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
             # If referee already scored this athlete, update instead of error
             existing = CategoryRefereeScore.objects.filter(
                 athlete_score=athlete_score,
-                referee=user.athlete
+                referee_id=referee_id
             ).first()
             
             if existing:
@@ -2032,7 +2045,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
             try:
                 existing = CategoryRefereeScore.objects.get(
                     athlete_score_id=clean['athlete_score'],
-                    referee_id=clean['referee']
+                    referee_id=referee_id
                 )
                 existing.score = clean.get('score', existing.score)
                 existing.notes = clean.get('notes', existing.notes)
