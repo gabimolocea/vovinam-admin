@@ -230,13 +230,13 @@ export default function ScoringPanel() {
           <>
           <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col" style={{ height: '50dvh' }}>
             {/* Score display — centered large score + small reset button */}
-            <div className="flex items-center justify-center gap-3 px-4 py-2 bg-green-50 border-b border-green-200 shrink-0">
+            <div className="relative flex items-center justify-center px-4 py-2 bg-green-50 border-b border-green-200 shrink-0">
               <div className="text-center">
                 <p className="text-5xl font-black text-gray-900 tabular-nums leading-none">{draftScore}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">din {MAX_SCORE}</p>
               </div>
               <button onClick={() => setShowResetConfirm(true)} disabled={busy}
-                className="text-[10px] font-bold text-gray-500 bg-gray-200 hover:bg-gray-300 active:bg-gray-400 px-2 py-1 disabled:opacity-40 transition-all">
+                className="absolute right-3 text-[10px] font-bold text-gray-500 bg-gray-200 hover:bg-gray-300 active:bg-gray-400 px-2 py-1 disabled:opacity-40 transition-all">
                 Resetează Scor
               </button>
             </div>
