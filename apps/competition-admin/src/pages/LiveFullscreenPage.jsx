@@ -787,7 +787,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                 {refCols.map(r => (<th key={r.pos} className="text-center px-2 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-16">A{r.pos}</th>))}
                 <th className="text-center px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-20">TOTAL</th>
                 <th className="text-center px-2 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-12">Loc</th>
-                <th className="text-center px-2 py-2.5 border-b-2 border-gray-300 w-56">Acțiuni</th>
+                <th className="text-center px-2 py-2.5 border-b-2 border-gray-300 min-w-[420px]">Acțiuni</th>
               </tr>
             </thead>
             <tbody>
@@ -836,16 +836,16 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                       ) : rank ? <span className="text-xs text-gray-400">{rank}</span> : '—'}
                     </td>
                     <td className="text-center px-2 py-2.5 border-b border-gray-200">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                      <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                         {/* Start / Încheie button */}
                         {row.isActive ? (
                           <button onClick={() => { switchDisplay(cat.id, null, null); setFinishedAthletes(prev => new Set(prev).add(row.athleteId)); }} disabled={busy}
-                            className="text-xs px-2.5 py-1 font-bold disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600">
+                            className="text-sm px-4 py-2 font-bold rounded disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600 whitespace-nowrap">
                             Încheie
                           </button>
                         ) : (
                           <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
-                            className="text-xs px-2.5 py-1 font-bold disabled:opacity-40 bg-green-600 text-white hover:bg-green-700">
+                            className="text-sm px-4 py-2 font-bold rounded disabled:opacity-40 bg-green-600 text-white hover:bg-green-700 whitespace-nowrap">
                             Start
                           </button>
                         )}
@@ -854,7 +854,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                           <button
                             onClick={() => switchDisplay(cat.id, null, row.athleteId, 'scores_revealed')}
                             disabled={busy}
-                            className={`text-xs px-2.5 py-1 font-bold disabled:opacity-40 ${
+                            className={`text-sm px-4 py-2 font-bold rounded disabled:opacity-40 whitespace-nowrap ${
                               row.isRevealed ? 'bg-yellow-400 text-black' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
                             }`}
                           >
@@ -866,7 +866,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                           <button
                             onClick={() => setResetConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row })}
                             disabled={busy}
-                            className="text-xs px-2.5 py-1 font-bold bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-40"
+                            className="text-sm px-4 py-2 font-bold rounded bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-40 whitespace-nowrap"
                           >
                             Resetează
                           </button>
@@ -875,7 +875,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         <button
                           onClick={() => setDqConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row, isDisqualified: row.isDisqualified })}
                           disabled={busy}
-                          className={`text-xs px-2.5 py-1 font-bold disabled:opacity-40 ${row.isDisqualified ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                          className={`text-sm px-4 py-2 font-bold rounded disabled:opacity-40 whitespace-nowrap ${row.isDisqualified ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
                         >
                           {row.isDisqualified ? 'Recalifică' : 'DQ'}
                         </button>

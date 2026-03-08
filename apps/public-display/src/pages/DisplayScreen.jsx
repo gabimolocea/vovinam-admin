@@ -187,6 +187,22 @@ function IdleScreen({ event }) {
    same visual language as FightDisplay
    ═══════════════════════════════════════════════════════ */
 function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed, isSolo, session, isDisqualified }) {
+  // ── Delayed total reveal: show referee scores first, then after 7s switch to total screen ──
+  const [showTotalScreen, setShowTotalScreen] = useState(false);
+  const totalTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (revealed) {
+      // Start timer to switch to total screen after 7 seconds
+      totalTimerRef.current = setTimeout(() => setShowTotalScreen(true), 7000);
+    } else {
+      // Reset when scores are hidden
+      setShowTotalScreen(false);
+      if (totalTimerRef.current) clearTimeout(totalTimerRef.current);
+    }
+    return () => { if (totalTimerRef.current) clearTimeout(totalTimerRef.current); };
+  }, [revealed]);
+
   // Calculate scores
   const allScores = refScores.map(rs => Number(rs.score)).filter(s => !isNaN(s));
   const sortedScores = [...allScores].sort((a, b) => a - b);
@@ -244,7 +260,7 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
         {categoryDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight">{categoryDisplay}</p>}
       </div>
 
-      {/* ═══ MAIN CONTENT: athlete name + referee boxes ═══ */}
+      {/* ═══ MAIN CONTENT ═══ */}
       <div className="flex-1 flex flex-col items-center justify-center px-[3vw] py-[2vh] min-h-0">
         {/* Athlete / Team name */}
         {athlete ? (
@@ -265,51 +281,65 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
           </div>
         )}
 
-        {/* ── 5 REFEREE BOXES — same style as fight referee decision boxes ── */}
-        <div className="flex gap-[1.5vw] mb-[2vh]">
-          {[0, 1, 2, 3, 4].map(i => {
-            const hasScore = revealed && i < allScores.length;
-            const score = hasScore ? allScores[i] : null;
-            const mark = hasScore ? marks[i] : null;
-            const isCancelled = mark === 'low' || mark === 'high';
+        {/* ═══ PHASE 1: Referee boxes (no total) — shown first when scores revealed ═══ */}
+        {(!revealed || !showTotalScreen) && (
+          <div className="flex gap-[1.5vw] mb-[2vh]">
+            {[0, 1, 2, 3, 4].map(i => {
+              const hasScore = revealed && i < allScores.length;
+              const score = hasScore ? allScores[i] : null;
+              const mark = hasScore ? marks[i] : null;
+              const isCancelled = mark === 'low' || mark === 'high';
 
-            return (
-              <div key={i} className="flex flex-col items-center gap-[1vh]">
-                <div className={`relative w-[16vw] h-[30vh] flex flex-col items-center justify-center transition-all duration-500 ${
-                  hasScore
-                    ? isCancelled ? 'bg-red-600/30 border-4 border-red-500' : 'bg-green-600/30 border-4 border-green-500'
-                    : 'bg-gray-700'
-                }`}>
-                  <span className="text-[1.5vw] font-black text-gray-400 mb-[1vh]">A{i + 1}</span>
-                  <span className={`text-[5vw] font-black tabular-nums ${
+              return (
+                <div key={i} className="flex flex-col items-center gap-[1vh]">
+                  <div className={`relative w-[16vw] h-[30vh] flex flex-col items-center justify-center transition-all duration-500 ${
                     hasScore
-                      ? isCancelled ? 'text-red-400' : 'text-white'
-                      : 'text-gray-600'
+                      ? isCancelled ? 'bg-red-600/30 border-4 border-red-500' : 'bg-green-600/30 border-4 border-green-500'
+                      : 'bg-gray-700'
                   }`}>
-                    {hasScore ? Math.round(score) : '—'}
-                  </span>
-                  {/* Red diagonal slash for cancelled (min/max) scores */}
-                  {hasScore && isCancelled && (
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                      <div className="absolute inset-0" style={{
-                        background: 'linear-gradient(to top right, transparent calc(50% - 3px), #ef4444 calc(50% - 3px), #ef4444 calc(50% + 3px), transparent calc(50% + 3px))'
-                      }} />
-                    </div>
-                  )}
+                    <span className="text-[1.5vw] font-black text-gray-400 mb-[1vh]">A{i + 1}</span>
+                    <span className={`text-[5vw] font-black tabular-nums ${
+                      hasScore
+                        ? isCancelled ? 'text-red-400' : 'text-white'
+                        : 'text-gray-600'
+                    }`}>
+                      {hasScore ? Math.round(score) : '—'}
+                    </span>
+                    {/* Red diagonal slash for cancelled (min/max) scores */}
+                    {hasScore && isCancelled && (
+                      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                        <div className="absolute inset-0" style={{
+                          background: 'linear-gradient(to top right, transparent calc(50% - 3px), #ef4444 calc(50% - 3px), #ef4444 calc(50% + 3px), transparent calc(50% + 3px))'
+                        }} />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
-        {/* ── TOTAL — shown after reveal ── */}
-        {revealed && total != null && (
-          <div className="text-center animate-pulse">
-            <p className="text-[1.5vw] font-black text-yellow-300 uppercase tracking-wider mb-[0.5vh]">TOTAL</p>
-            <p className="text-[7vw] font-black text-yellow-400 tabular-nums leading-none">{Math.round(total)}</p>
+        {/* ═══ PHASE 2: Total screen — large box replacing referee boxes after 7s ═══ */}
+        {revealed && showTotalScreen && total != null && (
+          <div className="flex flex-col items-center justify-center animate-[fadeScaleIn_0.8s_ease-out]">
+            <div className="border-4 border-yellow-400 bg-yellow-400/10 px-[10vw] py-[6vh] flex flex-col items-center justify-center">
+              <p className="text-[2.5vw] font-black text-yellow-300 uppercase tracking-[0.3em] mb-[2vh]">TOTAL</p>
+              <p className="text-[14vw] font-black text-yellow-400 tabular-nums leading-none" style={{ textShadow: '0 0 60px rgba(250,204,21,0.4)' }}>
+                {Math.round(total)}
+              </p>
+            </div>
           </div>
         )}
       </div>
+
+      {/* ═══ Keyframe animation for total reveal ═══ */}
+      <style>{`
+        @keyframes fadeScaleIn {
+          0% { opacity: 0; transform: scale(0.7); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
