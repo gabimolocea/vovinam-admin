@@ -1154,12 +1154,14 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
     """Serializer for individual referee scores in solo/team categories"""
     referee_name = serializers.SerializerMethodField(read_only=True)
     athlete_name = serializers.SerializerMethodField(read_only=True)
+    athlete = serializers.SerializerMethodField(read_only=True)
+    category = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = CategoryRefereeScore
         fields = [
-            'id', 'athlete_score', 'referee', 'referee_name', 'athlete_name',
-            'score', 'submitted_date', 'notes'
+            'id', 'athlete_score', 'referee', 'referee_name', 'athlete', 'athlete_name',
+            'category', 'score', 'submitted_date', 'notes'
         ]
         read_only_fields = ['submitted_date']
     
@@ -1167,6 +1169,18 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
         """Return referee's full name"""
         if obj.referee:
             return f"{obj.referee.first_name} {obj.referee.last_name}"
+        return None
+    
+    def get_athlete(self, obj):
+        """Return athlete ID from the linked CategoryAthleteScore"""
+        if obj.athlete_score and obj.athlete_score.athlete_id:
+            return obj.athlete_score.athlete_id
+        return None
+    
+    def get_category(self, obj):
+        """Return category ID from the linked CategoryAthleteScore"""
+        if obj.athlete_score and obj.athlete_score.category_id:
+            return obj.athlete_score.category_id
         return None
     
     def get_athlete_name(self, obj):

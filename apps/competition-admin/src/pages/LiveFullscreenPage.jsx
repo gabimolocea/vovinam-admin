@@ -89,22 +89,26 @@ export default function LiveFullscreenPage() {
     }
   }, [eventId]);
 
-  // Lightweight fetch — only match-related state (4 calls instead of 14)
+  // Lightweight fetch — match + category score state (polled every 2s)
   const fetchMatchState = useCallback(async () => {
     if (!eventId) return;
     try {
-      const [rR, mrsR, meR, sR, mR] = await Promise.all([
+      const [rR, mrsR, meR, sR, mR, rsR, asR] = await Promise.all([
         roundAPI.list({ event_id: eventId }),
         matchRefereeScoreAPI.list({ event_id: eventId }),
         matchEventAPI.list({ event_id: eventId }),
         monitorAPI.sessions.list({ event_id: eventId }),
         matchAPI.list({ event_id: eventId }),
+        refereeAPI.categoryScores.list({ event_id: eventId }),
+        scoreAPI.list({ event_id: eventId }),
       ]);
       setRounds(arr(rR));
       setMatchRefScores(arr(mrsR));
       setMatchEvents(arr(meR));
       setSessions(arr(sR));
       setMatches(arr(mR));
+      setRefScores(arr(rsR));
+      setAthleteScores(arr(asR));
     } catch (err) {
       console.error('Match state fetch error:', err);
     }
@@ -401,10 +405,13 @@ export default function LiveFullscreenPage() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   FULLSCREEN CATEGORY PANEL
+   FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
 function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, busy, switchDisplay, setIdle, revealScores }) {
   const enrolled = cat.enrolled_athletes || [];
+  const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
+
+  // Build referee list from category referee assignment
   const referees = [];
   if (refAssignment) {
     for (let i = 1; i <= 5; i++) {
@@ -415,6 +422,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   }
   const refCols = referees.length > 0 ? referees : [1,2,3,4,5].map(i => ({ pos: i, id: null, name: `A${i}` }));
 
+  // Build rows with scores per referee
   const rows = enrolled.map(ea => {
     const athleteId = ea.athlete;
     const d = ea.athlete_details || {};
@@ -436,68 +444,150 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       marks = vals.map(v => { if (v == null) return 'empty'; const n = Number(v); if (!foundLow && n === low) { foundLow = true; return 'low'; } if (!foundHigh && n === high) { foundHigh = true; return 'high'; } return 'mid'; });
       total = sorted.slice(1, 4).reduce((s, v) => s + v, 0);
     } else if (numericVals.length > 0) { total = numericVals.reduce((s, v) => s + v, 0); }
-    return { athleteId, athleteName, clubName, vals, marks, total, isActive: session?.current_athlete === athleteId };
+    const allScoresIn = numericVals.length >= 5;
+    return { athleteId, athleteName, clubName, vals, marks, total, allScoresIn, scoreCount: numericVals.length, isActive: session?.current_athlete === athleteId };
   });
 
+  // Sort by total descending for ranking
+  const sortedRows = [...rows].filter(r => r.total != null).sort((a, b) => (b.total || 0) - (a.total || 0));
+  const getRank = (athleteId) => { const idx = sortedRows.findIndex(r => r.athleteId === athleteId); return idx >= 0 ? idx + 1 : null; };
+
+  // Check if active athlete has all scores
+  const activeRow = rows.find(r => r.isActive);
+  const activeAllScoresIn = activeRow?.allScoresIn;
+
   return (
-    <div className=" border border-gray-200 bg-white p-6 space-y-6 w-full shadow-lg">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{cat.name}</h1>
-          <p className="text-base text-gray-500">{cat.groupName}</p>
+    <div className="w-full space-y-4">
+      {/* ── Category info header (like match info tags) ── */}
+      <div className="border border-gray-200 bg-white p-5 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-black text-gray-900">{cat.name}</h1>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {cat.groupName && <span className="text-xs font-bold bg-gray-100 border border-gray-200 text-gray-600 px-2.5 py-1">{cat.groupName}</span>}
+              {cat.gender && <span className="text-xs font-bold bg-gray-100 border border-gray-200 text-gray-600 px-2.5 py-1">{genderLabels[cat.gender] || cat.gender}</span>}
+              <span className="text-xs font-bold bg-indigo-100 border border-indigo-200 text-indigo-700 px-2.5 py-1 uppercase">{cat.type === 'teams' ? 'Echipe' : 'Solo'}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {session?.status === 'scores_revealed' ? (
+              <span className="text-sm bg-green-100 text-green-700 px-4 py-2 font-bold border border-green-300">✓ Scoruri afișate</span>
+            ) : activeAllScoresIn ? (
+              <button onClick={revealScores} disabled={busy} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-black px-5 py-2.5 font-bold disabled:opacity-40 transition">🏆 Reveal Scoruri</button>
+            ) : null}
+          </div>
         </div>
-        <button onClick={setIdle} disabled={busy} className="text-sm bg-red-100 text-red-600 px-5 py-2.5  font-semibold hover:bg-red-200 disabled:opacity-40">Opreste</button>
-      </div>
 
-      {referees.length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          <span className="text-sm text-gray-500 font-medium self-center">Arbitri:</span>
-          {referees.map(r => (
-            <span key={r.pos} className="text-sm bg-gray-100 border border-gray-300  px-4 py-2 font-medium text-gray-700">R{r.pos}: {r.name}</span>
-          ))}
-        </div>
-      )}
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-base border-collapse">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="text-left px-4 py-3 font-bold text-gray-700 border-b-2 border-gray-300 w-12">#</th>
-              <th className="text-left px-4 py-3 font-bold text-gray-700 border-b-2 border-gray-300">Sportiv</th>
-              <th className="text-left px-4 py-3 font-bold text-gray-700 border-b-2 border-gray-300">Club</th>
-              {refCols.map(r => (<th key={r.pos} className="text-center px-4 py-3 font-bold text-gray-700 border-b-2 border-gray-300 w-20">R{r.pos}</th>))}
-              <th className="text-center px-4 py-3 font-bold text-gray-700 border-b-2 border-gray-300 w-24">TOTAL</th>
-              <th className="text-center px-4 py-3 border-b-2 border-gray-300 w-16">TV</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, idx) => (
-              <tr key={row.athleteId} className={`${row.isActive ? 'bg-green-100 font-semibold' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-yellow-50 transition`}>
-                <td className="px-4 py-3 border-b border-gray-200 text-gray-400">{idx + 1}</td>
-                <td className="px-4 py-3 border-b border-gray-200 text-gray-900 font-medium">{row.athleteName}</td>
-                <td className="px-4 py-3 border-b border-gray-200 text-gray-500">{row.clubName}</td>
-                {row.vals.map((v, ri) => {
-                  const mark = row.marks[ri]; const isCancelled = mark === 'low' || mark === 'high';
-                  return (<td key={ri} className={`text-center px-4 py-3 border-b border-gray-200 tabular-nums ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-gray-900' : 'text-gray-300'}`}>{v != null ? Number(v).toFixed(1) : '—'}</td>);
-                })}
-                <td className="text-center px-4 py-3 border-b border-gray-200 font-bold text-gray-900 tabular-nums">{row.total != null ? row.total.toFixed(1) : '—'}</td>
-                <td className="text-center px-4 py-3 border-b border-gray-200">
-                  <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
-                    className={`text-sm px-3 py-1.5  font-medium disabled:opacity-40 ${row.isActive ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-                    {row.isActive ? '●' : '▶'}
-                  </button>
-                </td>
-              </tr>
+        {/* Referee badges */}
+        {referees.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {referees.map(r => (
+              <span key={r.pos} className="text-xs bg-gray-50 border border-gray-200 px-3 py-1.5 font-medium text-gray-600">
+                A{r.pos}: <span className="text-gray-900 font-bold">{r.name}</span>
+              </span>
             ))}
-          </tbody>
-        </table>
+          </div>
+        )}
       </div>
 
-      {session?.status !== 'scores_revealed' && (
-        <div className="flex justify-end">
-          <button onClick={revealScores} disabled={busy} className="text-sm bg-green-600 text-white px-6 py-2.5  font-bold hover:bg-green-700 disabled:opacity-40">Reveal Scoruri pe Display</button>
+      {/* ── Active athlete card — highlighted like match VS section ── */}
+      {activeRow && (
+        <div className="border-2 border-green-400 bg-green-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Prezintă acum</p>
+              <h2 className="text-xl font-black text-gray-900">{activeRow.athleteName}</h2>
+              {activeRow.clubName && <p className="text-sm text-gray-500">{activeRow.clubName}</p>}
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-500 mb-1">Scoruri primite</p>
+              <p className="text-2xl font-black tabular-nums text-gray-700">{activeRow.scoreCount} / 5</p>
+            </div>
+          </div>
+          {/* Active athlete referee scores boxes (like fight referee boxes) */}
+          <div className="grid grid-cols-5 gap-2">
+            {activeRow.vals.map((v, i) => {
+              const mark = activeRow.marks[i];
+              const isCancelled = mark === 'low' || mark === 'high';
+              const hasScore = v != null;
+              return (
+                <div key={i} className={`flex flex-col items-center justify-center py-3 border-2 transition-all ${
+                  hasScore
+                    ? isCancelled ? 'border-red-300 bg-red-50' : 'border-green-400 bg-white'
+                    : 'border-gray-200 bg-gray-50'
+                }`}>
+                  <span className="text-xs font-bold text-gray-400 mb-1">A{i + 1}</span>
+                  <span className={`text-xl font-black tabular-nums ${
+                    isCancelled ? 'text-red-400 line-through' : hasScore ? 'text-gray-900' : 'text-gray-300'
+                  }`}>{hasScore ? Number(v).toFixed(1) : '—'}</span>
+                </div>
+              );
+            })}
+          </div>
+          {/* Total for active athlete */}
+          {activeRow.total != null && (
+            <div className="text-center mt-3 pt-3 border-t border-green-300">
+              <span className="text-sm text-gray-500 font-bold uppercase mr-2">TOTAL:</span>
+              <span className="text-2xl font-black text-green-700 tabular-nums">{activeRow.total.toFixed(1)}</span>
+            </div>
+          )}
         </div>
       )}
+
+      {/* ── Athletes table — all participants ── */}
+      <div className="border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-3 bg-gray-100 border-b border-gray-200">
+          <p className="text-sm font-bold text-gray-600 uppercase tracking-wide">Toți sportivii ({enrolled.length})</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="text-left px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-10">#</th>
+                <th className="text-left px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300">Sportiv</th>
+                <th className="text-left px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 hidden sm:table-cell">Club</th>
+                {refCols.map(r => (<th key={r.pos} className="text-center px-2 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-16">A{r.pos}</th>))}
+                <th className="text-center px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-20">TOTAL</th>
+                <th className="text-center px-2 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-12">Loc</th>
+                <th className="text-center px-2 py-2.5 border-b-2 border-gray-300 w-12">TV</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => {
+                const rank = getRank(row.athleteId);
+                return (
+                  <tr key={row.athleteId} className={`${
+                    row.isActive ? 'bg-green-100 ring-2 ring-green-300 ring-inset' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                  } hover:bg-yellow-50/50 transition`}>
+                    <td className="px-3 py-2.5 border-b border-gray-200 text-gray-400 text-xs">{idx + 1}</td>
+                    <td className="px-3 py-2.5 border-b border-gray-200">
+                      <span className="text-gray-900 font-semibold">{row.athleteName}</span>
+                      <span className="text-gray-400 text-xs sm:hidden block">{row.clubName}</span>
+                    </td>
+                    <td className="px-3 py-2.5 border-b border-gray-200 text-gray-500 text-xs hidden sm:table-cell">{row.clubName}</td>
+                    {row.vals.map((v, ri) => {
+                      const mark = row.marks[ri]; const isCancelled = mark === 'low' || mark === 'high';
+                      return (<td key={ri} className={`text-center px-2 py-2.5 border-b border-gray-200 tabular-nums text-sm ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{v != null ? Number(v).toFixed(1) : '—'}</td>);
+                    })}
+                    <td className="text-center px-3 py-2.5 border-b border-gray-200 font-bold text-gray-900 tabular-nums">{row.total != null ? row.total.toFixed(1) : '—'}</td>
+                    <td className="text-center px-2 py-2.5 border-b border-gray-200">
+                      {rank && rank <= 3 ? (
+                        <span className={`text-xs font-black px-2 py-0.5 ${rank === 1 ? 'bg-yellow-100 text-yellow-700' : rank === 2 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-600'}`}>{rank}</span>
+                      ) : rank ? <span className="text-xs text-gray-400">{rank}</span> : '—'}
+                    </td>
+                    <td className="text-center px-2 py-2.5 border-b border-gray-200">
+                      <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
+                        className={`text-xs px-2 py-1 font-bold disabled:opacity-40 ${row.isActive ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+                        {row.isActive ? '●' : '▶'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -514,7 +604,6 @@ function FullscreenMatchPanel({
   const [showRoundResetConfirm, setShowRoundResetConfirm] = useState(null); // round id
   const [showStopRoundConfirm, setShowStopRoundConfirm] = useState(null); // round id for stop confirm
   const [showWinnerConfirm, setShowWinnerConfirm] = useState(false);
-  const [locked, setLocked] = useState(true); // locked when match is finalized
   const [breakTimers, setBreakTimers] = useState({});
   const [refModalData, setRefModalData] = useState(null); // { ref, matchId }
   const prevRoundStatusRef = useRef({});
@@ -615,28 +704,12 @@ function FullscreenMatchPanel({
 
   return (
     <div className="w-full space-y-4 relative">
-      {/* Finalized alert + lock overlay */}
+      {/* Finalized alert */}
       {isMatchFinalized && (
-        <div className="w-full bg-green-100 border border-green-400 px-5 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-green-700 text-lg">✓</span>
-            <span className="text-sm font-bold text-green-800">Meci finalizat — rezultatele au fost salvate</span>
-          </div>
-          {locked ? (
-            <button onClick={() => setLocked(false)} className="text-xs bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 font-bold transition">
-              🔓 Deblochează pentru modificări
-            </button>
-          ) : (
-            <button onClick={() => setLocked(true)} className="text-xs bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 font-bold transition">
-              🔒 Blochează
-            </button>
-          )}
+        <div className="w-full bg-green-100 border border-green-400 px-5 py-3 flex items-center gap-3">
+          <span className="text-green-700 text-lg">✓</span>
+          <span className="text-sm font-bold text-green-800">Meci finalizat — rezultatele au fost salvate</span>
         </div>
-      )}
-
-      {/* Lock overlay — blocks all interactions when finalized & locked */}
-      {isMatchFinalized && locked && (
-        <div className="absolute inset-0 bg-white/60 z-40 cursor-not-allowed" style={{ top: '52px' }} />
       )}
 
       {/* Reset round confirm dialog */}

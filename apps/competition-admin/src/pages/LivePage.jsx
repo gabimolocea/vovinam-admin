@@ -409,7 +409,7 @@ function FieldPanel({
                     </div>
                   ) : (
                     /* ─── Category / Match item ─── */
-                    <div className={`flex flex-wrap items-center gap-2.5 border px-4 py-3 transition cursor-grab ${
+                    <div className={`flex flex-wrap items-center gap-2 sm:gap-2.5 border px-3 sm:px-4 py-2.5 sm:py-3 transition cursor-grab ${
                       isActiveItem ? 'border-green-400 bg-green-50 ring-2 ring-green-300 shadow-sm' : idx === nextItemIndex ? st.border + ' bg-orange-50/50 ring-2 ring-orange-200 shadow-sm' : st.border + ' ' + st.bg + ' hover:shadow-sm'
                     }`}
                       draggable onDragStart={e => handleDragStart(e, item)} onDragEnd={handleDragEnd} onDragOver={e => handleItemDragOver(e, idx)}>
@@ -423,12 +423,15 @@ function FieldPanel({
                       <div className="flex-1 min-w-0">
                         {item.type === 'category' ? (
                           <>
-                            <span className="text-sm font-bold text-gray-900 truncate block">{item.data.name}</span>
-                            {item.data.groupName && <span className="text-xs text-gray-400 truncate block">{item.data.groupName} • {genderLabels[item.data.gender] || item.data.gender}</span>}
+                            <span className="text-sm md:text-base font-bold text-gray-900 block">{item.data.name}</span>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {item.data.groupName && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5">{item.data.groupName}</span>}
+                              {item.data.gender && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5">{genderLabels[item.data.gender] || item.data.gender}</span>}
+                            </div>
                           </>
                         ) : (
                           <>
-                            <span className="text-sm font-bold truncate block">
+                            <span className="text-sm md:text-base font-bold truncate block">
                               {item.data.match_number && <span className="text-gray-400 mr-1">{item.data.match_number}</span>}
                               <span className="text-red-600">{item.data.red_corner_full_name || 'TBD'}</span>
                               <span className="text-gray-400 mx-1">vs</span>
@@ -464,7 +467,7 @@ function FieldPanel({
                       >
                         <option value="not_started">Neînceput</option>
                         <option value="in_progress">Activ</option>
-                        <option value="completed">Gata</option>
+                        <option value="completed">Finalizat</option>
                       </select>
 
                       {/* START / CONTINUA / Stop */}
