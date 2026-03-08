@@ -457,9 +457,20 @@ function FieldPanel({
                       {/* Status dropdown */}
                       <select
                         value={item.status || 'not_started'}
-                        onChange={e => {
-                          if (item.type === 'category') updateAssignmentStatus(item.assignmentId, e.target.value);
-                          else updateMatchAssignmentStatus(item.assignmentId, e.target.value);
+                        onChange={async e => {
+                          const newStatus = e.target.value;
+                          // If setting to in_progress, first reset other active items on this field
+                          if (newStatus === 'in_progress') {
+                            for (const si of scheduleItems) {
+                              if (si === item || si.type === 'break' || si.status !== 'in_progress') continue;
+                              try {
+                                if (si.type === 'category') await fieldAPI.assignments.update(si.assignmentId, { status: 'not_started' });
+                                else await matchFieldAssignmentAPI.update(si.assignmentId, { status: 'not_started' });
+                              } catch {}
+                            }
+                          }
+                          if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
+                          else updateMatchAssignmentStatus(item.assignmentId, newStatus);
                         }}
                         disabled={busy}
                         className={`text-xs font-bold uppercase px-2.5 py-1.5 border-none cursor-pointer ${st.badge}`}

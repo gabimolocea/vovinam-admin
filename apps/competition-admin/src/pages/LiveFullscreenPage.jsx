@@ -95,7 +95,7 @@ export default function LiveFullscreenPage() {
   const fetchMatchState = useCallback(async () => {
     if (!eventId) return;
     try {
-      const [rR, mrsR, meR, sR, mR, rsR, asR] = await Promise.all([
+      const [rR, mrsR, meR, sR, mR, rsR, asR, cR, gR] = await Promise.all([
         roundAPI.list({ event_id: eventId }),
         matchRefereeScoreAPI.list({ event_id: eventId }),
         matchEventAPI.list({ event_id: eventId }),
@@ -103,6 +103,8 @@ export default function LiveFullscreenPage() {
         matchAPI.list({ event_id: eventId }),
         refereeAPI.categoryScores.list({ event_id: eventId }),
         scoreAPI.list({ event_id: eventId }),
+        categoryAPI.list({ event_id: eventId }),
+        groupAPI.list({ event_id: eventId }),
       ]);
       setRounds(arr(rR));
       setMatchRefScores(arr(mrsR));
@@ -111,6 +113,13 @@ export default function LiveFullscreenPage() {
       setMatches(arr(mR));
       setRefScores(arr(rsR));
       setAthleteScores(arr(asR));
+      const gs = arr(gR);
+      setGroups(gs);
+      const cats = arr(cR).map(c => {
+        const group = gs.find(g => g.id === c.group);
+        return { ...c, groupName: group?.name || '' };
+      });
+      setAllCats(cats);
     } catch (err) {
       console.error('Match state fetch error:', err);
     }
