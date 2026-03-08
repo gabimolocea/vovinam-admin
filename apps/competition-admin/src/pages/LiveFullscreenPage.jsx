@@ -355,13 +355,7 @@ export default function LiveFullscreenPage() {
             >ÎNCHEIE PROBA</button>
           )}
           {/* Category control buttons in top nav */}
-          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && isSessionActive && (
-            <>
-              <button onClick={() => setShowResetCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Resetează Proba</button>
-              <button onClick={() => setShowStopCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Oprește</button>
-            </>
-          )}
-          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
             <button onClick={() => setShowResetCategoryConfirm(true)} disabled={busy} className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 font-medium disabled:opacity-40 transition">Resetează Proba</button>
           )}
           {/* QR code button for category */}
@@ -467,6 +461,13 @@ export default function LiveFullscreenPage() {
                 setShowResetCategoryConfirm(false);
                 setBusy(true);
                 try {
+                  // Reset session to idle
+                  setIdle();
+                  // Reset assignment status to not_started
+                  if (currentAssignment) {
+                    try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'not_started' }); } catch {}
+                  }
+                  // Delete all referee scores for this category
                   const catScores = refScores.filter(rs => {
                     const as = athleteScores.find(a => a.id === rs.athlete_score);
                     return as && as.category === currentCat.id;
