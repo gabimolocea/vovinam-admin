@@ -236,14 +236,14 @@ export default function ScoringPanel() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
-              <span className="text-sm font-bold text-green-700">LIVE — Puncteaz\u0103 acum</span>
+              <span className="text-sm font-bold text-green-700">LIVE — Punctează acum</span>
             </>
           ) : allScored ? (
-            <span className="text-sm font-bold text-green-600">\u2713 To\u021bi sportivii au fost evalua\u021bi</span>
+            <span className="text-sm font-bold text-green-600">✓ Toți sportivii au fost evaluați</span>
           ) : activeAthleteId && getMyScore(activeAthleteId) ? (
-            <span className="text-sm font-bold text-blue-600 animate-pulse">Ai evaluat acest sportiv — se a\u0219teapt\u0103 urm\u0103torul...</span>
+            <span className="text-sm font-bold text-blue-600 animate-pulse">Ai evaluat acest sportiv — se așteaptă următorul...</span>
           ) : (
-            <span className="text-sm font-bold text-blue-600 animate-pulse">Se a\u0219teapt\u0103 urm\u0103torul sportiv...</span>
+            <span className="text-sm font-bold text-blue-600 animate-pulse">Se așteaptă următorul sportiv...</span>
           )}
         </div>
         {/* Score display — centered large score + small reset button */}
