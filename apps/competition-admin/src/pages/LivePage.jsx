@@ -491,43 +491,55 @@ function FieldPanel({
                           >CONTINUĂ PROBA</button>
                           <button onClick={setIdle} disabled={busy} className="text-sm bg-red-100 text-red-600 px-4 py-2 font-bold hover:bg-red-200 disabled:opacity-40 shrink-0">Stop</button>
                         </>
+                      ) : item.status === 'in_progress' ? (
+                        <>
+                          <button
+                            onClick={() => {
+                              if (item.type === 'category') {
+                                switchDisplay(item.id, null, null);
+                                goFullscreen('category');
+                              } else {
+                                switchDisplay(item.data.category, item.id, null);
+                                goFullscreen('match');
+                              }
+                            }}
+                            disabled={busy || !isIdle}
+                            title={!isIdle ? 'Oprește proba activă înainte de a continua alta' : ''}
+                            className={`text-sm px-4 py-2 font-bold shrink-0 disabled:opacity-40 ${!isIdle ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                          >CONTINUĂ PROBA</button>
+                          <button
+                            onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
+                            className="text-sm bg-gray-100 text-gray-600 px-3 py-2 font-bold hover:bg-gray-200 shrink-0"
+                          >VEZI DETALII</button>
+                        </>
                       ) : item.status === 'completed' ? (
                         <button
                           onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
-                          className="text-sm bg-gray-600 text-white px-4 py-2 font-bold hover:bg-gray-700 shrink-0"
+                          className="text-sm bg-gray-100 text-gray-600 px-4 py-2 font-bold hover:bg-gray-200 shrink-0"
                         >VEZI DETALII</button>
-                      ) : item.status === 'in_progress' ? (
-                        <button
-                          onClick={() => {
-                            if (item.type === 'category') {
-                              switchDisplay(item.id, null, null);
-                              goFullscreen('category');
-                            } else {
-                              switchDisplay(item.data.category, item.id, null);
-                              goFullscreen('match');
-                            }
-                          }}
-                          disabled={busy || !isIdle}
-                          title={!isIdle ? 'Oprește proba activă înainte de a continua alta' : ''}
-                          className={`text-sm px-4 py-2 font-bold shrink-0 disabled:opacity-40 ${!isIdle ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
-                        >CONTINUĂ PROBA</button>
                       ) : (
-                        <button
-                          onClick={async () => {
-                            if (item.type === 'category') {
-                              await switchDisplay(item.id, null, null);
-                              await updateAssignmentStatus(item.assignmentId, 'in_progress');
-                              goFullscreen('category');
-                            } else {
-                              await switchDisplay(item.data.category, item.id, null);
-                              await updateMatchAssignmentStatus(item.assignmentId, 'in_progress');
-                              goFullscreen('match');
-                            }
-                          }}
-                          disabled={busy || !isIdle}
-                          title={!isIdle ? 'Oprește proba activă înainte de a începe alta' : ''}
-                          className={`text-sm px-5 py-2 font-bold shrink-0 disabled:opacity-40 ${!isIdle ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
-                        >START PROBA</button>
+                        <>
+                          <button
+                            onClick={async () => {
+                              if (item.type === 'category') {
+                                await switchDisplay(item.id, null, null);
+                                await updateAssignmentStatus(item.assignmentId, 'in_progress');
+                                goFullscreen('category');
+                              } else {
+                                await switchDisplay(item.data.category, item.id, null);
+                                await updateMatchAssignmentStatus(item.assignmentId, 'in_progress');
+                                goFullscreen('match');
+                              }
+                            }}
+                            disabled={busy || !isIdle}
+                            title={!isIdle ? 'Oprește proba activă înainte de a începe alta' : ''}
+                            className={`text-sm px-5 py-2 font-bold shrink-0 disabled:opacity-40 ${!isIdle ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                          >START PROBA</button>
+                          <button
+                            onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
+                            className="text-sm bg-gray-100 text-gray-600 px-3 py-2 font-bold hover:bg-gray-200 shrink-0"
+                          >VEZI DETALII</button>
+                        </>
                       )}
                     </div>
                   )}
