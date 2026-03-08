@@ -488,7 +488,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     const d = ea.athlete_details || {};
     const athleteName = `${d.last_name || ''} ${d.first_name || ''}`.trim() || `#${athleteId}`;
     const clubName = d.club_name || '';
-    const catScore = athleteScores.find(as => as.athlete === athleteId);
+    const catScore = athleteScores.find(as => (as.athlete?.id ?? as.athlete) === athleteId);
     const catScoreId = catScore?.id;
     const rScores = catScoreId ? refScores.filter(rs => rs.athlete_score === catScoreId) : [];
     const scoreByRef = {};
