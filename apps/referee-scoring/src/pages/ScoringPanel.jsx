@@ -227,6 +227,7 @@ export default function ScoringPanel() {
         const d = entry.athlete_details || {};
         const name = `${d.last_name || ''} ${d.first_name || ''}`.trim() || `Sportiv #${activeAthleteId}`;
         return (
+          <>
           <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col" style={{ height: '50dvh' }}>
             {/* Score display — centered large score + small reset button */}
             <div className="flex items-center justify-center gap-3 px-4 py-2 bg-green-50 border-b border-green-200 shrink-0">
@@ -298,6 +299,7 @@ export default function ScoringPanel() {
               </div>
             </div>
           )}
+          </>
         );
       })()}
     </div>
