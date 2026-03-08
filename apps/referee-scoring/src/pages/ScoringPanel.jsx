@@ -137,11 +137,6 @@ export default function ScoringPanel() {
   const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
   const hasActiveScoring = activeAthleteId && !getMyScore(activeAthleteId);
   const allScored = athletes.length > 0 && athletes.every(a => getMyScore(a.athlete || a.id));
-  const disabledMessage = allScored
-    ? 'Toți sportivii au fost evaluați'
-    : activeAthleteId && getMyScore(activeAthleteId)
-      ? 'Ai evaluat acest sportiv. Se așteaptă următorul...'
-      : 'Se așteaptă următorul sportiv...';
 
   return (
     <div className="flex flex-col bg-gray-50 text-gray-900" style={{ height: '100dvh' }}>
@@ -229,8 +224,30 @@ export default function ScoringPanel() {
 
       {/* ── Bottom: Scoring panel (always visible, disabled when no active athlete) ── */}
       <div className={`fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col ${!hasActiveScoring ? 'opacity-60' : ''}`} style={{ height: '50dvh' }}>
+        {/* Status bar — like match UI */}
+        <div className={`flex items-center justify-center gap-2 py-1.5 shrink-0 border-b ${
+          hasActiveScoring ? 'bg-green-50 border-green-200' :
+          allScored ? 'bg-green-50 border-green-200' :
+          'bg-blue-50 border-blue-200'
+        }`}>
+          {hasActiveScoring ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              </span>
+              <span className="text-sm font-bold text-green-700">LIVE — Puncteaz\u0103 acum</span>
+            </>
+          ) : allScored ? (
+            <span className="text-sm font-bold text-green-600">\u2713 To\u021bi sportivii au fost evalua\u021bi</span>
+          ) : activeAthleteId && getMyScore(activeAthleteId) ? (
+            <span className="text-sm font-bold text-blue-600 animate-pulse">Ai evaluat acest sportiv — se a\u0219teapt\u0103 urm\u0103torul...</span>
+          ) : (
+            <span className="text-sm font-bold text-blue-600 animate-pulse">Se a\u0219teapt\u0103 urm\u0103torul sportiv...</span>
+          )}
+        </div>
         {/* Score display — centered large score + small reset button */}
-        <div className={`relative flex items-center justify-center px-4 py-2 border-b shrink-0 ${hasActiveScoring ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
+        <div className="relative flex items-center justify-center px-4 py-2 border-b border-gray-200 bg-white shrink-0">
           <div className="text-center">
             <p className={`text-5xl font-black tabular-nums leading-none ${hasActiveScoring ? 'text-gray-900' : 'text-gray-400'}`}>{draftScore}</p>
           </div>
@@ -241,17 +258,7 @@ export default function ScoringPanel() {
         </div>
 
         {/* Scoring buttons — fills remaining space */}
-        <div className="flex-1 min-h-0 flex flex-col p-3 gap-2 relative">
-          {/* Info message when disabled */}
-          {!hasActiveScoring && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-              <div className={`px-6 py-3 rounded-xl shadow-lg text-center ${allScored ? 'bg-green-100 border border-green-300' : 'bg-blue-100 border border-blue-300'}`}>
-                <p className={`text-sm font-bold ${allScored ? 'text-green-700' : 'text-blue-700'}`}>
-                  {allScored ? '✓ ' : ''}{disabledMessage}
-                </p>
-              </div>
-            </div>
-          )}
+        <div className="flex-1 min-h-0 flex flex-col p-3 gap-2">
           {/* -1 / -2 buttons (top, larger) */}
           <div className="grid grid-cols-2 gap-2 flex-[3] min-h-0">
             <button onClick={() => adjustScore(-1)} disabled={!hasActiveScoring || busy || draftScore <= 0}
