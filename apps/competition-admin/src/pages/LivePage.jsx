@@ -136,11 +136,11 @@ export default function LivePage() {
   return (
     <div className={`flex-1 overflow-auto bg-gray-100 ${isSingle ? 'flex flex-col p-2' : 'p-3'}`}>
       {/* ═══ VIEW MODE TOOLBAR ═══ */}
-      <div className="flex items-center gap-2 mb-2 bg-white rounded-lg border border-gray-200 px-3 py-2 shadow-sm overflow-x-auto shrink-0">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mr-1 shrink-0">Vizualizare:</span>
+      <div className="flex items-center gap-3 mb-3 bg-white rounded-lg border border-gray-200 px-4 py-3 shadow-sm overflow-x-auto shrink-0">
+        <span className="text-sm font-bold text-gray-500 uppercase tracking-wider mr-1 shrink-0">Vizualizare:</span>
         <button
           onClick={() => setViewMode('all')}
-          className={`text-sm px-4 py-2 rounded-lg font-medium transition shrink-0 ${
+          className={`text-base px-5 py-2.5 rounded-lg font-semibold transition shrink-0 ${
             viewMode === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
@@ -153,7 +153,7 @@ export default function LivePage() {
             <button
               key={f.id}
               onClick={() => setViewMode(f.id)}
-              className={`text-sm px-4 py-2 rounded-lg font-medium transition shrink-0 ${
+              className={`text-base px-5 py-2.5 rounded-lg font-semibold transition shrink-0 ${
                 viewMode === f.id
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : isActive
@@ -161,7 +161,7 @@ export default function LivePage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              {isActive && <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1.5 animate-pulse" />}
+              {isActive && <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 mr-2 animate-pulse" />}
               {f.name}
             </button>
           );
@@ -346,17 +346,20 @@ function FieldPanel({
   return (
     <div className={`rounded-xl border border-gray-300 bg-white shadow-sm overflow-hidden ${singleView ? 'flex-1 flex flex-col min-h-0' : ''}`}>
       {/* ═══ HEADER ═══ */}
-      <div className="flex items-center justify-between bg-gray-800 text-white px-4 py-2.5 shrink-0">
+      <div className="flex items-center justify-between bg-gray-800 text-white px-5 py-3 shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-xl font-bold">{field.name}</span>
-          <span className={`h-3 w-3 rounded-full ${isIdle ? 'bg-gray-500' : 'bg-green-500 animate-pulse'}`} />
-          <span className="text-xs text-gray-400 uppercase tracking-wider">
+          <span className="text-2xl font-bold">{field.name}</span>
+          <span className={`h-3.5 w-3.5 rounded-full ${isIdle ? 'bg-gray-500' : 'bg-green-500 animate-pulse'}`} />
+          <span className="text-sm text-gray-400 uppercase tracking-wider font-medium">
             {isIdle ? 'Inactiv' : session?.status === 'scores_revealed' ? 'Scoruri afișate' : 'În desfășurare'}
           </span>
         </div>
-        <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-medium transition">
-                    Public Display
-        </a>
+        <button
+          onClick={() => window.open(displayUrl, '_blank')}
+          className="flex items-center gap-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold transition"
+        >
+          📺 Public Display
+        </button>
       </div>
 
       {/* ═══ BODY: Schedule / Programa (full width) ═══ */}
@@ -365,12 +368,12 @@ function FieldPanel({
         onDrop={handleDrop}
         onDragLeave={() => setDropIndicator(null)}
       >
-          <div className="px-3 py-2.5 bg-gray-100 border-b border-gray-200 sticky top-0 z-10">
-            <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Programa ({scheduleItems.length})</p>
+          <div className="px-4 py-3 bg-gray-100 border-b border-gray-200 sticky top-0 z-10">
+            <p className="text-sm font-bold text-gray-600 uppercase tracking-wide">Programa ({scheduleItems.length})</p>
           </div>
-          <div className="p-2 space-y-1">
+          <div className="p-3 space-y-2">
             {scheduleItems.length === 0 && (
-              <p className="text-xs text-gray-400 italic text-center py-4">Nicio probă alocată.<br/>Mergi la Programare.</p>
+              <p className="text-sm text-gray-400 italic text-center py-6">Nicio probă alocată.<br/>Mergi la Programare.</p>
             )}
             {scheduleItems.map((item, idx) => {
               const isActiveItem = (item.type === 'category' && session?.current_category === item.id && !session?.current_match)
@@ -386,43 +389,43 @@ function FieldPanel({
 
                   {item.type === 'break' ? (
                     /* ─── Break item ─── */
-                    <div className="flex items-center gap-2 rounded px-2.5 py-1.5 bg-orange-50 border border-orange-200 text-xs text-orange-700 cursor-grab"
+                    <div className="flex items-center gap-2 rounded-lg px-4 py-3 bg-orange-50 border border-orange-200 text-sm text-orange-700 cursor-grab"
                       draggable onDragStart={e => handleDragStart(e, item)} onDragEnd={handleDragEnd} onDragOver={e => handleItemDragOver(e, idx)}>
-                      <span className="text-sm text-orange-600 font-medium">&bull;</span>
-                      <span className="font-medium flex-1 truncate">{item.data?.label || 'Pauză'}</span>
-                      <span className="text-[10px] text-orange-500">{item.data?.duration || 60}s</span>
+                      <span className="text-base text-orange-600 font-medium">&bull;</span>
+                      <span className="font-semibold flex-1 truncate">{item.data?.label || 'Pauză'}</span>
+                      <span className="text-xs text-orange-500">{item.data?.duration || 60}s</span>
                     </div>
                   ) : (
                     /* ─── Category / Match item ─── */
-                    <div className={`flex items-center gap-1.5 rounded border px-2.5 py-2 transition cursor-grab ${
-                      isActiveItem ? 'border-green-400 bg-green-50 ring-1 ring-green-300 shadow-sm' : idx === nextItemIndex ? st.border + ' bg-orange-50/50 ring-1 ring-orange-200 shadow-sm' : st.border + ' ' + st.bg + ' hover:shadow-sm'
+                    <div className={`flex items-center gap-2.5 rounded-lg border px-4 py-3 transition cursor-grab ${
+                      isActiveItem ? 'border-green-400 bg-green-50 ring-2 ring-green-300 shadow-sm' : idx === nextItemIndex ? st.border + ' bg-orange-50/50 ring-2 ring-orange-200 shadow-sm' : st.border + ' ' + st.bg + ' hover:shadow-sm'
                     }`}
                       draggable onDragStart={e => handleDragStart(e, item)} onDragEnd={handleDragEnd} onDragOver={e => handleItemDragOver(e, idx)}>
                       {/* Drag handle */}
-                      <span className="text-gray-300 text-xs cursor-grab mr-0.5 select-none">⠿</span>
+                      <span className="text-gray-300 text-sm cursor-grab mr-0.5 select-none">⠿</span>
 
                       {/* Status dot */}
-                      <span className={`h-2 w-2 rounded-full shrink-0 ${st.dot}`} />
+                      <span className={`h-3 w-3 rounded-full shrink-0 ${st.dot}`} />
 
                       {/* Name + info */}
                       <div className="flex-1 min-w-0">
                         {item.type === 'category' ? (
                           <>
-                            <span className="text-xs font-semibold text-gray-900 truncate block">{item.data.name}</span>
-                            {item.data.groupName && <span className="text-[10px] text-gray-400 truncate block">{item.data.groupName} • {genderLabels[item.data.gender] || item.data.gender}</span>}
+                            <span className="text-sm font-bold text-gray-900 truncate block">{item.data.name}</span>
+                            {item.data.groupName && <span className="text-xs text-gray-400 truncate block">{item.data.groupName} • {genderLabels[item.data.gender] || item.data.gender}</span>}
                           </>
                         ) : (
                           <>
-                            <span className="text-xs font-semibold truncate block">
+                            <span className="text-sm font-bold truncate block">
                               {item.data.match_number && <span className="text-gray-400 mr-1">{item.data.match_number}</span>}
                               <span className="text-red-600">{item.data.red_corner_full_name || 'TBD'}</span>
-                              <span className="text-gray-400 mx-0.5">vs</span>
+                              <span className="text-gray-400 mx-1">vs</span>
                               <span className="text-blue-600">{item.data.blue_corner_full_name || 'TBD'}</span>
                             </span>
                             {(() => {
                               const matchCat = allCats.find(c => c.id === item.data.category);
                               return (
-                                <span className="text-[10px] text-gray-400 truncate block">
+                                <span className="text-xs text-gray-400 truncate block">
                                   {matchCat?.name || item.data.category_name}{matchCat?.groupName ? ` • ${matchCat.groupName}` : ''}{matchCat?.gender ? ` • ${genderLabels[matchCat.gender]}` : ''} • <span className="font-semibold text-indigo-500">{matchTypeLabels[item.data.match_type] || item.data.match_type}</span>
                                 </span>
                               );
@@ -433,7 +436,7 @@ function FieldPanel({
 
                       {/* URMEAZĂ badge */}
                       {idx === nextItemIndex && !isActiveItem && (
-                        <span className="text-[9px] font-bold text-orange-700 bg-orange-100 border border-orange-200 px-1.5 py-0.5 rounded shrink-0 uppercase">Urmează</span>
+                        <span className="text-xs font-bold text-orange-700 bg-orange-100 border border-orange-200 px-2.5 py-1 rounded-lg shrink-0 uppercase">Urmează</span>
                       )}
 
                       {/* Status dropdown */}
@@ -444,7 +447,7 @@ function FieldPanel({
                           else updateMatchAssignmentStatus(item.assignmentId, e.target.value);
                         }}
                         disabled={busy}
-                        className={`text-[10px] font-bold uppercase rounded px-1.5 py-0.5 border-none cursor-pointer ${st.badge} max-w-[65px]`}
+                        className={`text-xs font-bold uppercase rounded-lg px-2.5 py-1.5 border-none cursor-pointer ${st.badge}`}
                         onClick={e => e.stopPropagation()}
                       >
                         <option value="not_started">Neînceput</option>
@@ -454,19 +457,21 @@ function FieldPanel({
 
                       {/* Play / Stop */}
                       {isActiveItem ? (
-                        <button onClick={setIdle} disabled={busy} className="text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded font-medium hover:bg-red-200 disabled:opacity-40 shrink-0">Stop</button>
+                        <button onClick={setIdle} disabled={busy} className="text-sm bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-200 disabled:opacity-40 shrink-0">Stop</button>
                       ) : (
                         <button
                           onClick={() => {
-                            if (item.type === 'category') switchDisplay(item.id, null, null);
-                            else {
+                            if (item.type === 'category') {
+                              switchDisplay(item.id, null, null);
+                              goFullscreen('category');
+                            } else {
                               switchDisplay(item.data.category, item.id, null);
                               goFullscreen('match');
                             }
                           }}
                           disabled={busy}
-                          className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded font-medium hover:bg-green-200 disabled:opacity-40 shrink-0"
-                        >Play</button>
+                          className="text-sm bg-green-100 text-green-700 px-4 py-2 rounded-lg font-bold hover:bg-green-200 disabled:opacity-40 shrink-0"
+                        >▶ Play</button>
                       )}
                     </div>
                   )}
