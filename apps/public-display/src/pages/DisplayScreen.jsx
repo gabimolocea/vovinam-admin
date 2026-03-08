@@ -192,7 +192,7 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
   let marks = allScores.map(() => 'mid');
   let total = null;
 
-  if (allScores.length >= 5) {
+  if (allScores.length >= 3) {
     const low = sortedScores[0];
     const high = sortedScores[sortedScores.length - 1];
     let foundLow = false, foundHigh = false;

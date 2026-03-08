@@ -497,16 +497,17 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     const vals = refCols.map(r => r.id ? scoreByRef[r.id] : undefined);
     const scoreIds = refCols.map(r => r.id ? scoreIdByRef[r.id] : undefined);
     const numericVals = vals.filter(v => v != null).map(Number);
+    const totalRefCount = referees.length || 5;
     let marks = vals.map(() => 'mid');
     let total = null;
-    if (numericVals.length >= 5) {
+    if (numericVals.length >= 3) {
       const sorted = [...numericVals].sort((a, b) => a - b);
       const low = sorted[0]; const high = sorted[sorted.length - 1];
       let foundLow = false, foundHigh = false;
       marks = vals.map(v => { if (v == null) return 'empty'; const n = Number(v); if (!foundLow && n === low) { foundLow = true; return 'low'; } if (!foundHigh && n === high) { foundHigh = true; return 'high'; } return 'mid'; });
-      total = sorted.slice(1, 4).reduce((s, v) => s + v, 0);
+      total = sorted.slice(1, -1).reduce((s, v) => s + v, 0);
     } else if (numericVals.length > 0) { total = numericVals.reduce((s, v) => s + v, 0); }
-    const allScoresIn = numericVals.length >= 5;
+    const allScoresIn = numericVals.length >= totalRefCount;
     const isActive = session?.current_athlete === athleteId;
     const isRevealed = isActive && session?.status === 'scores_revealed';
     return { athleteId, athleteName, clubName, vals, marks, total, allScoresIn, scoreCount: numericVals.length, isActive, isRevealed, scoreIds, catScoreId };
@@ -757,7 +758,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         {row.isActive ? (
                           <button onClick={() => setIdle()} disabled={busy}
                             className="text-xs px-2 py-1 font-bold disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600">
-                            PAUZĂ
+                            Încheie proba
                           </button>
                         ) : (
                           <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
