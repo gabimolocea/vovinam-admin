@@ -38,17 +38,34 @@ class RefereeAssignedCategoriesView(APIView):
             Q(referee_5=athlete)
         ).select_related('category')
 
+        # Build set of category IDs currently live on a monitor
+        cat_ids = [a.category_id for a in assignments]
+        live_category_ids = set(
+            DisplayMonitorSession.objects.filter(
+                current_category__in=cat_ids,
+            ).exclude(status='idle').values_list('current_category_id', flat=True)
+        )
+
         data = []
         for assignment in assignments:
             cat = assignment.category
             field_assignment = getattr(cat, 'field_assignment', None)
             field = field_assignment.field if field_assignment else None
+
+            # Priority: monitor session displaying > field assignment status
+            if cat.id in live_category_ids:
+                fs = 'in_progress'
+            elif field_assignment:
+                fs = field_assignment.status
+            else:
+                fs = None
+
             data.append({
                 'id': cat.id,
                 'name': cat.name,
                 'type': cat.type,
                 'gender': cat.gender,
-                'field_status': field_assignment.status if field_assignment else None,
+                'field_status': fs,
                 'field_id': field.id if field else None,
                 'field_name': field.name if field else None,
                 'field_number': field.field_number if field else None,

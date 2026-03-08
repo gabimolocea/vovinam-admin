@@ -459,8 +459,9 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   return (
     <div className="w-full space-y-4">
       {/* ── Category info header (like match info tags) ── */}
-      <div className="border border-gray-200 bg-white p-5 space-y-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
+          {/* Left: title + tags */}
           <div>
             <h1 className="text-2xl font-black text-gray-900">{cat.name}</h1>
             <div className="flex flex-wrap gap-2 mt-2">
@@ -469,7 +470,19 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <span className="text-xs font-bold bg-indigo-100 border border-indigo-200 text-indigo-700 px-2.5 py-1 uppercase">{cat.type === 'teams' ? 'Echipe' : 'Solo'}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          {/* Right: referee badges + action button */}
+          <div className="flex flex-col items-end gap-2">
+            {/* Referee badges */}
+            {referees.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 justify-end">
+                {referees.map(r => (
+                  <span key={r.pos} className="text-xs bg-gray-50 border border-gray-200 px-2.5 py-1 font-medium text-gray-600">
+                    A{r.pos}: <span className="text-gray-900 font-bold">{r.name}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Reveal / status button */}
             {session?.status === 'scores_revealed' ? (
               <span className="text-sm bg-green-100 text-green-700 px-4 py-2 font-bold border border-green-300">✓ Scoruri afișate</span>
             ) : activeAllScoresIn ? (
@@ -477,17 +490,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
             ) : null}
           </div>
         </div>
-
-        {/* Referee badges */}
-        {referees.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {referees.map(r => (
-              <span key={r.pos} className="text-xs bg-gray-50 border border-gray-200 px-3 py-1.5 font-medium text-gray-600">
-                A{r.pos}: <span className="text-gray-900 font-bold">{r.name}</span>
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── Active athlete card — highlighted like match VS section ── */}
