@@ -445,7 +445,9 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       total = sorted.slice(1, 4).reduce((s, v) => s + v, 0);
     } else if (numericVals.length > 0) { total = numericVals.reduce((s, v) => s + v, 0); }
     const allScoresIn = numericVals.length >= 5;
-    return { athleteId, athleteName, clubName, vals, marks, total, allScoresIn, scoreCount: numericVals.length, isActive: session?.current_athlete === athleteId };
+    const isActive = session?.current_athlete === athleteId;
+    const isRevealed = isActive && session?.status === 'scores_revealed';
+    return { athleteId, athleteName, clubName, vals, marks, total, allScoresIn, scoreCount: numericVals.length, isActive, isRevealed };
   });
 
   // Sort by total descending for ranking
@@ -454,7 +456,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
   // Check if active athlete has all scores
   const activeRow = rows.find(r => r.isActive);
-  const activeAllScoresIn = activeRow?.allScoresIn;
 
   return (
     <div className="w-full space-y-4">
@@ -470,9 +471,8 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <span className="text-xs font-bold bg-indigo-100 border border-indigo-200 text-indigo-700 px-2.5 py-1 uppercase">{cat.type === 'teams' ? 'Echipe' : 'Solo'}</span>
             </div>
           </div>
-          {/* Right: referee badges + action button */}
+          {/* Right: referee badges */}
           <div className="flex flex-col items-end gap-2">
-            {/* Referee badges */}
             {referees.length > 0 && (
               <div className="flex flex-wrap gap-1.5 justify-end">
                 {referees.map(r => (
@@ -482,28 +482,34 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                 ))}
               </div>
             )}
-            {/* Reveal / status button */}
-            {session?.status === 'scores_revealed' ? (
-              <span className="text-sm bg-green-100 text-green-700 px-4 py-2 font-bold border border-green-300">✓ Scoruri afișate</span>
-            ) : activeAllScoresIn ? (
-              <button onClick={revealScores} disabled={busy} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-black px-5 py-2.5 font-bold disabled:opacity-40 transition">🏆 Reveal Scoruri</button>
-            ) : null}
           </div>
         </div>
       </div>
 
       {/* ── Active athlete card — highlighted like match VS section ── */}
       {activeRow && (
-        <div className="border-2 border-green-400 bg-green-50 p-4 shadow-sm">
+        <div className={`border-2 p-4 shadow-sm ${activeRow.isRevealed ? 'border-yellow-400 bg-yellow-50' : 'border-green-400 bg-green-50'}`}>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Prezintă acum</p>
+              <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${activeRow.isRevealed ? 'text-yellow-600' : 'text-green-600'}`}>
+                {activeRow.isRevealed ? '✓ Scoruri afișate pe TV' : 'Prezintă acum'}
+              </p>
               <h2 className="text-xl font-black text-gray-900">{activeRow.athleteName}</h2>
               {activeRow.clubName && <p className="text-sm text-gray-500">{activeRow.clubName}</p>}
             </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-500 mb-1">Scoruri primite</p>
-              <p className="text-2xl font-black tabular-nums text-gray-700">{activeRow.scoreCount} / 5</p>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-xs text-gray-500 mb-1">Scoruri primite</p>
+                <p className="text-2xl font-black tabular-nums text-gray-700">{activeRow.scoreCount} / 5</p>
+              </div>
+              {/* Reveal button for active athlete */}
+              {activeRow.isRevealed ? (
+                <span className="text-sm bg-green-100 text-green-700 px-4 py-2 font-bold border border-green-300">✓ Afișat</span>
+              ) : activeRow.allScoresIn ? (
+                <button onClick={revealScores} disabled={busy} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-black px-5 py-2.5 font-bold disabled:opacity-40 transition">
+                  🏆 Reveal pe TV
+                </button>
+              ) : null}
             </div>
           </div>
           {/* Active athlete referee scores boxes (like fight referee boxes) */}
@@ -551,7 +557,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                 {refCols.map(r => (<th key={r.pos} className="text-center px-2 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-16">A{r.pos}</th>))}
                 <th className="text-center px-3 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-20">TOTAL</th>
                 <th className="text-center px-2 py-2.5 font-bold text-gray-600 border-b-2 border-gray-300 w-12">Loc</th>
-                <th className="text-center px-2 py-2.5 border-b-2 border-gray-300 w-12">TV</th>
+                <th className="text-center px-2 py-2.5 border-b-2 border-gray-300 w-28">Acțiuni</th>
               </tr>
             </thead>
             <tbody>
@@ -559,7 +565,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                 const rank = getRank(row.athleteId);
                 return (
                   <tr key={row.athleteId} className={`${
-                    row.isActive ? 'bg-green-100 ring-2 ring-green-300 ring-inset' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                    row.isRevealed ? 'bg-yellow-50 ring-2 ring-yellow-300 ring-inset' : row.isActive ? 'bg-green-100 ring-2 ring-green-300 ring-inset' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                   } hover:bg-yellow-50/50 transition`}>
                     <td className="px-3 py-2.5 border-b border-gray-200 text-gray-400 text-xs">{idx + 1}</td>
                     <td className="px-3 py-2.5 border-b border-gray-200">
@@ -578,10 +584,26 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                       ) : rank ? <span className="text-xs text-gray-400">{rank}</span> : '—'}
                     </td>
                     <td className="text-center px-2 py-2.5 border-b border-gray-200">
-                      <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
-                        className={`text-xs px-2 py-1 font-bold disabled:opacity-40 ${row.isActive ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-                        {row.isActive ? '●' : '▶'}
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        {/* TV button — switch display to this athlete */}
+                        <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
+                          className={`text-xs px-2 py-1 font-bold disabled:opacity-40 ${row.isActive ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+                          {row.isActive ? '●' : '▶'}
+                        </button>
+                        {/* Reveal button — switch to athlete + reveal scores on TV */}
+                        {row.allScoresIn && (
+                          <button
+                            onClick={() => switchDisplay(cat.id, null, row.athleteId, 'scores_revealed')}
+                            disabled={busy}
+                            className={`text-xs px-2 py-1 font-bold disabled:opacity-40 ${
+                              row.isRevealed ? 'bg-yellow-400 text-black' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                            }`}
+                            title="Reveal scoruri pe TV"
+                          >
+                            {row.isRevealed ? '✓' : '👁'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

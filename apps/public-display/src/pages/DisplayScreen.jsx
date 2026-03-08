@@ -99,15 +99,15 @@ export default function DisplayScreen() {
         const scores = Array.isArray(crs) ? crs : crs.results ?? [];
         setRefScores(scores);
 
-        // Auto-reveal: if all 5 scores received
-        if (scores.length >= 5 && sess.status === 'scores_revealed') {
+        // Reveal only when admin explicitly sets scores_revealed
+        if (sess.status === 'scores_revealed') {
           setRevealed(true);
-        } else if (scores.length >= 5 && !revealed) {
-          // Delay reveal by a moment
-          setTimeout(() => setRevealed(true), 1500);
+        } else {
+          setRevealed(false);
         }
       } else {
         setRefScores([]);
+        setRevealed(false);
       }
 
     } catch (err) {
@@ -160,6 +160,7 @@ export default function DisplayScreen() {
       refScores={refScores}
       revealed={revealed}
       isSolo={category?.type === 'solo'}
+      session={session}
     />
   );
 }
@@ -181,36 +182,28 @@ function IdleScreen({ event }) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SOLO / TEAM DISPLAY
-   Logo top-left, event name top-right, category-group,
-   athlete/team name, 5 referee boxes, score reveal
+   SOLO / TEAM DISPLAY — TV-optimised, black background,
+   same visual language as FightDisplay
    ═══════════════════════════════════════════════════════ */
-function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed, isSolo }) {
-  // Build referee score map (A1-A5)
-  const scoreMap = {};
-  for (const rs of refScores) {
-    // Determine referee slot from assignment position or just use index
-    const slot = rs.referee_slot || `A${refScores.indexOf(rs) + 1}`;
-    scoreMap[slot] = rs;
-  }
-
-  // Calculate final score: remove highest and lowest, sum middle 3
-  const allScores = refScores.map(rs => rs.score ?? (100 - (rs.total_deductions || 0))).filter(s => s != null);
+function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed, isSolo, session }) {
+  // Calculate scores
+  const allScores = refScores.map(rs => Number(rs.score)).filter(s => !isNaN(s));
   const sortedScores = [...allScores].sort((a, b) => a - b);
-  let highIdx = -1, lowIdx = -1;
+  let marks = allScores.map(() => 'mid');
   let total = null;
 
-  if (sortedScores.length >= 5) {
+  if (allScores.length >= 5) {
     const low = sortedScores[0];
     const high = sortedScores[sortedScores.length - 1];
-    // Find indices of high/low in original order
-    lowIdx = allScores.indexOf(low);
-    highIdx = allScores.lastIndexOf(high);
-    if (highIdx === lowIdx) highIdx = allScores.indexOf(high); // handle same value
-    // Sum middle 3
-    const middle = sortedScores.slice(1, -1);
-    total = middle.reduce((s, v) => s + v, 0);
-    total = Math.round(total * 100) / 100;
+    let foundLow = false, foundHigh = false;
+    marks = allScores.map(v => {
+      if (!foundLow && v === low) { foundLow = true; return 'low'; }
+      if (!foundHigh && v === high) { foundHigh = true; return 'high'; }
+      return 'mid';
+    });
+    total = sortedScores.slice(1, -1).reduce((s, v) => s + v, 0);
+  } else if (allScores.length > 0) {
+    total = allScores.reduce((s, v) => s + v, 0);
   }
 
   const athleteName = isSolo
@@ -218,68 +211,96 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
     : (category?.team_name || category?.name || '—');
   const clubName = athlete?.club?.name || '';
 
+  // Group display with years
+  const groupDisplay = (() => {
+    if (!group?.name) return '';
+    const ys = group.birth_year_start || category?.birth_year_start;
+    const ye = group.birth_year_end || category?.birth_year_end;
+    if (ys && ye) return `${group.name} (${ye} - ${ys})`;
+    if (ys) return `${group.name} (${ys})`;
+    return group.name;
+  })();
+
+  const genderLabel = category?.gender === 'male' ? 'Masculin' : category?.gender === 'female' ? 'Feminin' : category?.gender === 'mixt' ? 'Mixt' : '';
+  const categoryDisplay = [category?.name, genderLabel].filter(Boolean).join(', ');
+  const typeLabel = category?.type === 'teams' ? 'ECHIPE' : 'SOLO';
+
   return (
-    <div className="h-screen w-screen bg-white flex flex-col">
-      {/* ── HEADER ── */}
-      <div className="flex items-center justify-between px-8 py-4 border-b-2 border-gray-200">
-        <img src="/frvv-logo.png" alt="FRVV" className="w-16 h-16 object-contain" />
-        <div className="text-right">
-          <h1 className="text-xl font-black text-gray-900">{event?.name || 'Competiție'}</h1>
-          <p className="text-sm text-gray-500">
-            {category?.name || '—'} — {group?.name || '—'}
-          </p>
+    <div className="h-screen w-screen bg-black flex flex-col overflow-hidden select-none" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+      {/* ═══ TOP BAR: logos + competition title ═══ */}
+      <div className="flex items-center justify-between px-[3vw] py-[1vh] shrink-0">
+        <img src="/frvv-logo.png" alt="FRVV" className="h-[20vh] w-auto object-contain" />
+        <h1 className="text-[3.5vw] font-normal text-yellow-400 text-center leading-tight tracking-wide uppercase" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
+          {event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM'}
+        </h1>
+        <img src="/frvv-logo.png" alt="Vovinam" className="h-[20vh] w-auto object-contain" />
+      </div>
+
+      {/* ═══ TYPE LABEL + CATEGORY INFO ═══ */}
+      <div className="relative flex items-center justify-center px-[3vw] -mt-[1vh] shrink-0">
+        {/* Type label — centered */}
+        <div className="bg-yellow-400 px-[3vw] py-[1.5vh] text-center" style={{ minWidth: '35vw' }}>
+          <p className="text-[2vw] font-black text-gray-900 uppercase tracking-wider leading-tight">{typeLabel}</p>
+        </div>
+        {/* Category info — right side */}
+        <div className="absolute right-[3vw] top-1/2 -translate-y-1/2 text-right">
+          {groupDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight">{groupDisplay}</p>}
+          {categoryDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight mt-[0.3vh]">{categoryDisplay}</p>}
         </div>
       </div>
 
-      {/* ── ATHLETE / TEAM NAME ── */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8">
-        <h2 className="text-5xl font-black text-gray-900 tracking-tight text-center mb-2">
-          {athleteName}
-        </h2>
-        {clubName && (
-          <p className="text-xl text-gray-500 mb-12">({clubName})</p>
+      {/* ═══ MAIN CONTENT: athlete name + referee boxes ═══ */}
+      <div className="flex-1 flex flex-col items-center justify-center px-[3vw] py-[2vh] min-h-0">
+        {/* Athlete / Team name */}
+        {athlete ? (
+          <div className="text-center mb-[3vh]">
+            <h2 className="text-[5vw] font-black text-white leading-tight tracking-tight">
+              {athleteName}
+            </h2>
+            {clubName && (
+              <p className="text-[2.5vw] font-black text-white/70 uppercase mt-[0.5vh]">{clubName}</p>
+            )}
+          </div>
+        ) : (
+          <div className="text-center mb-[3vh]">
+            <p className="text-[2.5vw] text-gray-500 animate-pulse">Se așteaptă sportivul…</p>
+          </div>
         )}
 
-        {/* ── 5 REFEREE BOXES ── */}
-        <div className="flex gap-4 mb-10">
-          {[1, 2, 3, 4, 5].map(i => {
-            const hasScore = revealed && i <= allScores.length;
-            const score = hasScore ? allScores[i - 1] : null;
-            const isHigh = revealed && i - 1 === highIdx;
-            const isLow = revealed && i - 1 === lowIdx;
-            const isCancelled = isHigh || isLow;
+        {/* ── 5 REFEREE BOXES — same style as fight referee decision boxes ── */}
+        <div className="flex gap-[1.5vw] mb-[2vh]">
+          {[0, 1, 2, 3, 4].map(i => {
+            const hasScore = revealed && i < allScores.length;
+            const score = hasScore ? allScores[i] : null;
+            const mark = hasScore ? marks[i] : null;
+            const isCancelled = mark === 'low' || mark === 'high';
 
             return (
-              <div
-                key={i}
-                className={`flex flex-col items-center justify-center w-28 h-36 rounded-xl border-2 transition-all duration-500 ${
+              <div key={i} className="flex flex-col items-center gap-[1vh]">
+                <div className={`w-[16vw] h-[30vh] flex flex-col items-center justify-center transition-all duration-500 ${
                   hasScore
-                    ? isCancelled
-                      ? 'border-red-400 bg-red-50'
-                      : 'border-green-500 bg-green-50'
-                    : 'border-gray-300 bg-gray-50'
-                }`}
-              >
-                <span className="text-sm font-bold text-gray-500 mb-2">A{i}</span>
-                {hasScore ? (
-                  <span className={`text-3xl font-black tabular-nums ${
-                    isCancelled ? 'text-red-500 line-through' : 'text-gray-900'
+                    ? isCancelled ? 'bg-red-600/30 border-4 border-red-500' : 'bg-green-600/30 border-4 border-green-500'
+                    : 'bg-gray-700'
+                }`}>
+                  <span className="text-[1.5vw] font-black text-gray-400 mb-[1vh]">A{i + 1}</span>
+                  <span className={`text-[5vw] font-black tabular-nums ${
+                    hasScore
+                      ? isCancelled ? 'text-red-400 line-through' : 'text-white'
+                      : 'text-gray-600'
                   }`}>
-                    {score?.toFixed(1) ?? '—'}
+                    {hasScore ? score.toFixed(1) : '—'}
                   </span>
-                ) : (
-                  <span className="text-3xl font-bold text-gray-300">—</span>
-                )}
+                </div>
               </div>
             );
           })}
         </div>
 
-        {/* ── TOTAL ── */}
+        {/* ── TOTAL — shown after reveal ── */}
         {revealed && total != null && (
-          <div className="animate-fade-in text-center">
-            <p className="text-lg font-bold text-gray-500 uppercase tracking-wider mb-1">TOTAL</p>
-            <p className="text-6xl font-black text-blue-700 tabular-nums">{total.toFixed(2)}</p>
+          <div className="text-center animate-pulse">
+            <p className="text-[1.5vw] font-black text-yellow-300 uppercase tracking-wider mb-[0.5vh]">TOTAL</p>
+            <p className="text-[7vw] font-black text-yellow-400 tabular-nums leading-none">{total.toFixed(1)}</p>
           </div>
         )}
       </div>
