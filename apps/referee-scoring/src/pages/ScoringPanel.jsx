@@ -239,11 +239,11 @@ export default function ScoringPanel() {
           {/* -1 / -2 buttons (top, larger) */}
           <div className="grid grid-cols-2 gap-2 flex-[3] min-h-0">
             <button onClick={() => adjustScore(-1)} disabled={!hasActiveScoring || busy || draftScore <= 0}
-              className="bg-red-400 hover:bg-red-500 active:bg-red-600 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              className="bg-red-600 hover:bg-red-700 active:bg-red-800 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
               -1
             </button>
             <button onClick={() => adjustScore(-2)} disabled={!hasActiveScoring || busy || draftScore <= 0}
-              className="bg-red-500 hover:bg-red-600 active:bg-red-700 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              className="bg-red-700 hover:bg-red-800 active:bg-red-900 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
               -2
             </button>
           </div>
