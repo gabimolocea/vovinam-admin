@@ -481,7 +481,7 @@ function FieldPanel({
                         <option value="completed">Finalizat</option>
                       </select>
 
-                      {/* START / CONTINUA / Stop */}
+                      {/* START / CONTINUA / Stop / VEZI DETALII */}
                       {isActiveItem ? (
                         <>
                           <button
@@ -491,6 +491,11 @@ function FieldPanel({
                           >CONTINUĂ PROBA</button>
                           <button onClick={setIdle} disabled={busy} className="text-sm bg-red-100 text-red-600 px-4 py-2 font-bold hover:bg-red-200 disabled:opacity-40 shrink-0">Stop</button>
                         </>
+                      ) : item.status === 'completed' ? (
+                        <button
+                          onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match')}
+                          className="text-sm bg-gray-600 text-white px-4 py-2 font-bold hover:bg-gray-700 shrink-0"
+                        >VEZI DETALII</button>
                       ) : item.status === 'in_progress' ? (
                         <button
                           onClick={() => {
