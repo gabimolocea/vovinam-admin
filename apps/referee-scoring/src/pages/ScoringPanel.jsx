@@ -19,6 +19,7 @@ export default function ScoringPanel() {
   const [activeAthleteId, setActiveAthleteId] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
   const [draftScore, setDraftScore] = useState(MAX_SCORE);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const pollRef = useRef(null);
 
   const myAthleteId = user?.athlete_id || user?.athlete?.id;
@@ -227,22 +228,16 @@ export default function ScoringPanel() {
         const name = `${d.last_name || ''} ${d.first_name || ''}`.trim() || `Sportiv #${activeAthleteId}`;
         return (
           <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col" style={{ height: '50dvh' }}>
-            {/* Active athlete indicator */}
-            <div className="flex items-center justify-between px-4 py-2 bg-green-50 border-b border-green-200 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
-                <div>
-                  <p className="text-xs text-green-600 font-bold uppercase">Prezintă acum</p>
-                  <p className="text-base font-black text-gray-900">{name}</p>
-                </div>
-              </div>
+            {/* Score display — centered large score + small reset button */}
+            <div className="flex items-center justify-center gap-3 px-4 py-2 bg-green-50 border-b border-green-200 shrink-0">
               <div className="text-center">
-                <p className="text-4xl font-black text-gray-900 tabular-nums leading-none">{draftScore}</p>
+                <p className="text-5xl font-black text-gray-900 tabular-nums leading-none">{draftScore}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">din {MAX_SCORE}</p>
               </div>
+              <button onClick={() => setShowResetConfirm(true)} disabled={busy}
+                className="text-[10px] font-bold text-gray-500 bg-gray-200 hover:bg-gray-300 active:bg-gray-400 px-2 py-1 disabled:opacity-40 transition-all">
+                Resetează Scor
+              </button>
             </div>
 
             {/* Scoring buttons — fills remaining space */}
@@ -271,19 +266,38 @@ export default function ScoringPanel() {
                 </button>
               </div>
 
-              {/* Reset + Submit row */}
-              <div className="grid grid-cols-[1fr_2fr] gap-2 shrink-0">
-                <button onClick={resetScore} disabled={busy}
-                  className="bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-700 py-3 text-sm font-black disabled:opacity-40 transition-all active:scale-[0.98]">
-                  RESET ({MAX_SCORE})
-                </button>
+              {/* Submit row */}
+              <div className="shrink-0">
                 <button onClick={() => submitScore(activeAthleteId)} disabled={busy}
-                  className="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white py-3 text-lg font-black disabled:opacity-40 transition-all active:scale-[0.98]">
+                  className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white py-3 text-lg font-black disabled:opacity-40 transition-all active:scale-[0.98]">
                   TRIMITE SCOR
                 </button>
               </div>
             </div>
           </div>
+
+          {/* Reset confirm modal */}
+          {showResetConfirm && (
+            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowResetConfirm(false)}>
+              <div className="bg-white shadow-2xl p-6 max-w-sm w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="w-14 h-14 bg-amber-100 flex items-center justify-center mx-auto">
+                  <span className="text-amber-600 text-2xl font-black">!</span>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Resetează scorul?</h3>
+                <p className="text-sm text-gray-600">Scorul va fi resetat la <span className="font-bold">{MAX_SCORE}</span> puncte.</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowResetConfirm(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 font-bold text-base transition">
+                    Anulează
+                  </button>
+                  <button onClick={() => { setShowResetConfirm(false); resetScore(); }}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 font-bold text-base transition">
+                    Resetează
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         );
       })()}
     </div>
