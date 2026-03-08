@@ -348,6 +348,7 @@ export default function LiveFullscreenPage() {
             matchRefScores={matchRefScores.filter(s => s.match === currentMatch.id)}
             matchEvents={matchEvents.filter(e => e.match === currentMatch.id)}
             matchRefAssignment={matchRefAssignments.find(a => a.match === currentMatch.id)}
+            allCats={allCats}
             busy={busy}
             setIdle={setIdle}
             startRound={startRound}
@@ -492,7 +493,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
    ═══════════════════════════════════════════════════════ */
 function FullscreenMatchPanel({
   match, session, matchRounds, activeRound, matchRefScores, matchEvents,
-  matchRefAssignment, busy, setIdle, startRound, endRound, resetRound, createRounds,
+  matchRefAssignment, allCats, busy, setIdle, startRound, endRound, resetRound, createRounds,
   pauseRound, resumeRound, addWarning, addPenalty, addBonus, addInfraction, addDisqualification,
   removeLastEvent, adjustTime, resetMatch, finalizeMatch, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh,
 }) {
@@ -751,7 +752,20 @@ function FullscreenMatchPanel({
         );
       })()}
 
-      {/* ── ATHLETE NAMES HEADER (only names, centered) ── */}
+      {/* ── ATHLETE NAMES HEADER (only names, centered) + match info on right ── */}
+      {(() => {
+        const matchCat = allCats?.find(c => c.id === match.category);
+        const matchTypeLabels = { 'qualifications': 'Calificări', 'quarter-finals': 'Sferturi', 'semi-finals': 'Semi-finală', 'finals': 'Finală', 'bronze': 'Bronz' };
+        const genderLabels = { 'male': 'Masculin', 'female': 'Feminin', 'mixt': 'Mixt' };
+        return matchCat ? (
+          <div className="flex items-center justify-end gap-2 px-4 py-1 text-xs text-gray-500 font-medium">
+            <span className="bg-gray-100 border border-gray-200 px-2 py-0.5">{matchCat.name}</span>
+            {matchCat.groupName && <span className="bg-gray-100 border border-gray-200 px-2 py-0.5">{matchCat.groupName}</span>}
+            <span className="bg-gray-100 border border-gray-200 px-2 py-0.5">{genderLabels[matchCat.gender] || matchCat.gender}</span>
+            <span className="bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-0.5 font-bold">{matchTypeLabels[match.match_type] || match.match_type}</span>
+          </div>
+        ) : null;
+      })()}
       <div className="flex items-center justify-center gap-6 py-3">
         <div className={`text-center px-4 py-2 ${isMatchFinalized && matchWinner === 'red' ? 'border-4 border-green-500 bg-green-50 shadow-lg' : ''}`}>
           {isMatchFinalized && matchWinner === 'red' && <span className="block text-xs font-bold text-green-600 mb-1">CÂȘTIGĂTOR</span>}
