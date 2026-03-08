@@ -7,6 +7,7 @@ import {
   matchRefereeAssignmentAPI, groupAPI, categoryAPI, enrollmentAPI,
 } from '@shared/lib/api';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
+import { QRCodeSVG } from 'qrcode.react';
 
 /* ═══════════════════════════════════════════════════════
    LIVE FULLSCREEN PAGE — full-screen view for a field
