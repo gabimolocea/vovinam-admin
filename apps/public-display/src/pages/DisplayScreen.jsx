@@ -161,6 +161,7 @@ export default function DisplayScreen() {
       revealed={revealed}
       isSolo={category?.type === 'solo'}
       session={session}
+      isDisqualified={!!(category?.enrolled_athletes || []).find(ea => (ea.athlete?.id ?? ea.athlete) === session?.current_athlete)?.disqualified}
     />
   );
 }
@@ -185,7 +186,7 @@ function IdleScreen({ event }) {
    SOLO / TEAM DISPLAY — TV-optimised, black background,
    same visual language as FightDisplay
    ═══════════════════════════════════════════════════════ */
-function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed, isSolo, session }) {
+function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed, isSolo, session, isDisqualified }) {
   // Calculate scores
   const allScores = refScores.map(rs => Number(rs.score)).filter(s => !isNaN(s));
   const sortedScores = [...allScores].sort((a, b) => a - b);
@@ -236,17 +237,11 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
         <img src="/frvv-logo.png" alt="Vovinam" className="h-[20vh] w-auto object-contain" />
       </div>
 
-      {/* ═══ TYPE LABEL + CATEGORY INFO ═══ */}
-      <div className="relative flex items-center justify-center px-[3vw] -mt-[1vh] shrink-0">
-        {/* Type label — centered */}
-        <div className="bg-yellow-400 px-[3vw] py-[1.5vh] text-center" style={{ minWidth: '35vw' }}>
-          <p className="text-[2vw] font-black text-gray-900 uppercase tracking-wider leading-tight">{typeLabel}</p>
-        </div>
-        {/* Category info — right side */}
-        <div className="absolute right-[3vw] top-1/2 -translate-y-1/2 text-right">
-          {groupDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight">{groupDisplay}</p>}
-          {categoryDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight mt-[0.3vh]">{categoryDisplay}</p>}
-        </div>
+      {/* ═══ CATEGORY INFO BAR ═══ */}
+      <div className="flex items-center justify-center px-[3vw] -mt-[1vh] shrink-0 gap-[2vw]">
+        {groupDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight">{groupDisplay}</p>}
+        {groupDisplay && categoryDisplay && <span className="text-[2.2vw] text-yellow-400/50 font-light">|</span>}
+        {categoryDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight">{categoryDisplay}</p>}
       </div>
 
       {/* ═══ MAIN CONTENT: athlete name + referee boxes ═══ */}
@@ -254,11 +249,14 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
         {/* Athlete / Team name */}
         {athlete ? (
           <div className="text-center mb-[3vh]">
-            <h2 className="text-[5vw] font-black text-white leading-tight tracking-tight">
+            <h2 className={`text-[5vw] font-black leading-tight tracking-tight ${isDisqualified ? 'text-red-400 line-through' : 'text-white'}`}>
               {athleteName}
             </h2>
             {clubName && (
               <p className="text-[2.5vw] font-black text-white/70 uppercase mt-[0.5vh]">{clubName}</p>
+            )}
+            {isDisqualified && (
+              <p className="text-[3vw] font-black text-red-500 uppercase mt-[1vh] animate-pulse">DESCALIFICAT</p>
             )}
           </div>
         ) : (
@@ -288,7 +286,7 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
                       ? isCancelled ? 'text-red-400' : 'text-white'
                       : 'text-gray-600'
                   }`}>
-                    {hasScore ? score.toFixed(1) : '—'}
+                    {hasScore ? Math.round(score) : '—'}
                   </span>
                   {/* Red diagonal slash for cancelled (min/max) scores */}
                   {hasScore && isCancelled && (
@@ -308,7 +306,7 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
         {revealed && total != null && (
           <div className="text-center animate-pulse">
             <p className="text-[1.5vw] font-black text-yellow-300 uppercase tracking-wider mb-[0.5vh]">TOTAL</p>
-            <p className="text-[7vw] font-black text-yellow-400 tabular-nums leading-none">{total.toFixed(1)}</p>
+            <p className="text-[7vw] font-black text-yellow-400 tabular-nums leading-none">{Math.round(total)}</p>
           </div>
         )}
       </div>
