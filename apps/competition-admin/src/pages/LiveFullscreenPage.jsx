@@ -592,84 +592,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         </div>
       </div>
 
-      {/* ── Active athlete card — highlighted like match VS section ── */}
-      {activeRow && (
-        <div className={`border-2 p-4 shadow-sm ${activeRow.isRevealed ? 'border-yellow-400 bg-yellow-50' : 'border-green-400 bg-green-50'}`}>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${activeRow.isRevealed ? 'text-yellow-600' : 'text-green-600'}`}>
-                {activeRow.isRevealed ? '✓ Scoruri afișate pe TV' : 'Prezintă acum'}
-              </p>
-              <h2 className="text-xl font-black text-gray-900">{activeRow.athleteName} {activeRow.clubName && <span className="text-base font-medium text-gray-500">({activeRow.clubName})</span>}</h2>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-xs text-gray-500 mb-1">Scoruri primite</p>
-                <p className="text-2xl font-black tabular-nums text-gray-700">{activeRow.scoreCount} / 5</p>
-              </div>
-              {/* Reveal button for active athlete */}
-              {activeRow.isRevealed ? (
-                <span className="text-sm bg-green-100 text-green-700 px-4 py-2 font-bold border border-green-300">✓ Afișat</span>
-              ) : (
-                <button
-                  onClick={() => switchDisplay(cat.id, null, activeRow.athleteId, 'scores_revealed')}
-                  disabled={busy}
-                  className="text-sm bg-yellow-500 hover:bg-yellow-600 text-black px-5 py-2.5 font-bold disabled:opacity-40 transition"
-                >
-                  🏆 Afișează rezultate
-                </button>
-              )}
-            </div>
-          </div>
-          {/* Active athlete referee scores boxes — CLICKABLE for admin score input */}
-          <div className="grid grid-cols-5 gap-2">
-            {refCols.map((r, i) => {
-              const v = activeRow.vals[i];
-              const mark = activeRow.marks[i];
-              const isCancelled = mark === 'low' || mark === 'high';
-              const hasScore = v != null;
-              const scoreId = activeRow.scoreIds[i];
-              return (
-                <button
-                  key={i}
-                  onClick={() => {
-                    if (!r.id) return;
-                    setCatRefModalData({
-                      refId: r.id,
-                      refName: r.name,
-                      refPos: r.pos,
-                      athleteId: activeRow.athleteId,
-                      athleteName: activeRow.athleteName,
-                      currentScore: hasScore ? Number(v) : null,
-                      existingScoreId: scoreId || null,
-                    });
-                    setCatScoreInput(hasScore ? Number(v).toString() : '');
-                  }}
-                  className={`flex flex-col items-center justify-center py-3 border-2 transition-all cursor-pointer hover:ring-2 hover:ring-indigo-400 ${
-                    hasScore
-                      ? isCancelled ? 'border-red-300 bg-red-50' : 'border-green-400 bg-white'
-                      : 'border-gray-200 bg-gray-50 border-dashed'
-                  }`}
-                >
-                  <span className="text-xs font-bold text-gray-400 mb-1">A{r.pos}</span>
-                  <span className={`text-xl font-black tabular-nums ${
-                    isCancelled ? 'text-red-400 line-through' : hasScore ? 'text-gray-900' : 'text-gray-300'
-                  }`}>{hasScore ? Number(v).toFixed(1) : '—'}</span>
-                  <span className="text-[10px] text-indigo-400 mt-1">click = editează</span>
-                </button>
-              );
-            })}
-          </div>
-          {/* Total for active athlete */}
-          {activeRow.total != null && (
-            <div className="text-center mt-3 pt-3 border-t border-green-300">
-              <span className="text-sm text-gray-500 font-bold uppercase mr-2">TOTAL:</span>
-              <span className="text-2xl font-black text-green-700 tabular-nums">{activeRow.total.toFixed(1)}</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Admin referee score input modal ── */}
       {catRefModalData && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => { setCatRefModalData(null); setCatScoreInput(''); }}>
@@ -739,12 +661,33 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                   } hover:bg-yellow-50/50 transition`}>
                     <td className="px-3 py-2.5 border-b border-gray-200 text-gray-400 text-xs">{idx + 1}</td>
                     <td className="px-3 py-2.5 border-b border-gray-200">
-                      <span className="text-gray-900 font-semibold">{row.athleteName}</span>
-                      {row.clubName && <span className="text-gray-400 text-xs ml-1">({row.clubName})</span>}
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-900 font-semibold">{row.athleteName}</span>
+                        {row.clubName && <span className="text-gray-400 text-xs">({row.clubName})</span>}
+                        {row.isActive && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-green-500 text-white px-2 py-0.5 animate-pulse">● Prezintă acum</span>}
+                        {row.isRevealed && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-yellow-400 text-black px-2 py-0.5">✓ Scor afișat</span>}
+                      </div>
                     </td>
                     {row.vals.map((v, ri) => {
+                      const r = refCols[ri];
                       const mark = row.marks[ri]; const isCancelled = mark === 'low' || mark === 'high';
-                      return (<td key={ri} className={`text-center px-2 py-2.5 border-b border-gray-200 tabular-nums text-sm ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>{v != null ? Number(v).toFixed(1) : '—'}</td>);
+                      return (
+                        <td key={ri}
+                          onClick={() => {
+                            if (!r.id) return;
+                            setCatRefModalData({
+                              refId: r.id, refName: r.name, refPos: r.pos,
+                              athleteId: row.athleteId, athleteName: row.athleteName,
+                              currentScore: v != null ? Number(v) : null,
+                              existingScoreId: row.scoreIds[ri] || null,
+                            });
+                            setCatScoreInput(v != null ? Number(v).toString() : '');
+                          }}
+                          className={`text-center px-2 py-2.5 border-b border-gray-200 tabular-nums text-sm cursor-pointer hover:bg-indigo-50 ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-gray-900 font-medium' : 'text-gray-300'}`}
+                        >
+                          {v != null ? Number(v).toFixed(1) : '—'}
+                        </td>
+                      );
                     })}
                     <td className="text-center px-3 py-2.5 border-b border-gray-200 font-bold text-gray-900 tabular-nums">{row.total != null ? row.total.toFixed(1) : '—'}</td>
                     <td className="text-center px-2 py-2.5 border-b border-gray-200">
@@ -753,41 +696,39 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                       ) : rank ? <span className="text-xs text-gray-400">{rank}</span> : '—'}
                     </td>
                     <td className="text-center px-2 py-2.5 border-b border-gray-200">
-                      <div className="flex items-center justify-center gap-1">
-                        {/* TV button — switch display / pause */}
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                        {/* Start / Încheie button */}
                         {row.isActive ? (
-                          <button onClick={() => setIdle()} disabled={busy}
-                            className="text-xs px-2 py-1 font-bold disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600">
-                            Încheie proba
+                          <button onClick={() => switchDisplay(cat.id, null, null)} disabled={busy}
+                            className="text-xs px-2.5 py-1 font-bold disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600">
+                            Încheie
                           </button>
                         ) : (
                           <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
-                            className="text-xs px-2 py-1 font-bold disabled:opacity-40 bg-gray-200 text-gray-600 hover:bg-gray-300">
-                            START
+                            className="text-xs px-2.5 py-1 font-bold disabled:opacity-40 bg-green-600 text-white hover:bg-green-700">
+                            Start
                           </button>
                         )}
-                        {/* Reveal button — switch to athlete + reveal scores on TV */}
+                        {/* Reveal scores on TV */}
                         {row.allScoresIn && (
                           <button
                             onClick={() => switchDisplay(cat.id, null, row.athleteId, 'scores_revealed')}
                             disabled={busy}
-                            className={`text-xs px-2 py-1 font-bold disabled:opacity-40 ${
+                            className={`text-xs px-2.5 py-1 font-bold disabled:opacity-40 ${
                               row.isRevealed ? 'bg-yellow-400 text-black' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
                             }`}
-                            title="Reveal scoruri pe TV"
                           >
-                            {row.isRevealed ? '✓' : '👁'}
+                            {row.isRevealed ? '✓ Afișat' : 'Afișează'}
                           </button>
                         )}
-                        {/* Reset button — delete this athlete's scores */}
+                        {/* Reset scores */}
                         {row.scoreCount > 0 && (
                           <button
                             onClick={() => resetAthleteScores(row)}
                             disabled={busy}
-                            className="text-xs px-2 py-1 font-bold bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-40"
-                            title="Resetează scorurile acestui sportiv"
+                            className="text-xs px-2.5 py-1 font-bold bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-40"
                           >
-                            ↺
+                            Resetează
                           </button>
                         )}
                       </div>
