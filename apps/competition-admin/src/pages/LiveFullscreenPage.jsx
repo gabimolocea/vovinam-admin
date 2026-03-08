@@ -399,7 +399,15 @@ export default function LiveFullscreenPage() {
             <p className="text-base text-gray-600">Acest buton va opri afisarea meciului pe tatami si va reveni la ecranul de asteptare. Meciul nu va fi sters — reprizele, scorurile si evenimentele raman salvate.</p>
             <div className="flex gap-3 justify-center pt-2">
               <button onClick={() => setShowStopConfirm(false)} className="text-sm bg-gray-200 text-gray-700 px-6 py-2.5  font-medium hover:bg-gray-300">Anuleaza</button>
-              <button onClick={() => { setShowStopConfirm(false); setIdle(); }} disabled={busy} className="text-sm bg-red-600 text-white px-6 py-2.5  font-bold hover:bg-red-700 disabled:opacity-40">Opreste</button>
+              <button onClick={async () => {
+                setShowStopConfirm(false);
+                setIdle();
+                if (currentAssignment) {
+                  setBusy(true);
+                  try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'not_started' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                  setBusy(false);
+                }
+              }} disabled={busy} className="text-sm bg-red-600 text-white px-6 py-2.5  font-bold hover:bg-red-700 disabled:opacity-40">Opreste</button>
             </div>
           </div>
         </div>
@@ -445,7 +453,15 @@ export default function LiveFullscreenPage() {
             <p className="text-base text-gray-600">Acest buton va opri afișarea probei pe tatami și va reveni la ecranul de așteptare. Scorurile rămân salvate.</p>
             <div className="flex gap-3 justify-center pt-2">
               <button onClick={() => setShowStopCategoryConfirm(false)} className="text-sm bg-gray-200 text-gray-700 px-6 py-2.5 font-medium hover:bg-gray-300">Anulează</button>
-              <button onClick={() => { setShowStopCategoryConfirm(false); setIdle(); }} disabled={busy} className="text-sm bg-red-600 text-white px-6 py-2.5 font-bold hover:bg-red-700 disabled:opacity-40">Oprește</button>
+              <button onClick={async () => {
+                setShowStopCategoryConfirm(false);
+                setIdle();
+                if (currentAssignment) {
+                  setBusy(true);
+                  try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'not_started' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                  setBusy(false);
+                }
+              }} disabled={busy} className="text-sm bg-red-600 text-white px-6 py-2.5 font-bold hover:bg-red-700 disabled:opacity-40">Oprește</button>
             </div>
           </div>
         </div>

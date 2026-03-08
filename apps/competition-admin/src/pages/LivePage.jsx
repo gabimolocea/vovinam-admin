@@ -410,19 +410,26 @@ function FieldPanel({
                     </div>
                   ) : (
                     /* ─── Category / Match item ─── */
-                    <div className={`flex flex-wrap items-center gap-2 sm:gap-2.5 border px-3 sm:px-4 py-2.5 sm:py-3 transition cursor-grab ${
-                      isActiveItem ? 'border-green-400 bg-green-50 ring-2 ring-green-300 shadow-sm' : idx === nextItemIndex ? st.border + ' bg-orange-50/50 ring-2 ring-orange-200 shadow-sm' : st.border + ' ' + st.bg + ' hover:shadow-sm'
+                    <div className={`flex flex-wrap items-center gap-2 sm:gap-2.5 border px-3 sm:px-4 py-2.5 sm:py-3 transition ${
+                      item.status === 'completed'
+                        ? 'border-gray-200 bg-gray-100/80 opacity-50 cursor-default'
+                        : isActiveItem
+                          ? 'border-green-400 bg-green-50 ring-2 ring-green-300 shadow-sm cursor-grab'
+                          : idx === nextItemIndex
+                            ? st.border + ' bg-orange-50/50 ring-2 ring-orange-200 shadow-sm cursor-grab'
+                            : st.border + ' ' + st.bg + ' hover:shadow-sm cursor-grab'
                     }`}
-                      draggable onDragStart={e => handleDragStart(e, item)} onDragEnd={handleDragEnd} onDragOver={e => handleItemDragOver(e, idx)}>
-                      {/* Drag handle */}
-                      <span className="text-gray-300 text-sm cursor-grab mr-0.5 select-none">⠿</span>
-
-                      {/* Status dot / checkmark */}
-                      {item.status === 'completed' ? (
-                        <span className="h-5 w-5 rounded-full shrink-0 bg-emerald-500 flex items-center justify-center text-white text-xs font-black">✓</span>
-                      ) : (
-                        <span className={`h-3 w-3 rounded-full shrink-0 ${st.dot}`} />
+                      draggable={item.status !== 'completed'}
+                      onDragStart={item.status !== 'completed' ? (e => handleDragStart(e, item)) : undefined}
+                      onDragEnd={item.status !== 'completed' ? handleDragEnd : undefined}
+                      onDragOver={e => handleItemDragOver(e, idx)}>
+                      {/* Drag handle — hidden for completed */}
+                      {item.status !== 'completed' && (
+                        <span className="text-gray-300 text-sm cursor-grab mr-0.5 select-none">⠿</span>
                       )}
+
+                      {/* Status dot */}
+                      <span className={`h-3 w-3 rounded-full shrink-0 ${item.status === 'completed' ? 'bg-gray-400' : st.dot}`} />
 
                       {/* Name + info */}
                       <div className="flex-1 min-w-0">
@@ -455,7 +462,7 @@ function FieldPanel({
                       </div>
 
                       {/* URMEAZĂ badge */}
-                      {idx === nextItemIndex && !isActiveItem && (
+                      {idx === nextItemIndex && !isActiveItem && item.status !== 'completed' && (
                         <span className="text-xs font-bold text-orange-700 bg-orange-100 border border-orange-200 px-2.5 py-1 shrink-0 uppercase">Urmează</span>
                       )}
 
@@ -470,7 +477,7 @@ function FieldPanel({
                             e.target.value = 'completed'; // reset select visually
                             return;
                           }
-                          // If setting to in_progress, first reset other active items on this field
+                          // If setting to in_progress, also start the session on this field
                           if (newStatus === 'in_progress') {
                             for (const si of scheduleItems) {
                               if (si === item || si.type === 'break' || si.status !== 'in_progress') continue;
@@ -479,6 +486,14 @@ function FieldPanel({
                                 else await matchFieldAssignmentAPI.update(si.assignmentId, { status: 'not_started' });
                               } catch {}
                             }
+                            // Sync session — start displaying this item
+                            const catId = item.type === 'category' ? item.id : null;
+                            const matchId = item.type === 'match' ? item.id : null;
+                            await switchDisplay(catId, matchId, null);
+                          }
+                          // If setting to not_started and this item was active, idle the session
+                          if (newStatus === 'not_started' && isActiveItem) {
+                            await setIdle();
                           }
                           if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
                           else updateMatchAssignmentStatus(item.assignmentId, newStatus);
@@ -495,7 +510,11 @@ function FieldPanel({
                       {/* VEZI DETALII — always shown */}
                       <button
                         onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match', item.id)}
-                        className="text-sm bg-gray-100 text-gray-600 px-4 py-2 font-bold hover:bg-gray-200 shrink-0"
+                        className={`text-sm px-4 py-2 font-bold shrink-0 ${
+                          item.status === 'completed'
+                            ? 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
                       >VEZI DETALII</button>
                     </div>
                   )}
