@@ -472,6 +472,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   const [catScoreInput, setCatScoreInput] = useState('');
   const [finishedAthletes, setFinishedAthletes] = useState(new Set());
   const [resetConfirmData, setResetConfirmData] = useState(null);
+  const [dqConfirmData, setDqConfirmData] = useState(null);
 
   // Build referee list from category referee assignment
   const referees = [];
@@ -670,6 +671,37 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         </div>
       )}
 
+      {/* ── DQ confirmation modal ── */}
+      {dqConfirmData && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setDqConfirmData(null)}>
+          <div className="bg-white shadow-2xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className={`text-lg font-bold text-center ${dqConfirmData.isDisqualified ? 'text-green-700' : 'text-red-700'}`}>
+              {dqConfirmData.isDisqualified ? 'Recalifică sportivul' : 'Descalifică sportivul'}
+            </h3>
+            <p className="text-sm text-gray-600 text-center">
+              {dqConfirmData.isDisqualified
+                ? <>Ești sigur că vrei să recalifici sportivul <span className="font-bold text-gray-900">{dqConfirmData.athleteName}</span>?</>
+                : <>Ești sigur că vrei să descalifici sportivul <span className="font-bold text-gray-900">{dqConfirmData.athleteName}</span>? Acesta va fi exclus din clasament.</>
+              }
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { toggleDisqualify(dqConfirmData.row); setDqConfirmData(null); }}
+                className={`flex-1 px-4 py-3 font-bold text-base text-white transition ${dqConfirmData.isDisqualified ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+              >
+                {dqConfirmData.isDisqualified ? 'Da, recalifică' : 'Da, descalifică'}
+              </button>
+              <button
+                onClick={() => setDqConfirmData(null)}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-3 font-bold text-base transition"
+              >
+                Anulează
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Athletes table — all participants ── */}
       <div className="border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-gray-100 border-b border-gray-200">
@@ -770,9 +802,9 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         )}
                         {/* Disqualify / Re-qualify button */}
                         <button
-                          onClick={() => toggleDisqualify(row)}
+                          onClick={() => setDqConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row, isDisqualified: row.isDisqualified })}
                           disabled={busy}
-                          className={`text-xs px-2.5 py-1 font-bold disabled:opacity-40 ${row.isDisqualified ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                          className={`text-xs px-2.5 py-1 font-bold disabled:opacity-40 ${row.isDisqualified ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
                         >
                           {row.isDisqualified ? 'Recalifică' : 'DQ'}
                         </button>
