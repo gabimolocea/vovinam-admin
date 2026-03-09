@@ -1,16 +1,18 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { categoryAPI, refereeAPI, enrollmentAPI, monitorAPI } from '@shared/lib/api';
+import { categoryAPI, refereeAPI, enrollmentAPI, monitorAPI, refereePresenceAPI } from '@shared/lib/api';
 import { useAuth } from '@shared';
 import { Spinner } from '@shared/components/ui';
 
 const POLL_INTERVAL = 2000;
 const MAX_SCORE = 100;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 export default function ScoringPanel() {
   const { categoryId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [category, setCategory] = useState(null);
   const [athletes, setAthletes] = useState([]);
   const [myScores, setMyScores] = useState([]); // CategoryRefereeScore[] for this referee
@@ -27,6 +29,28 @@ export default function ScoringPanel() {
 
   const myAthleteId = user?.athlete_id || user?.athlete?.id;
 
+  const clearPresence = useCallback(async () => {
+    if (!myAthleteId || !categoryId) return;
+    try {
+      await refereePresenceAPI.clear({ category: parseInt(categoryId), referee: myAthleteId });
+    } catch {}
+  }, [categoryId, myAthleteId]);
+
+  const clearPresenceBeacon = useCallback(() => {
+    if (!myAthleteId || !categoryId) return;
+    const token = localStorage.getItem('authToken');
+    fetch(`${API_BASE_URL}/referee-presence/clear/`, {
+      method: 'POST',
+      keepalive: true,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ category: parseInt(categoryId), referee: myAthleteId }),
+    }).catch(() => {});
+  }, [categoryId, myAthleteId]);
+
   const fetchAll = useCallback(async () => {
     try {
       const [catRes, athRes, scoresRes] = await Promise.all([
@@ -41,6 +65,8 @@ export default function ScoringPanel() {
       // Filter to only this referee's scores
       if (myAthleteId) {
         setMyScores(scores.filter(s => s.referee === myAthleteId));
+        // Heartbeat ping — report presence on this scoring page
+        try { await refereePresenceAPI.ping({ category: parseInt(categoryId), referee: myAthleteId }); } catch {}
       }
 
       // Fetch monitor session to detect active athlete
@@ -66,6 +92,26 @@ export default function ScoringPanel() {
     pollRef.current = setInterval(fetchAll, POLL_INTERVAL);
     return () => clearInterval(pollRef.current);
   }, [fetchAll]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    const handlePageHide = () => clearPresenceBeacon();
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [clearPresenceBeacon]);
+
+  useEffect(() => () => {
+    clearPresenceBeacon();
+  }, [clearPresenceBeacon]);
 
   // Reset draft score when active athlete changes
   const prevActiveRef = useRef(null);
@@ -124,18 +170,6 @@ export default function ScoringPanel() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <Spinner className="h-8 w-8 border-blue-500 border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!category) {
-    return <p className="py-20 text-center text-gray-600 bg-gray-50 min-h-screen">Categoria nu a fost găsită.</p>;
-  }
-
   const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
   const hasActiveScoring = activeAthleteId && !getMyScore(activeAthleteId);
   const allScored = athletes.length > 0 && athletes.every(a => getMyScore(a.athlete || a.id));
@@ -148,20 +182,40 @@ export default function ScoringPanel() {
     }
   }, [allScored]);
 
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white">
+        <Spinner className="h-8 w-8" />
+      </div>
+    );
+  }
+
+  if (!category) {
+    return <p className="py-20 text-center text-gray-600 bg-white min-h-screen">Categoria nu a fost găsită.</p>;
+  }
+
+  const handleBack = async () => {
+    await clearPresence();
+    navigate('/');
+  };
+
   return (
-    <div className="flex flex-col bg-gray-50 text-gray-900" style={{ height: '100dvh' }}>
+    <div className="flex flex-col bg-white text-gray-900" style={{ height: '100dvh' }}>
       {/* ── Header — similar to MatchScoring ── */}
-      <header className="flex items-center justify-between bg-white border-b border-gray-200 px-3 py-2 shrink-0">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800 text-sm font-bold flex items-center gap-1">&larr; ÎNAPOI</button>
-        <h1 className="font-bold text-sm text-gray-600 truncate">{category.name}</h1>
-        <div className="w-8" />
+      <header className="flex items-center justify-between border-b-2 border-yellow-400 bg-black px-3 py-2 text-white shrink-0">
+        <button onClick={handleBack} className="text-yellow-100 hover:text-yellow-300 text-sm font-bold flex items-center gap-1">&larr; ÎNAPOI</button>
+        <h1 className="font-black text-sm uppercase tracking-wide text-yellow-200 truncate">{category.name}</h1>
+        <div className={`flex items-center gap-1.5 px-2 py-1 border text-[11px] font-bold whitespace-nowrap ${isOnline ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <span className={`inline-block w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
+          {isOnline ? 'Conectat' : 'Fără conexiune'}
+        </div>
       </header>
 
       {/* Category info tags */}
-      <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-100 shrink-0 flex-wrap">
-        {category.group_name && <span className="text-xs font-bold text-gray-600 bg-gray-200 px-2 py-0.5">{category.group_name}</span>}
-        {category.gender && <span className="text-xs font-bold text-gray-600 bg-gray-200 px-2 py-0.5">{genderLabels[category.gender] || category.gender}</span>}
-        <span className="text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 uppercase">{category.type === 'teams' ? 'Echipe' : 'Solo'}</span>
+      <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-yellow-100 border-b-2 border-black shrink-0 flex-wrap">
+        {category.group_name && <span className="frvv-chip">{category.group_name}</span>}
+        {category.gender && <span className="frvv-chip">{genderLabels[category.gender] || category.gender}</span>}
+        <span className="frvv-chip uppercase">{category.type === 'teams' ? 'Echipe' : 'Solo'}</span>
       </div>
 
       {/* ── Athletes table ── */}
@@ -257,7 +311,7 @@ export default function ScoringPanel() {
           )}
         </div>
         {/* Score display — centered large score + small reset button */}
-        <div className="relative flex items-center justify-center px-4 py-2 border-b border-gray-200 bg-white shrink-0">
+        <div className="relative flex items-center justify-center px-4 py-2 border-b-2 border-black bg-white shrink-0">
           <div className="text-center">
             <p className={`text-5xl font-black tabular-nums leading-none ${hasActiveScoring ? 'text-gray-900' : 'text-gray-400'}`}>{draftScore}</p>
           </div>

@@ -1,4 +1,5 @@
 ﻿from django.contrib import admin, messages
+from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
@@ -7,7 +8,7 @@ from django.core.exceptions import ValidationError
 from django import forms
 from django.urls import path, reverse
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseRedirect
 from reversion.admin import VersionAdmin
 from dal import autocomplete, forward
 from .bracket_visualization import bracket_visualization_readonly_field, BracketStats
@@ -90,6 +91,19 @@ ADMIN_MODEL_GROUPS = {
 }
 # NOTE: Event proxy registration moved further down after inlines are defined
 # so we can inject participation inlines into the Event admin. See below.
+
+
+def _wrap_related_autocomplete_widget(formfield, db_field, admin_site, widget):
+    current_widget = formfield.widget
+    return RelatedFieldWidgetWrapper(
+        widget,
+        db_field.remote_field,
+        admin_site,
+        can_add_related=getattr(current_widget, 'can_add_related', False),
+        can_change_related=getattr(current_widget, 'can_change_related', False),
+        can_delete_related=getattr(current_widget, 'can_delete_related', False),
+        can_view_related=getattr(current_widget, 'can_view_related', False),
+    )
 
 
 class AthleteInlineForm(forms.ModelForm):
@@ -252,19 +266,15 @@ class CategoryAthleteInline(admin.TabularInline):
         
         # Set width for athlete field
         if db_field.name == 'athlete':
-            formfield.widget = autocomplete.ModelSelect2(
+            widget = autocomplete.ModelSelect2(
                 url='athlete-autocomplete',
                 forward=['category']
             )
-            formfield.widget.attrs.update({
+            widget.attrs.update({
                 'style': 'width: 200px !important; max-width: 200px !important; min-width: 200px !important;',
                 'class': 'vForeignKeyRawIdAdminField'
             })
-            if hasattr(formfield.widget, 'can_add_related'):
-                formfield.widget.can_add_related = False
-                formfield.widget.can_change_related = False
-                formfield.widget.can_view_related = False
-                formfield.widget.can_delete_related = False
+            formfield.widget = _wrap_related_autocomplete_widget(formfield, db_field, self.admin_site, widget)
         
         return formfield
     
@@ -735,6 +745,17 @@ try:
         class CustomEventAdmin(LandingEventAdmin):
             inlines = new_inlines
 
+            def get_urls(self):
+                urls = super().get_urls()
+                custom_urls = [
+                    path(
+                        '<int:event_id>/generate-standard-structure/',
+                        self.admin_site.admin_view(self.generate_standard_structure),
+                        name='api_event_generate_standard_structure',
+                    ),
+                ]
+                return custom_urls + urls
+
             def _ensure_legacy_seminar(self, event):
                 """Ensure legacy TrainingSeminar row exists for this event."""
                 if not event or not event.pk:
@@ -790,6 +811,13 @@ try:
                 # Link to view matches for this event
                 matches_url = reverse('admin:api_match_changelist') + f'?category__event__id={obj.pk}'
                 links.append(f'<a class="button" href="{matches_url}">View All Matches</a>')
+
+                generate_url = reverse('admin:api_event_generate_standard_structure', args=[obj.pk])
+                links.append(
+                    f'<a class="button" href="{generate_url}" '
+                    f'onclick="return confirm(\'Generez grupele și categoriile standard lipsă pentru această competiție?\')">'
+                    f'Generate Standard Groups & Categories</a>'
+                )
                 
                 html = '<div style="margin-top: 10px;">' + ' '.join(links) + '</div>'
                 return format_html(html)
@@ -829,6 +857,26 @@ try:
                         obj.delete()
                     return
                 return super().save_formset(request, form, formset, change)
+
+            def generate_standard_structure(self, request, event_id):
+                from .competition_defaults import ensure_standard_competition_groups_and_categories
+
+                event = Event.objects.filter(pk=event_id).first()
+                if not event:
+                    self.message_user(request, 'Competition not found.', level=messages.ERROR)
+                    return HttpResponseRedirect(reverse('admin:api_event_changelist'))
+
+                result = ensure_standard_competition_groups_and_categories(event)
+                self.message_user(
+                    request,
+                    (
+                        'Standard structure synchronized. '
+                        f"Grupe create: {result['groups_created']}, actualizate: {result['groups_updated']}; "
+                        f"categorii create: {result['categories_created']}, actualizate: {result['categories_updated']}."
+                    ),
+                    level=messages.SUCCESS,
+                )
+                return HttpResponseRedirect(reverse('admin:api_event_change', args=[event.pk]))
         
         APILandingEventAdmin = type(
             'APILandingEventAdmin',
@@ -1038,12 +1086,12 @@ class RefereeScoreInline(admin.TabularInline):
     # Show per-round columns (3 rounds default) plus totals and adjusted totals
     # Use a custom form so per-round fields are editable and saved as events.
     class RefereeScoreForm(forms.ModelForm):
-        red_round_1 = forms.IntegerField(required=False, min_value=0, label='Red R1', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        red_round_2 = forms.IntegerField(required=False, min_value=0, label='Red R2', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        red_round_3 = forms.IntegerField(required=False, min_value=0, label='Red R3', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        blue_round_1 = forms.IntegerField(required=False, min_value=0, label='Blue R1', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        blue_round_2 = forms.IntegerField(required=False, min_value=0, label='Blue R2', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        blue_round_3 = forms.IntegerField(required=False, min_value=0, label='Blue R3', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        red_round_1 = forms.IntegerField(required=False, label='Red R1', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        red_round_2 = forms.IntegerField(required=False, label='Red R2', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        red_round_3 = forms.IntegerField(required=False, label='Red R3', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        blue_round_1 = forms.IntegerField(required=False, label='Blue R1', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        blue_round_2 = forms.IntegerField(required=False, label='Blue R2', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        blue_round_3 = forms.IntegerField(required=False, label='Blue R3', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
 
         class Meta:
             model = RefereeScore
@@ -1068,27 +1116,18 @@ class RefereeScoreInline(admin.TabularInline):
                 except Exception:
                     pass
             try:
-                # Populate per-round initial values from existing score events
+                # Populate per-round initial values from adjusted scoring,
+                # so penalties can visibly push a round below zero.
                 inst = getattr(self, 'instance', None)
                 if inst and getattr(inst, 'pk', None):
-                    from .models import RefereePointEvent
-                    
-                    evs = RefereePointEvent.objects.filter(match=inst.match, referee=inst.referee, event_type='score')
-                    # Prefer metadata stored round, default 1
-                    by_round = {}
-                    for e in evs:
-                        try:
-                            rd = int(e.metadata.get('round')) if isinstance(e.metadata, dict) and e.metadata.get('round') is not None else 1
-                        except Exception:
-                            rd = 1
-                        by_round.setdefault(rd, {'red': 0, 'blue': 0})
-                        by_round[rd][e.side] = (by_round[rd].get(e.side, 0) or 0) + (e.points or 0)
-
+                    from api.scoring import compute_match_results
+                    res = compute_match_results(inst.match)
+                    by_round = (res.get('per_ref', {}).get(inst.referee_id, {}) or {}).get('rounds', {}) or {}
                     for rd in (1, 2, 3):
                         r = by_round.get(rd)
                         if r:
-                            self.fields.get(f'red_round_{rd}').initial = r.get('red')
-                            self.fields.get(f'blue_round_{rd}').initial = r.get('blue')
+                            self.fields.get(f'red_round_{rd}').initial = r.get('adj_red')
+                            self.fields.get(f'blue_round_{rd}').initial = r.get('adj_blue')
             except Exception:
                 pass
         
@@ -1525,10 +1564,11 @@ class CategoryRefereeAssignmentInline(admin.StackedInline):
         if db_field.name.startswith('referee_'):
             kwargs["queryset"] = Athlete.objects.filter(is_referee=True, status='approved')
             formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
-            formfield.widget = autocomplete.ModelSelect2(
+            widget = autocomplete.ModelSelect2(
                 url='athlete-autocomplete',
                 forward=['category', forward.Const('1', 'only_referees')]
             )
+            formfield.widget = _wrap_related_autocomplete_widget(formfield, db_field, self.admin_site, widget)
             return formfield
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
@@ -1622,10 +1662,11 @@ class CategoryAthleteScoreInline(admin.TabularInline):
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'athlete':
             formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
-            formfield.widget = autocomplete.ModelSelect2(
+            widget = autocomplete.ModelSelect2(
                 url='athlete-autocomplete',
                 forward=['category']
             )
+            formfield.widget = _wrap_related_autocomplete_widget(formfield, db_field, self.admin_site, widget)
             return formfield
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
@@ -3754,6 +3795,12 @@ class MatchAdmin(admin.ModelAdmin):
             if not match:
                 return
 
+            try:
+                from api.scoring import compute_match_results
+                central_by_round = compute_match_results(match).get('central_penalties_by_round', {}) or {}
+            except Exception:
+                central_by_round = {}
+
             # Iterate through forms to read per-round inputs and persist score events
             for f in formset.forms:
                 # Skip deleted forms
@@ -3775,6 +3822,7 @@ class MatchAdmin(admin.ModelAdmin):
                 # inline custom fields are persisted even if cleaned_data is
                 # unexpectedly missing in some admin flows.
                 for rd in (1, 2, 3):
+                    round_adjustment = central_by_round.get(rd, {}) if isinstance(central_by_round, dict) else {}
                     # Red
                     field_name = f'red_round_{rd}'
                     val = None
@@ -3817,13 +3865,14 @@ class MatchAdmin(admin.ModelAdmin):
                     else:
                         # replace existing events with the provided value
                         try:
+                            raw_red_value = int(val) - int(round_adjustment.get('red', 0) or 0)
                             if existing_qs is not None and existing_qs.exists():
                                 existing_qs.delete()
                             RefereePointEvent.objects.create(
                                 match=match,
                                 referee_id=rid,
                                 side='red',
-                                points=int(val),
+                                points=raw_red_value,
                                 event_type='score',
                                 metadata={'round': rd},
                                 created_by=request.user if request.user.is_authenticated else None,
@@ -3866,13 +3915,14 @@ class MatchAdmin(admin.ModelAdmin):
                             pass
                     else:
                         try:
+                            raw_blue_value = int(valb) - int(round_adjustment.get('blue', 0) or 0)
                             if existing_qs_b is not None and existing_qs_b.exists():
                                 existing_qs_b.delete()
                             RefereePointEvent.objects.create(
                                 match=match,
                                 referee_id=rid,
                                 side='blue',
-                                points=int(valb),
+                                points=raw_blue_value,
                                 event_type='score',
                                 metadata={'round': rd},
                                 created_by=request.user if request.user.is_authenticated else None,

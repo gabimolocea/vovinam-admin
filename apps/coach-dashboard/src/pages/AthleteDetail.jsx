@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { athleteAPI } from '@shared/lib/api';
-import { Spinner } from '@shared/components/ui';
+import { Spinner, StatusBadge } from '@shared/components/ui';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:8000';
 
@@ -16,13 +16,6 @@ function fmtDate(d) {
   try { return new Date(d).toLocaleDateString('ro-RO', { day: 'numeric', month: 'long', year: 'numeric' }); }
   catch { return d; }
 }
-
-const STATUS_MAP = {
-  approved: { label: 'Aprobat', color: 'bg-green-100 text-green-700' },
-  pending: { label: 'În așteptare', color: 'bg-yellow-100 text-yellow-700' },
-  rejected: { label: 'Respins', color: 'bg-red-100 text-red-700' },
-  revision_required: { label: 'Necesită revizuire', color: 'bg-orange-100 text-orange-700' },
-};
 
 export default function AthleteDetail() {
   const { id } = useParams();
@@ -47,116 +40,96 @@ export default function AthleteDetail() {
   const gradeName = athlete.current_grade?.name || athlete.current_grade_details?.name || '—';
   const clubName = athlete.club?.name || '—';
   const cityName = athlete.city?.name || '—';
-  const st = STATUS_MAP[athlete.status] || STATUS_MAP.pending;
-
   return (
-    <div className="min-h-full bg-gray-50">
-      {/* ═══ COVER + PROFILE HEADER ═══ */}
-      <div className="relative">
-        {/* Cover gradient */}
-        <div className="h-36 sm:h-44 bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 rounded-b-2xl" />
-
-        {/* Profile card overlapping cover */}
-        <div className="max-w-3xl mx-auto px-4 -mt-16 relative z-10">
-          <div className="bg-white rounded-2xl shadow-lg px-5 pt-0 pb-5">
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 -mt-12 sm:-mt-14">
-              {/* Avatar */}
-              <div className="shrink-0 w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-white shadow-lg overflow-hidden bg-blue-100 flex items-center justify-center">
-                {profileImg ? (
-                  <img src={profileImg} alt={fullName} className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-3xl font-bold text-blue-400">{initials}</span>
-                )}
+    <div className="min-h-full bg-white p-4 md:p-6">
+      <div className="mx-auto max-w-4xl space-y-6">
+        <section className="grid gap-6 lg:grid-cols-[220px_1fr]">
+          <div className="frvv-surface flex flex-col items-center gap-3 p-4">
+              <div className="flex h-36 w-36 items-center justify-center overflow-hidden border-2 border-black bg-blue-100 text-4xl font-black text-blue-500">
+                {profileImg ? <img src={profileImg} alt={fullName} className="h-full w-full object-cover" /> : initials || '?'}
               </div>
+              <div className="w-full space-y-2 text-sm text-gray-700">
+                <DetailLine label="Club" value={clubName} />
+                <DetailLine label="Oraș" value={cityName} />
+                <DetailLine label="Naștere" value={fmtDate(athlete.date_of_birth)} />
+              </div>
+          </div>
 
-              {/* Name + meta */}
-              <div className="flex-1 text-center sm:text-left pb-1">
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">{fullName}</h1>
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1.5 text-sm text-gray-500">
-                  {clubName !== '—' && <span>🏛 {clubName}</span>}
-                  {cityName !== '—' && <span>📍 {cityName}</span>}
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${st.color}`}>{st.label}</span>
+          <div className="space-y-4">
+            <div className="frvv-surface overflow-hidden">
+              <div className="border-b-2 border-black bg-yellow-300 px-5 py-3">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-700">Profil sportiv</p>
+                    <h1 className="mt-1 text-2xl font-black uppercase tracking-wide text-gray-900 md:text-3xl">{fullName}</h1>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <StatusBadge status={athlete.status} />
+                    {athlete.is_coach && <span className="frvv-chip">Antrenor</span>}
+                    {athlete.is_referee && <span className="frvv-chip">Arbitru</span>}
+                  </div>
                 </div>
               </div>
+              <div className="grid gap-4 p-4 sm:grid-cols-2">
+              <InfoCard title="Date personale">
+                <InfoRow label="Telefon" value={athlete.mobile_number} />
+                <InfoRow label="Adresă" value={athlete.address} />
+                <InfoRow label="Data înregistrării" value={fmtDate(athlete.registered_date)} />
+                <InfoRow label="Expirare" value={fmtDate(athlete.expiration_date)} />
+              </InfoCard>
 
-              {/* Grade badge */}
-              <div className="shrink-0 flex flex-col items-center gap-1 pb-1">
-                {gradeImg ? (
-                  <img src={gradeImg} alt={gradeName} className="w-12 h-12 object-contain" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-400">🥋</div>
-                )}
-                <span className="text-[10px] font-semibold text-gray-600">{gradeName}</span>
-              </div>
+              <InfoCard title="Contact de urgență">
+                <InfoRow label="Persoană" value={athlete.emergency_contact_name} />
+                <InfoRow label="Telefon" value={athlete.emergency_contact_phone} />
+              </InfoCard>
+
+              <InfoCard title="Documente">
+                <InfoRow label="Fotografie" value={
+                  profileImg
+                    ? <a href={profileImg} target="_blank" rel="noreferrer" className="font-semibold text-sky-700 hover:underline">Vizualizează</a>
+                    : '—'
+                } />
+                <InfoRow label="Certificat medical" value={
+                  athlete.medical_certificate
+                    ? <a href={imgUrl(athlete.medical_certificate)} target="_blank" rel="noreferrer" className="font-semibold text-sky-700 hover:underline">Vizualizează</a>
+                    : '—'
+                } />
+              </InfoCard>
+
+              <InfoCard title="Observații sportive">
+                <InfoRow label="Grad curent" value={gradeName} />
+                <InfoRow label="Imagine grad" value={gradeImg ? <img src={gradeImg} alt={gradeName} className="ml-auto h-10 w-auto object-contain" /> : '—'} />
+              </InfoCard>
             </div>
-
-            {/* Role badges */}
-            <div className="flex items-center justify-center sm:justify-start gap-2 mt-3 ml-0 sm:ml-36">
-              {athlete.is_coach && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 text-purple-700 text-[10px] font-semibold px-2.5 py-0.5">🎓 Antrenor</span>
-              )}
-              {athlete.is_referee && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold px-2.5 py-0.5">⚖️ Arbitru</span>
-              )}
             </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* ═══ CONTENT ═══ */}
-      <div className="max-w-3xl mx-auto px-4 mt-4 pb-8 space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
 
           {/* ── DATE PERSONALE ── */}
-          <InfoCard title="Date personale" icon="👤">
-            <InfoRow label="Data nașterii" value={fmtDate(athlete.date_of_birth)} />
-            <InfoRow label="Telefon" value={athlete.mobile_number} />
-            <InfoRow label="Adresă" value={athlete.address} />
-          </InfoCard>
-
-          {/* ── CONTACT URGENȚĂ ── */}
-          <InfoCard title="Contact de urgență" icon="🆘">
-            <InfoRow label="Nume contact" value={athlete.emergency_contact_name} />
-            <InfoRow label="Telefon contact" value={athlete.emergency_contact_phone} />
-          </InfoCard>
-
-          {/* ── DATE SPORTIVE ── */}
-          <InfoCard title="Date sportive" icon="🥋">
+          <InfoCard title="Date sportive suplimentare">
             <InfoRow label="Club" value={clubName} />
             <InfoRow label="Oraș" value={cityName} />
             <InfoRow label="Grad" value={gradeName} />
-            <InfoRow label="Data înregistrării" value={fmtDate(athlete.registered_date)} />
-            <InfoRow label="Data expirării" value={fmtDate(athlete.expiration_date)} />
           </InfoCard>
 
-          {/* ── DOCUMENTE ── */}
-          <InfoCard title="Documente" icon="📄">
-            <InfoRow label="Fotografie" value={
-              profileImg
-                ? <a href={profileImg} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs">Vizualizează →</a>
-                : '—'
-            } />
-            <InfoRow label="Certificat medical" value={
-              athlete.medical_certificate
-                ? <a href={imgUrl(athlete.medical_certificate)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs">Vizualizează →</a>
-                : '—'
-            } />
+          <InfoCard title="Calendar administrativ">
+            <InfoRow label="Înregistrare" value={fmtDate(athlete.registered_date)} />
+            <InfoRow label="Expirare legitimație" value={fmtDate(athlete.expiration_date)} />
           </InfoCard>
-
         </div>
 
-        {/* ── EXPERIENȚĂ ── */}
         {athlete.previous_experience && (
-          <InfoCard title="Experiență anterioară" icon="📋">
+          <InfoCard title="Experiență anterioară">
             <p className="text-sm text-gray-700 whitespace-pre-line">{athlete.previous_experience}</p>
           </InfoCard>
         )}
 
-        {/* Back button */}
         <div className="pt-2">
           <button
             onClick={() => navigate(-1)}
-            className="text-sm text-gray-500 hover:text-gray-700 transition"
+            className="frvv-btn-secondary"
           >
             ← Înapoi la lista de sportivi
           </button>
@@ -167,12 +140,11 @@ export default function AthleteDetail() {
 }
 
 /* ── Reusable card ── */
-function InfoCard({ title, icon, children }) {
+function InfoCard({ title, children }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-gray-50/50">
-        <span className="text-sm">{icon}</span>
-        <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">{title}</h3>
+    <div className="frvv-surface overflow-hidden">
+      <div className="border-b border-black bg-yellow-100 px-4 py-2.5">
+        <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-gray-700">{title}</h3>
       </div>
       <div className="px-4 py-3 space-y-2">{children}</div>
     </div>
@@ -183,9 +155,18 @@ function InfoCard({ title, icon, children }) {
 function InfoRow({ label, value }) {
   const display = value || '—';
   return (
-    <div className="flex justify-between items-start gap-3">
-      <dt className="text-xs text-gray-500 shrink-0">{label}</dt>
-      <dd className="text-xs font-medium text-gray-800 text-right">{typeof display === 'string' ? display : display}</dd>
+    <div className="flex justify-between items-start gap-3 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+      <dt className="text-xs uppercase tracking-wide text-gray-500 shrink-0">{label}</dt>
+      <dd className="text-sm font-semibold text-gray-800 text-right">{typeof display === 'string' ? display : display}</dd>
+    </div>
+  );
+}
+
+function DetailLine({ label, value }) {
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">{label}</div>
+      <div className="mt-0.5 text-sm font-semibold text-gray-900">{value || '—'}</div>
     </div>
   );
 }

@@ -84,7 +84,7 @@ class NewsPost(SEOModel):
 class Event(SEOModel):
     title = models.CharField(max_length=200)
     slug = models.SlugField(unique=True, help_text="URL-friendly version of the title")
-    description = CKEditor5Field('Description', config_name='extends')  # Updated field
+    description = CKEditor5Field('Description', config_name='extends', blank=True)  # Updated field
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
     address = models.TextField(blank=True, help_text="Full address of the event")

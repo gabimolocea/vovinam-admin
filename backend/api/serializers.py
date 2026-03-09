@@ -2,6 +2,28 @@ from rest_framework import serializers
 from .models import *
 from landing.models import Event
 
+
+def _get_prefetched_relation(instance, relation_name):
+    return getattr(instance, '_prefetched_objects_cache', {}).get(relation_name)
+
+
+def _get_team_members(team):
+    prefetched_members = _get_prefetched_relation(team, 'members')
+    if prefetched_members is not None:
+        return [member for member in prefetched_members if getattr(member, 'athlete_id', None)]
+    return list(team.members.select_related('athlete__club').all())
+
+
+def _get_team_athletes(team):
+    return [member.athlete for member in _get_team_members(team) if getattr(member, 'athlete', None)]
+
+
+def _get_team_categories(team):
+    prefetched_categories = _get_prefetched_relation(team, 'categories')
+    if prefetched_categories is not None:
+        return list(prefetched_categories)
+    return list(team.categories.all())
+
 # ==================== MINIMAL SERIALIZERS ====================
 # Used for relationships and list views (lightweight, no recursion)
 
@@ -52,20 +74,57 @@ class AthleteMinimalSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'full_name',
             'date_of_birth',
             'club', 'current_grade', 'is_coach', 'is_referee',
-            'status'
+            'status', 'profile_image'
         ]
     
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['profile_image'] = instance.profile_image.url if instance.profile_image else None
+        return representation
+
 
 class TeamMinimalSerializer(serializers.ModelSerializer):
     """Minimal team data"""
-    club = ClubMinimalSerializer(read_only=True)
+    club = serializers.SerializerMethodField()
+    club_name = serializers.SerializerMethodField()
+    members = serializers.SerializerMethodField()
     
     class Meta:
         model = Team
-        fields = ['id', 'name', 'club']
+        fields = ['id', 'name', 'club', 'club_name', 'members']
+
+    def get_club(self, obj):
+        athletes = _get_team_athletes(obj)
+        first_athlete = athletes[0] if athletes else None
+        if first_athlete and first_athlete.club:
+            return ClubMinimalSerializer(first_athlete.club).data
+        return None
+
+    def get_club_name(self, obj):
+        athletes = _get_team_athletes(obj)
+        first_athlete = athletes[0] if athletes else None
+        if first_athlete and first_athlete.club:
+            return first_athlete.club.name
+        return ''
+
+    def get_members(self, obj):
+        members = _get_team_members(obj)
+        return [
+            {
+                'id': member.athlete.id,
+                'name': f"{member.athlete.first_name} {member.athlete.last_name}".strip(),
+                'first_name': member.athlete.first_name,
+                'last_name': member.athlete.last_name,
+                'club': {
+                    'id': member.athlete.club.id,
+                    'name': member.athlete.club.name,
+                } if member.athlete.club else None,
+            }
+            for member in members if member.athlete_id
+        ]
 
 
 # ==================== FULL SERIALIZERS ====================
@@ -216,8 +275,8 @@ class CoachSimpleSerializer(serializers.ModelSerializer):
 
 
 class TeamSerializer(serializers.ModelSerializer):
-    categories = serializers.PrimaryKeyRelatedField(many=True, queryset=Category.objects.all(), allow_null=True)  # Accept category IDs only
-    members = serializers.PrimaryKeyRelatedField(many=True, queryset=TeamMember.objects.all(), allow_null=True)  # Accept member IDs only
+    categories = serializers.PrimaryKeyRelatedField(many=True, queryset=Category.objects.all(), allow_null=True, required=False)  # Accept category IDs only
+    members = serializers.PrimaryKeyRelatedField(many=True, queryset=TeamMember.objects.all(), allow_null=True, required=False)  # Accept member IDs only
     score = serializers.SerializerMethodField()
     club_name = serializers.SerializerMethodField()
     
@@ -238,9 +297,10 @@ class TeamSerializer(serializers.ModelSerializer):
     
     def get_club_name(self, obj):
         """Get club name from first team member"""
-        first_member = obj.members.first()
-        if first_member and first_member.athlete and first_member.athlete.club:
-            return first_member.athlete.club.name
+        athletes = _get_team_athletes(obj)
+        first_athlete = athletes[0] if athletes else None
+        if first_athlete and first_athlete.club:
+            return first_athlete.club.name
         return "N/A"
     
     def to_representation(self, instance):
@@ -251,7 +311,7 @@ class TeamSerializer(serializers.ModelSerializer):
                 'id': category.id,
                 'name': category.name
             }
-            for category in instance.categories.all()
+            for category in _get_team_categories(instance)
         ]
         representation['members'] = [
             {
@@ -266,15 +326,18 @@ class TeamSerializer(serializers.ModelSerializer):
                     } if member.athlete.club else None
                 }
             }
-            for member in instance.members.all()
+            for member in _get_team_members(instance)
         ]
         return representation
 class TeamMemberSerializer(serializers.ModelSerializer):
     team = serializers.PrimaryKeyRelatedField(queryset=Team.objects.all())  # Accept team ID only
     athlete = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all())  # Accept athlete ID only
+
     class Meta:
         model = TeamMember
-        fields = ['id', 'team', 'athlete', 'place']
+
+        fields = ['id', 'team', 'athlete']
+
     def to_representation(self, instance):
         """Customize the output to include full athlete details."""
         representation = super().to_representation(instance)
@@ -289,6 +352,8 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 class MatchSerializer(serializers.ModelSerializer):
     # Include related fields for better readability
     category_name = serializers.CharField(source='category.name', read_only=True)
+    category_group_name = serializers.CharField(source='category.group.name', read_only=True, allow_null=True)
+    category_gender = serializers.CharField(source='category.gender', read_only=True, allow_null=True)
     red_corner_full_name = serializers.SerializerMethodField()  # Full name for red corner
     blue_corner_full_name = serializers.SerializerMethodField()  # Full name for blue corner
     red_corner_club_name = serializers.CharField(source='red_corner.club.name', read_only=True, allow_null=True)  # Include red corner club name
@@ -313,6 +378,8 @@ class MatchSerializer(serializers.ModelSerializer):
             'status',
             'category',
             'category_name',
+            'category_group_name',
+            'category_gender',
             'match_type',
             'field_id',
             'field_number',
@@ -647,21 +714,62 @@ class CategorySerializer(serializers.ModelSerializer):
         ]
     
     def get_enrolled_teams(self, obj):
-        """Return list of enrolled teams with their names"""
-        enrolled = obj.enrolled_teams.select_related('team').all()
-        return [{'id': ct.team.id, 'team_name': ct.team.name} for ct in enrolled]
+        """Return list of enrolled teams with enrollment and member details."""
+        enrolled = _get_prefetched_relation(obj, 'enrolled_teams')
+        if enrolled is None:
+            enrolled = obj.enrolled_teams.select_related('team').prefetch_related('team__members__athlete__club').all()
+        payload = []
+        for ct in enrolled:
+            members = _get_team_athletes(ct.team)
+            club_names = []
+            for athlete in members:
+                club = getattr(athlete, 'club', None)
+                club_name = getattr(club, 'name', None)
+                if club_name and club_name not in club_names:
+                    club_names.append(club_name)
+
+            payload.append({
+                'id': ct.id,
+                'team': ct.team.id,
+                'team_name': ct.team.name,
+                'club_name': ' / '.join(club_names),
+                'disqualified': ct.disqualified,
+                'place': ct.place,
+                'members': [
+                    {
+                        'id': athlete.id,
+                        'name': f"{athlete.first_name} {athlete.last_name}".strip(),
+                        'first_name': athlete.first_name,
+                        'last_name': athlete.last_name,
+                        'club': {
+                            'id': athlete.club.id,
+                            'name': athlete.club.name,
+                        } if athlete.club else None,
+                    }
+                    for athlete in members
+                ],
+            })
+        return payload
 
     def get_enrolled_athletes_count(self, obj):
         """Return count of enrolled athletes"""
+        prefetched = _get_prefetched_relation(obj, 'enrolled_athletes')
+        if prefetched is not None:
+            return len(prefetched)
         return obj.enrolled_athletes.count()
 
     def get_enrolled_teams_count(self, obj):
         """Return count of enrolled teams"""
+        prefetched = _get_prefetched_relation(obj, 'enrolled_teams')
+        if prefetched is not None:
+            return len(prefetched)
         return obj.enrolled_teams.count()
 
     def get_teams(self, obj):
         """Serialize teams with category context for score calculation"""
-        teams = obj.teams.all()
+        teams = _get_prefetched_relation(obj, 'teams')
+        if teams is None:
+            teams = obj.teams.all()
         return TeamSerializer(teams, many=True, context={'category_id': obj.id}).data
     
     def get_first_place_team(self, obj):
@@ -719,20 +827,20 @@ class GradeHistorySerializer(serializers.ModelSerializer):
 # Enhanced GradeHistory serializer with approval workflow
 class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
     """Serializer for athlete grade history submissions with approval workflow"""
-    athlete = serializers.PrimaryKeyRelatedField(read_only=True)
+    athlete = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all(), required=False)
     athlete_name = serializers.CharField(source='athlete.__str__', read_only=True)
     grade_name = serializers.CharField(source='grade.name', read_only=True)
-    reviewed_by_name = serializers.CharField(source='reviewed_by.__str__', read_only=True)
+    reviewed_by_name = serializers.SerializerMethodField()
     
     # legacy technical_director removed; frontend should post examiner_1/examiner_2
 
     examiner_1 = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.filter(is_coach=True), allow_null=True, required=False)
-    examiner_1_name = serializers.CharField(source='examiner_1.__str__', read_only=True)
+    examiner_1_name = serializers.SerializerMethodField()
     examiner_2 = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.filter(is_coach=True), allow_null=True, required=False)
-    examiner_2_name = serializers.CharField(source='examiner_2.__str__', read_only=True)
+    examiner_2_name = serializers.SerializerMethodField()
 
     event = serializers.PrimaryKeyRelatedField(queryset=Event.objects.all(), allow_null=True, required=False)
-    event_name = serializers.CharField(source='event.__str__', read_only=True)
+    event_name = serializers.SerializerMethodField()
 
     class Meta:
         model = GradeHistory
@@ -741,52 +849,87 @@ class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
             'level', 'event', 'event_name', 'examiner_1', 'examiner_1_name', 'examiner_2', 'examiner_2_name', 'submitted_by_athlete', 'certificate_image', 'result_document', 'notes',
             'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name', 'admin_notes'
         ]
-        read_only_fields = ['athlete', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name']
+        read_only_fields = ['submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name']
+
+    def get_reviewed_by_name(self, obj):
+        return str(obj.reviewed_by) if obj.reviewed_by else None
+
+    def get_examiner_1_name(self, obj):
+        return str(obj.examiner_1) if obj.examiner_1 else None
+
+    def get_examiner_2_name(self, obj):
+        return str(obj.examiner_2) if obj.examiner_2 else None
+
+    def get_event_name(self, obj):
+        return str(obj.event) if obj.event else None
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        actor_athlete = getattr(request.user, 'athlete', None) if request else None
+        target_athlete = attrs.get('athlete') or getattr(self.instance, 'athlete', None)
+        event = attrs.get('event') or getattr(self.instance, 'event', None)
+
+        if event and getattr(event, 'event_type', None) != 'examination':
+            raise serializers.ValidationError({'event': 'Grade history poate fi completat doar pentru evenimente de tip examen.'})
+
+        if request and request.user and getattr(request.user, 'is_admin', False):
+            if not target_athlete:
+                raise serializers.ValidationError({'athlete': 'Acest câmp este obligatoriu.'})
+            return attrs
+
+        if not actor_athlete:
+            raise serializers.ValidationError('Utilizatorul trebuie să aibă profil de sportiv sau antrenor.')
+
+        if actor_athlete.is_coach:
+            if not target_athlete:
+                raise serializers.ValidationError({'athlete': 'Selectează sportivul pentru fișa de examen.'})
+            if actor_athlete.club_id != target_athlete.club_id:
+                raise serializers.ValidationError({'athlete': 'Poți completa fișa doar pentru sportivi din clubul tău.'})
+        else:
+            attrs['athlete'] = actor_athlete
+
+        return attrs
     
     def create(self, validated_data):
-        """Auto-assign current user's athlete profile and set submission flag"""
+        """Allow athlete self-submission and coach submission for same-club athletes."""
         request = self.context.get('request')
-        if request and hasattr(request.user, 'athlete'):
-            validated_data['athlete'] = request.user.athlete
-            validated_data['submitted_by_athlete'] = True
-            # Prevent duplicate submissions at API level with a friendly error
-            from .models import GradeHistory
-            existing = GradeHistory.objects.filter(athlete=validated_data['athlete'], grade=validated_data.get('grade'))
-            if existing.exists():
-                # Prefer returning a field-specific error for the grade
-                from rest_framework.exceptions import ValidationError as DRFValidationError
-                raise DRFValidationError({'grade': ['An entry for this athlete and grade already exists.']})
+        if not request:
+            raise serializers.ValidationError('Cerere invalidă.')
 
-            # Create the grade history
-            grade_history = super().create(validated_data)
-            
-            # Log the submission
-            from .models import GradeHistoryActivity
-            try:
+        actor_athlete = getattr(request.user, 'athlete', None)
+        if actor_athlete and not getattr(request.user, 'is_admin', False):
+            validated_data['status'] = 'pending'
+            validated_data['submitted_by_athlete'] = not actor_athlete.is_coach
+
+        existing = GradeHistory.objects.filter(athlete=validated_data['athlete'], grade=validated_data.get('grade'))
+        if existing.exists():
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            raise DRFValidationError({'grade': ['An entry for this athlete and grade already exists.']})
+
+        grade_history = super().create(validated_data)
+
+        try:
+            from django.apps import apps
+            GradeHistoryActivity = apps.get_model('api', 'GradeHistoryActivity')
+            if GradeHistoryActivity is not None:
                 GradeHistoryActivity.objects.create(
                     grade_history=grade_history,
                     action='submitted',
                     performed_by=request.user,
                     notes=f'Grade submission for {grade_history.grade.name}'
                 )
-            except:
-                # GradeHistoryActivity model might not exist yet
-                pass
-            
-            # Create notification for grade submission
-            from .notification_utils import create_grade_submitted_notification
-            try:
-                create_grade_submitted_notification(grade_history)
-            except Exception as e:
-                # Don't allow notification failures to break the submission flow
-                # Log to console in DEBUG or ignore silently in production
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.exception('Failed to create grade submitted notification: %s', e)
-            
-            return grade_history
-        else:
-            raise serializers.ValidationError("User must have an athlete profile to submit grade history")
+        except Exception:
+            pass
+
+        from .notification_utils import create_grade_submitted_notification
+        try:
+            create_grade_submitted_notification(grade_history)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.exception('Failed to create grade submitted notification: %s', e)
+
+        return grade_history
 
 
 class GradeHistoryApprovalSerializer(serializers.Serializer):
@@ -1185,6 +1328,8 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
     
     def get_athlete_name(self, obj):
         """Return athlete's full name"""
+        if obj.athlete_score and obj.athlete_score.type == 'teams' and obj.athlete_score.team_name:
+            return obj.athlete_score.team_name
         if obj.athlete_score and obj.athlete_score.athlete:
             athlete = obj.athlete_score.athlete
             return f"{athlete.first_name} {athlete.last_name}"
@@ -1193,7 +1338,7 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
     def validate(self, data):
         """Validate that referee scoring is only for solo/team categories"""
         athlete_score = data.get('athlete_score')
-        if athlete_score and athlete_score.type not in ['solo', 'teams']:
+        if athlete_score and athlete_score.type not in ['solo', 'team', 'teams']:
             raise serializers.ValidationError({
                 'athlete_score': 'Referee scoring is only applicable to solo and team categories.'
             })
@@ -1267,9 +1412,21 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
                     'name': f"{member.first_name} {member.last_name}",
                     'first_name': member.first_name,
                     'last_name': member.last_name
+                    ,
+                    'club': {
+                        'id': member.club.id,
+                        'name': member.club.name,
+                    } if member.club else None,
                 }
                 for member in instance.team_members.all()
             ]
+            club_names = []
+            for member in instance.team_members.all():
+                club = getattr(member, 'club', None)
+                club_name = getattr(club, 'name', None)
+                if club_name and club_name not in club_names:
+                    club_names.append(club_name)
+            representation['team_club_name'] = ' / '.join(club_names)
         
         # Include reviewer details
         if instance.reviewed_by:
@@ -1525,22 +1682,110 @@ class DisplayMonitorSessionSerializer(serializers.ModelSerializer):
     current_category_name = serializers.CharField(source='current_category.name', read_only=True, allow_null=True)
     current_match_number = serializers.CharField(source='current_match.match_number', read_only=True, allow_null=True)
     current_athlete_name = serializers.SerializerMethodField(read_only=True)
+    current_team_name = serializers.SerializerMethodField(read_only=True)
+    current_team_members = serializers.SerializerMethodField(read_only=True)
+    current_team_club_name = serializers.SerializerMethodField(read_only=True)
+    current_athlete_score_id = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = DisplayMonitorSession
         fields = [
             'id', 'field', 'field_name', 'current_category', 'current_category_name',
             'current_match', 'current_match_number', 'current_athlete', 'current_athlete_name',
+            'current_team_name', 'current_team_members', 'current_team_club_name', 'current_athlete_score_id',
             'status', 'break_end_time', 'break_paused', 'break_paused_remaining',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+    def _get_team_context(self, obj):
+        cached = getattr(obj, '_display_team_context', None)
+        if cached is not None:
+            return cached
+
+        context = None
+        category = getattr(obj, 'current_category', None)
+        athlete_id = getattr(obj, 'current_athlete_id', None)
+
+        if category and athlete_id and getattr(category, 'type', None) in ['team', 'teams']:
+            team_score = (
+                CategoryAthleteScore.objects
+                .filter(category_id=category.id, type__in=['team', 'teams'], team_members__id=athlete_id)
+                .prefetch_related('team_members__club')
+                .distinct()
+                .first()
+            )
+
+            athletes = []
+            if team_score:
+                athletes = list(team_score.team_members.select_related('club').all())
+                context = {
+                    'athlete_score_id': team_score.id,
+                    'team_name': build_team_display_name(athletes) or team_score.team_name,
+                    'team_members': athletes,
+                }
+            else:
+                enrollment = (
+                    CategoryTeam.objects
+                    .filter(category_id=category.id, team__members__athlete_id=athlete_id)
+                    .select_related('team')
+                    .prefetch_related('team__members__athlete__club')
+                    .distinct()
+                    .first()
+                )
+                if enrollment:
+                    athletes = [member.athlete for member in enrollment.team.members.all() if member.athlete_id]
+                    context = {
+                        'athlete_score_id': None,
+                        'team_name': build_team_display_name(athletes) or enrollment.team.name,
+                        'team_members': athletes,
+                    }
+
+            if context:
+                club_names = []
+                for athlete in context['team_members']:
+                    club_name = getattr(getattr(athlete, 'club', None), 'name', None)
+                    if club_name and club_name not in club_names:
+                        club_names.append(club_name)
+                context['team_club_name'] = ' / '.join(club_names)
+
+        obj._display_team_context = context
+        return context
     
     def get_current_athlete_name(self, obj):
-        """Get full name of current athlete"""
+        """Get full name of current athlete or active team name."""
+        team_context = self._get_team_context(obj)
+        if team_context and team_context.get('team_name'):
+            return team_context['team_name']
         if obj.current_athlete:
             return f"{obj.current_athlete.first_name} {obj.current_athlete.last_name}"
         return None
+
+    def get_current_team_name(self, obj):
+        team_context = self._get_team_context(obj)
+        return team_context.get('team_name') if team_context else None
+
+    def get_current_team_members(self, obj):
+        team_context = self._get_team_context(obj)
+        if not team_context:
+            return []
+        return [
+            {
+                'id': athlete.id,
+                'name': f"{athlete.first_name} {athlete.last_name}".strip(),
+                'first_name': athlete.first_name,
+                'last_name': athlete.last_name,
+            }
+            for athlete in team_context.get('team_members', [])
+        ]
+
+    def get_current_team_club_name(self, obj):
+        team_context = self._get_team_context(obj)
+        return team_context.get('team_club_name') if team_context else None
+
+    def get_current_athlete_score_id(self, obj):
+        team_context = self._get_team_context(obj)
+        return team_context.get('athlete_score_id') if team_context else None
 
 
 class MatchRoundSerializer(serializers.ModelSerializer):
@@ -1769,3 +2014,10 @@ class CompetitionRefereeSerializer(serializers.ModelSerializer):
         if obj.athlete and obj.athlete.club:
             return obj.athlete.club.name
         return None
+
+
+class RefereePresenceSerializer(serializers.ModelSerializer):
+    """Serializer for referee presence heartbeat"""
+    class Meta:
+        model = RefereePresence
+        fields = ['id', 'category', 'referee', 'last_ping']

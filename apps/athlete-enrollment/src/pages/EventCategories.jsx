@@ -57,14 +57,14 @@ export default function EventCategories() {
                     </p>
                   </div>
                   {isEnrolled ? (
-                    <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+                    <span className="border border-green-600 bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
                       ✓ Enrolled
                     </span>
                   ) : (
                     <button
                       onClick={() => handleEnroll(cat.id)}
                       disabled={busyId === cat.id}
-                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                      className="frvv-btn-primary px-3 py-1.5 text-xs"
                     >
                       {busyId === cat.id ? 'Enrolling…' : 'Enroll'}
                     </button>

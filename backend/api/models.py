@@ -473,12 +473,12 @@ class GradeHistory(models.Model):
         return f"{self.grade.name} for {self.athlete.first_name} {self.athlete.last_name} on {self.obtained_date}"
     
     def save(self, *args, **kwargs):
-        # If submitted by athlete, set status to pending
-        if self.submitted_by_athlete and not self.pk:
-            self.status = 'pending'
-        # If submitted by admin, set status to approved
-        elif not self.submitted_by_athlete:
-            self.status = 'approved'
+        # If submitted by athlete/coach, keep it pending by default on create.
+        if not self.pk:
+            if self.submitted_by_athlete:
+                self.status = 'pending'
+            elif not self.status:
+                self.status = 'approved'
         super().save(*args, **kwargs)
 
         # Ensure the seminar M2M stays in sync: add athlete to seminar.athletes when a participation exists
@@ -512,20 +512,8 @@ class GradeHistory(models.Model):
             raise ValidationError(errors)
 
     def delete(self, *args, **kwargs):
-        """When a participation is removed, remove the athlete from the seminar M2M
-        only if there are no other participation records linking them to the seminar.
-        """
-        seminar = self.seminar
-        athlete = self.athlete
+        """Delete the grade history entry."""
         super().delete(*args, **kwargs)
-        try:
-            if seminar and athlete:
-                exists = TrainingSeminarParticipation.objects.filter(athlete=athlete, seminar=seminar).exists()
-                if not exists:
-                    seminar.athletes.remove(athlete)
-        except Exception:
-            # Ignore M2M cleanup errors
-            pass
     
     def approve(self, admin_user, notes=''):
         """Approve the athlete-submitted grade"""
@@ -922,6 +910,46 @@ class CategoryTeam(models.Model):
         )
 
 
+def _format_team_member_names(athletes, limit=3):
+    athletes = list(athletes or [])
+    if not athletes:
+        return ''
+
+    visible = athletes[:limit]
+    names = [f"{athlete.first_name} {athlete.last_name}".strip() for athlete in visible]
+    names = [name for name in names if name]
+    if not names:
+        return ''
+
+    if len(names) == 1:
+        base = names[0]
+    elif len(names) == 2:
+        base = ' & '.join(names)
+    else:
+        base = ' & '.join(names)
+
+    extra_count = max(0, len(athletes) - limit)
+    if extra_count:
+        base += f" (+{extra_count})"
+    return base
+
+
+def build_team_display_name(athletes, limit=3):
+    athletes = [athlete for athlete in list(athletes or []) if athlete is not None]
+    if not athletes:
+        return None
+
+    return _format_team_member_names(athletes, limit=limit)
+
+
+def get_team_members_with_related(team):
+    prefetched_members = getattr(team, '_prefetched_objects_cache', {}).get('members')
+    if prefetched_members is not None:
+        return [member for member in prefetched_members if getattr(member, 'athlete_id', None)]
+
+    return list(team.members.select_related('athlete', 'athlete__club').all())
+
+
 class Team(models.Model):
     """
     Represents a team of athletes.
@@ -938,23 +966,12 @@ class Team(models.Model):
 
     @property
     def name(self):
-        """Auto-generate name from team members with club of first member"""
-        members = self.members.select_related('athlete', 'athlete__club').all()[:3]
+        """Auto-generate team display name from members."""
+        members = get_team_members_with_related(self)
         if not members:
             return f"Team #{self.pk}"
-        names = [f"{m.athlete.first_name} {m.athlete.last_name}" for m in members]
-        base = " & ".join(names)
-        total_members = self.members.count()
-        
-        # Add club name of first athlete if available
-        first_member = self.members.select_related('athlete', 'athlete__club').first()
-        club_suffix = ""
-        if first_member and first_member.athlete.club:
-            club_suffix = f" ({first_member.athlete.club.name})"
-        
-        if total_members > 3:
-            return f"{base} (+{total_members - 3} more){club_suffix}"
-        return f"{base}{club_suffix}"
+        athlete_members = [member.athlete for member in members if member.athlete_id]
+        return build_team_display_name(athlete_members) or f"Team #{self.pk}"
 
     def __str__(self):
         """Display team with member names for clarity"""
@@ -1284,9 +1301,32 @@ class Match(models.Model):
         Returns the corner with more votes from the middle 3 referees.
         """
         try:
-            # Get all referee scores
-            scores = list(self.simplified_referee_scores.all())
+            # Prefer final referee decisions (`round is null`) when they exist.
+            # Fall back to all simplified scores for backwards compatibility.
+            scores = list(self.simplified_referee_scores.filter(round__isnull=True))
+            if not scores:
+                scores = list(self.simplified_referee_scores.all())
+
+            if not scores:
+                return None
+
+            # With 1-2 available referee decisions, use the simple majority of the
+            # submitted choices. This matches the live admin flow, where a winner
+            # can be revealed even before all referees have submitted.
             if len(scores) < 3:
+                red_votes = 0
+                blue_votes = 0
+                for score in scores:
+                    winner_choice = getattr(score, 'winner_choice', None)
+                    if winner_choice == 'red':
+                        red_votes += 1
+                    elif winner_choice == 'blue':
+                        blue_votes += 1
+
+                if red_votes > blue_votes:
+                    return self.red_corner
+                elif blue_votes > red_votes:
+                    return self.blue_corner
                 return None
             
             # Calculate score difference for each referee (red - blue)
@@ -1772,7 +1812,7 @@ class CategoryRefereeScore(models.Model):
     def clean(self):
         """Validate that this is for a solo or team category"""
         super().clean()
-        if self.athlete_score and self.athlete_score.type not in ['solo', 'teams']:
+        if self.athlete_score and self.athlete_score.type not in ['solo', 'team', 'teams']:
             raise ValidationError(
                 f"Referee scoring is only applicable to solo and team categories, not {self.athlete_score.type}"
             )
@@ -2084,11 +2124,10 @@ class CategoryAthleteScore(models.Model):
     def auto_generate_team_name(self):
         """Auto-generate team name from team member names"""
         if self.type == 'teams' and self.team_members.exists():
-            member_names = [f"{m.first_name} {m.last_name}" for m in self.team_members.all()[:3]]
-            auto_generated_name = f"{', '.join(member_names)}"
-            if self.team_members.count() > 3:
-                auto_generated_name += f" (+{self.team_members.count() - 3} more)"
-            
+            auto_generated_name = build_team_display_name(
+                self.team_members.select_related('club').all()
+            )
+
             # Update the team name and save
             self.team_name = auto_generated_name
             self.save(update_fields=['team_name'])
@@ -2099,13 +2138,11 @@ class CategoryAthleteScore(models.Model):
         """Create or update Team object when team result is approved"""
         if not self.team_members.exists():
             return
-            
-        # Always auto-generate team name from team member names
-        member_names = [f"{m.first_name} {m.last_name}" for m in self.team_members.all()[:3]]
-        auto_generated_name = f"{', '.join(member_names)}"
-        if self.team_members.count() > 3:
-            auto_generated_name += f" (+{self.team_members.count() - 3} more)"
-        
+
+        auto_generated_name = build_team_display_name(
+            self.team_members.select_related('club').all()
+        )
+
         # Use auto-generated name (always override any manual name for consistency)
         team_name = auto_generated_name
         
@@ -3329,6 +3366,35 @@ class CompetitionReferee(models.Model):
 
     def __str__(self):
         return f"{self.athlete.last_name} {self.athlete.first_name} - {self.event.title}"
+
+
+class RefereePresence(models.Model):
+    """Tracks which referees are actively connected to a category scoring page.
+    The referee scoring panel pings this endpoint every poll cycle to indicate presence.
+    """
+    category = models.ForeignKey(
+        'Category',
+        on_delete=models.CASCADE,
+        related_name='referee_presences',
+        help_text='The category the referee is scoring'
+    )
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        related_name='presence_records',
+        help_text='The referee athlete'
+    )
+    last_ping = models.DateTimeField(
+        help_text='Last time the referee pinged from the scoring page'
+    )
+
+    class Meta:
+        unique_together = ('category', 'referee')
+        verbose_name = 'Referee Presence'
+        verbose_name_plural = 'Referee Presences'
+
+    def __str__(self):
+        return f"Referee {self.referee_id} on category {self.category_id}"
 
 
 # DISABLED FEATURES (for future use):

@@ -50,6 +50,7 @@ router.register('match-field-assignments', MatchFieldAssignmentViewSet, basename
 router.register('category-referee-assignments', CategoryRefereeAssignmentViewSet, basename='category-referee-assignment')
 router.register('match-referee-assignments', MatchRefereeAssignmentViewSet, basename='match-referee-assignment')
 router.register('competition-referees', CompetitionRefereeViewSet, basename='competition-referee')
+router.register('referee-presence', RefereePresenceViewSet, basename='referee-presence')
 router.register('monitor-sessions', DisplayMonitorSessionViewSet, basename='monitor-session')
 router.register('match-rounds', MatchRoundViewSet, basename='match-round')
 router.register('match-referee-scores', MatchRefereeScoreViewSet, basename='match-referee-score')

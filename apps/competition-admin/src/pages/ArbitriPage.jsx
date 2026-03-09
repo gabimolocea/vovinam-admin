@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { CentralizatorContext } from './CategoriesLayout';
 import {
   competitionRefereeAPI, athleteAPI,
@@ -20,8 +20,11 @@ export default function ArbitriPage() {
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [showAddPicker, setShowAddPicker] = useState(false);
-  const [expandedRef, setExpandedRef] = useState(null);
-  const pickerRef = useRef(null);
+
+  const normalizeList = useCallback((response) => {
+    if (Array.isArray(response?.data)) return response.data;
+    return response?.data?.results || [];
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!eventId) return;
@@ -35,54 +38,35 @@ export default function ArbitriPage() {
         fieldAPI.assignments.list({ event_id: eventId }),
         fieldAPI.list({ event_id: eventId }),
       ]);
-      setRosterRefs(rosterRes.data?.results || rosterRes.data || []);
-      setAllReferees((allRefsRes.data?.results || allRefsRes.data || []).filter(a => a.is_referee));
-      setCatRefAssignments(catRefRes.data?.results || catRefRes.data || []);
-      setMatchRefAssignments(matchRefRes.data?.results || matchRefRes.data || []);
-      setCatAssignments(catAssRes.data?.results || catAssRes.data || []);
-      setFields((fieldsRes.data?.results || fieldsRes.data || []).sort((a, b) => a.field_number - b.field_number));
+      setRosterRefs(normalizeList(rosterRes));
+      setAllReferees(normalizeList(allRefsRes).filter(a => a.is_referee));
+      setCatRefAssignments(normalizeList(catRefRes));
+      setMatchRefAssignments(normalizeList(matchRefRes));
+      setCatAssignments(normalizeList(catAssRes));
+      setFields(normalizeList(fieldsRes).sort((a, b) => (a.field_number ?? 0) - (b.field_number ?? 0)));
     } catch (err) {
       console.error('Failed to load referee data', err);
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, normalizeList]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target)) setShowAddPicker(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   if (!ctx) return null;
 
   const rosterAthleteIds = new Set(rosterRefs.map(r => r.athlete));
 
-  const availableRefs = allReferees.filter(a =>
-    !rosterAthleteIds.has(a.id) &&
-    (search === '' ||
-      `${a.last_name} ${a.first_name}`.toLowerCase().includes(search.toLowerCase()) ||
-      (a.club_name || '').toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const getRefAssignmentCount = (athleteId) => {
-    let count = 0;
-    for (const a of catRefAssignments) {
-      for (let i = 1; i <= 5; i++) {
-        if (a[`referee_${i}`] === athleteId) count++;
-      }
-    }
-    for (const a of matchRefAssignments) {
-      for (let i = 1; i <= 5; i++) {
-        if (a[`referee_${i}`] === athleteId) count++;
-      }
-    }
-    return count;
-  };
+  const availableRefs = useMemo(() => (
+    allReferees
+      .filter(a =>
+        !rosterAthleteIds.has(a.id) &&
+        (search === '' ||
+          `${a.last_name || ''} ${a.first_name || ''}`.toLowerCase().includes(search.toLowerCase()) ||
+          (a.club_name || '').toLowerCase().includes(search.toLowerCase()))
+      )
+      .sort((a, b) => `${a.last_name || ''} ${a.first_name || ''}`.localeCompare(`${b.last_name || ''} ${b.first_name || ''}`))
+  ), [allReferees, rosterAthleteIds, search]);
 
   const getRefDetailedAssignments = (athleteId) => {
     const assignments = [];
@@ -185,22 +169,34 @@ export default function ArbitriPage() {
   const addToRoster = async (athleteId) => {
     setBusy(true);
     try {
-      const res = await competitionRefereeAPI.create({ event: eventId, athlete: athleteId });
-      setRosterRefs(prev => [...prev, res.data]);
+      await competitionRefereeAPI.create({ event: eventId, athlete: athleteId });
+      await fetchData();
     } catch (err) { console.error(err); }
-    setBusy(false);
-    setShowAddPicker(false);
-    setSearch('');
+    finally {
+      setBusy(false);
+      setShowAddPicker(false);
+      setSearch('');
+    }
   };
 
   const removeFromRoster = async (id) => {
     setBusy(true);
     try {
       await competitionRefereeAPI.delete(id);
-      setRosterRefs(prev => prev.filter(r => r.id !== id));
+      await fetchData();
     } catch (err) { console.error(err); }
-    setBusy(false);
+    finally { setBusy(false); }
   };
+
+  const rosterRows = useMemo(() => (
+    rosterRefs
+      .map(entry => ({
+        ...entry,
+        assignments: getRefDetailedAssignments(entry.athlete),
+        conflicts: getRefConflicts(entry.athlete),
+      }))
+      .sort((a, b) => (a.athlete_name || '').localeCompare(b.athlete_name || ''))
+  ), [rosterRefs, catRefAssignments, matchRefAssignments, catAssignments, fields]);
 
   if (loading) {
     return (
@@ -210,174 +206,126 @@ export default function ArbitriPage() {
     );
   }
 
-  const RefereeCard = ({ entry }) => {
-    const assignCount = getRefAssignmentCount(entry.athlete);
-    const conflicts = getRefConflicts(entry.athlete);
-    const isExpanded = expandedRef === entry.athlete;
-    const detailedAssignments = isExpanded ? getRefDetailedAssignments(entry.athlete) : [];
-
-    return (
-      <div className={`rounded-xl border bg-white shadow-sm hover:shadow-md transition-all ${
-        conflicts.length > 0 ? 'border-red-300 ring-1 ring-red-200' : 'border-gray-200'
-      }`}>
-        <div className="p-3 cursor-pointer" onClick={() => setExpandedRef(isExpanded ? null : entry.athlete)}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-700">
-                  ⚖️ Arbitru
-                </span>
-                {conflicts.length > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700">
-                    ⚠ {conflicts.length} conflict{conflicts.length > 1 ? 'e' : ''}
-                  </span>
-                )}
-                {assignCount > 0 && (
-                  <span className="text-[10px] text-gray-400">{assignCount} asignări</span>
-                )}
-              </div>
-              <p className="text-sm font-semibold text-gray-900 mt-1">{entry.athlete_name}</p>
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                {entry.club_name && <span className="text-[10px] text-gray-500">🏫 {entry.club_name}</span>}
-                {entry.grade && <span className="text-[10px] text-gray-400">🥋 {entry.grade}</span>}
-              </div>
-            </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); removeFromRoster(entry.id); }}
-              disabled={busy}
-              className="w-6 h-6 rounded-full bg-red-50 text-red-400 text-xs hover:bg-red-500 hover:text-white transition disabled:opacity-40 flex items-center justify-center shrink-0"
-              title="Scoate din roster"
-            >×</button>
-          </div>
-
-          {conflicts.length > 0 && (
-            <div className="mt-2 space-y-0.5">
-              {conflicts.map((c, i) => (
-                <p key={i} className="text-[9px] text-red-600 bg-red-50 rounded px-2 py-0.5">
-                  ⚠ Suprapunere: {c.item1} ↔ {c.item2}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {isExpanded && (
-          <div className="border-t border-gray-100 px-3 py-2 bg-gray-50/50">
-            {detailedAssignments.length === 0 ? (
-              <p className="text-[10px] text-gray-400 italic">Nicio asignare încă</p>
-            ) : (
-              <div className="space-y-1">
-                <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide mb-1">Asignări</p>
-                {detailedAssignments.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[10px]">
-                    <span className={`rounded px-1 py-0.5 text-[8px] font-bold ${
-                      a.type === 'category' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                      {a.type === 'category' ? 'CAT' : 'MECI'}
-                    </span>
-                    <span className="font-medium text-gray-700 truncate flex-1">{a.name}</span>
-                    <span className="text-gray-400 shrink-0">{a.slots.join(', ')}</span>
-                    {a.fieldName && (
-                      <span className="text-[9px] text-blue-500 bg-blue-50 rounded px-1 py-0.5 shrink-0">{a.fieldName}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-gray-100">
-      {/* Header */}
-      <div className="shrink-0 flex items-center justify-between border-b border-gray-300 bg-white px-3 py-2 gap-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <h2 className="text-sm font-bold text-gray-900">⚖️ Arbitri Competiție</h2>
-          <span className="text-[10px] text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
-            {rosterRefs.length} arbitri
-          </span>
+    <div className="flex-1 overflow-auto bg-white p-2">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-3">
+          <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Arbitri</h2>
+          <p className="mt-1 text-xs text-gray-500">{rosterRows.length} arbitri participanți</p>
         </div>
-        <div className="relative">
-          <button
-            onClick={() => setShowAddPicker(!showAddPicker)}
-            className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white text-xs font-medium px-3 py-1.5 hover:bg-blue-700 transition shadow-sm"
-          >+ Adaugă arbitru</button>
 
-          {showAddPicker && (
-            <div ref={pickerRef} className="absolute right-0 top-full mt-1 w-72 max-h-80 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 flex flex-col">
-              <div className="p-2 border-b border-gray-100">
-                <input
-                  type="text" autoFocus placeholder="Caută arbitru..."
-                  value={search} onChange={(e) => setSearch(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                {availableRefs.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic p-3 text-center">
-                    {search ? 'Niciun rezultat' : 'Toți arbitrii sunt în roster'}
-                  </p>
-                ) : (
-                  availableRefs.slice(0, 30).map(ref => (
-                    <button key={ref.id} onClick={() => addToRoster(ref.id)} disabled={busy}
-                      className="w-full text-left px-3 py-2 hover:bg-blue-50 transition flex items-center justify-between gap-2 text-xs disabled:opacity-40"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-800 truncate">{ref.last_name} {ref.first_name}</p>
-                        <p className="text-[10px] text-gray-400 truncate">{ref.club_name || 'fără club'} · {ref.current_grade || '—'}</p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-gray-900 w-[56px]">Nr</th>
+                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-gray-900">Arbitru</th>
+                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-gray-900">Club</th>
+                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-gray-900">Grad</th>
+                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-gray-900 w-[110px]">Conflicte</th>
+                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-gray-900 w-[120px]">Acțiuni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rosterRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="border border-black/20 px-3 py-6 text-center text-sm text-gray-400">
+                    Nu există arbitri adăugați pentru această competiție.
+                  </td>
+                </tr>
+              ) : (
+                rosterRows.map((entry, index) => {
+                  return (
+                    <tr key={entry.id}>
+                      <td className="border border-black/20 bg-gray-50 px-2 py-1.5 text-center text-xs text-gray-500">{index + 1}</td>
+                      <td className="border border-black/20 px-2 py-1.5 text-sm font-medium text-gray-900">{entry.athlete_name || `Arbitru #${entry.athlete}`}</td>
+                      <td className="border border-black/20 px-2 py-1.5 text-sm text-gray-600">{entry.club_name || '—'}</td>
+                      <td className="border border-black/20 px-2 py-1.5 text-sm text-gray-600">{entry.grade || '—'}</td>
+                      <td className="border border-black/20 px-2 py-1.5 text-center text-sm">
+                        {entry.conflicts.length > 0 ? (
+                          <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                            {entry.conflicts.length}
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">0</span>
+                        )}
+                      </td>
+                      <td className="border border-black/20 px-2 py-1.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeFromRoster(entry.id)}
+                          disabled={busy}
+                          className="inline-flex h-11 w-11 items-center justify-center border border-red-700 bg-red-500 text-base font-black leading-none text-white transition-colors hover:bg-red-600 disabled:opacity-40"
+                          title="Scoate arbitrul din competiție"
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+              <tr>
+                <td className="border border-black/20 bg-gray-50 px-2 py-1.5 text-center text-xs text-gray-500"></td>
+                <td
+                  colSpan={4}
+                  onClick={() => setShowAddPicker(prev => !prev)}
+                  className="border border-black/20 px-2 py-1.5 text-sm text-gray-600 cursor-pointer hover:bg-green-50 transition-colors"
+                >
+                  <span className="frvv-btn-add !px-3 !py-1 text-xs">
+                    <span className="frvv-btn-add-icon">+</span>
+                    <span>{showAddPicker ? 'Închide lista arbitrilor' : 'Adaugă arbitru'}</span>
+                  </span>
+                </td>
+                <td className="border border-black/20 px-2 py-1.5 text-center"></td>
+              </tr>
+              {showAddPicker && (
+                <tr>
+                  <td className="border border-black/20 bg-gray-50 px-2 py-1.5"></td>
+                  <td colSpan={5} className="border border-black/20 px-2 py-2 bg-blue-50/40">
+                    <div className="rounded-lg border border-blue-200 bg-white p-3 shadow-sm">
+                      <input
+                        type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Caută arbitru..."
+                        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+
+                      <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                        {availableRefs.length === 0 ? (
+                          <div className="px-3 py-4 text-center text-sm text-gray-400">
+                            {search ? 'Niciun arbitru găsit.' : 'Toți arbitrii disponibili sunt deja adăugați.'}
+                          </div>
+                        ) : (
+                          availableRefs.map(ref => (
+                            <button
+                              key={ref.id}
+                              type="button"
+                              onClick={() => addToRoster(ref.id)}
+                              disabled={busy}
+                              className="flex w-full items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left transition hover:bg-blue-50 disabled:opacity-50 last:border-b-0"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-gray-900">
+                                  {`${ref.last_name || ''} ${ref.first_name || ''}`.trim() || ref.athlete_name || `Arbitru #${ref.id}`}
+                                </p>
+                                <p className="truncate text-[11px] text-gray-500">
+                                  {(ref.club_name || 'fără club')} · {(ref.current_grade || ref.grade || '—')}
+                                </p>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-blue-600">Adaugă</span>
+                            </button>
+                          ))
+                        )}
                       </div>
-                      <span className="shrink-0 text-blue-500 text-[10px] font-medium">+ Adaugă</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      </div>
-
-      {/* Roster list */}
-      <div className="flex-1 overflow-y-auto p-3">
-        {rosterRefs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-3xl mb-3">⚖️</p>
-            <p className="text-sm text-gray-500 font-medium">Niciun arbitru adăugat</p>
-            <p className="text-xs text-gray-400 mt-1 max-w-xs">
-              Adaugă arbitrii care vor participa la această competiție pentru a-i putea asigna la categorii și meciuri pe pagina Programare.
-            </p>
-          </div>
-        ) : (
-          <div className="max-w-3xl mx-auto space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {rosterRefs.map(entry => <RefereeCard key={entry.id} entry={entry} />)}
-            </div>
-
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">📊 Sumar</h4>
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="bg-blue-50 rounded-lg p-2">
-                  <p className="text-lg font-bold text-blue-700">{rosterRefs.length}</p>
-                  <p className="text-[9px] text-gray-500">Total arbitri</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-2">
-                  <p className="text-lg font-bold text-green-700">
-                    {rosterRefs.filter(r => getRefAssignmentCount(r.athlete) > 0).length}
-                  </p>
-                  <p className="text-[9px] text-gray-500">Cu asignări</p>
-                </div>
-                <div className="bg-red-50 rounded-lg p-2">
-                  <p className="text-lg font-bold text-red-700">
-                    {rosterRefs.filter(r => getRefConflicts(r.athlete).length > 0).length}
-                  </p>
-                  <p className="text-[9px] text-gray-500">Cu conflicte</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

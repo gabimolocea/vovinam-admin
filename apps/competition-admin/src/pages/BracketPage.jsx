@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import { api } from '@shared';
 
@@ -24,12 +25,14 @@ const ADMIN_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'ht
    ═══════════════════════════════════════════════════════════════════ */
 export default function BracketPage() {
   const ctx = useContext(CentralizatorContext);
-  const [selectedCatId, setSelectedCatId] = useState(null);
+  const { id: eventId } = useParams();
   const [matchDetailModal, setMatchDetailModal] = useState(null); // match object or null
+  const [searchTerm, setSearchTerm] = useState('');
+  const [groupFilter, setGroupFilter] = useState('all');
 
   if (!ctx) return null;
 
-  const { columnStructure, fightWeights } = ctx;
+  const { columnStructure, fightWeights, isEditLocked } = ctx;
 
   /* collect unique fight categories across all groups */
   const seenIds = new Set();
@@ -50,13 +53,9 @@ export default function BracketPage() {
     if (cats.length) orderedCats.push(...cats.map(c => ({ ...c, _gender: g })));
   }
 
-  /* auto-select first tab if none selected or selected not in list */
-  const activeCatId = orderedCats.find(c => c.id === selectedCatId) ? selectedCatId : (orderedCats[0]?.id || null);
-  const activeCat = orderedCats.find(c => c.id === activeCatId);
-
   if (fightCats.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white text-gray-400 text-sm italic p-4">
+      <div className="flex-1 flex items-center justify-center bg-white p-4 text-center text-sm italic text-gray-400">
         📋 Nu există categorii de tip Luptă pentru această competiție.
       </div>
     );
@@ -70,79 +69,63 @@ export default function BracketPage() {
       .trim() || cat.name;
   };
 
-  /* collect unique groups that contain fight categories */
-  const fightGroups = [];
-  const seenGroupIds = new Set();
-  for (const cat of fightCats) {
-    const col = columnStructure.find(c => c.cats.some(cc => cc.id === cat.id));
-    if (col?.group && !seenGroupIds.has(col.group.id)) {
-      seenGroupIds.add(col.group.id);
-      fightGroups.push(col.group);
-    }
-  }
+  const groupOptions = Array.from(new Set(orderedCats.map(cat => cat.groupName).filter(Boolean)));
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredCats = orderedCats.filter(cat => {
+    const matchesGroup = groupFilter === 'all' || cat.groupName === groupFilter;
+    const label = shortLabel(cat).toLowerCase();
+    const group = (cat.groupName || '').toLowerCase();
+    const matchesSearch = !normalizedSearch || label.includes(normalizedSearch) || group.includes(normalizedSearch);
+    return matchesGroup && matchesSearch;
+  });
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
-      {/* ═══ GROUP HEADER ═══ */}
-      {fightGroups.length > 0 && (
-        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-gray-100 border-b border-gray-200 overflow-x-auto">
-          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider shrink-0">Grupe:</span>
-          {fightGroups.map(g => (
-            <span key={g.id} className="text-[10px] font-semibold text-gray-700 bg-white border border-gray-300 rounded px-2 py-0.5 shrink-0 shadow-sm">
-              {g.name}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* ═══ TAB BAR ═══ */}
-      <div className="shrink-0 flex items-center border-b border-gray-300 bg-white px-1 gap-0.5 overflow-x-auto select-none">
-        {orderedCats.map((cat, idx) => {
-          const isActive = cat.id === activeCatId;
-          const showGenderDivider = idx === 0 || cat._gender !== orderedCats[idx - 1]._gender;
-          return (
-            <React.Fragment key={cat.id}>
-              {showGenderDivider && idx > 0 && (
-                <div className="w-px h-5 bg-gray-300 mx-1 shrink-0" />
-              )}
-              {showGenderDivider && (
-                <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded shrink-0 ${genderBg(cat._gender)}`}>
-                  {GENDER_LABELS[cat._gender]?.charAt(0)}
-                </span>
-              )}
-              <button
-                onClick={() => setSelectedCatId(cat.id)}
-                className={`inline-flex items-center gap-1 px-3 py-2 text-[11px] font-semibold whitespace-nowrap border-b-2 transition-all ${
-                  isActive
-                    ? 'border-blue-600 text-blue-700 bg-blue-50/50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
+    <div className="flex-1 overflow-auto bg-white p-3">
+      <div className={`mx-auto flex max-w-[1800px] flex-col gap-4 ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
+        <div className="border-2 border-black bg-yellow-100 px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <label className="text-sm font-bold uppercase tracking-wide text-gray-900">Caută categorie sau grupă</label>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Ex: Juniori, -60kg, Feminin"
+                className="border border-black bg-white px-3 py-2 text-sm text-gray-800 outline-none"
+              />
+            </div>
+            <div className="flex w-full flex-col gap-1 lg:w-72">
+              <label className="text-sm font-bold uppercase tracking-wide text-gray-900">Filtru grupă</label>
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="border border-black bg-white px-3 py-2 text-sm text-gray-800 outline-none"
               >
-                {cat.groupName && (
-                  <span className="text-[9px] text-gray-400 font-normal">{cat.groupName} ›</span>
-                )}
-                {shortLabel(cat)}
-                {(cat.enrolled_athletes?.length || 0) > 0 && (
-                  <span className="text-[9px] text-gray-400 bg-gray-100 rounded-full px-1.5">
-                    {cat.enrolled_athletes.length}
-                  </span>
-                )}
-              </button>
-            </React.Fragment>
+                <option value="all">Toate grupele</option>
+                {groupOptions.map(group => (
+                  <option key={group} value={group}>{group}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {filteredCats.length === 0 ? (
+          <div className="border-2 border-black bg-white px-4 py-10 text-center text-sm text-gray-500">
+            Nu există categorii care să corespundă filtrului curent.
+          </div>
+        ) : filteredCats.map((cat) => {
+          return (
+            <CategoryBracket
+              key={cat.id}
+              category={cat}
+              shortLabel={shortLabel(cat)}
+              eventId={eventId}
+              fightWeights={fightWeights}
+              onMatchClick={(match) => setMatchDetailModal(match)}
+            />
           );
         })}
-      </div>
-
-      {/* ═══ ACTIVE CATEGORY CONTENT ═══ */}
-      <div className="flex-1 overflow-auto">
-        {activeCat && (
-          <CategoryBracket
-            key={activeCat.id}
-            category={activeCat}
-            fightWeights={fightWeights}
-            onMatchClick={(match) => setMatchDetailModal(match)}
-          />
-        )}
       </div>
 
       {/* ═══ MATCH DETAIL MODAL ═══ */}
@@ -331,7 +314,7 @@ function MatchDetailModal({ match: m, onClose }) {
    PER-CATEGORY BRACKET COMPONENT
    Shows athlete list + bracket tree side-by-side with drag & drop
    ═══════════════════════════════════════════════════════════════════ */
-function CategoryBracket({ category, fightWeights, onMatchClick }) {
+function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchClick }) {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -489,33 +472,36 @@ function CategoryBracket({ category, fightWeights, onMatchClick }) {
 
   const unplacedCount = athleteList.filter(a => !a.isPlaced && !a.isDQ).length;
 
-  const catLabel = category.name
+  const catLabel = shortLabel || category.name
     .replace(/ - (Masculin|Feminin|Mixt)/i, '')
     .replace(/Đối Kháng\s*/i, '')
     .trim() || category.name;
+  const groupLabel = category.groupName || category.group?.name || '';
 
   return (
-    <div className="flex flex-col h-full">
-      {/* ── action bar ── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="font-semibold text-sm text-gray-800">{catLabel}</span>
-          <span className="text-[11px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-            {athleteCount} sportivi
-          </span>
-          {matches.length > 0 && (
-            <span className="text-[11px] text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-              🏆 {matches.length} meciuri
+    <section className="overflow-hidden border-2 border-black bg-white shadow-sm">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-2 border-black bg-yellow-300 px-4 py-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+          {groupLabel && (
+            <span className="border border-black bg-white px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-gray-900">
+              {groupLabel}
             </span>
           )}
+          <span className="border border-black bg-yellow-300 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-black">Luptă</span>
+          {category.gender && (
+            <span className={`border border-black px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${genderBg(category.gender)}`}>
+              {GENDER_LABELS[category.gender] || category.gender}
+            </span>
+          )}
+          <span className="text-base font-bold text-gray-900 sm:text-lg">{catLabel}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Bracket type selector */}
           <select
             value={bracketType}
             onChange={(e) => setBracketType(e.target.value)}
-            className="text-[11px] px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none"
+            className="border border-black bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:bg-yellow-50"
             title="Tipul de bracket"
           >
             <option value="single_elimination">Eliminare directă</option>
@@ -524,64 +510,59 @@ function CategoryBracket({ category, fightWeights, onMatchClick }) {
           {matches.length > 0 && (
             <button
               onClick={handleDeleteBracket}
-              className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
+              className="border border-black bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
             >
-              🗑️ Șterge
+              Șterge
             </button>
           )}
           <button
             onClick={handleGenerateEmpty}
             disabled={athleteCount < 2 || generating}
-            className="text-[11px] px-3 py-1 rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed font-semibold"
+            className="border border-black bg-white px-3 py-2 text-sm font-semibold text-gray-800 transition hover:bg-yellow-100 disabled:cursor-not-allowed disabled:opacity-40"
             title="Generează bracket gol și plasează sportivii manual prin drag & drop"
           >
-            {generating ? '⏳...' : '🖐️ Bracket Gol (DnD)'}
+            {generating ? 'Se generează...' : 'Bracket gol'}
           </button>
           <button
             onClick={handleGenerate}
             disabled={athleteCount < 2 || generating}
-            className="text-[11px] px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold"
+            className="border border-black bg-yellow-300 px-3 py-2 text-sm font-semibold text-black transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {generating ? '⏳ Generare...' : matches.length > 0 ? '🔄 Regenerează' : '⚡ Generează Bracket'}
+            {generating ? 'Generare...' : matches.length > 0 ? 'Regenerează' : 'Generează bracket'}
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="mx-4 mt-2 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
+        <div className="mx-4 mt-3 border border-black bg-white px-3 py-2 text-sm text-red-600">
           {error}
         </div>
       )}
 
       {/* ── content: athlete list + bracket ── */}
-      <div className="flex-1 overflow-hidden">
+      <div>
         {loading ? (
-          <p className="text-gray-400 text-xs animate-pulse p-4">Încărcare meciuri...</p>
-        ) : matches.length === 0 ? (
-          <div className="text-center text-gray-400 text-sm py-12">
-            <p>Nu sunt meciuri generate.</p>
-            <p className="text-xs mt-1">Apasă <b>Generează Bracket</b> pentru tragere automată sau <b>Bracket Gol</b> pentru plasare manuală.</p>
-          </div>
+          <p className="p-4 text-sm text-gray-400 animate-pulse">Încărcare meciuri...</p>
         ) : (
-          <div className="flex h-full">
+          <div className="flex min-h-[520px] flex-col lg:flex-row">
             {/* ── LEFT: Athlete List Panel ── */}
-            <div className="w-64 shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col">
-                <div className="px-3 py-2 border-b border-gray-200 bg-gray-100">
-                  <p className="text-[10px] font-bold text-gray-700 uppercase tracking-wide">
-                    👥 Sportivi ({athleteCount})
+            <div className="flex shrink-0 flex-col border-b-2 border-black bg-white lg:w-80 lg:border-b-0 lg:border-r-2">
+                <div className="border-b-2 border-black bg-white px-4 py-3">
+                  <p className="text-sm font-bold uppercase tracking-wide text-gray-900">
+                    Sportivi ({athleteCount})
                   </p>
                   {unplacedCount > 0 && (
-                    <p className="text-[9px] text-amber-600 mt-0.5">
-                      ⚠️ {unplacedCount} neplasa{unplacedCount !== 1 ? 'ți' : 't'}
+                    <p className="mt-1 text-sm text-gray-700">
+                      {unplacedCount} neplasa{unplacedCount !== 1 ? 'ți' : 't'}
                     </p>
                   )}
                   {unplacedCount === 0 && athleteCount > 0 && (
-                    <p className="text-[9px] text-green-600 mt-0.5">
-                      ✅ Toți sportivii sunt plasați
+                    <p className="mt-1 text-sm text-gray-700">
+                      Toți sportivii sunt plasați
                     </p>
                   )}
                 </div>
-                <div className="max-h-[500px] overflow-y-auto p-1">
+                <div className="max-h-[560px] overflow-y-auto p-2">
                   {athleteList.map(ath => (
                     <div
                       key={ath.id}
@@ -594,26 +575,26 @@ function CategoryBracket({ category, fightWeights, onMatchClick }) {
                       }}
                       onDragEnd={() => { setDraggedAthlete(null); setDragOverSlot(null); }}
                       className={`
-                        flex items-center gap-2 px-2 py-1.5 rounded mb-0.5 text-[11px] select-none transition-all
+                        mb-1 flex select-none items-center gap-2 border px-3 py-2 text-sm transition-all
                         ${ath.isDQ
-                          ? 'bg-red-50 text-red-300 line-through cursor-not-allowed opacity-60'
+                          ? 'border-black bg-red-50 text-red-300 line-through cursor-not-allowed opacity-60'
                           : ath.isPlaced
-                            ? 'bg-green-50 text-gray-400 cursor-default'
-                            : 'bg-white border border-gray-200 cursor-grab hover:shadow-sm hover:border-blue-300 active:cursor-grabbing'
+                            ? 'border-black bg-gray-100 text-gray-400 cursor-default'
+                            : 'border-black bg-white cursor-grab hover:bg-yellow-100 hover:shadow-sm active:cursor-grabbing'
                         }
                       `}
                     >
                       {/* drag handle */}
                       {!ath.isPlaced && !ath.isDQ && (
-                        <span className="text-gray-300 text-[10px] shrink-0">⠿</span>
+                        <span className="shrink-0 text-xs text-gray-400">⠿</span>
                       )}
-                      {ath.isPlaced && <span className="text-green-500 text-[10px] shrink-0">✓</span>}
-                      {ath.isDQ && <span className="text-red-400 text-[10px] shrink-0">✕</span>}
+                      {ath.isPlaced && <span className="shrink-0 text-xs text-gray-700">✓</span>}
+                      {ath.isDQ && <span className="shrink-0 text-xs text-red-400">✕</span>}
                       <div className="flex-1 min-w-0">
-                        <div className="truncate font-medium">
+                        <div className="truncate font-bold text-gray-900">
                           {ath.name}
                         </div>
-                        <div className="flex items-center gap-1 text-[9px] text-gray-400">
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
                           {ath.club && <span className="truncate">{ath.club}</span>}
                           {ath.weight && (
                             <>
@@ -629,24 +610,34 @@ function CategoryBracket({ category, fightWeights, onMatchClick }) {
               </div>
 
               {/* ── RIGHT: Bracket Tree ── */}
-              <div className="flex-1 overflow-auto p-4">
-                <BracketTree
-                  matches={matches}
-                  onAdvance={handleAdvance}
-                  draggedAthlete={draggedAthlete}
-                  dragOverSlot={dragOverSlot}
-                  setDragOverSlot={setDragOverSlot}
-                  onDropOnSlot={handleDropOnSlot}
-                  onRemoveFromSlot={handleRemoveFromSlot}
-                  onMatchClick={onMatchClick}
-                  fightWeights={fightWeights}
-                  categoryId={category.id}
-                />
+              <div className="flex-1 overflow-auto bg-white p-4 sm:p-5">
+                {matches.length === 0 ? (
+                  <div className="flex min-h-[420px] items-center justify-center border-2 border-dashed border-black bg-yellow-50/30 px-6 text-center text-base text-gray-500">
+                    <div>
+                      <p>Nu sunt meciuri generate.</p>
+                      <p className="mt-2 text-sm">Apasă <b>Generează bracket</b> pentru tragere automată sau <b>Bracket gol</b> pentru plasare manuală.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <BracketTree
+                    matches={matches}
+                    eventId={eventId}
+                    onAdvance={handleAdvance}
+                    draggedAthlete={draggedAthlete}
+                    dragOverSlot={dragOverSlot}
+                    setDragOverSlot={setDragOverSlot}
+                    onDropOnSlot={handleDropOnSlot}
+                    onRemoveFromSlot={handleRemoveFromSlot}
+                    onMatchClick={onMatchClick}
+                    fightWeights={fightWeights}
+                    categoryId={category.id}
+                  />
+                )}
               </div>
             </div>
-          )}
-        </div>
-    </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -654,7 +645,7 @@ function CategoryBracket({ category, fightWeights, onMatchClick }) {
    BRACKET TREE  –  horizontal single-elimination bracket layout
    Renders rounds left-to-right with SVG connector lines between them
    ═══════════════════════════════════════════════════════════════════ */
-function BracketTree({ matches, onAdvance, draggedAthlete, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, fightWeights, categoryId }) {
+function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, fightWeights, categoryId }) {
   /* Build weight lookup: athleteId → weight (current_weight_kg preferred) */
   const weightMap = {};
   if (fightWeights && categoryId) {
@@ -675,10 +666,10 @@ function BracketTree({ matches, onAdvance, draggedAthlete, dragOverSlot, setDrag
   const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b);
 
   /* layout constants */
-  const CARD_W = 230;
-  const CARD_H = 80;
-  const COL_GAP = 60;   // horizontal gap between rounds (for connectors)
-  const BASE_GAP = 10;  // vertical gap in round 1
+  const CARD_W = 290;
+  const CARD_H = 164;
+  const COL_GAP = 84;   // horizontal gap between rounds (for connectors)
+  const BASE_GAP = 24;  // vertical gap in round 1
 
   /* compute vertical positions for each round */
   const positions = {};  // matchId -> { x, y }
@@ -700,7 +691,7 @@ function BracketTree({ matches, onAdvance, draggedAthlete, dragOverSlot, setDrag
 
   /* total canvas size */
   const allPos = Object.values(positions);
-  const canvasW = rounds.length * (CARD_W + COL_GAP);
+  const canvasW = Math.max(rounds.length * (CARD_W + COL_GAP), CARD_W);
   const minY = Math.min(...allPos.map(p => p.y), 0);
   const maxY = Math.max(...allPos.map(p => p.y + CARD_H), 0);
   const canvasH = maxY - minY + 40;
@@ -769,7 +760,7 @@ function BracketTree({ matches, onAdvance, draggedAthlete, dragOverSlot, setDrag
         return (
           <div
             key={`hdr-${rnd}`}
-            className="absolute text-[9px] font-bold text-gray-400 uppercase tracking-wider text-center"
+            className="absolute border border-black bg-yellow-100 px-2 py-1 text-center text-xs font-bold uppercase tracking-wider text-gray-700"
             style={{ left: ri * (CARD_W + COL_GAP), top: 0, width: CARD_W }}
           >
             {label}
@@ -789,6 +780,7 @@ function BracketTree({ matches, onAdvance, draggedAthlete, dragOverSlot, setDrag
           >
             <MatchCard
               match={m}
+              eventId={eventId}
               onAdvance={onAdvance}
               isDroppable={!!draggedAthlete}
               dragOverSlot={dragOverSlot}
@@ -808,13 +800,26 @@ function BracketTree({ matches, onAdvance, draggedAthlete, dragOverSlot, setDrag
 /* ═══════════════════════════════════════════════════════════════════
    MATCH CARD  –  with drop zones for red & blue corners
    ═══════════════════════════════════════════════════════════════════ */
-function MatchCard({ match: m, onAdvance, isDroppable, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, weightMap = {} }) {
+function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, weightMap = {} }) {
   const hasWinner = !!m.winner;
   const redWeight = m.red_corner ? weightMap[m.red_corner] : null;
   const blueWeight = m.blue_corner ? weightMap[m.blue_corner] : null;
   const redWon = m.winner === m.red_corner;
   const blueWon = m.winner === m.blue_corner;
   const isBye = (m.red_corner && !m.blue_corner) || (!m.red_corner && m.blue_corner);
+  const fullscreenHref = `/competitions/${eventId}/live-fullscreen?field=${m.field}&panel=match&id=${m.id}`;
+
+  const handleMoreInfoClick = (e) => {
+    e.stopPropagation();
+    if (!m.field) {
+      const shouldSchedule = window.confirm('Acest meci nu este programat pe niciun tatami. Vrei să mergi la Programare pentru a-l programa?');
+      if (shouldSchedule) {
+        window.location.href = `/competitions/${eventId}/categories/programare`;
+      }
+      return;
+    }
+    window.location.href = fullscreenHref;
+  };
 
   const isRedOver = dragOverSlot?.matchId === m.id && dragOverSlot?.corner === 'red';
   const isBlueOver = dragOverSlot?.matchId === m.id && dragOverSlot?.corner === 'blue';
@@ -838,46 +843,46 @@ function MatchCard({ match: m, onAdvance, isDroppable, dragOverSlot, setDragOver
   };
 
   return (
-    <div className={`border rounded shadow-sm text-[11px] flex flex-col overflow-hidden bg-white cursor-pointer hover:shadow-md transition-shadow ${
-      hasWinner ? 'border-green-400' : isBye ? 'border-amber-300' : 'border-gray-300'
+    <div className={`flex min-h-[164px] cursor-pointer flex-col overflow-hidden border-2 bg-white text-sm shadow-sm transition-shadow hover:shadow-md ${
+      hasWinner ? 'border-black' : isBye ? 'border-black' : 'border-black'
     }`} onClick={() => onMatchClick && onMatchClick(m)}>
       {/* header */}
-      <div className="bg-gray-100 px-2 py-0.5 text-[9px] text-gray-500 font-mono flex justify-between border-b border-gray-200">
+      <div className="flex justify-between border-b-2 border-black bg-yellow-100 px-3 py-1 text-xs font-mono text-gray-600">
         <span title={`ID: ${m.id}`}>#{m.match_number}</span>
-        {hasWinner && <span className="text-green-600 font-bold">✓ Finalizat</span>}
-        {isBye && <span className="text-amber-600 font-semibold">BYE</span>}
+        {hasWinner && <span className="font-bold text-gray-900">Finalizat</span>}
+        {isBye && <span className="font-semibold text-gray-700">BYE</span>}
       </div>
 
       {/* red corner */}
       <div
-        className={`px-2 py-1.5 flex items-center gap-1.5 border-b border-gray-100 transition-colors group
-          ${redWon ? 'bg-green-50 font-bold' : ''}
-          ${isRedOver ? 'bg-red-100 ring-2 ring-inset ring-red-400' : ''}
-          ${isDroppable && !m.red_corner ? 'bg-red-50/40' : ''}
+        className={`group flex min-h-[56px] items-center gap-2 border-b border-gray-200 px-3 py-2.5 transition-colors
+          ${redWon ? 'bg-yellow-100 font-bold' : ''}
+          ${isRedOver ? 'bg-yellow-100 ring-2 ring-inset ring-black' : ''}
+          ${isDroppable && !m.red_corner ? 'bg-gray-50' : ''}
         `}
         onDragOver={(e) => handleDragOver(e, 'red')}
         onDragLeave={() => handleDragLeave('red')}
         onDrop={(e) => handleDrop(e, 'red')}
       >
-        <div className="w-2.5 h-2.5 rounded-sm bg-red-500 shrink-0" />
-        <div className="truncate flex-1">
+        <div className="h-3 w-3 shrink-0 bg-red-500" />
+        <div className="min-w-0 flex-1">
           {m.red_corner_full_name ? (
             <>
-              <span>{m.red_corner_full_name}</span>
-              {m.red_corner_club_name && <span className="text-[9px] text-gray-400 ml-1">({m.red_corner_club_name})</span>}
+              <span className="block truncate font-bold text-gray-900">{m.red_corner_full_name}</span>
+              {m.red_corner_club_name && <span className="block truncate text-xs text-gray-500">{m.red_corner_club_name}</span>}
             </>
           ) : (
-            <span className={`italic text-[10px] ${isDroppable ? 'text-red-300' : 'text-gray-300'}`}>
+            <span className={`text-sm italic ${isDroppable ? 'text-gray-500' : 'text-gray-300'}`}>
               {isDroppable ? '← Trage sportiv aici' : 'TBD'}
             </span>
           )}
         </div>
-        {redWeight && <span className="text-[9px] text-gray-400 font-mono shrink-0">{redWeight}kg</span>}
-        {redWon && <span className="text-green-600 text-[10px]">🏆</span>}
+        {redWeight && <span className="shrink-0 font-mono text-xs text-gray-500">{redWeight}kg</span>}
+        {redWon && <span className="text-xs font-bold text-gray-900">CÂȘTIGĂ</span>}
         {onRemoveFromSlot && m.red_corner && !hasWinner && (
           <button
             onClick={(e) => { e.stopPropagation(); onRemoveFromSlot(m.id, 'red'); }}
-            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-[9px] ml-1 transition-opacity"
+            className="ml-1 text-xs text-red-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-600"
             title="Scoate din slot"
           >✕</button>
         )}
@@ -885,34 +890,34 @@ function MatchCard({ match: m, onAdvance, isDroppable, dragOverSlot, setDragOver
 
       {/* blue corner */}
       <div
-        className={`px-2 py-1.5 flex items-center gap-1.5 transition-colors group
-          ${blueWon ? 'bg-green-50 font-bold' : ''}
-          ${isBlueOver ? 'bg-blue-100 ring-2 ring-inset ring-blue-400' : ''}
-          ${isDroppable && !m.blue_corner ? 'bg-blue-50/40' : ''}
+        className={`group flex min-h-[56px] items-center gap-2 px-3 py-2.5 transition-colors
+          ${blueWon ? 'bg-yellow-100 font-bold' : ''}
+          ${isBlueOver ? 'bg-yellow-100 ring-2 ring-inset ring-black' : ''}
+          ${isDroppable && !m.blue_corner ? 'bg-gray-50' : ''}
         `}
         onDragOver={(e) => handleDragOver(e, 'blue')}
         onDragLeave={() => handleDragLeave('blue')}
         onDrop={(e) => handleDrop(e, 'blue')}
       >
-        <div className="w-2.5 h-2.5 rounded-sm bg-blue-500 shrink-0" />
-        <div className="truncate flex-1">
+        <div className="h-3 w-3 shrink-0 bg-blue-500" />
+        <div className="min-w-0 flex-1">
           {m.blue_corner_full_name ? (
             <>
-              <span>{m.blue_corner_full_name}</span>
-              {m.blue_corner_club_name && <span className="text-[9px] text-gray-400 ml-1">({m.blue_corner_club_name})</span>}
+              <span className="block truncate font-bold text-gray-900">{m.blue_corner_full_name}</span>
+              {m.blue_corner_club_name && <span className="block truncate text-xs text-gray-500">{m.blue_corner_club_name}</span>}
             </>
           ) : (
-            <span className={`italic text-[10px] ${isDroppable ? 'text-blue-300' : 'text-gray-300'}`}>
+            <span className={`text-sm italic ${isDroppable ? 'text-gray-500' : 'text-gray-300'}`}>
               {isDroppable ? '← Trage sportiv aici' : 'TBD'}
             </span>
           )}
         </div>
-        {blueWeight && <span className="text-[9px] text-gray-400 font-mono shrink-0">{blueWeight}kg</span>}
-        {blueWon && <span className="text-green-600 text-[10px]">🏆</span>}
+        {blueWeight && <span className="shrink-0 font-mono text-xs text-gray-500">{blueWeight}kg</span>}
+        {blueWon && <span className="text-xs font-bold text-gray-900">CÂȘTIGĂ</span>}
         {onRemoveFromSlot && m.blue_corner && !hasWinner && (
           <button
             onClick={(e) => { e.stopPropagation(); onRemoveFromSlot(m.id, 'blue'); }}
-            className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-600 text-[9px] ml-1 transition-opacity"
+            className="ml-1 text-xs text-blue-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-blue-600"
             title="Scoate din slot"
           >✕</button>
         )}
@@ -922,11 +927,18 @@ function MatchCard({ match: m, onAdvance, isDroppable, dragOverSlot, setDragOver
       {hasWinner && m.next_match && (
         <button
           onClick={(e) => { e.stopPropagation(); onAdvance(m.id); }}
-          className="bg-blue-50 text-blue-700 text-[10px] py-0.5 hover:bg-blue-100 border-t border-blue-200 font-semibold"
+          className="border-t-2 border-black bg-yellow-300 py-1.5 text-sm font-semibold text-black hover:bg-yellow-200"
         >
           Avansează câștigător ▸
         </button>
       )}
+      <button
+        type="button"
+        onClick={handleMoreInfoClick}
+        className="border-t border-gray-200 bg-white px-3 py-1.5 text-center text-xs font-semibold text-gray-700 hover:bg-gray-100"
+      >
+        Mai multe informații ↗
+      </button>
     </div>
   );
 }

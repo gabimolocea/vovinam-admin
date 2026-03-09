@@ -4,6 +4,13 @@ import { refereeAPI } from '@shared/lib/api';
 import { useAuth } from '@shared';
 import { Spinner } from '@shared/components/ui';
 
+const STATUS_CFG = {
+  in_progress: { dot: 'bg-emerald-500 animate-pulse', border: 'border-black' },
+};
+
+const GENDER_LABELS = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
+const MATCH_TYPE_LABELS = { qualifications: 'Calificări', 'quarter-finals': 'Sferturi', 'semi-finals': 'Semi-finală', finals: 'Finală', bronze: 'Bronz' };
+
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -36,33 +43,34 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-white">
         <Spinner />
       </div>
     );
   }
 
   const hasNothing = categories.length === 0 && matches.length === 0;
+  const activeStatus = STATUS_CFG.in_progress;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="frvv-shell">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white px-4 py-3">
+      <header className="frvv-shell-header px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-gray-900">Panou Arbitraj</h1>
-            <p className="text-xs text-gray-500">{user?.first_name || user?.email}</p>
+            <h1 className="text-lg font-black uppercase tracking-wide text-yellow-200">Panou Arbitraj</h1>
+            <p className="text-xs text-yellow-100/75">{user?.first_name || user?.email}</p>
           </div>
-          <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-700 font-medium">
+          <button onClick={handleLogout} className="border border-yellow-400/50 px-2.5 py-1 text-xs font-semibold text-yellow-100 hover:bg-yellow-300 hover:text-black">
             Deconectare
           </button>
         </div>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 py-6">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6">
         {hasNothing && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center border-2 border-black bg-yellow-200">
               <span className="text-gray-400 text-2xl font-bold">?</span>
             </div>
             <p className="font-bold text-gray-700">Nicio probă activă</p>
@@ -76,19 +84,25 @@ export default function Dashboard() {
             <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Categorii asignate</h2>
             <div className="grid gap-3">
               {categories.map((cat) => (
-                <button
+                <div
                   key={cat.id}
-                  onClick={() => navigate(`/category/${cat.id}/score`)}
-                  className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-400 hover:shadow-md transition-all group"
+                  className={`flex flex-wrap items-center gap-2 border px-3 py-2.5 transition sm:gap-2.5 sm:px-4 sm:py-3 ${activeStatus.border} bg-yellow-50/60 hover:shadow-sm`}
                 >
-                  <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-700 truncate">
-                    {cat.name || cat.category_name}
-                  </h3>
-                  <p className="text-xs text-gray-500 capitalize mt-0.5">{cat.category_type} · {cat.gender}</p>
-                  <span className="inline-block mt-2 text-[10px] text-blue-600 font-medium">
-                    Punctează →
-                  </span>
-                </button>
+                  <span className={`h-3.5 w-3.5 shrink-0 ${activeStatus.dot}`} />
+                  <div className="flex-1 min-w-0">
+                    <span className="block text-sm font-bold text-gray-900 md:text-base whitespace-normal break-words">{cat.name || cat.category_name}</span>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {cat.group_name && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{cat.group_name}</span>}
+                      {cat.gender && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs text-gray-700">{GENDER_LABELS[cat.gender] || cat.gender}</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/category/${cat.id}/score`)}
+                    className="mt-2 w-full border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 sm:mt-0 sm:w-auto sm:shrink-0"
+                  >
+                    PUNCTEAZĂ
+                  </button>
+                </div>
               ))}
             </div>
           </section>
@@ -100,21 +114,38 @@ export default function Dashboard() {
             <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Meciuri asignate</h2>
             <div className="grid gap-3">
               {matches.map((match) => (
-                <button
+                <div
                   key={match.id}
-                  onClick={() => navigate(`/match/${match.id}/score`)}
-                  className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-400 hover:shadow-md transition-all group"
+                  className={`flex flex-wrap items-center gap-2 border px-3 py-2.5 transition sm:gap-2.5 sm:px-4 sm:py-3 ${activeStatus.border} bg-yellow-50/60 hover:shadow-sm`}
                 >
-                  <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-700">
-                    <span className="text-red-600">{match.red_corner_full_name || 'TBD'}</span>
-                    {' vs '}
-                    <span className="text-blue-600">{match.blue_corner_full_name || 'TBD'}</span>
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{match.category_name || `Meci #${match.id}`}</p>
-                  <span className="inline-block mt-2 text-[10px] text-blue-600 font-medium">
-                    Punctează →
-                  </span>
-                </button>
+                  <span className={`h-3.5 w-3.5 shrink-0 ${activeStatus.dot}`} />
+                  <div className="flex-1 min-w-0">
+                    <span className="block text-sm font-bold md:text-base whitespace-normal break-words">
+                      {match.match_number && <span className="text-gray-400 mr-1">{match.match_number}</span>}
+                      <span className="text-gray-900">{match.red_corner_full_name || 'TBD'}</span>
+                      <span className="text-gray-400 mx-1">vs</span>
+                      <span className="text-gray-700">{match.blue_corner_full_name || 'TBD'}</span>
+                    </span>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {(match.category_name || `Meci #${match.id}`) && (
+                        <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{match.category_name || `Meci #${match.id}`}</span>
+                      )}
+                      {match.category_group_name && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{match.category_group_name}</span>}
+                      {match.category_gender && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs text-gray-700">{GENDER_LABELS[match.category_gender] || match.category_gender}</span>}
+                    </div>
+                    {match.match_type && (
+                      <span className="block mt-1 text-xs text-gray-500 whitespace-normal break-words">
+                        <span className="font-semibold text-gray-800">{MATCH_TYPE_LABELS[match.match_type] || match.match_type}</span>
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => navigate(`/match/${match.id}/score`)}
+                    className="mt-2 w-full border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 sm:mt-0 sm:w-auto sm:shrink-0"
+                  >
+                    PUNCTEAZĂ
+                  </button>
+                </div>
               ))}
             </div>
           </section>

@@ -48,6 +48,12 @@ export const competitionAPI = {
   update: (id, data) => api.patch(`/competitions/${id}/`, data),
   delete: (id) => api.delete(`/competitions/${id}/`),
   stats: (id) => api.get(`/competitions/${id}/stats/`),
+  generateStandardGroupsCategories: (id) => api.post(`/competitions/${id}/generate-standard-groups-categories/`),
+};
+
+export const eventAPI = {
+  list: (params) => api.get('/events/', { params }),
+  get: (id, params) => api.get(`/events/${id}/`, { params }),
 };
 
 // ── Categories ────────────────────────────────────────
@@ -114,6 +120,7 @@ export const enrollmentAPI = {
   categoryTeams: {
     list: (params) => api.get('/category-teams/', { params }),
     create: (data) => api.post('/category-teams/', data),
+    update: (id, data) => api.patch(`/category-teams/${id}/`, data),
     delete: (id) => api.delete(`/category-teams/${id}/`),
   },
   eventEnrollments: {
@@ -149,6 +156,7 @@ export const matchAPI = {
   get: (id) => api.get(`/matches/${id}/`),
   create: (data) => api.post('/matches/', data),
   update: (id, data) => api.patch(`/matches/${id}/`, data),
+  advanceWinner: (id) => api.post(`/matches/${id}/advance-winner/`),
 };
 
 // ── Fields / Tatamis ──────────────────────────────────
@@ -219,6 +227,7 @@ export const roundAPI = {
   list: (params) => api.get('/match-rounds/', { params }),
   create: (data) => api.post('/match-rounds/', data),
   update: (id, data) => api.patch(`/match-rounds/${id}/`, data),
+  delete: (id) => api.delete(`/match-rounds/${id}/`),
 };
 
 // ── Match Referee Scores ──────────────────────────────
@@ -254,6 +263,8 @@ export const gradeHistoryAPI = {
   submissions: {
     list: (params) => api.get('/grade-submissions/', { params }),
     create: (data) => api.post('/grade-submissions/', data),
+    update: (id, data) => api.patch(`/grade-submissions/${id}/`, data),
+    delete: (id) => api.delete(`/grade-submissions/${id}/`),
     approve: (id, data) => api.post(`/grade-submissions/${id}/approve/`, data),
     reject: (id, data) => api.post(`/grade-submissions/${id}/reject/`, data),
   },
@@ -298,4 +309,11 @@ export const competitionRefereeAPI = {
   create: (data) => api.post('/competition-referees/', data),
   update: (id, data) => api.patch(`/competition-referees/${id}/`, data),
   delete: (id) => api.delete(`/competition-referees/${id}/`),
+};
+
+// ── Referee Presence (heartbeat) ──────────────────────
+export const refereePresenceAPI = {
+  list: (params) => api.get('/referee-presence/', { params }),
+  ping: (data) => api.post('/referee-presence/', data),
+  clear: (data) => api.post('/referee-presence/clear/', data),
 };

@@ -48,7 +48,7 @@ export default function CompetitionsList() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-lg font-bold text-gray-900">Competiții</h1>
+        <h1 className="text-lg font-black uppercase tracking-wide text-black">Competiții</h1>
         <p className="text-sm text-gray-500">Selectează o competiție viitoare pentru a înscrie sportivi</p>
       </div>
 
@@ -61,9 +61,9 @@ export default function CompetitionsList() {
               <button
                 key={ev.id}
                 onClick={() => navigate(`/competitions/${ev.id}`)}
-                className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-400 hover:shadow-md transition-all group"
+                className="frvv-surface text-left p-4 transition-transform group hover:-translate-y-0.5"
               >
-                <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-700 truncate">
+                <h3 className="text-sm font-bold text-gray-900 group-hover:text-black truncate">
                   {ev.name}
                 </h3>
                 {ev.start_date && (
@@ -72,7 +72,7 @@ export default function CompetitionsList() {
                 {ev.place && (
                   <p className="text-xs text-gray-400 mt-0.5 truncate">📍 {ev.place}</p>
                 )}
-                <span className="inline-block mt-2 text-[10px] text-blue-600 font-medium">
+                <span className="inline-block mt-2 border border-black bg-yellow-200 px-2 py-1 text-[10px] font-bold text-black">
                   Deschide centralizator →
                 </span>
               </button>
@@ -89,7 +89,7 @@ export default function CompetitionsList() {
             {past.map(ev => (
               <div
                 key={ev.id}
-                className="text-left rounded-xl border border-gray-100 bg-gray-50 p-4 opacity-60 cursor-not-allowed"
+                className="text-left border-2 border-gray-300 bg-gray-100 p-4 opacity-60 cursor-not-allowed"
                 title="Competiția s-a încheiat — nu mai poți modifica înscrierile"
               >
                 <h3 className="text-sm font-medium text-gray-500 truncate">

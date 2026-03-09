@@ -7,7 +7,8 @@ export default function TehnicaPage() {
 
   const {
     columnStructure, busy,
-    handleCellClick, handleUnenroll,
+    handleCellClick, handleUnenroll, handleTeamUnenroll,
+    isEditLocked,
   } = ctx;
 
   // Collect solo/team categories that have enrolled athletes, deduplicated
@@ -33,22 +34,30 @@ export default function TehnicaPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-2">
+    <div className="flex-1 overflow-auto bg-white p-3 md:p-4">
+      <div inert={isEditLocked ? '' : undefined} className={isEditLocked ? 'opacity-95' : ''}>
       {techGroups.map(({ group, cats }) => (
         <div key={`tech-grp-${group.id}`} className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {cats.map(cat => {
+            const isTeamCategory = cat.type === 'team';
             const enrolled = (cat.enrolled_athletes || []).slice().sort((a, b) => {
               const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
               const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
               return na.localeCompare(nb);
             });
+            const enrolledTeams = (cat.enrolled_teams || []).slice().sort((a, b) => {
+              const na = a.team_name || '';
+              const nb = b.team_name || '';
+              return na.localeCompare(nb);
+            });
+            const totalEntries = isTeamCategory ? enrolledTeams.length : enrolled.length;
 
             return (
               <div key={cat.id} className="overflow-x-auto">
                 <table className="border-collapse text-sm w-full">
                   <thead>
                     <tr>
-                      <th colSpan={2}
+                      <th colSpan={3}
                         className="bg-yellow-300 border border-black px-2 sm:px-3 py-1.5 text-center font-bold text-sm text-gray-900">
                         {group.name}
                         {(group.birth_date_start || group.birth_year_start) && (
@@ -79,10 +88,39 @@ export default function TehnicaPage() {
                       }`}>
                         {cat.name} - {GENDER_LABELS[cat.gender] || cat.gender}
                       </th>
+                      <th className="bg-gray-200 border border-black px-1 py-1.5 text-center font-bold text-[10px] text-gray-800 w-[30px]"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {enrolled.map((ath, rowIdx) => {
+                    {isTeamCategory ? enrolledTeams.map((team, rowIdx) => {
+                      const memberNames = (team.members || []).map(member => member.name).join(' & ');
+                      const teamLabel = team.team_name || memberNames || 'Echipă';
+                      const clubName = team.club_name || '';
+                      return (
+                        <tr key={team.id}>
+                          <td className="border border-black/30 px-1 py-0.5 text-xs w-[30px] text-center text-gray-500 bg-gray-50">
+                            {rowIdx + 1}
+                          </td>
+                          <td className="border border-black/30 px-1 py-0.5 text-sm text-gray-900">
+                            <span className="block font-semibold">
+                              {teamLabel}
+                            </span>
+                            {memberNames && memberNames !== teamLabel && (
+                              <span className="block text-xs text-gray-500">{memberNames}</span>
+                            )}
+                            {clubName && <span className="block text-xs text-gray-400">{clubName}</span>}
+                          </td>
+                          <td className="w-[44px] border border-black/30 px-0.5 py-0.5 text-center">
+                            <button
+                              onClick={(e) => handleTeamUnenroll(team.id, teamLabel, cat.name, e)}
+                              disabled={busy}
+                              className="inline-flex h-11 w-11 items-center justify-center border border-red-700 bg-red-500 text-base font-black leading-none text-white transition-colors hover:bg-red-600 disabled:opacity-40"
+                              title="Scoate echipa din categorie"
+                            >×</button>
+                          </td>
+                        </tr>
+                      );
+                    }) : enrolled.map((ath, rowIdx) => {
                       const athleteDetails = ath?.athlete_details;
                       const athleteName = athleteDetails
                         ? `${athleteDetails.last_name || ''} ${athleteDetails.first_name || ''}`.trim()
@@ -94,18 +132,18 @@ export default function TehnicaPage() {
                             {rowIdx + 1}
                           </td>
                           <td className="border border-black/30 px-1 py-0.5 text-sm text-gray-900">
-                            <span className="flex items-center justify-between group/ath">
-                              <span className="truncate">
+                            <span className="block truncate">
                                 {athleteName}
                                 {clubName && <span className="text-gray-400 ml-1">({clubName})</span>}
-                              </span>
-                              <button
-                                onClick={(e) => handleUnenroll(ath.id, athleteName, cat.name, e)}
-                                disabled={busy}
-                                className="hidden group-hover/ath:inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none hover:bg-red-600 disabled:opacity-40 shrink-0 ml-1"
-                                title="Scoate sportivul din categorie"
-                              >×</button>
                             </span>
+                          </td>
+                          <td className="w-[44px] border border-black/30 px-0.5 py-0.5 text-center">
+                            <button
+                              onClick={(e) => handleUnenroll(ath.id, athleteName, cat.name, e)}
+                              disabled={busy}
+                              className="inline-flex h-11 w-11 items-center justify-center border border-red-700 bg-red-500 text-base font-black leading-none text-white transition-colors hover:bg-red-600 disabled:opacity-40"
+                              title="Scoate sportivul din categorie"
+                            >×</button>
                           </td>
                         </tr>
                       );
@@ -114,20 +152,25 @@ export default function TehnicaPage() {
                     <tr>
                       <td className="border border-black/20 px-1 py-0.5 w-[30px] bg-gray-50"></td>
                       <td
-                        className="border border-black/20 px-1 py-1 cursor-pointer hover:bg-blue-50 transition-colors"
+                        className="border border-black/20 px-2 py-1.5 cursor-pointer hover:bg-green-50 transition-colors"
                         onClick={(e) => handleCellClick(null, cat.id, e)}
                       >
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-600 text-sm font-bold hover:bg-green-500 hover:text-white transition-colors">+</span>
+                        <span className="frvv-btn-add !px-3 !py-1 text-xs">
+                          <span className="frvv-btn-add-icon">+</span>
+                          {isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}
+                        </span>
                       </td>
+                      <td className="border border-black/20 px-0.5 py-0.5 w-[30px] bg-gray-50"></td>
                     </tr>
                     {/* Total row */}
                     <tr className="border-t-2 border-black">
                       <td className="border border-black px-2 py-1.5 font-bold text-xs text-gray-900 bg-gray-100 text-center">
                         TOTAL
                       </td>
-                      <td className="border border-black px-2 py-1.5 font-bold text-sm text-gray-900 bg-gray-100">
-                        {enrolled.length}
+                      <td className={`border border-black px-2 py-1.5 font-bold text-sm ${totalEntries < (isTeamCategory ? 1 : 3) ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-900'}`}>
+                        {totalEntries}
                       </td>
+                      <td className={`w-[44px] border border-black px-0.5 py-0.5 ${totalEntries < (isTeamCategory ? 1 : 3) ? 'bg-red-100' : 'bg-gray-100'}`}></td>
                     </tr>
                   </tbody>
                 </table>
@@ -136,6 +179,7 @@ export default function TehnicaPage() {
           })}
         </div>
       ))}
+      </div>
     </div>
   );
 }

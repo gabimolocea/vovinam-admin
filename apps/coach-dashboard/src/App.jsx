@@ -17,7 +17,7 @@ export default function App() {
     <Routes>
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage title="Coach Dashboard" />}
+        element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage title="Panou antrenor" />}
       />
       <Route path="/" element={isAuthenticated ? <Layout /> : <Navigate to="/login" replace />}>
         <Route index element={<AthletesList />} />
@@ -25,7 +25,8 @@ export default function App() {
         <Route path="athletes/:id" element={<AthleteDetail />} />
         <Route path="competitions" element={<CompetitionsList />} />
         <Route path="competitions/:eventId" element={<CompetitionCentralizator />} />
-        <Route path="grades" element={<GradeManagement />} />
+        <Route path="exams" element={<GradeManagement />} />
+        <Route path="grades" element={<Navigate to="/exams" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

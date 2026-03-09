@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { useAuth } from '@shared';
 import { categoryAPI, groupAPI, clubAPI, enrollmentAPI, athleteAPI, competitionAPI, fightWeightAPI } from '@shared/lib/api';
 
 /**
@@ -8,6 +9,7 @@ import { categoryAPI, groupAPI, clubAPI, enrollmentAPI, athleteAPI, competitionA
  */
 export default function useCentralizator() {
   const { id: eventId } = useParams();
+  const { isAdmin } = useAuth();
 
   const [groups, setGroups]         = useState([]);
   const [categories, setCategories] = useState([]);
@@ -44,27 +46,97 @@ export default function useCentralizator() {
 
   // Fight athlete weights (separate model for fight categories)
   const [fightWeights, setFightWeights] = useState([]);
+  const [isEditLocked, setIsEditLocked] = useState(false);
+  const [generatingDefaults, setGeneratingDefaults] = useState(false);
+  const [showStandardStructureBanner, setShowStandardStructureBanner] = useState(true);
+
+  useEffect(() => {
+    if (!eventId) return;
+    const stored = localStorage.getItem(`competition-admin-edit-lock:${eventId}`);
+    setIsEditLocked(stored === '1');
+  }, [eventId]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    const stored = localStorage.getItem(`competition-admin-standard-structure-banner:${eventId}`);
+    setShowStandardStructureBanner(stored !== 'hidden');
+  }, [eventId]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    localStorage.setItem(`competition-admin-edit-lock:${eventId}`, isEditLocked ? '1' : '0');
+  }, [eventId, isEditLocked]);
+
+  const dismissStandardStructureBanner = useCallback(() => {
+    if (!eventId) return;
+    localStorage.setItem(`competition-admin-standard-structure-banner:${eventId}`, 'hidden');
+    setShowStandardStructureBanner(false);
+  }, [eventId]);
+
+  const toggleEditLock = useCallback(() => {
+    if (!isAdmin) return;
+    setIsEditLocked(prev => !prev);
+  }, [isAdmin]);
 
   /* ── data fetching ── */
-  const fetchAll = useCallback(async () => {
-    const [gRes, cRes, clRes, evRes, fwRes] = await Promise.all([
-      groupAPI.list({ event: eventId }),
-      categoryAPI.list({ event: eventId }),
-      clubAPI.list(),
-      competitionAPI.get(eventId).catch(() => ({ data: null })),
-      fightWeightAPI.list({ event: eventId }).catch(() => ({ data: [] })),
-    ]);
+  const fetchGroups = useCallback(async () => {
+    const gRes = await groupAPI.list({ event: eventId });
     const g = Array.isArray(gRes.data) ? gRes.data : gRes.data.results ?? [];
-    const c = Array.isArray(cRes.data) ? cRes.data : cRes.data.results ?? [];
-    const cl = Array.isArray(clRes.data) ? clRes.data : clRes.data.results ?? [];
-    const fw = Array.isArray(fwRes.data) ? fwRes.data : fwRes.data.results ?? [];
     setGroups(g);
-    setCategories(c);
-    setClubs(cl);
-    setFightWeights(fw);
-    if (evRes.data) setEventData(evRes.data);
-    setLoading(false);
+    if (eventId && typeof window !== 'undefined') {
+      sessionStorage.setItem(`competition-admin:groups:${eventId}`, JSON.stringify(g));
+    }
+    return g;
   }, [eventId]);
+
+  const fetchCategories = useCallback(async () => {
+    const cRes = await categoryAPI.list({ event: eventId });
+    const c = Array.isArray(cRes.data) ? cRes.data : cRes.data.results ?? [];
+    setCategories(c);
+    if (eventId && typeof window !== 'undefined') {
+      sessionStorage.setItem(`competition-admin:categories:${eventId}`, JSON.stringify(c));
+    }
+    return c;
+  }, [eventId]);
+
+  const fetchClubs = useCallback(async () => {
+    const clRes = await clubAPI.list();
+    const cl = Array.isArray(clRes.data) ? clRes.data : clRes.data.results ?? [];
+    setClubs(cl);
+    return cl;
+  }, []);
+
+  const fetchEventData = useCallback(async () => {
+    const evRes = await competitionAPI.get(eventId).catch(() => ({ data: null }));
+    if (evRes.data) setEventData(evRes.data);
+    return evRes.data;
+  }, [eventId]);
+
+  const fetchFightWeights = useCallback(async () => {
+    const fwRes = await fightWeightAPI.list({ event: eventId }).catch(() => ({ data: [] }));
+    const fw = Array.isArray(fwRes.data) ? fwRes.data : fwRes.data.results ?? [];
+    setFightWeights(fw);
+    return fw;
+  }, [eventId]);
+
+  const fetchAll = useCallback(async () => {
+    await Promise.all([
+      fetchGroups(),
+      fetchCategories(),
+      fetchClubs(),
+      fetchEventData(),
+      fetchFightWeights(),
+    ]);
+    setLoading(false);
+  }, [fetchCategories, fetchClubs, fetchEventData, fetchFightWeights, fetchGroups]);
+
+  const refreshCategoriesOnly = useCallback(async () => {
+    await fetchCategories();
+  }, [fetchCategories]);
+
+  const refreshStructureData = useCallback(async () => {
+    await Promise.all([fetchGroups(), fetchCategories()]);
+  }, [fetchCategories, fetchGroups]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -149,7 +221,12 @@ export default function useCentralizator() {
     const rows = clubs.map(club => ({
       clubId: club.id,
       club: club.name,
-      athletes: (athletesByClubId[club.id] || []).sort((a, b) => a.name.localeCompare(b.name)),
+      athletes: (athletesByClubId[club.id] || []).sort((a, b) => {
+        const aCount = Object.keys(a.enrollments || {}).length;
+        const bCount = Object.keys(b.enrollments || {}).length;
+        if (aCount !== bCount) return bCount - aCount;
+        return a.name.localeCompare(b.name);
+      }),
     }));
 
     return { clubRows: rows, athleteMap: aMap };
@@ -158,7 +235,9 @@ export default function useCentralizator() {
   const countPerCat = useMemo(() => {
     const counts = {};
     for (const cat of categories) {
-      counts[cat.id] = cat.enrolled_athletes?.length ?? 0;
+      counts[cat.id] = cat.type === 'team'
+        ? (cat.enrolled_teams?.length ?? 0)
+        : (cat.enrolled_athletes?.length ?? 0);
     }
     return counts;
   }, [categories]);
@@ -191,7 +270,7 @@ export default function useCentralizator() {
       }
       setGroupModal(null);
       setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false });
-      await fetchAll();
+      await refreshStructureData();
     } finally { setBusy(false); }
   };
 
@@ -213,7 +292,7 @@ export default function useCentralizator() {
         try {
           for (const c of groupCats) await categoryAPI.delete(c.id);
           await groupAPI.delete(id);
-          await fetchAll();
+          await refreshStructureData();
         } finally { setBusy(false); setConfirmModal(null); }
       },
     });
@@ -233,7 +312,7 @@ export default function useCentralizator() {
       });
       setCatModal(null);
       setCatForm({ name: '', category_type: 'solo', gender: 'male' });
-      await fetchAll();
+      await refreshCategoriesOnly();
     } finally { setBusy(false); }
   };
 
@@ -249,7 +328,31 @@ export default function useCentralizator() {
         setBusy(true);
         try {
           await enrollmentAPI.categoryAthletes.delete(enrollmentId);
-          await fetchAll();
+          setCategories(prev => prev.map(cat => ({
+            ...cat,
+            enrolled_athletes: (cat.enrolled_athletes || []).filter(ea => ea.id !== enrollmentId),
+          })));
+        } finally { setBusy(false); setConfirmModal(null); }
+      },
+    });
+  };
+
+  const handleTeamUnenroll = (enrollmentId, teamName, catName, e) => {
+    e.stopPropagation();
+    setConfirmModal({
+      title: 'Scoate echipa',
+      message: `Ești sigur că vrei să scoți echipa „${teamName}" din categoria „${catName}"?`,
+      icon: '🚫',
+      color: 'orange',
+      confirmLabel: 'Scoate echipa',
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          await enrollmentAPI.categoryTeams.delete(enrollmentId);
+          setCategories(prev => prev.map(cat => ({
+            ...cat,
+            enrolled_teams: (cat.enrolled_teams || []).filter(team => team.id !== enrollmentId),
+          })));
         } finally { setBusy(false); setConfirmModal(null); }
       },
     });
@@ -269,7 +372,7 @@ export default function useCentralizator() {
       })));
     } catch (err) {
       console.error('Weight update failed:', err);
-      await fetchAll();
+      await refreshCategoriesOnly();
     }
   };
 
@@ -287,7 +390,10 @@ export default function useCentralizator() {
       confirmLabel: 'Șterge categoria',
       onConfirm: async () => {
         setBusy(true);
-        try { await categoryAPI.delete(id); await fetchAll(); }
+        try {
+          await categoryAPI.delete(id);
+          setCategories(prev => prev.filter(cat => cat.id !== id));
+        }
         finally { setBusy(false); setConfirmModal(null); }
       },
     });
@@ -304,14 +410,14 @@ export default function useCentralizator() {
     if (!newName || newName === group.name) return;
     setGroups(prev => prev.map(g => g.id === group.id ? { ...g, name: newName } : g));
     try { await groupAPI.update(group.id, { ...group, name: newName }); }
-    catch { await fetchAll(); }
+    catch { await refreshStructureData(); }
   };
 
   const handleToggleAllowYounger = async (group) => {
     const newVal = !group.allow_younger;
     setGroups(prev => prev.map(g => g.id === group.id ? { ...g, allow_younger: newVal } : g));
     try { await groupAPI.update(group.id, { ...group, allow_younger: newVal }); }
-    catch { await fetchAll(); }
+    catch { await refreshStructureData(); }
   };
 
   const handleCatRenameStart = (cat) => {
@@ -325,7 +431,7 @@ export default function useCentralizator() {
     if (!newName || newName === cat.name) return;
     setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, name: newName } : c));
     try { await categoryAPI.update(cat.id, { name: newName }); }
-    catch { await fetchAll(); }
+    catch { await refreshCategoriesOnly(); }
   };
 
   /* ── Drag & drop ── */
@@ -344,7 +450,7 @@ export default function useCentralizator() {
     const reordered = newOrder.map((id, idx) => ({ ...groups.find(g => g.id === id), display_order: idx }));
     setGroups(reordered);
     setDragType(null); setDragId(null); setDragOverId(null);
-    try { await groupAPI.reorder(newOrder); } catch { await fetchAll(); }
+    try { await groupAPI.reorder(newOrder); } catch { await refreshStructureData(); }
   };
 
   const handleCatDragStart = (e, catId) => { setDragType('category'); setDragId(catId); e.dataTransfer.effectAllowed = 'move'; };
@@ -376,7 +482,7 @@ export default function useCentralizator() {
     });
     setCategories(updated);
     setDragType(null); setDragId(null); setDragOverId(null);
-    try { await categoryAPI.reorder(newOrder); } catch { await fetchAll(); }
+    try { await categoryAPI.reorder(newOrder); } catch { await refreshCategoriesOnly(); }
   };
 
   const handleDragEnd = () => { setDragType(null); setDragId(null); setDragOverId(null); };
@@ -396,21 +502,22 @@ export default function useCentralizator() {
     const reordered = newOrder.map((id, idx) => ({ ...clubs.find(c => c.id === id), display_order: idx }));
     setClubs(reordered);
     setDragType(null); setDragId(null); setDragOverId(null);
-    try { await clubAPI.reorder(newOrder); } catch { await fetchAll(); }
+    try { await clubAPI.reorder(newOrder); } catch { await fetchClubs(); }
   };
 
   const handleCellClick = async (clubId, catId, e) => {
     e.stopPropagation();
-    if (enrollPickerCell && enrollPickerCell.clubId === clubId && enrollPickerCell.catId === catId) {
+    const effectiveClubId = typeof window !== 'undefined' && window.innerWidth < 768 ? null : clubId;
+    if (enrollPickerCell && enrollPickerCell.clubId === effectiveClubId && enrollPickerCell.catId === catId) {
       setEnrollPickerCell(null);
       return;
     }
     const rect = e.currentTarget.getBoundingClientRect();
-    setEnrollPickerCell({ clubId, catId, rect });
-    const cacheKey = clubId ?? '__all__';
+    setEnrollPickerCell({ clubId: effectiveClubId, catId, rect });
+    const cacheKey = effectiveClubId ?? '__all__';
     if (!clubAthleteCache[cacheKey]) {
       try {
-        const params = clubId ? { club: clubId } : {};
+        const params = effectiveClubId ? { club: effectiveClubId } : {};
         const res = await athleteAPI.list(params);
         const athletes = Array.isArray(res.data) ? res.data : res.data.results ?? [];
         setClubAthleteCache(prev => ({ ...prev, [cacheKey]: athletes }));
@@ -428,8 +535,31 @@ export default function useCentralizator() {
       } else {
         await enrollmentAPI.categoryAthletes.create({ athlete: athleteId, category: catId });
       }
-      await fetchAll();
+      await refreshCategoriesOnly();
     } finally { setBusy(false); }
+  };
+
+  const handleGenerateStandardStructure = async () => {
+    if (!eventId || generatingDefaults) return;
+    const shouldContinue = window.confirm(
+      'Generez grupele și categoriile standard lipsă pentru această competiție? Elementele existente nu vor fi duplicate.'
+    );
+    if (!shouldContinue) return;
+
+    setGeneratingDefaults(true);
+    try {
+      const { data } = await competitionAPI.generateStandardGroupsCategories(eventId);
+      await refreshStructureData();
+      const result = data?.result || {};
+      dismissStandardStructureBanner();
+      window.alert(
+        `Sincronizare finalizată. Grupe create: ${result.groups_created || 0}, actualizate: ${result.groups_updated || 0}; categorii create: ${result.categories_created || 0}, actualizate: ${result.categories_updated || 0}.`
+      );
+    } catch (err) {
+      window.alert(err.response?.data?.detail || 'Nu s-au putut genera grupele și categoriile standard.');
+    } finally {
+      setGeneratingDefaults(false);
+    }
   };
 
   /* ── close menus on outside click ── */
@@ -460,11 +590,16 @@ export default function useCentralizator() {
     dragType, dragId, dragOverId,
     enrollPickerCell, setEnrollPickerCell, clubAthleteCache, enrollPickerRef,
     editingWeight, setEditingWeight,
+    isEditLocked, toggleEditLock, canUnlockEdit: isAdmin,
+    generatingDefaults,
+    showStandardStructureBanner,
     // Handlers
-    fetchAll,
+    fetchAll, refreshCategoriesOnly, refreshStructureData,
+    handleGenerateStandardStructure,
+    dismissStandardStructureBanner,
     handleCustomGroup, handleDeleteGroup,
     handleAddCustomCat, handleDeleteCat,
-    handleUnenroll, handleWeightSave,
+    handleUnenroll, handleTeamUnenroll, handleWeightSave,
     handleGroupRenameStart, handleGroupRenameSubmit, handleToggleAllowYounger,
     handleCatRenameStart, handleCatRenameSubmit,
     handleGroupDragStart, handleGroupDragOver, handleGroupDrop,

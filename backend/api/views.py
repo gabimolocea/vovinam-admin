@@ -1,7 +1,9 @@
 from django.shortcuts import render
+from datetime import datetime
 from django.utils import timezone
 from django.db import models
-from django.db.models import Q
+from django.db.models import Prefetch, Q
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
@@ -65,6 +67,7 @@ class RefereeAssignedCategoriesView(APIView):
                 'name': cat.name,
                 'type': cat.type,
                 'gender': cat.gender,
+                'group_name': cat.group.name if getattr(cat, 'group', None) else None,
                 'field_status': fs,
                 'field_id': field.id if field else None,
                 'field_name': field.name if field else None,
@@ -238,11 +241,12 @@ class CompetitionViewSet(viewsets.ViewSet):
 
     def list(self, request):
         from landing.models import Event
-        events = Event.objects.filter(event_type='competition')
+        event_type = request.query_params.get('event_type') or 'competition'
+        events = Event.objects.filter(event_type=event_type)
         status_filter = request.query_params.get('status')
         if status_filter:
             events = events.filter(status=status_filter)
-        elif request.user.is_authenticated and request.user.role == 'referee' and not request.user.is_admin:
+        elif event_type == 'competition' and request.user.is_authenticated and request.user.role == 'referee' and not request.user.is_admin:
             events = events.filter(status='ongoing')
         # Prefetch categories + field assignments to avoid N+1 queries
         events = events.prefetch_related(
@@ -268,9 +272,14 @@ class CompetitionViewSet(viewsets.ViewSet):
                 'id': ev.id,
                 'name': ev.title,
                 'place': ev.address,
+                'address': ev.address,
+                'city': ev.city_id,
+                'city_name': ev.city.name if ev.city_id else None,
                 'start_date': ev.start_date,
                 'end_date': ev.end_date,
+                'event_type': ev.event_type,
                 'status': getattr(ev, 'status', None),
+                'description': ev.description,
                 'categories': cats
             })
         return Response(data)
@@ -281,8 +290,12 @@ class CompetitionViewSet(viewsets.ViewSet):
             'id': ev.id,
             'name': ev.title,
             'place': ev.address,
+            'address': ev.address,
+            'city': ev.city_id,
+            'city_name': ev.city.name if ev.city_id else None,
             'start_date': ev.start_date,
             'end_date': ev.end_date,
+            'event_type': ev.event_type,
             'status': getattr(ev, 'status', None),
             'description': ev.description,
         }
@@ -304,6 +317,19 @@ class CompetitionViewSet(viewsets.ViewSet):
             data['categories'] = cats
         return data
 
+    def _parse_event_datetime(self, value, fallback=None):
+        if value in [None, '']:
+            return fallback
+        parsed = parse_datetime(value)
+        if parsed is not None:
+            if timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed)
+            return parsed
+        parsed_date = parse_date(value)
+        if parsed_date is not None:
+            return timezone.make_aware(datetime.combine(parsed_date, datetime.min.time()))
+        raise ValidationError({'start_date': ['Invalid date format.']})
+
     def retrieve(self, request, pk=None):
         from landing.models import Event
         try:
@@ -320,6 +346,7 @@ class CompetitionViewSet(viewsets.ViewSet):
 
     def create(self, request):
         from landing.models import Event
+        from .models import City
         from django.utils.text import slugify
         d = request.data
         title = d.get('name', '').strip()
@@ -328,6 +355,17 @@ class CompetitionViewSet(viewsets.ViewSet):
         start_date = d.get('start_date')
         if not start_date:
             return Response({'start_date': ['This field is required.']}, status=400)
+        try:
+            parsed_start_date = self._parse_event_datetime(start_date)
+            parsed_end_date = self._parse_event_datetime(d.get('end_date'), fallback=parsed_start_date)
+        except ValidationError as exc:
+            return Response(exc.detail, status=400)
+        city = None
+        city_id = d.get('city')
+        if city_id not in [None, '']:
+            city = City.objects.filter(pk=city_id).first()
+            if not city:
+                return Response({'city': ['Invalid city selected.']}, status=400)
         # Build a unique slug
         base_slug = slugify(title) or 'competition'
         slug = base_slug
@@ -338,9 +376,10 @@ class CompetitionViewSet(viewsets.ViewSet):
         ev = Event.objects.create(
             title=title,
             slug=slug,
-            address=d.get('location', '') or d.get('place', ''),
-            start_date=start_date,
-            end_date=d.get('end_date') or start_date,
+            address=d.get('address', '') or d.get('location', '') or d.get('place', ''),
+            city=city,
+            start_date=parsed_start_date,
+            end_date=parsed_end_date,
             description=d.get('description', ''),
             event_type='competition',
             status=d.get('status', 'upcoming'),
@@ -349,6 +388,7 @@ class CompetitionViewSet(viewsets.ViewSet):
 
     def partial_update(self, request, pk=None):
         from landing.models import Event
+        from .models import City
         try:
             ev = Event.objects.get(pk=pk, event_type='competition')
         except Event.DoesNotExist:
@@ -356,18 +396,50 @@ class CompetitionViewSet(viewsets.ViewSet):
         d = request.data
         if 'name' in d:
             ev.title = d['name']
-        if 'location' in d or 'place' in d:
-            ev.address = d.get('location', d.get('place', ev.address))
+        if 'address' in d or 'location' in d or 'place' in d:
+            ev.address = d.get('address', d.get('location', d.get('place', ev.address)))
+        if 'city' in d:
+            city_id = d.get('city')
+            if city_id in [None, '']:
+                ev.city = None
+            else:
+                city = City.objects.filter(pk=city_id).first()
+                if not city:
+                    return Response({'city': ['Invalid city selected.']}, status=400)
+                ev.city = city
         if 'start_date' in d:
-            ev.start_date = d['start_date']
+            try:
+                ev.start_date = self._parse_event_datetime(d['start_date'], fallback=ev.start_date)
+            except ValidationError as exc:
+                return Response(exc.detail, status=400)
         if 'end_date' in d:
-            ev.end_date = d['end_date']
+            try:
+                ev.end_date = self._parse_event_datetime(d['end_date'], fallback=ev.end_date)
+            except ValidationError as exc:
+                return Response(exc.detail, status=400)
         if 'description' in d:
             ev.description = d['description']
         if 'status' in d:
             ev.status = d['status']
         ev.save()
         return Response(self._serialize_event(ev, include_categories=True))
+
+    @action(detail=True, methods=['post'], url_path='generate-standard-groups-categories')
+    def generate_standard_groups_categories(self, request, pk=None):
+        from landing.models import Event
+        from .competition_defaults import ensure_standard_competition_groups_and_categories
+
+        try:
+            ev = Event.objects.get(pk=pk, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        result = ensure_standard_competition_groups_and_categories(ev)
+        return Response({
+            'detail': 'Standard groups and categories generated successfully.',
+            'result': result,
+            'competition': self._serialize_event(ev, include_categories=True),
+        })
 
     def destroy(self, request, pk=None):
         from landing.models import Event
@@ -1097,7 +1169,38 @@ class CategoryViewSet(viewsets.ViewSet):
     serializer_class = CategorySerializer
 
     def get_queryset(self):
-        return Category.objects.all()
+        team_member_queryset = TeamMember.objects.select_related('athlete__club')
+        team_queryset = Team.objects.prefetch_related(
+            Prefetch('members', queryset=team_member_queryset),
+            'categories',
+        )
+        enrolled_team_queryset = CategoryTeam.objects.select_related('team').prefetch_related(
+            Prefetch('team__members', queryset=team_member_queryset),
+        )
+
+        return Category.objects.select_related(
+            'event',
+            'group',
+            'solocategory',
+            'fightcategory',
+            'teamcategory',
+            'solocategory__first_place',
+            'solocategory__second_place',
+            'solocategory__third_place',
+            'fightcategory__first_place',
+            'fightcategory__second_place',
+            'fightcategory__third_place',
+            'teamcategory__first_place_team',
+            'teamcategory__second_place_team',
+            'teamcategory__third_place_team',
+        ).prefetch_related(
+            Prefetch(
+                'enrolled_athletes',
+                queryset=CategoryAthlete.objects.select_related('athlete__club', 'athlete__current_grade'),
+            ),
+            Prefetch('enrolled_teams', queryset=enrolled_team_queryset),
+            Prefetch('teams', queryset=team_queryset),
+        )
 
     def _create_category(self, data):
         """Create the right Category subclass based on category_type."""
@@ -1410,6 +1513,17 @@ class CategoryTeamViewSet(viewsets.ViewSet):
         instance = self.get_queryset().get(pk=pk)
         serializer = self.serializer_class(instance)
         return Response(serializer.data)
+
+    def partial_update(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        serializer = self.serializer_class(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+    def update(self, request, pk=None):
+        return self.partial_update(request, pk)
 
     def destroy(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
@@ -1951,6 +2065,10 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         if athlete_id:
             queryset = queryset.filter(athlete_score__athlete_id=athlete_id)
 
+        athlete_score_id = request.query_params.get('athlete_score')
+        if athlete_score_id:
+            queryset = queryset.filter(athlete_score_id=athlete_score_id)
+
         # Filter by event
         event_id = request.query_params.get('event_id')
         if event_id:
@@ -1999,6 +2117,43 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         # Resolve athlete_score
         if incoming.get('athlete_score'):
             clean['athlete_score'] = incoming['athlete_score']
+        elif incoming.get('category') and incoming.get('team_id'):
+            category_id = incoming['category']
+            team_id = incoming['team_id']
+            try:
+                cat = Category.objects.get(pk=category_id)
+            except Category.DoesNotExist:
+                return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            try:
+                team = Team.objects.prefetch_related('members__athlete__club').get(pk=team_id)
+            except Team.DoesNotExist:
+                return Response({'error': 'Team not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            team_member_ids = [member.athlete_id for member in team.members.all() if member.athlete_id]
+            existing_team_score = None
+            for candidate in CategoryAthleteScore.objects.filter(category_id=category_id, type='teams').prefetch_related('team_members'):
+                if set(candidate.team_members.values_list('id', flat=True)) == set(team_member_ids):
+                    existing_team_score = candidate
+                    break
+
+            if existing_team_score is None:
+                athlete_id = team_member_ids[0] if team_member_ids else None
+                existing_team_score = CategoryAthleteScore.objects.create(
+                    category_id=category_id,
+                    athlete_id=athlete_id,
+                    type='teams',
+                    status='approved',
+                    team_name=team.name,
+                )
+                if team_member_ids:
+                    existing_team_score.team_members.set(team_member_ids)
+
+            if existing_team_score.team_name != team.name:
+                existing_team_score.team_name = team.name
+                existing_team_score.save(update_fields=['team_name'])
+
+            clean['athlete_score'] = existing_team_score.id
         elif incoming.get('category') and incoming.get('athlete'):
             # Frontend sends category + athlete IDs — resolve to CategoryAthleteScore
             category_id = incoming['category']
@@ -2007,16 +2162,25 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                 cat = Category.objects.get(pk=category_id)
             except Category.DoesNotExist:
                 return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            normalized_type = (cat.type or 'solo')
+            if normalized_type == 'team':
+                normalized_type = 'teams'
             
             athlete_score_obj, _ = CategoryAthleteScore.objects.get_or_create(
                 category_id=category_id,
                 athlete_id=athlete_id,
-                defaults={'type': cat.type or 'solo', 'status': 'approved'}
+                defaults={'type': normalized_type, 'status': 'approved'}
             )
+
+            if athlete_score_obj.type == 'team':
+                athlete_score_obj.type = 'teams'
+                athlete_score_obj.save(update_fields=['type'])
+
             clean['athlete_score'] = athlete_score_obj.id
         else:
             return Response(
-                {'error': 'Provide either athlete_score or both category and athlete'},
+                {'error': 'Provide athlete_score, category + team_id, or category + athlete'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -2024,7 +2188,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         if serializer.is_valid():
             # Validate that the athlete_score is for solo/team category
             athlete_score = serializer.validated_data['athlete_score']
-            if athlete_score.type not in ['solo', 'teams']:
+            if athlete_score.type not in ['solo', 'team', 'teams']:
                 return Response(
                     {'error': 'Referee scoring is only applicable to solo and team categories'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -2472,12 +2636,33 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        """Return grade history for the current user if athlete, all if admin"""
-        if hasattr(self.request.user, 'athlete'):
-            return GradeHistory.objects.filter(athlete=self.request.user.athlete)
-        elif self.request.user.role == 'admin':
-            return GradeHistory.objects.all()
-        return GradeHistory.objects.none()
+        """Return grade history for the current user, coach club, or all for admin."""
+        qs = GradeHistory.objects.select_related('athlete', 'grade', 'event', 'examiner_1', 'examiner_2')
+        user = self.request.user
+
+        if getattr(user, 'is_admin', False) or getattr(user, 'role', None) == 'admin':
+            pass
+        elif hasattr(user, 'athlete') and user.athlete:
+            if user.athlete.is_coach and user.athlete.club_id:
+                qs = qs.filter(athlete__club_id=user.athlete.club_id)
+            else:
+                qs = qs.filter(athlete=user.athlete)
+        else:
+            return GradeHistory.objects.none()
+
+        event_id = self.request.query_params.get('event')
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+
+        athlete_id = self.request.query_params.get('athlete')
+        if athlete_id:
+            qs = qs.filter(athlete_id=athlete_id)
+
+        my_club = self.request.query_params.get('my_club')
+        if my_club and str(my_club).lower() in ('1', 'true', 'yes') and hasattr(user, 'athlete') and user.athlete and user.athlete.club_id:
+            qs = qs.filter(athlete__club_id=user.athlete.club_id)
+
+        return qs.order_by('-submitted_date')
 
     def create(self, request, *args, **kwargs):
         """Robust create handler: ensure any unexpected post-save failures
@@ -2679,6 +2864,23 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
 class EventEnrollmentViewSet(viewsets.ViewSet):
     """ViewSet for coaches to enroll their club athletes in events"""
     permission_classes = [IsAuthenticated]
+
+    def _can_manage_event_enrollment(self, user, athlete):
+        if not user or not user.is_authenticated:
+            return False
+
+        if getattr(user, 'is_admin', False) or getattr(user, 'role', None) == 'admin':
+            return True
+
+        user_athlete = getattr(user, 'athlete', None)
+        if user_athlete and athlete.club_id and user_athlete.club_id == athlete.club_id:
+            return True
+
+        return SupporterAthleteRelation.objects.filter(
+            supporter=user,
+            athlete=athlete,
+            can_register_competitions=True,
+        ).exists()
     
     def create(self, request):
         """Enroll a club athlete in an event"""
@@ -2700,17 +2902,10 @@ class EventEnrollmentViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Verify the requester is a coach in the athlete's club
-        if not hasattr(request.user, 'athlete'):
+        # Verify the requester can manage enrollments for this athlete
+        if not self._can_manage_event_enrollment(request.user, athlete):
             return Response(
-                {'error': 'User is not an athlete/coach'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        coach = request.user.athlete
-        if not coach.is_coach or coach.club_id != athlete.club_id:
-            return Response(
-                {'error': 'You can only enroll athletes from your own club'},
+                {'error': 'Nu ai permisiunea să înscrii acest sportiv la eveniment'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -2747,17 +2942,10 @@ class EventEnrollmentViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Verify the requester is a coach in the athlete's club
-        if not hasattr(request.user, 'athlete'):
+        # Verify the requester can manage enrollments for this athlete
+        if not self._can_manage_event_enrollment(request.user, participation.athlete):
             return Response(
-                {'error': 'User is not an athlete/coach'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        coach = request.user.athlete
-        if not coach.is_coach or coach.club_id != participation.athlete.club_id:
-            return Response(
-                {'error': 'You can only unenroll athletes from your own club'},
+                {'error': 'Nu ai permisiunea să retragi acest sportiv din eveniment'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -2801,7 +2989,7 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
     def set_count(self, request):
         """Bulk set the number of fields for an event.
         Accepts { event_id: int, count: int }.
-        Creates/deletes fields so the event ends up with exactly `count` tatamis.
+        Creates/deletes fields so the event ends up with exactly `count` terenuri.
         """
         event_id = request.data.get('event_id') or request.data.get('competition')
         count = request.data.get('count')
@@ -2827,7 +3015,7 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
             for i in range(current_count + 1, count + 1):
                 CompetitionField.objects.create(
                     event_id=event_id,
-                    name=f'Tatami {i}',
+                    name=f'Teren {i}',
                     field_number=i,
                 )
         elif count < current_count:
@@ -3139,6 +3327,170 @@ class MatchRoundViewSet(viewsets.ViewSet):
             return Response({'error': 'Round not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
+def _legacy_metadata_matches(metadata, **expected):
+    if not isinstance(metadata, dict):
+        return False
+    for key, value in expected.items():
+        if metadata.get(key) != value:
+            return False
+    return True
+
+
+def _delete_legacy_point_events(match_id, predicate):
+    ids = [
+        event.id
+        for event in RefereePointEvent.objects.filter(match_id=match_id)
+        if predicate(event)
+    ]
+    if ids:
+        RefereePointEvent.objects.filter(id__in=ids).delete()
+
+
+def _resolve_legacy_penalty_referee_id(match_obj, event_obj):
+    if getattr(match_obj, 'central_referee_id', None):
+        return match_obj.central_referee_id
+    if getattr(event_obj, 'created_by_id', None):
+        try:
+            athlete = Athlete.objects.filter(pk=event_obj.created_by_id, is_referee=True).first()
+            if athlete:
+                return athlete.id
+        except Exception:
+            pass
+    assignment = getattr(match_obj, 'referee_assignment', None)
+    if assignment:
+        for attr in ('referee_1_id', 'referee_2_id', 'referee_3_id', 'referee_4_id', 'referee_5_id'):
+            referee_id = getattr(assignment, attr, None)
+            if referee_id:
+                return referee_id
+    return None
+
+
+def _sync_match_event_to_legacy(event_obj):
+    if event_obj.event_type not in ('penalty_red', 'penalty_blue'):
+        return
+
+    match_obj = event_obj.match
+    referee_id = _resolve_legacy_penalty_referee_id(match_obj, event_obj)
+    if not referee_id:
+        return
+
+    metadata = {
+        'origin': 'match_event_sync',
+        'central': True,
+        'match_event_id': event_obj.id,
+    }
+    if event_obj.round_id:
+        try:
+            metadata['round'] = event_obj.round.round_number
+        except Exception:
+            pass
+
+    legacy_event = None
+    for candidate in RefereePointEvent.objects.filter(match=match_obj, referee_id=referee_id, event_type='penalty'):
+        if _legacy_metadata_matches(candidate.metadata, origin='match_event_sync', match_event_id=event_obj.id):
+            legacy_event = candidate
+            break
+
+    payload = {
+        'side': 'red' if event_obj.corner == 'red' else 'blue',
+        'points': event_obj.value,
+        'metadata': metadata,
+        'created_by': getattr(getattr(event_obj, 'created_by', None), 'user', None),
+    }
+    if legacy_event:
+        for key, value in payload.items():
+            setattr(legacy_event, key, value)
+        legacy_event.save()
+    else:
+        RefereePointEvent.objects.create(
+            match=match_obj,
+            referee_id=referee_id,
+            event_type='penalty',
+            **payload,
+        )
+
+
+def _sync_match_referee_score_to_legacy(match_id, referee_id):
+    scores = list(
+        MatchRefereeScore.objects.filter(match_id=match_id, referee_id=referee_id)
+        .select_related('round')
+        .order_by('round__round_number', 'id')
+    )
+
+    _delete_legacy_point_events(
+        match_id,
+        lambda event: event.referee_id == referee_id
+        and event.event_type == 'score'
+        and _legacy_metadata_matches(event.metadata, origin='match_referee_score_sync')
+    )
+
+    if not scores:
+        RefereeScore.objects.filter(match_id=match_id, referee_id=referee_id).delete()
+        return
+
+    round_scores = [score for score in scores if score.round_id]
+    final_score = next((score for score in scores if score.round_id is None), None)
+
+    total_red = 0
+    total_blue = 0
+    for score in round_scores:
+        round_number = getattr(score.round, 'round_number', None) or 1
+        red_points = int(score.red_corner_score or 0)
+        blue_points = int(score.blue_corner_score or 0)
+        total_red += red_points
+        total_blue += blue_points
+
+        RefereePointEvent.objects.create(
+            match_id=match_id,
+            referee_id=referee_id,
+            side='red',
+            points=red_points,
+            event_type='score',
+            processed=True,
+            metadata={
+                'round': round_number,
+                'origin': 'match_referee_score_sync',
+                'match_referee_score_id': score.id,
+            },
+        )
+        RefereePointEvent.objects.create(
+            match_id=match_id,
+            referee_id=referee_id,
+            side='blue',
+            points=blue_points,
+            event_type='score',
+            processed=True,
+            metadata={
+                'round': round_number,
+                'origin': 'match_referee_score_sync',
+                'match_referee_score_id': score.id,
+            },
+        )
+
+    if final_score:
+        winner = final_score.winner_choice
+    elif total_red > total_blue:
+        winner = 'red'
+    elif total_blue > total_red:
+        winner = 'blue'
+    else:
+        winner = None
+
+    if not round_scores and final_score:
+        total_red = int(final_score.red_corner_score or 0)
+        total_blue = int(final_score.blue_corner_score or 0)
+
+    RefereeScore.objects.update_or_create(
+        match_id=match_id,
+        referee_id=referee_id,
+        defaults={
+            'red_corner_score': total_red,
+            'blue_corner_score': total_blue,
+            'winner': winner,
+        }
+    )
+
+
 class MatchEventViewSet(viewsets.ViewSet):
     """ViewSet for match events: warnings, penalties, pauses, time adjustments"""
     permission_classes = [IsAdminOrReadOnly]
@@ -3165,6 +3517,11 @@ class MatchEventViewSet(viewsets.ViewSet):
         serializer = MatchEventSerializer(data=data)
         if serializer.is_valid():
             event = serializer.save()
+
+            try:
+                _sync_match_event_to_legacy(event)
+            except Exception:
+                pass
 
             # Handle side-effects for pause/resume/time events
             round_obj = event.round
@@ -3195,6 +3552,13 @@ class MatchEventViewSet(viewsets.ViewSet):
     def destroy(self, request, pk=None):
         try:
             obj = MatchEvent.objects.get(pk=pk)
+            try:
+                _delete_legacy_point_events(
+                    obj.match_id,
+                    lambda event: _legacy_metadata_matches(event.metadata, origin='match_event_sync', match_event_id=obj.id)
+                )
+            except Exception:
+                pass
             obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchEvent.DoesNotExist:
@@ -3232,7 +3596,11 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
                 )
         serializer = MatchRefereeScoreSerializer(data=data)
         if serializer.is_valid():
-            serializer.save()
+            instance = serializer.save()
+            try:
+                _sync_match_referee_score_to_legacy(instance.match_id, instance.referee_id)
+            except Exception:
+                pass
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -3248,7 +3616,11 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
             obj = MatchRefereeScore.objects.get(pk=pk)
             serializer = MatchRefereeScoreSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
-                serializer.save()
+                instance = serializer.save()
+                try:
+                    _sync_match_referee_score_to_legacy(instance.match_id, instance.referee_id)
+                except Exception:
+                    pass
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except MatchRefereeScore.DoesNotExist:
@@ -3262,7 +3634,13 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
         """Delete a referee score"""
         try:
             obj = MatchRefereeScore.objects.get(pk=pk)
+            match_id = obj.match_id
+            referee_id = obj.referee_id
             obj.delete()
+            try:
+                _sync_match_referee_score_to_legacy(match_id, referee_id)
+            except Exception:
+                pass
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchRefereeScore.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -3581,6 +3959,45 @@ class CompetitionRefereeViewSet(viewsets.ViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except CompetitionReferee.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class RefereePresenceViewSet(viewsets.ViewSet):
+    """Heartbeat-based presence tracking for referees on scoring pages.
+    Referees ping every 2s from their scoring panel; admin checks who is active.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        from datetime import timedelta
+        category_id = request.query_params.get('category')
+        event_id = request.query_params.get('event_id')
+        cutoff = timezone.now() - timedelta(seconds=15)
+        qs = RefereePresence.objects.filter(last_ping__gte=cutoff)
+        if category_id:
+            qs = qs.filter(category_id=category_id)
+        if event_id:
+            qs = qs.filter(category__event_id=event_id)
+        return Response(RefereePresenceSerializer(qs, many=True).data)
+
+    def create(self, request):
+        category = request.data.get('category')
+        referee = request.data.get('referee')
+        if not category or not referee:
+            return Response({'error': 'category and referee required'}, status=status.HTTP_400_BAD_REQUEST)
+        obj, created = RefereePresence.objects.update_or_create(
+            category_id=category, referee_id=referee,
+            defaults={'last_ping': timezone.now()}
+        )
+        return Response(RefereePresenceSerializer(obj).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def clear(self, request):
+        category = request.data.get('category')
+        referee = request.data.get('referee')
+        if not category or not referee:
+            return Response({'error': 'category and referee required'}, status=status.HTTP_400_BAD_REQUEST)
+        RefereePresence.objects.filter(category_id=category, referee_id=referee).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ═══════════════════════════════════════════════════════════════════

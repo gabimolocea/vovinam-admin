@@ -1,10 +1,11 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@shared';
+import Logo from '@shared/components/Logo';
 
 const navItems = [
   { to: '/', label: 'Sportivi' },
   { to: '/competitions', label: 'Competiții' },
-  { to: '/grades', label: 'Grade' },
+  { to: '/exams', label: 'Examene' },
 ];
 
 export default function Layout() {
@@ -17,10 +18,13 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-2 shrink-0">
+    <div className="frvv-shell flex h-screen flex-col">
+      <header className="frvv-shell-header flex items-center justify-between px-4 py-2 shrink-0">
         <div className="flex items-center gap-6">
-          <h1 className="text-base font-bold text-gray-900">Coach Panel</h1>
+          <div className="flex items-center gap-2">
+            <Logo size={30} />
+            <h1 className="text-base font-black uppercase tracking-wide text-yellow-200">Panou antrenor</h1>
+          </div>
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (
               <NavLink
@@ -28,8 +32,8 @@ export default function Layout() {
                 to={item.to}
                 end={item.to === '/'}
                 className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                  `frvv-shell-navlink ${
+                    isActive ? 'frvv-shell-navlink-active' : 'frvv-shell-navlink-inactive'
                   }`
                 }
               >
@@ -39,14 +43,14 @@ export default function Layout() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
-          <span className="truncate text-sm text-gray-500">{user?.email}</span>
-          <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-red-600 transition">
-            Logout
+          <span className="truncate text-sm text-yellow-100/85">{user?.email}</span>
+          <button onClick={handleLogout} className="border border-yellow-400/50 px-2.5 py-1 text-xs font-semibold text-yellow-100 hover:bg-yellow-300 hover:text-black transition">
+            Deconectare
           </button>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto bg-gray-50">
+      <main className="frvv-shell-main flex-1 overflow-y-auto">
         <Outlet />
       </main>
     </div>

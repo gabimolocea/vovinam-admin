@@ -1,125 +1,113 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Spinner } from '@shared/components/ui';
 import useCoachCentralizator from '../hooks/useCoachCentralizator';
 
 const GENDER_LABELS = { male: 'MASCULIN', female: 'FEMININ', mixt: 'MIXT' };
 const GENDER_BG     = { male: 'bg-blue-100', female: 'bg-pink-100', mixt: 'bg-amber-100' };
-const TYPE_LABELS   = { solo: 'Solo', team: 'Echipă', fight: 'Luptă' };
+const TYPE_LABELS   = { solo: 'Solo', team: 'Echipă', teams: 'Echipă', fight: 'Luptă' };
+const isTeamCategoryType = (type) => type === 'team' || type === 'teams';
+const MODAL_SECONDARY_BUTTON = 'border border-black bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
+const MODAL_PRIMARY_BUTTON = 'border border-black bg-yellow-300 px-4 py-2.5 text-sm font-black text-black transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500';
+const MODAL_DANGER_BUTTON = 'border border-black bg-red-500 px-4 py-2.5 text-sm font-black text-white transition hover:bg-red-600 disabled:opacity-40';
 
 export default function CompetitionCentralizator() {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const ctx = useCoachCentralizator(eventId);
+  const [teamSelection, setTeamSelection] = useState([]);
+  const [fightWeights, setFightWeights] = useState({});
+
+  const activeEnrollCategory = ctx.categories.find((cat) => cat.id === ctx.enrollPickerCell?.catId) || null;
+  const activeClubId = ctx.enrollPickerCell?.clubId;
+
+  React.useEffect(() => {
+    setTeamSelection([]);
+    setFightWeights({});
+  }, [ctx.enrollPickerCell?.catId, ctx.enrollPickerCell?.clubId]);
 
   if (ctx.loading) {
     return <div className="flex-1 flex items-center justify-center"><Spinner /></div>;
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* ═══ TOP BAR ═══ */}
-      <div className="flex items-center justify-between border-b border-gray-300 bg-white px-3 py-2 shrink-0 gap-2 min-h-[44px]">
-        <div className="flex items-center gap-3 min-w-0">
-          <button onClick={() => navigate('/competitions')}
-            className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition shrink-0">
-            ← Înapoi
-          </button>
-          <div className="h-4 w-px bg-gray-300 hidden sm:block" />
-          <h1 className="text-sm font-bold text-gray-900 truncate">
-            {ctx.eventData?.name || `Competiția #${eventId}`}
-          </h1>
-          {ctx.eventDateStr && (
-            <span className="hidden md:inline text-[10px] text-blue-500 bg-blue-50 rounded px-1.5 py-0.5 shrink-0">
-              {ctx.eventDateStr}
-            </span>
-          )}
-        </div>
-        <div className="hidden sm:flex items-center gap-2 text-[11px] shrink-0">
-          <span className="text-gray-500">{ctx.groups.length} grupe</span>
-          <span className="text-gray-300">·</span>
-          <span className="text-gray-500">{ctx.categories.length} categorii</span>
-          <span className="text-gray-300">·</span>
-          <span className="font-semibold text-blue-600">{ctx.totalAthletes} sportivi</span>
-        </div>
-      </div>
-
+    <div className="flex flex-col h-full bg-white">
       {/* ═══ TABLE ═══ */}
-      <CentralizatorTable ctx={ctx} />
+      <CentralizatorTable ctx={ctx} onBack={() => navigate('/competitions')} />
 
       {/* ═══ CONFIRM MODAL ═══ */}
       {ctx.confirmModal && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => ctx.setConfirmModal(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-6 text-center">
-              <div className="text-4xl mb-3">{ctx.confirmModal.icon || '⚠️'}</div>
-              <h3 className="text-base font-bold text-gray-900 mb-2">{ctx.confirmModal.title}</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">{ctx.confirmModal.message}</p>
-            </div>
-            <div className="flex border-t border-gray-200">
-              <button onClick={() => ctx.setConfirmModal(null)}
-                className="flex-1 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 transition border-r border-gray-200">
+        <CoachModal
+          onClose={() => ctx.setConfirmModal(null)}
+          title={ctx.confirmModal.title}
+          description={ctx.confirmModal.message}
+          icon={ctx.confirmModal.icon || '⚠️'}
+          maxWidth="max-w-md"
+          footer={(
+            <>
+              <button onClick={() => ctx.setConfirmModal(null)} className={MODAL_SECONDARY_BUTTON}>
                 Anulează
               </button>
-              <button onClick={ctx.confirmModal.onConfirm} disabled={ctx.busy}
-                className={`flex-1 px-4 py-3 text-sm font-bold transition disabled:opacity-50 ${
-                  ctx.confirmModal.color === 'orange' ? 'text-orange-600 hover:bg-orange-50' : 'text-red-600 hover:bg-red-50'
-                }`}>
+              <button
+                onClick={ctx.confirmModal.onConfirm}
+                disabled={ctx.busy}
+                className={ctx.confirmModal.color === 'orange' ? MODAL_PRIMARY_BUTTON : MODAL_DANGER_BUTTON}
+              >
                 {ctx.confirmModal.confirmLabel || 'Confirmă'}
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          )}
+        />
       )}
 
       {/* ═══ WEIGHT MODAL (fight categories) ═══ */}
       {ctx.weightModal && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => ctx.setWeightModal(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-5">
-              <h3 className="text-sm font-bold text-gray-900 mb-1">Greutate sportiv</h3>
-              <p className="text-xs text-gray-500 mb-3">
-                Introdu greutatea pentru <strong>{ctx.weightModal.athleteName}</strong> (categorie de luptă)
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="200"
-                  value={ctx.weightValue}
-                  onChange={(e) => ctx.setWeightValue(e.target.value)}
-                  placeholder="ex: 65.5"
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-                  autoFocus
-                  onKeyDown={(e) => { if (e.key === 'Enter') ctx.handleWeightSubmit(); }}
-                />
-                <span className="text-sm text-gray-500">kg</span>
-              </div>
-            </div>
-            <div className="flex border-t border-gray-200">
-              <button onClick={() => ctx.setWeightModal(null)}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition border-r border-gray-200">
+        <CoachModal
+          onClose={() => ctx.setWeightModal(null)}
+          title="Greutate sportiv"
+          description={`Introdu greutatea pentru ${ctx.weightModal.athleteName} înainte de înscriere.`}
+          icon="KG"
+          maxWidth="max-w-sm"
+          footer={(
+            <>
+              <button onClick={() => ctx.setWeightModal(null)} className={MODAL_SECONDARY_BUTTON}>
                 Anulează
               </button>
-              <button onClick={ctx.handleWeightSubmit} disabled={ctx.busy}
-                className="flex-1 px-4 py-2.5 text-sm font-bold text-blue-600 hover:bg-blue-50 transition disabled:opacity-50">
+              <button onClick={ctx.handleWeightSubmit} disabled={ctx.busy} className={MODAL_PRIMARY_BUTTON}>
                 Înscrie
               </button>
-            </div>
+            </>
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="200"
+              value={ctx.weightValue}
+              onChange={(e) => ctx.setWeightValue(e.target.value)}
+              placeholder="ex: 65.5"
+              className="frvv-input flex-1"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') ctx.handleWeightSubmit(); }}
+            />
+            <span className="inline-flex h-11 items-center border border-black bg-gray-100 px-3 text-sm font-bold text-gray-700">kg</span>
           </div>
-        </div>
+        </CoachModal>
       )}
 
-      {/* ═══ ENROLLMENT PICKER POPOVER ═══ */}
+      {/* ═══ ENROLLMENT MODAL ═══ */}
       {ctx.enrollPickerCell && (() => {
-        const { clubId, catId, rect } = ctx.enrollPickerCell;
+        const { clubId, catId } = ctx.enrollPickerCell;
         const clubName = ctx.clubs.find(c => c.id === clubId)?.name || '—';
-        const cat = ctx.categories.find(c => c.id === catId);
+        const cat = activeEnrollCategory;
         const catName = cat?.name || '—';
+        const isTeamCategory = isTeamCategoryType(cat?.type);
         const isFightCat = cat?.type === 'fight' || cat?.category_type === 'fight';
         const allClubAthletes = ctx.clubAthleteCache[clubId] || [];
         const isLoading = !ctx.clubAthleteCache[clubId];
+        const enrolledTeams = Array.isArray(cat?.enrolled_teams) ? cat.enrolled_teams : [];
         const enrolledIds = new Set(
           (cat?.enrolled_athletes || [])
             .filter(ea => {
@@ -145,31 +133,65 @@ export default function CompetitionCentralizator() {
           : allClubAthletes;
 
         const outOfRangeCount = hasDateRange ? allClubAthletes.length - athleteList.length : 0;
-
-        const top = Math.min(rect.bottom + 4, window.innerHeight - 360);
-        const left = Math.min(rect.left, window.innerWidth - 280);
+        const selectedAthletes = athleteList.filter((ath) => teamSelection.includes(ath.id));
+        const selectedSignature = [...teamSelection].sort((a, b) => a - b).join('-');
+        const duplicateTeam = enrolledTeams.find((team) => {
+          const memberSignature = (team.members || []).map((member) => member.id).sort((a, b) => a - b).join('-');
+          return memberSignature && memberSignature === selectedSignature;
+        });
+        const canSaveTeam = isTeamCategory && teamSelection.length >= 2 && !duplicateTeam && !ctx.busy && !ctx.teamBuilderBusy;
+        const canEnrollFightAthlete = (athleteId) => {
+          const rawWeight = fightWeights[athleteId];
+          if (rawWeight == null || rawWeight === '') return false;
+          const parsed = Number(rawWeight);
+          return Number.isFinite(parsed) && parsed > 0;
+        };
 
         return (
-          <div ref={ctx.enrollPickerRef}
-            onClick={(e) => e.stopPropagation()}
-            className="fixed z-[100] w-72 rounded-lg border border-gray-200 bg-white shadow-2xl"
-            style={{ top, left }}
+          <CoachModal
+            onClose={() => ctx.setEnrollPickerCell(null)}
+            title={clubName}
+            description={isFightCat ? 'Adaugă sportivi din clubul tău și completează greutatea direct în formular.' : 'Selectează sportivii eligibili din clubul tău pentru această categorie.'}
+            icon={isTeamCategory ? 'TM' : isFightCat ? 'KG' : 'AT'}
+            maxWidth="max-w-3xl"
+            panelRef={ctx.enrollPickerRef}
+            headerExtra={(
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="frvv-chip">{ctx.groups.find((group) => group.id === cat?.group)?.name || 'Grupă'}</span>
+                <span className="frvv-chip">{catName}</span>
+                <span className="frvv-chip">{TYPE_LABELS[cat?.type] || cat?.category_type || 'Categorie'}</span>
+                {isTeamCategory && <span className="frvv-chip">Construire echipă</span>}
+              </div>
+            )}
+            footer={(
+              <>
+                <button onClick={() => ctx.setEnrollPickerCell(null)} className={MODAL_SECONDARY_BUTTON}>
+                  Închide
+                </button>
+                {isTeamCategory && (
+                  <button
+                    type="button"
+                    onClick={() => ctx.createTeamEnrollment(catId, teamSelection)}
+                    disabled={!canSaveTeam}
+                    className={MODAL_PRIMARY_BUTTON}
+                  >
+                    {ctx.teamBuilderBusy ? 'Se înrolează...' : 'Înrolează echipa'}
+                  </button>
+                )}
+              </>
+            )}
           >
-            <div className="p-2 border-b border-gray-100">
-              <p className="text-[10px] font-bold text-gray-700 uppercase tracking-wide truncate">{clubName}</p>
-              <p className="text-[9px] text-gray-400 truncate">{catName}</p>
-              {isFightCat && <p className="text-[8px] text-orange-500 mt-0.5">🥊 Categorie de luptă — se va cere greutatea</p>}
+            <div className="space-y-4">
               {hasDateRange && (
-                <p className="text-[8px] text-blue-500 mt-0.5">
+                <div className="border border-black/10 bg-yellow-50 px-3 py-2 text-xs text-gray-700">
                   Născuți {dateStart} – {allowYounger ? '∞ (tineri acceptați)' : dateEnd}
-                </p>
+                </div>
               )}
-            </div>
-            <div className="max-h-56 overflow-y-auto">
+              <div className="max-h-[52vh] overflow-y-auto border-2 border-black/10 bg-white">
               {isLoading ? (
-                <div className="p-4 text-center text-[10px] text-gray-400">Se încarcă…</div>
+                <div className="p-6 text-center text-sm text-gray-500">Se încarcă…</div>
               ) : athleteList.length === 0 ? (
-                <div className="p-4 text-center text-[10px] text-gray-400 italic">
+                <div className="p-6 text-center text-sm text-gray-500 italic">
                   {hasDateRange
                     ? `Niciun sportiv din clubul tău nu se încadrează în intervalul de vârstă (${outOfRangeCount} exclu${outOfRangeCount === 1 ? 's' : 'și'}).`
                     : 'Niciun sportiv în clubul tău.'}
@@ -177,41 +199,156 @@ export default function CompetitionCentralizator() {
               ) : (
                 athleteList.map(ath => {
                   const isEnrolled = enrolledIds.has(ath.id);
+                  const isSelected = teamSelection.includes(ath.id);
                   const dob = ath.date_of_birth;
+                  const fightWeight = fightWeights[ath.id] ?? '';
+
+                  if (isFightCat && !isTeamCategory) {
+                    return (
+                      <div
+                        key={ath.id}
+                        className={`grid gap-3 border-b border-black/10 px-4 py-3 md:grid-cols-[minmax(0,1fr)_140px_120px] md:items-center ${isEnrolled ? 'bg-green-50' : 'hover:bg-yellow-50'}`}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-base font-semibold text-gray-900">{ath.last_name} {ath.first_name}</div>
+                          <div className="truncate text-xs text-gray-500">{ath.club?.name || 'Fără club'}{dob ? ` · ${dob}` : ''}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="200"
+                            step="0.1"
+                            value={fightWeight}
+                            onChange={(e) => setFightWeights((prev) => ({ ...prev, [ath.id]: e.target.value }))}
+                            placeholder="Greutate"
+                            className="frvv-input w-full"
+                            disabled={ctx.busy || isEnrolled}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !isEnrolled && canEnrollFightAthlete(ath.id)) {
+                                ctx.handleToggleEnroll(ath.id, catId, fightWeight);
+                              }
+                            }}
+                          />
+                          <span className="text-xs font-bold uppercase tracking-wide text-gray-500">kg</span>
+                        </div>
+                        <div className="flex items-center justify-end">
+                          {isEnrolled ? (
+                            <span className="inline-flex items-center border border-green-600 bg-green-100 px-3 py-2 text-xs font-black uppercase tracking-wide text-green-700">
+                              Înscris
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => ctx.handleToggleEnroll(ath.id, catId, fightWeight)}
+                              disabled={ctx.busy || !canEnrollFightAthlete(ath.id)}
+                              className={MODAL_PRIMARY_BUTTON}
+                            >
+                              Adaugă
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <button key={ath.id}
-                      onClick={() => ctx.handleToggleEnroll(ath.id, catId)}
-                      disabled={ctx.busy}
-                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors disabled:opacity-50 ${
-                        isEnrolled
-                          ? 'bg-green-50 hover:bg-green-100 text-gray-800'
-                          : 'hover:bg-gray-50 text-gray-600'
+                      onClick={() => {
+                        if (isTeamCategory) {
+                          setTeamSelection((prev) => prev.includes(ath.id) ? prev.filter((id) => id !== ath.id) : [...prev, ath.id]);
+                          return;
+                        }
+                        ctx.handleToggleEnroll(ath.id, catId);
+                      }}
+                      disabled={ctx.busy || ctx.teamBuilderBusy}
+                      className={`w-full flex items-center gap-3 border-b border-black/10 px-4 py-3 text-left transition-colors disabled:opacity-50 ${
+                        isTeamCategory
+                          ? isSelected
+                            ? 'bg-blue-50 hover:bg-blue-100 text-gray-800'
+                            : 'hover:bg-yellow-50 text-gray-700'
+                          : isEnrolled
+                            ? 'bg-green-50 hover:bg-green-100 text-gray-800'
+                            : 'hover:bg-yellow-50 text-gray-700'
                       }`}
                     >
-                      <span className={`inline-flex items-center justify-center w-4 h-4 rounded border text-[9px] font-bold ${
-                        isEnrolled
-                          ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 text-transparent'
+                      <span className={`inline-flex h-6 w-6 items-center justify-center border text-sm font-bold ${
+                        isTeamCategory
+                          ? isSelected
+                            ? 'bg-blue-500 border-blue-500 text-white'
+                            : 'border-gray-300 text-transparent'
+                          : isEnrolled
+                            ? 'bg-green-500 border-green-500 text-white'
+                            : 'border-gray-300 text-transparent'
                       }`}>✓</span>
-                      <span className="truncate flex-1">{ath.last_name} {ath.first_name}</span>
-                      {dob && <span className="text-[8px] text-gray-400 shrink-0">{dob}</span>}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-base font-semibold">{ath.last_name} {ath.first_name}</span>
+                        <span className="block truncate text-xs text-gray-500">{ath.club?.name || 'Fără club'}{dob ? ` · ${dob}` : ''}</span>
+                      </span>
                     </button>
                   );
                 })
               )}
-            </div>
-            {outOfRangeCount > 0 && (
-              <div className="px-2 py-1 border-t border-gray-100 text-[8px] text-gray-400">
-                {outOfRangeCount} sportiv{outOfRangeCount === 1 ? '' : 'i'} din club nu se încadrează în vârstă
               </div>
-            )}
-            <div className="p-1.5 border-t border-gray-100 text-center">
-              <button onClick={() => ctx.setEnrollPickerCell(null)}
-                className="text-[9px] text-gray-400 hover:text-gray-600 transition">Închide</button>
+              {outOfRangeCount > 0 && (
+                <div className="border border-black/10 bg-yellow-50 px-3 py-2 text-xs text-gray-600">
+                  {outOfRangeCount} sportiv{outOfRangeCount === 1 ? '' : 'i'} din club nu se încadrează în vârstă
+                </div>
+              )}
+              {isTeamCategory && (
+                <div className="border border-black/10 bg-blue-50 px-4 py-3">
+                  <div className="text-xs font-bold uppercase tracking-wide text-gray-700">Echipă selectată</div>
+                  <div className="mt-1 text-sm text-gray-700">
+                    {selectedAthletes.length > 0
+                      ? selectedAthletes.map((ath) => `${ath.first_name} ${ath.last_name}`).join(' & ')
+                      : 'Selectează minimum 2 sportivi.'}
+                  </div>
+                  {duplicateTeam && (
+                    <div className="mt-2 text-xs font-semibold text-red-600">
+                      Echipa este deja înscrisă în această categorie.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
+          </CoachModal>
         );
       })()}
+    </div>
+  );
+}
+
+function CoachModal({ onClose, title, description, icon = 'FR', maxWidth = 'max-w-md', headerExtra = null, footer = null, panelRef = null, children = null }) {
+  return (
+    <div className="fixed inset-0 z-[320] flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
+      <div
+        ref={panelRef}
+        onClick={(e) => e.stopPropagation()}
+        className={`flex max-h-[88vh] w-full ${maxWidth} flex-col overflow-hidden border-2 border-black bg-white shadow-2xl`}
+      >
+        <div className="flex items-start justify-between gap-4 border-b-2 border-black bg-yellow-300 px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-gray-700">Panou antrenor</p>
+            <h3 className="mt-1 truncate text-xl font-black text-gray-900">{title}</h3>
+            {description ? <p className="mt-2 text-sm leading-6 text-gray-700">{description}</p> : null}
+            {headerExtra}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center border-2 border-black bg-white text-sm font-black uppercase text-gray-900">
+              {icon}
+            </span>
+            <button onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center border-2 border-black bg-white text-lg font-black text-gray-700 transition hover:bg-yellow-100 hover:text-black">
+              ×
+            </button>
+          </div>
+        </div>
+        {children ? <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div> : null}
+        {footer ? (
+          <div className="flex flex-col-reverse gap-2 border-t-2 border-black bg-gray-50 px-5 py-4 sm:flex-row sm:justify-end">
+            {footer}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -220,219 +357,226 @@ export default function CompetitionCentralizator() {
 /* ═══════════════════════════════════════════════════════
    CENTRALIZATOR TABLE — coach's own club only
    ═══════════════════════════════════════════════════════ */
-function CentralizatorTable({ ctx }) {
-  const {
-    myClubId,
-    columnStructure, allCols, clubRows, countPerCat, groups,
-    enrollPickerCell, busy,
-    handleCellClick, handleUnenroll,
-  } = ctx;
-
-  const totalColSpan = 1
-    + columnStructure.reduce((sum, col) => sum + 1 + Math.max(col.cats.length, 1), 0)
-    + 1;
+function CentralizatorTable({ ctx, onBack }) {
+  const [activeTab, setActiveTab] = useState('tehnica');
 
   return (
-    <div className="flex-1 overflow-auto bg-gray-100">
-      <table className="border-collapse text-[11px] w-max min-w-full">
+    <div className="flex-1 overflow-auto bg-white p-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <button
+            onClick={onBack}
+            className="mb-3 inline-flex items-center gap-2 border border-black bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-gray-700 transition hover:bg-yellow-100 hover:text-black"
+          >
+            <span aria-hidden="true">←</span>
+            Înapoi la competiții
+          </button>
+          <div className="text-sm font-black uppercase tracking-wide text-gray-900">Centralizator club</div>
+          <div className="mt-1 text-xs text-gray-500">
+            {ctx.eventData?.name || 'Competiție'}{ctx.eventDateStr ? ` · ${ctx.eventDateStr}` : ''} · {ctx.groups.length} grupe · {ctx.categories.length} categorii · {ctx.totalAthletes} sportivi
+          </div>
+        </div>
+        <div className="inline-flex w-full sm:w-auto overflow-hidden border-2 border-black bg-white">
+          <button
+            onClick={() => setActiveTab('tehnica')}
+            className={`flex-1 px-4 py-2 text-xs font-black uppercase tracking-wide transition sm:flex-none ${activeTab === 'tehnica' ? 'bg-yellow-300 text-black' : 'bg-white text-gray-700 hover:bg-yellow-100'}`}
+          >
+            Tehnica
+          </button>
+          <button
+            onClick={() => setActiveTab('lupta')}
+            className={`border-l-2 border-black flex-1 px-4 py-2 text-xs font-black uppercase tracking-wide transition sm:flex-none ${activeTab === 'lupta' ? 'bg-yellow-300 text-black' : 'bg-white text-gray-700 hover:bg-yellow-100'}`}
+          >
+            Lupta
+          </button>
+        </div>
+      </div>
 
-        {/* ═══ ROW 1: Group headers ═══ */}
-        <thead className="sticky top-0 z-20">
-          <tr>
-            <th className="sticky left-0 z-40 bg-gray-800 text-white border border-gray-600 px-2 sm:px-3 py-2 text-left font-bold text-xs min-w-[100px] sm:min-w-[140px]"
-              rowSpan={3}>
-              CLUB
-            </th>
-            {columnStructure.map((col) => (
-              <React.Fragment key={col.group.id}>
-                <th className="border-none p-0 w-1" rowSpan={3}></th>
-                <th colSpan={col.colSpan}
-                  className="bg-gray-700 text-white border border-gray-500 px-2 py-1.5 text-center font-bold text-xs whitespace-nowrap">
-                  <span>
-                    {col.group.name}
-                    {(col.group.birth_date_start || col.group.birth_year_start) && (col.group.birth_date_end || col.group.birth_year_end) && (
-                      <span className="font-normal opacity-70 text-[10px] ml-1 hidden sm:inline">
-                        ({col.group.birth_date_start
-                          ? `${col.group.birth_date_start} – ${col.group.birth_date_end}`
-                          : `${col.group.birth_year_start}–${col.group.birth_year_end}`})
-                      </span>
-                    )}
-                  </span>
-                  {col.group.allow_younger && (
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/30 text-amber-200 px-1.5 py-0.5 text-[8px] font-medium ml-1.5"
-                      title="Acceptă sportivi mai tineri">
-                      ⬆ <span className="hidden sm:inline">Tineri ✓</span>
-                    </span>
-                  )}
-                </th>
-              </React.Fragment>
-            ))}
-            <th className="border-none p-0 w-1" rowSpan={3}></th>
-          </tr>
+      {activeTab === 'tehnica' ? <CoachTehnicaView ctx={ctx} /> : <CoachLuptaView ctx={ctx} />}
+    </div>
+  );
+}
 
-          {/* ═══ ROW 2: Gender sub-headers ═══ */}
-          <tr>
-            {columnStructure.map(col =>
-              col.genderSections.length === 0
-                ? <th key={`g-empty-${col.group.id}`} className="bg-gray-100 border border-gray-300 px-1 py-1 text-center text-[9px] text-gray-400 italic">
-                    Fără categorii
-                  </th>
-                : col.genderSections.map(gs => (
-                    <th key={`${col.group.id}-${gs.gender}`} colSpan={gs.colSpan}
-                      className={`${GENDER_BG[gs.gender] || 'bg-gray-100'} border border-gray-300 px-1 py-1 text-center font-bold text-[10px] uppercase tracking-wide text-gray-700`}>
-                      {GENDER_LABELS[gs.gender] || gs.gender}
-                    </th>
-                  ))
-            )}
-          </tr>
+function CoachTehnicaView({ ctx }) {
+  const { columnStructure, myClubId, handleCellClick, handleUnenroll, busy } = ctx;
 
-          {/* ═══ ROW 3: Category names ═══ */}
-          <tr>
-            {allCols.length === 0 && columnStructure.length > 0 ? (
-              columnStructure.map(col => (
-                <th key={`empty-${col.group.id}`} className="bg-gray-50 border border-gray-300 px-1 py-1 text-center text-[9px] text-gray-300 italic min-w-[80px]">—</th>
-              ))
-            ) : (
-              allCols.map(cat => (
-                <th key={cat.id}
-                  className="bg-gray-50 border border-gray-300 px-1 py-1 text-center font-medium text-[10px] text-gray-700 min-w-[80px]"
-                  title={`${cat.name} (${TYPE_LABELS[cat.type] || cat.type})`}
-                >
-                  <div className="leading-tight whitespace-normal">
-                    {cat.name.replace(/ - (Masculin|Feminin|Mixt)/i, '')}
-                  </div>
-                </th>
-              ))
-            )}
-          </tr>
-        </thead>
+  const techGroups = useMemo(() => {
+    const seen = new Set();
+    return columnStructure
+      .map((col) => ({
+        group: col.group,
+        cats: col.cats.filter((cat) => {
+          if (seen.has(cat.id)) return false;
+          if (cat.type !== 'solo' && !isTeamCategoryType(cat.type)) return false;
+          seen.add(cat.id);
+          return true;
+        }),
+      }))
+      .filter((item) => item.cats.length > 0);
+  }, [columnStructure]);
 
-        {/* ═══ BODY ═══ */}
-        <tbody>
-          {clubRows.length === 0 ? (
-            <tr>
-              <td colSpan={totalColSpan} className="px-4 py-12 text-center text-sm text-gray-400 italic">
-                {groups.length === 0
-                  ? <><span className="text-2xl block mb-2">📋</span>Nu sunt grupe definite pentru această competiție.</>
-                  : allCols.length === 0
-                  ? 'Nu sunt categorii definite.'
-                  : 'Click pe o celulă pentru a înscrie sportivi.'}
-              </td>
-            </tr>
-          ) : (
-            clubRows.map(({ clubId, club, athletes }) => {
-              const isMyClub = clubId === myClubId;
-              const rowCount = Math.max(athletes.length, 1);
+  if (techGroups.length === 0) {
+    return <div className="py-16 text-center text-sm italic text-gray-400">Nu există categorii de tehnică.</div>;
+  }
 
-              return athletes.length === 0 ? (
-                <tr key={`club-${clubId}`} className="border-t-2 border-gray-400 hover:bg-blue-50/40 transition-colors">
-                  <td className="sticky left-0 z-10 bg-blue-50 text-blue-900 border border-gray-300 px-2 sm:px-3 py-1.5 font-bold text-xs align-middle">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate">{club}</span>
-                    </div>
-                  </td>
-                  {columnStructure.map(col => (
-                    <React.Fragment key={`grp-${col.group.id}`}>
-                      <td className="p-0 w-0 border-none"></td>
-                      {col.cats.length === 0 ? (
-                        <td className="border border-gray-200 text-gray-200"></td>
-                      ) : col.cats.map(cat => {
-                        const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
-                        return (
-                          <td key={cat.id}
-                            onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                            className={`border border-gray-200 px-1 py-1 text-center text-[10px] transition-colors cursor-pointer ${
-                              isPickerOpen ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset' : 'hover:bg-blue-50'
-                            }`}
-                          ></td>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
-                  <td className="border border-gray-100"></td>
-                </tr>
-              ) : (
-                athletes.map((ath, athIdx) => (
-                  <tr key={ath.id}
-                    className={`${athIdx === 0 ? 'border-t-2 border-gray-400' : ''} hover:bg-blue-50/40 transition-colors`}
-                  >
-                    {athIdx === 0 && (
-                      <td className="sticky left-0 z-10 bg-blue-50 text-blue-900 border border-gray-300 px-2 sm:px-3 py-1.5 font-bold text-xs align-top"
-                        rowSpan={rowCount}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate">{club}</span>
+  return (
+    <div className="space-y-6">
+      {techGroups.map(({ group, cats }) => (
+        <div key={`tech-${group.id}`} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {cats.map((cat) => {
+            const isTeamCategory = isTeamCategoryType(cat.type);
+            const enrolled = isTeamCategory
+              ? (cat.enrolled_teams || [])
+                  .filter((item) => (item.members || []).some((member) => (member.club?.id || member.club) === myClubId))
+                  .slice()
+                  .sort((a, b) => (a.team_name || '').localeCompare(b.team_name || ''))
+              : (cat.enrolled_athletes || [])
+                  .filter((item) => (item.athlete_details?.club?.id || item.athlete_details?.club) === myClubId)
+                  .slice()
+                  .sort((a, b) => {
+                    const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
+                    const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
+                    return na.localeCompare(nb);
+                  });
+
+            return (
+              <div key={cat.id} className="overflow-hidden border-2 border-black bg-white">
+                <div className="border-b border-black bg-yellow-300 px-3 py-2 text-sm font-black text-gray-900">
+                  {group.name}
+                </div>
+                <div className={`border-b border-black px-3 py-2 text-xs font-bold uppercase tracking-wide ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-900`}>
+                  {cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}
+                </div>
+                <div className="divide-y divide-gray-200">
+                  {enrolled.length === 0 ? (
+                    <div className="px-3 py-4 text-sm italic text-gray-400">{isTeamCategory ? 'Nicio echipă înscrisă.' : 'Niciun sportiv înscris.'}</div>
+                  ) : enrolled.map((entry) => {
+                    const athleteName = `${entry.athlete_details?.last_name || ''} ${entry.athlete_details?.first_name || ''}`.trim();
+                    const teamMembers = (entry.members || []).map((member) => member.name).filter(Boolean).join(' & ');
+                    const teamLabel = entry.team_name || teamMembers || 'Echipă';
+                    return (
+                      <div key={entry.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium text-gray-900">{isTeamCategory ? teamLabel : athleteName}</div>
+                          {isTeamCategory && teamMembers && teamMembers !== teamLabel && (
+                            <div className="truncate text-xs text-gray-500">{teamMembers}</div>
+                          )}
+                          {isTeamCategory && entry.club_name && <div className="truncate text-xs text-gray-400">{entry.club_name}</div>}
                         </div>
-                      </td>
-                    )}
-                    {columnStructure.map(col => (
-                      <React.Fragment key={`grp-${col.group.id}`}>
-                        <td className="p-0 w-0 border-none"></td>
-                        {col.cats.length === 0 ? (
-                          <td className="border border-gray-200 text-gray-200"></td>
-                        ) : col.cats.map(cat => {
-                          const enrollment = ath.enrollments[cat.id];
-                          const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
-                          return (
-                            <td key={cat.id}
-                              onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                              className={`border border-gray-200 px-1 py-1 text-center text-[10px] transition-colors cursor-pointer ${
-                                isPickerOpen
-                                  ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset'
-                                  : enrollment ? 'bg-green-50 text-gray-800 hover:bg-green-100' : 'hover:bg-blue-50'
-                              }`}
-                            >
-                              {enrollment ? (
-                                <span className="font-medium leading-tight block relative group/athlete" title={ath.name}>
-                                  {ath.name}
-                                  {enrollment.weight && (
-                                    <span className="block text-[8px] text-gray-400 font-normal">{enrollment.weight} kg</span>
-                                  )}
-                                  <button
-                                    onClick={(e) => handleUnenroll(enrollment.id, ath.name, cat.name, e)}
-                                    disabled={busy}
-                                    className="absolute -top-1 -right-1 hidden group-hover/athlete:inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold leading-none hover:bg-red-600 disabled:opacity-40"
-                                    title="Scoate sportivul din categorie"
-                                  >×</button>
-                                </span>
-                              ) : null}
-                            </td>
-                          );
-                        })}
-                      </React.Fragment>
-                    ))}
-                    <td className="border border-gray-100"></td>
-                  </tr>
-                ))
-              );
-            })
-          )}
-        </tbody>
+                        <button
+                          onClick={(e) => handleUnenroll(entry.id, isTeamCategory ? teamLabel : athleteName, cat.name, e, isTeamCategory ? { enrollmentType: 'team' } : undefined)}
+                          disabled={busy}
+                          className="inline-flex h-5 w-5 items-center justify-center border border-red-300 bg-red-50 text-xs font-bold text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-40"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="border-t-2 border-black p-3">
+                  <button onClick={(e) => handleCellClick(myClubId, cat.id, e)} className="frvv-btn-add w-full">
+                    <span className="frvv-btn-add-icon">+</span>
+                    {isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
 
-        {/* ═══ FOOTER ═══ */}
-        {allCols.length > 0 && (
-          <tfoot>
-            <tr className="bg-gray-100 border-t-2 border-gray-400">
-              <td className="sticky left-0 z-10 bg-gray-100 border border-gray-300 px-2 sm:px-3 py-2 font-bold text-xs text-gray-700">
-                Număr participanți
-              </td>
-              {columnStructure.map(col => (
-                <React.Fragment key={`f-${col.group.id}`}>
-                  <td className="p-0 w-0 border-none bg-gray-100"></td>
-                  {col.cats.length === 0 ? (
-                    <td className="border border-gray-300 bg-gray-100"></td>
-                  ) : col.cats.map(cat => (
-                    <td key={cat.id} className="border border-gray-300 px-1 py-2 text-center font-bold text-xs text-gray-700">
-                      {countPerCat[cat.id] || 0}
-                    </td>
-                  ))}
-                </React.Fragment>
-              ))}
-              <td className="border border-gray-100 bg-gray-100"></td>
-            </tr>
-          </tfoot>
-        )}
-      </table>
+function CoachLuptaView({ ctx }) {
+  const { columnStructure, myClubId, handleCellClick, handleUnenroll, busy } = ctx;
+
+  const fightGroups = useMemo(() => {
+    const seen = new Set();
+    return columnStructure
+      .map((col) => ({
+        group: col.group,
+        cats: col.cats.filter((cat) => {
+          if (seen.has(cat.id)) return false;
+          if (cat.type !== 'fight') return false;
+          seen.add(cat.id);
+          return true;
+        }),
+      }))
+      .filter((item) => item.cats.length > 0);
+  }, [columnStructure]);
+
+  if (fightGroups.length === 0) {
+    return <div className="py-16 text-center text-sm italic text-gray-400">Nu există categorii de luptă.</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {fightGroups.map(({ group, cats }) => (
+        <div key={`fight-${group.id}`} className="grid gap-4 md:grid-cols-2">
+          {cats.map((cat) => {
+            const enrolled = (cat.enrolled_athletes || [])
+              .filter((item) => (item.athlete_details?.club?.id || item.athlete_details?.club) === myClubId)
+              .slice()
+              .sort((a, b) => {
+                const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
+                const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
+                return na.localeCompare(nb);
+              });
+
+            return (
+              <div key={cat.id} className="overflow-hidden border-2 border-black bg-white">
+                <div className="border-b border-black bg-yellow-300 px-3 py-2 text-sm font-black text-gray-900">
+                  {group.name}
+                </div>
+                <div className={`border-b border-black px-3 py-2 text-xs font-bold uppercase tracking-wide ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-900`}>
+                  {cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}
+                </div>
+                <table className="min-w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border-b border-black px-3 py-2 text-left text-xs font-bold text-gray-700">Sportiv</th>
+                      <th className="border-b border-black px-3 py-2 text-center text-xs font-bold text-gray-700">Greutate</th>
+                      <th className="border-b border-black px-3 py-2 text-center text-xs font-bold text-gray-700"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {enrolled.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-4 text-sm italic text-gray-400">Niciun sportiv înscris.</td>
+                      </tr>
+                    ) : enrolled.map((entry) => {
+                      const athleteName = `${entry.athlete_details?.last_name || ''} ${entry.athlete_details?.first_name || ''}`.trim();
+                      return (
+                        <tr key={entry.id} className="border-b border-gray-200">
+                          <td className="px-3 py-2 font-medium text-gray-900">{athleteName}</td>
+                          <td className="px-3 py-2 text-center text-gray-600">{entry.weight || '—'}</td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              onClick={(e) => handleUnenroll(entry.id, athleteName, cat.name, e)}
+                              disabled={busy}
+                              className="inline-flex h-5 w-5 items-center justify-center border border-red-300 bg-red-50 text-xs font-bold text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-40"
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="border-t-2 border-black p-3">
+                  <button onClick={(e) => handleCellClick(myClubId, cat.id, e)} className="frvv-btn-add w-full">
+                    <span className="frvv-btn-add-icon">+</span>
+                    Adaugă sportiv
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }

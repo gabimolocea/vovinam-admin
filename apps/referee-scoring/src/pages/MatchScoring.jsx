@@ -6,6 +6,9 @@ import { Spinner } from '@shared/components/ui';
 
 const POLL_INTERVAL = 2000;
 
+const SCORE_BUTTON_BASE = 'flex w-full items-center justify-center border-2 border-black text-white font-black uppercase tracking-[0.18em] transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed';
+const MODAL_ACTION_BASE = 'flex-1 border-2 border-black px-4 py-3 text-sm font-black uppercase tracking-[0.18em] transition active:scale-[0.98] disabled:opacity-40';
+
 export default function MatchScoring() {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -17,8 +20,6 @@ export default function MatchScoring() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmWinner, setConfirmWinner] = useState(null);
-  const [decisionSubmittedAt, setDecisionSubmittedAt] = useState(null);
-  const [editCountdown, setEditCountdown] = useState(0);
   const pollRef = useRef(null);
   const [draftScores, setDraftScores] = useState({});
 
@@ -112,33 +113,8 @@ export default function MatchScoring() {
     } finally {
       setBusy(false);
       setConfirmWinner(null);
-      setDecisionSubmittedAt(Date.now());
     }
   };
-
-  // Reset decision lock when a round is reset (allRoundsDone goes from true to false)
-  const prevAllRoundsDoneRef = useRef(false);
-  useEffect(() => {
-    if (prevAllRoundsDoneRef.current && !allRoundsDone) {
-      setDecisionSubmittedAt(null);
-      setEditCountdown(0);
-    }
-    prevAllRoundsDoneRef.current = allRoundsDone;
-  }, [allRoundsDone]);
-
-  // 10-second countdown for editing decision
-  useEffect(() => {
-    if (!decisionSubmittedAt) { setEditCountdown(0); return; }
-    const tick = () => {
-      const elapsed = Math.floor((Date.now() - decisionSubmittedAt) / 1000);
-      const remaining = Math.max(0, 10 - elapsed);
-      setEditCountdown(remaining);
-      if (remaining <= 0) clearInterval(id);
-    };
-    tick();
-    const id = setInterval(tick, 500);
-    return () => clearInterval(id);
-  }, [decisionSubmittedAt]);
 
   if (loading) {
     return (
@@ -174,7 +150,6 @@ export default function MatchScoring() {
   const myGrandTotalRed = myTotalRed + adjustRed;
   const myGrandTotalBlue = myTotalBlue + adjustBlue;
 
-  const finalDecisions = refScores.filter(s => s.round == null);
   const myFinalChoice = myFinalScore
     ? (myFinalScore.red_corner_score > myFinalScore.blue_corner_score ? 'red' : 'blue')
     : null;
@@ -189,25 +164,25 @@ export default function MatchScoring() {
   const winnerPoints = confirmWinner === 'red' ? myGrandTotalRed : myGrandTotalBlue;
 
   return (
-    <div className="flex flex-col bg-gray-50 text-gray-900" style={{ height: '100dvh' }}>
+    <div className="flex flex-col bg-white text-gray-900" style={{ height: '100dvh' }}>
       {/* ── TOP: Header + VS ── */}
-      <header className="flex items-center justify-between bg-white border-b border-gray-200 px-3 py-2 shrink-0">
-        <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800 text-sm font-bold flex items-center gap-1">&larr; INAPOI</button>
-        <h1 className="font-bold text-sm text-gray-600">Meci #{matchId}</h1>
+      <header className="flex items-center justify-between border-b-2 border-yellow-400 bg-black px-3 py-2 text-white shrink-0">
+        <button onClick={() => navigate('/')} className="text-yellow-100 hover:text-yellow-300 text-sm font-bold flex items-center gap-1">&larr; INAPOI</button>
+        <h1 className="font-black text-sm uppercase tracking-wide text-yellow-200">Meci #{matchId}</h1>
         <div className="w-8" />
       </header>
 
       {/* Category, Group, Match type */}
       {(match.category_name || match.group_name || match.round) && (
-        <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-100 shrink-0 flex-wrap">
-          {match.category_name && <span className="text-xs font-bold text-gray-600 bg-gray-200 px-2 py-0.5 rounded">{match.category_name}</span>}
-          {match.group_name && <span className="text-xs font-bold text-gray-600 bg-gray-200 px-2 py-0.5 rounded">{match.group_name}</span>}
-          {match.round && <span className="text-xs font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded capitalize">{match.round}</span>}
+        <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-yellow-100 border-b-2 border-black shrink-0 flex-wrap">
+          {match.category_name && <span className="frvv-chip">{match.category_name}</span>}
+          {match.group_name && <span className="frvv-chip">{match.group_name}</span>}
+          {match.round && <span className="frvv-chip capitalize">{match.round}</span>}
         </div>
       )}
 
       {/* VS — names side by side */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 px-3 py-2 bg-white border-b border-gray-100 shrink-0">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 px-3 py-2 bg-white border-b-2 border-black shrink-0">
         <div className="text-center">
           <h2 className="text-base font-black text-red-600 leading-tight truncate">{match.red_corner_full_name || 'TBD'}</h2>
           {match.red_corner_club_name && <p className="text-[10px] text-gray-400 truncate">{match.red_corner_club_name}</p>}
@@ -299,23 +274,30 @@ export default function MatchScoring() {
 
         {/* ── WINNER DECISION ── */}
         {allRoundsDone && (
-          <div className="rounded-xl bg-white border border-gray-200 shadow-sm p-3 space-y-3 mx-3">
+          <div className="frvv-surface p-3 space-y-3 mx-3">
             <p className="text-xs text-gray-500 text-center uppercase font-bold tracking-wider">
-              {myFinalChoice ? 'Decizia ta' : 'Alege castigatorul'}
+              {myFinalChoice ? 'Decizia ta actuală' : 'Alege castigatorul'}
             </p>
-            {!myFinalChoice ? (
+            {myFinalChoice ? (
+              <div className="text-center space-y-2">
+                <span className={`inline-block border-2 border-black px-5 py-2.5 text-base font-black uppercase tracking-[0.18em] ${
+                  myFinalChoice === 'red' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
+                }`}>{myFinalChoice === 'red' ? 'Rosu' : 'Albastru'}</span>
+                <p className="text-[10px] text-gray-400 mt-1">Decizia poate fi trimisă din nou doar dacă este ștearsă de competition admin.</p>
+              </div>
+            ) : (
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => setConfirmWinner('red')} disabled={busy}
-                    className={`py-4 rounded-xl font-black text-lg uppercase tracking-wider disabled:opacity-50 transition-all shadow-sm active:scale-95 ${
-                      suggestedWinner === 'red' ? 'bg-red-500 text-white ring-4 ring-red-300 animate-pulse' : 'bg-red-100 text-red-600 border-2 border-red-300'
+                    className={`min-h-[88px] border-2 text-lg font-black uppercase tracking-[0.18em] disabled:opacity-50 transition-all active:scale-95 ${
+                      suggestedWinner === 'red' ? 'border-black bg-red-500 text-white ring-4 ring-red-300 animate-pulse' : 'border-red-300 bg-red-100 text-red-600'
                     }`}>
                     Rosu
                     {suggestedWinner === 'red' && <span className="block text-[10px] font-semibold mt-0.5 opacity-80">Scor mai mare</span>}
                   </button>
                   <button onClick={() => setConfirmWinner('blue')} disabled={busy}
-                    className={`py-4 rounded-xl font-black text-lg uppercase tracking-wider disabled:opacity-50 transition-all shadow-sm active:scale-95 ${
-                      suggestedWinner === 'blue' ? 'bg-blue-500 text-white ring-4 ring-blue-300 animate-pulse' : 'bg-blue-100 text-blue-600 border-2 border-blue-300'
+                    className={`min-h-[88px] border-2 text-lg font-black uppercase tracking-[0.18em] disabled:opacity-50 transition-all active:scale-95 ${
+                      suggestedWinner === 'blue' ? 'border-black bg-blue-500 text-white ring-4 ring-blue-300 animate-pulse' : 'border-blue-300 bg-blue-100 text-blue-600'
                     }`}>
                     Albastru
                     {suggestedWinner === 'blue' && <span className="block text-[10px] font-semibold mt-0.5 opacity-80">Scor mai mare</span>}
@@ -325,21 +307,6 @@ export default function MatchScoring() {
                   <p className="text-[10px] text-amber-600 text-center font-medium">Scor egal — alege castigatorul</p>
                 )}
               </>
-            ) : (
-              <div className="text-center space-y-2">
-                <span className={`inline-block px-5 py-2.5 rounded-xl text-base font-black shadow-sm ${
-                  myFinalChoice === 'red' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
-                }`}>{myFinalChoice === 'red' ? 'Rosu' : 'Albastru'}</span>
-                {editCountdown > 0 ? (
-                  <>
-                    <button onClick={() => { setConfirmWinner(myFinalChoice === 'red' ? 'blue' : 'red'); }} disabled={busy}
-                      className="block mx-auto text-xs text-amber-600 hover:text-amber-800 font-bold underline disabled:opacity-40">Schimba decizia ({editCountdown}s)</button>
-                    <p className="text-[10px] text-gray-400">Poți modifica în următoarele {editCountdown} secunde</p>
-                  </>
-                ) : (
-                  <p className="text-[10px] text-gray-400 mt-1">✓ Decizia a fost trimisă</p>
-                )}
-              </div>
             )}
           </div>
         )}
@@ -383,25 +350,37 @@ export default function MatchScoring() {
             {/* Buttons grid — fills remaining space */}
             <div className="grid grid-cols-2 flex-1 min-h-0">
               {/* Red +1 / +2 */}
-              <div className="flex flex-col">
+              <div className="grid grid-rows-2">
                 <button onClick={() => addPoint('red', 1)} disabled={buttonsDisabled}
-                  className="flex-1 bg-red-500 hover:bg-red-600 active:bg-red-700 active:scale-[0.98] text-white text-4xl font-black disabled:opacity-40 transition-all">
-                  +1
+                  className={`${SCORE_BUTTON_BASE} border-b-[1px] bg-red-500 text-4xl hover:bg-red-600 active:bg-red-700`}>
+                  <span className="flex flex-col items-center leading-none">
+                    <span>+1</span>
+                    <span className="mt-2 text-[11px] font-bold">ROȘU</span>
+                  </span>
                 </button>
                 <button onClick={() => addPoint('red', 2)} disabled={buttonsDisabled}
-                  className="flex-1 bg-red-600 hover:bg-red-700 active:bg-red-800 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all">
-                  +2
+                  className={`${SCORE_BUTTON_BASE} border-t-[1px] bg-red-600 text-3xl hover:bg-red-700 active:bg-red-800`}>
+                  <span className="flex flex-col items-center leading-none">
+                    <span>+2</span>
+                    <span className="mt-2 text-[11px] font-bold">ROȘU</span>
+                  </span>
                 </button>
               </div>
               {/* Blue +1 / +2 */}
-              <div className="flex flex-col">
+              <div className="grid grid-rows-2">
                 <button onClick={() => addPoint('blue', 1)} disabled={buttonsDisabled}
-                  className="flex-1 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] text-white text-4xl font-black disabled:opacity-40 transition-all">
-                  +1
+                  className={`${SCORE_BUTTON_BASE} border-b-[1px] bg-blue-500 text-4xl hover:bg-blue-600 active:bg-blue-700`}>
+                  <span className="flex flex-col items-center leading-none">
+                    <span>+1</span>
+                    <span className="mt-2 text-[11px] font-bold">ALBASTRU</span>
+                  </span>
                 </button>
                 <button onClick={() => addPoint('blue', 2)} disabled={buttonsDisabled}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 active:scale-[0.98] text-white text-3xl font-black disabled:opacity-40 transition-all">
-                  +2
+                  className={`${SCORE_BUTTON_BASE} border-t-[1px] bg-blue-600 text-3xl hover:bg-blue-700 active:bg-blue-800`}>
+                  <span className="flex flex-col items-center leading-none">
+                    <span>+2</span>
+                    <span className="mt-2 text-[11px] font-bold">ALBASTRU</span>
+                  </span>
                 </button>
               </div>
             </div>
@@ -412,7 +391,7 @@ export default function MatchScoring() {
       {/* ── CONFIRM WINNER MODAL ── */}
       {confirmWinner && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setConfirmWinner(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center space-y-5" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-sm border-2 border-black bg-white p-6 text-center space-y-5" onClick={e => e.stopPropagation()}>
             <p className="text-sm font-bold text-gray-500 uppercase tracking-wider">Confirmă decizia</p>
             <p className="text-base text-gray-700">
               Câștigător:{' '}
@@ -422,11 +401,11 @@ export default function MatchScoring() {
               {' '}({winnerPoints} puncte)
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setConfirmWinner(null)} className="flex-1 py-3 rounded-xl text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition active:scale-95">
+              <button onClick={() => setConfirmWinner(null)} className={`${MODAL_ACTION_BASE} bg-white text-gray-700 hover:bg-yellow-100`}>
                 Anulează
               </button>
               <button onClick={() => submitFinalDecision(confirmWinner)} disabled={busy}
-                className={`flex-1 py-3 rounded-xl text-sm font-bold text-white transition disabled:opacity-40 active:scale-95 ${
+                className={`${MODAL_ACTION_BASE} text-white ${
                   confirmWinner === 'red' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
                 }`}>
                 ✓ Confirmă

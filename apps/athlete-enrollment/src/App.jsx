@@ -15,7 +15,7 @@ export default function App() {
     <Routes>
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage title="Athlete Portal" />}
+        element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage title="Portal sportivi" />}
       />
       <Route path="/" element={isAuthenticated ? <Layout /> : <Navigate to="/login" replace />}>
         <Route index element={<EventsList />} />

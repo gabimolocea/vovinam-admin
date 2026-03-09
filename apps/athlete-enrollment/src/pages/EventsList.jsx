@@ -23,12 +23,12 @@ export default function EventsList() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-gray-900">Available Events</h2>
+      <h2 className="text-xl font-black uppercase tracking-wide text-black">Available Events</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         {events.map((ev) => (
           <Card
             key={ev.id}
-            className="cursor-pointer transition-shadow hover:shadow-md"
+            className="cursor-pointer transition-transform hover:-translate-y-0.5"
           >
             <div onClick={() => navigate(`/events/${ev.id}/categories`)}>
               <div className="flex items-start justify-between">
@@ -37,7 +37,7 @@ export default function EventsList() {
               </div>
               <p className="mt-1 text-sm text-gray-500">{ev.location}</p>
               <p className="mt-2 text-xs text-gray-400">📅 {ev.start_date}{ev.end_date ? ` → ${ev.end_date}` : ''}</p>
-              <p className="mt-3 text-sm font-medium text-blue-600">View categories →</p>
+              <p className="mt-3 inline-flex items-center border border-black bg-yellow-200 px-2 py-1 text-sm font-bold text-black">View categories →</p>
             </div>
           </Card>
         ))}

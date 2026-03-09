@@ -503,29 +503,29 @@ export default function CategoriesPage() {
   const totalColSpan = 1 + (allCols.length || columnStructure.length) + columnStructure.length + 1;
 
   return (
-    <div className="flex h-screen flex-col bg-gray-100">
+    <div className="flex h-screen flex-col bg-white">
       {/* ═══ TOP BAR ═══ */}
-      <div className="flex items-center justify-between border-b border-gray-300 bg-white px-3 py-1.5 shrink-0">
+      <div className="flex items-center justify-between border-b-2 border-yellow-400 bg-black px-3 py-2 shrink-0 text-white">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(`/competitions/${eventId}`)}
-            className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition">
+            className="border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold text-gray-700 transition hover:bg-yellow-300 hover:text-black">
             ← Înapoi
           </button>
-          <div className="h-4 w-px bg-gray-300" />
-          <h1 className="text-sm font-bold text-gray-900">
+          <div className="h-4 w-px bg-yellow-400/30" />
+          <h1 className="text-sm font-black uppercase tracking-wide text-yellow-200">
             {activeSheet === 'centralizator' ? 'Centralizator' : activeSheet === 'tehnica' ? 'Tehnică' : 'Luptă'}
           </h1>
-          <span className="text-xs text-gray-400">{eventData?.name || `Competiția #${eventId}`}</span>
-          {eventDateStr && <span className="text-[10px] text-blue-500 bg-blue-50 rounded px-1.5 py-0.5">📅 {eventDateStr}</span>}
+          <span className="text-xs text-yellow-100/75">{eventData?.name || `Competiția #${eventId}`}</span>
+          {eventDateStr && <span className="border border-yellow-400 bg-yellow-300 px-1.5 py-0.5 text-[10px] font-bold text-black">📅 {eventDateStr}</span>}
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          <span className="text-gray-500">{groups.length} grupe</span>
-          <span className="text-gray-300">·</span>
-          <span className="text-gray-500">{categories.length} categorii</span>
-          <span className="text-gray-300">·</span>
-          <span className="text-gray-500">{clubs.length} cluburi</span>
-          <span className="text-gray-300">·</span>
-          <span className="font-semibold text-blue-600">{totalAthletes} sportivi</span>
+          <span className="text-yellow-100/75">{groups.length} grupe</span>
+          <span className="text-yellow-400/40">·</span>
+          <span className="text-yellow-100/75">{categories.length} categorii</span>
+          <span className="text-yellow-400/40">·</span>
+          <span className="text-yellow-100/75">{clubs.length} cluburi</span>
+          <span className="text-yellow-400/40">·</span>
+          <span className="font-semibold text-yellow-300">{totalAthletes} sportivi</span>
         </div>
       </div>
 
@@ -549,7 +549,7 @@ export default function CategoriesPage() {
                       <div className="absolute inset-y-0 -left-2 -right-2 z-30 flex items-center justify-center">
                         <button
                           onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: ci }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
-                          className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-full bg-blue-500 text-white text-[9px] font-semibold shadow-lg px-2.5 py-1 transition-all hover:scale-105 hover:bg-blue-600 whitespace-nowrap"
+                          className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 border border-black bg-yellow-300 text-[9px] font-bold text-black shadow-lg px-2.5 py-1 transition-all hover:scale-105 hover:bg-yellow-400 whitespace-nowrap"
                           title="Adaugă grupă aici"
                         >+ Adaugă grupă</button>
                       </div>
@@ -564,7 +564,7 @@ export default function CategoriesPage() {
                       onDragEnd={handleDragEnd}
                       className={`bg-gray-700 text-white border border-gray-500 px-2 py-1.5 text-center font-bold text-xs whitespace-nowrap relative cursor-grab active:cursor-grabbing transition-all ${
                         dragType === 'group' && dragId === col.group.id ? 'opacity-40 scale-95' : ''
-                      } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-blue-400 ring-inset' : ''}`}>
+                      } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-yellow-300 ring-inset' : ''}`}>
                       <div className="flex items-center justify-center gap-1.5">
                         <span className="opacity-40 text-[10px] select-none">⠿</span>
                         {editingGroupId === col.group.id ? (
@@ -686,7 +686,7 @@ export default function CategoriesPage() {
                         </span>
                       )}
                       <button onClick={() => handleDeleteCat(cat.id)} disabled={busy}
-                        className="absolute -top-2 -right-2 hidden group-hover/cat:inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold leading-none hover:bg-red-600"
+                        className="absolute -top-2 -right-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-red-200 bg-red-100 text-xs font-bold leading-none text-red-600 transition-colors hover:bg-red-500 hover:text-white disabled:opacity-40 sm:hidden sm:group-hover/cat:inline-flex sm:border-0 sm:bg-red-500 sm:text-white"
                         title="Șterge categoria">×</button>
                     </div>
                   </th>
@@ -791,12 +791,12 @@ export default function CategoriesPage() {
                                 {enrollment ? (
                                   <span className="font-medium leading-tight block relative group/athlete" title={ath.name}>
                                     {ath.name}
-                                    <button
-                                      onClick={(e) => handleUnenroll(enrollment.id, ath.name, cat.name, e)}
-                                      disabled={busy}
-                                      className="absolute -top-1 -right-1 hidden group-hover/athlete:inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold leading-none hover:bg-red-600 disabled:opacity-40"
-                                      title="Scoate sportivul din categorie"
-                                    >×</button>
+                                      <button
+                                        onClick={(e) => handleUnenroll(enrollment.id, ath.name, cat.name, e)}
+                                        disabled={busy}
+                                        className="absolute -top-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-red-200 bg-red-100 text-[8px] font-bold leading-none text-red-600 transition-colors hover:bg-red-500 hover:text-white disabled:opacity-40 sm:hidden sm:group-hover/athlete:inline-flex sm:border-0 sm:bg-red-500 sm:text-white"
+                                        title="Scoate sportivul din categorie"
+                                      >×</button>
                                   </span>
                                 ) : null}
                               </td>
@@ -825,7 +825,7 @@ export default function CategoriesPage() {
                     {col.cats.length === 0 ? (
                       <td className="border border-gray-300 bg-gray-100"></td>
                     ) : col.cats.map(cat => (
-                      <td key={cat.id} className="border border-gray-300 px-1 py-2 text-center font-bold text-xs text-gray-700">
+                      <td key={cat.id} className={`border px-1 py-2 text-center font-bold text-xs ${((countPerCat[cat.id] || 0) < 3) ? 'border-red-300 bg-red-100 text-red-700' : 'border-gray-300 text-gray-700'}`}>
                         {countPerCat[cat.id] || 0}
                       </td>
                     ))}
@@ -948,7 +948,7 @@ export default function CategoriesPage() {
                                           <button
                                             onClick={(e) => handleUnenroll(ath.id, athleteName, cat.name, e)}
                                             disabled={busy}
-                                            className="hidden group-hover/ath:inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none hover:bg-red-600 disabled:opacity-40 shrink-0 ml-1"
+                                            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-500 text-[9px] font-bold leading-none hover:bg-red-500 hover:text-white disabled:opacity-40 shrink-0 ml-1 transition-colors"
                                             title="Scoate sportivul din categorie"
                                           >×</button>
                                         </span>
@@ -969,7 +969,7 @@ export default function CategoriesPage() {
                                   onClick={(e) => handleCellClick(null, cat.id, e)}
                                 >
                                   <span className="hidden group-hover/add:inline-flex items-center gap-1 text-[10px] text-blue-500 font-medium">
-                                    <span className="text-blue-400">＋</span> Adaugă sportiv
+                                    <span className="text-blue-400">＋</span> {(cat.type === 'team' || cat.type === 'teams') ? 'Adaugă echipă' : 'Adaugă sportiv'}
                                   </span>
                                 </td>
                               </React.Fragment>
@@ -982,7 +982,7 @@ export default function CategoriesPage() {
                                 <td className="border border-gray-500 px-2 py-1.5 font-bold text-[10px] text-gray-700 bg-gray-100 text-center">
                                   TOTAL
                                 </td>
-                                <td className="border border-gray-500 px-2 py-1.5 font-bold text-xs text-gray-900 bg-gray-100">
+                                <td className={`border border-gray-500 px-2 py-1.5 font-bold text-xs ${((cat.enrolled_athletes?.length || 0) < 3) ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-900'}`}>
                                   {cat.enrolled_athletes?.length || 0}
                                 </td>
                               </React.Fragment>
@@ -1115,7 +1115,7 @@ export default function CategoriesPage() {
                                 </td>
                               )}
                               {row.isFirstInCat && (
-                                <td className="border border-gray-400 px-2 py-1 text-center text-[10px] font-semibold text-gray-700 bg-gray-50"
+                                  <td className={`border border-gray-400 px-2 py-1 text-center text-[10px] font-semibold ${((row.enrolledCount || 0) < 3) ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-700'}`}
                                   rowSpan={row.enrolledCount || 1}>
                                   {row.catLabel}
                                 </td>
@@ -1172,7 +1172,7 @@ export default function CategoriesPage() {
       )}
 
       {/* ═══ BOTTOM TAB BAR (Google Sheets style) ═══ */}
-      <div className="shrink-0 flex items-center border-t border-gray-300 bg-gray-200 px-1 h-9 gap-0.5 select-none">
+      <div className="shrink-0 flex items-center border-t-2 border-yellow-400 bg-black px-1 h-10 gap-0.5 select-none">
         {[
           { key: 'centralizator', label: 'CENTRALIZATOR', icon: '📊' },
           { key: 'tehnica',       label: 'Tehnica',       icon: '🥋' },
@@ -1181,10 +1181,10 @@ export default function CategoriesPage() {
           <button
             key={tab.key}
             onClick={() => setActiveSheet(tab.key)}
-            className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-t-md text-xs font-semibold transition-all border border-b-0 ${
+            className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all border border-b-0 ${
               activeSheet === tab.key
-                ? 'bg-white text-gray-900 border-gray-300 shadow-sm -mb-px z-10'
-                : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-50 hover:text-gray-700'
+                ? 'bg-yellow-300 text-black border-yellow-400 shadow-sm -mb-px z-10'
+                : 'bg-white text-gray-700 border-yellow-400/60 hover:bg-yellow-200 hover:text-black'
             }`}
           >
             <span className="text-sm">{tab.icon}</span>
@@ -1192,7 +1192,7 @@ export default function CategoriesPage() {
           </button>
         ))}
         <div className="flex-1" />
-        <span className="text-[10px] text-gray-400 pr-2">
+        <span className="text-[10px] text-yellow-100/75 pr-2">
           {groups.length} grupe · {categories.length} categorii · {totalAthletes} sportivi
         </span>
       </div>
@@ -1211,26 +1211,26 @@ export default function CategoriesPage() {
                 <input required value={groupForm.name}
                   onChange={e => setGroupForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="ex: U16 Special, Masters 40+"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" autoFocus />
+                  className="frvv-input w-full" autoFocus />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Data nașterii — de la</label>
                   <input type="date" value={groupForm.birth_date_start}
                     onChange={e => setGroupForm(f => ({ ...f, birth_date_start: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
+                    className="frvv-input w-full" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Data nașterii — până la</label>
                   <input type="date" value={groupForm.birth_date_end}
                     onChange={e => setGroupForm(f => ({ ...f, birth_date_end: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
+                    className="frvv-input w-full" />
                 </div>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={groupForm.allow_younger}
                   onChange={e => setGroupForm(f => ({ ...f, allow_younger: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  className="border border-black text-yellow-500 focus:ring-0" />
                 <span className="text-xs text-gray-700">Permite sportivi mai tineri să urce la categorie superioară</span>
               </label>
               {eventDateStr && (
@@ -1238,9 +1238,9 @@ export default function CategoriesPage() {
               )}
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setGroupModal(null)}
-                  className="rounded-lg px-4 py-2 text-xs text-gray-600 hover:bg-gray-100 transition">Anulează</button>
+                  className="frvv-btn-secondary text-xs">Anulează</button>
                 <button type="submit" disabled={busy}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition">Creează grupă</button>
+                  className="frvv-btn-primary text-xs">Creează grupă</button>
               </div>
             </form>
           </div>
@@ -1261,14 +1261,14 @@ export default function CategoriesPage() {
                 <input required value={catForm.name}
                   onChange={e => setCatForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="ex: Quyền Duo Mixt"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" autoFocus />
+                  className="frvv-input w-full" autoFocus />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Tip</label>
                   <select value={catForm.category_type}
                     onChange={e => setCatForm(f => ({ ...f, category_type: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                    className="frvv-input w-full">
                     <option value="solo">Solo (Quyền)</option>
                     <option value="team">Echipă (Song Luyện / Đa Luyện)</option>
                     <option value="fight">Luptă (Đối Kháng)</option>
@@ -1278,7 +1278,7 @@ export default function CategoriesPage() {
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Gen</label>
                   <select value={catForm.gender}
                     onChange={e => setCatForm(f => ({ ...f, gender: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                    className="frvv-input w-full">
                     <option value="male">Masculin</option>
                     <option value="female">Feminin</option>
                     <option value="mixt">Mixt</option>
@@ -1287,9 +1287,9 @@ export default function CategoriesPage() {
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setCatModal(null)}
-                  className="rounded-lg px-4 py-2 text-xs text-gray-600 hover:bg-gray-100 transition">Anulează</button>
+                  className="frvv-btn-secondary text-xs">Anulează</button>
                 <button type="submit" disabled={busy}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition">Creează categorie</button>
+                  className="frvv-btn-primary text-xs">Creează categorie</button>
               </div>
             </form>
           </div>

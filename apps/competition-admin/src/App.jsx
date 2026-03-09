@@ -7,7 +7,11 @@ import CompetitionForm from './pages/CompetitionForm';
 import CategoriesLayout from './pages/CategoriesLayout';
 import CentralizatorPage from './pages/CentralizatorPage';
 import TehnicaPage from './pages/TehnicaPage';
+import ClasamentLayout from './pages/ClasamentLayout';
+import ClasamenteTehnicaPage from './pages/ClasamenteTehnicaPage';
+import ClasamentCluburiPage from './pages/ClasamentCluburiPage';
 import LuptaPage from './pages/LuptaPage';
+import ClasamenteLuptaPage from './pages/ClasamenteLuptaPage';
 import ProgramarePage from './pages/ProgramarePage';
 import ArbitriPage from './pages/ArbitriPage';
 import BracketPage from './pages/BracketPage';
@@ -25,7 +29,7 @@ export default function App() {
       <Route
         path="/login"
         element={
-          isAuthenticated ? <Navigate to="/" replace /> : <LoginPage title="Competition Admin" />
+          isAuthenticated ? <Navigate to="/" replace /> : <LoginPage title="Administrare competiții" />
         }
       />
 
@@ -58,6 +62,12 @@ export default function App() {
         <Route path="programare" element={<ProgramarePage />} />
         <Route path="arbitri" element={<ArbitriPage />} />
         <Route path="live" element={<LivePage />} />
+        <Route path="clasament" element={<ClasamentLayout />}>
+          <Route index element={<Navigate to="tehnica" replace />} />
+          <Route path="tehnica" element={<ClasamenteTehnicaPage />} />
+          <Route path="lupta" element={<ClasamenteLuptaPage />} />
+          <Route path="cluburi" element={<ClasamentCluburiPage />} />
+        </Route>
       </Route>
 
       {/* Fullscreen live view — outside CategoriesLayout, no bottom tabs */}

@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CentralizatorContext, GENDER_LABELS, GENDER_BG } from './CategoriesLayout';
 import {
   fieldAPI, matchAPI,
@@ -10,9 +10,9 @@ import {
 } from '@shared/lib/api';
 
 const TYPE_BADGES = {
-  solo: { label: 'Solo', bg: 'bg-purple-100 text-purple-700' },
-  team: { label: 'Echipă', bg: 'bg-teal-100 text-teal-700' },
-  fight: { label: 'Luptă', bg: 'bg-red-100 text-red-700' },
+  solo: { label: 'Solo', bg: 'border border-black bg-yellow-300 text-black' },
+  team: { label: 'Echipă', bg: 'border border-black bg-yellow-300 text-black' },
+  fight: { label: 'Luptă', bg: 'border border-black bg-yellow-300 text-black' },
 };
 
 const ROUND_LABELS = {
@@ -22,6 +22,11 @@ const ROUND_LABELS = {
   'finals': 'Finală',
   'bronze': 'Meci Bronz',
 };
+
+const formatFieldLabel = (name = '') => String(name)
+  .replace(/\bfield\b/gi, 'TEREN')
+  .replace(/\btatami\b/gi, 'TEREN')
+  .toUpperCase();
 
 export default function ProgramarePage() {
   const ctx = useContext(CentralizatorContext);
@@ -106,73 +111,115 @@ export default function ProgramarePage() {
   // ── Derived data ─────────────────────────────────
 
   // Get all solo/team categories (with enrolled athletes) — deduplicated
-  const allCats = (() => {
+  const groupMap = useMemo(() => {
+    const map = new Map();
+    for (const group of groups || []) map.set(group.id, group);
+    return map;
+  }, [groups]);
+
+  const allCats = useMemo(() => {
     const seen = new Set();
     const result = [];
-    for (const col of columnStructure) {
-      for (const cat of col.cats) {
+    for (const col of columnStructure || []) {
+      for (const cat of col.cats || []) {
         if (seen.has(cat.id)) continue;
         seen.add(cat.id);
-        const group = groups.find(g => g.id === cat.group);
+        const group = groupMap.get(cat.group);
         result.push({ ...cat, groupName: group?.name || '' });
       }
     }
     return result;
-  })();
+  }, [columnStructure, groupMap]);
+
+  const categoryMap = useMemo(() => {
+    const map = new Map();
+    for (const cat of allCats) map.set(cat.id, cat);
+    return map;
+  }, [allCats]);
+
+  const matchMap = useMemo(() => {
+    const map = new Map();
+    for (const match of matches) map.set(match.id, match);
+    return map;
+  }, [matches]);
 
   // Map: categoryId → assignment
-  const catAssignmentMap = {};
-  for (const a of catAssignments) catAssignmentMap[a.category] = a;
+  const catAssignmentMap = useMemo(() => {
+    const map = {};
+    for (const a of catAssignments) map[a.category] = a;
+    return map;
+  }, [catAssignments]);
 
   // Map: matchId → MatchFieldAssignment
-  const matchAssignmentMap = {};
-  for (const a of matchAssignments) matchAssignmentMap[a.match] = a;
+  const matchAssignmentMap = useMemo(() => {
+    const map = {};
+    for (const a of matchAssignments) map[a.match] = a;
+    return map;
+  }, [matchAssignments]);
 
   // Map: categoryId → CategoryRefereeAssignment
-  const catRefMap = {};
-  for (const a of catRefAssignments) catRefMap[a.category] = a;
+  const catRefMap = useMemo(() => {
+    const map = {};
+    for (const a of catRefAssignments) map[a.category] = a;
+    return map;
+  }, [catRefAssignments]);
 
   // Map: matchId → MatchRefereeAssignment
-  const matchRefMap = {};
-  for (const a of matchRefAssignments) matchRefMap[a.match] = a;
+  const matchRefMap = useMemo(() => {
+    const map = {};
+    for (const a of matchRefAssignments) map[a.match] = a;
+    return map;
+  }, [matchRefAssignments]);
 
   // Unassigned categories (solo/team — no fight here, fights go as matches)
   const unassignedCats = allCats.filter(c => (c.type === 'solo' || c.type === 'team') && !catAssignmentMap[c.id]);
 
   // Fight categories → show as matches. Group matches by category
   const fightCats = allCats.filter(c => c.type === 'fight');
-  const matchesByCat = {};
-  for (const m of matches) {
-    if (!matchesByCat[m.category]) matchesByCat[m.category] = [];
-    matchesByCat[m.category].push(m);
-  }
+  const matchesByCat = useMemo(() => {
+    const map = {};
+    for (const m of matches) {
+      if (!map[m.category]) map[m.category] = [];
+      map[m.category].push(m);
+    }
+    return map;
+  }, [matches]);
+
+  const fieldItemsMap = useMemo(() => {
+    const byField = new Map();
+    const ensureField = (fieldId) => {
+      if (!byField.has(fieldId)) byField.set(fieldId, []);
+      return byField.get(fieldId);
+    };
+
+    for (const assignment of catAssignments) {
+      const cat = categoryMap.get(assignment.category);
+      if (cat) {
+        ensureField(assignment.field).push({ type: 'category', id: assignment.category, assignment, data: cat, order: assignment.order });
+      }
+    }
+
+    for (const assignment of matchAssignments) {
+      const match = matchMap.get(assignment.match);
+      if (match) {
+        ensureField(assignment.field).push({ type: 'match', id: assignment.match, assignment, data: match, order: assignment.order });
+      }
+    }
+
+    for (const fieldBreak of fieldBreaks) {
+      ensureField(fieldBreak.field).push({ type: 'break', id: fieldBreak.id, assignment: null, data: fieldBreak, order: fieldBreak.order });
+    }
+
+    for (const items of byField.values()) items.sort((a, b) => a.order - b.order);
+    return byField;
+  }, [catAssignments, matchAssignments, fieldBreaks, categoryMap, matchMap]);
 
   // Unassigned matches (fight matches not assigned to a field)
   const unassignedMatches = matches.filter(m => !matchAssignmentMap[m.id]);
 
   // Items per field — sorted by order (includes categories, matches, and breaks)
   const fieldItems = (fieldId) => {
-    const catItems = catAssignments
-      .filter(a => a.field === fieldId)
-      .map(a => {
-        const cat = allCats.find(c => c.id === a.category);
-        return { type: 'category', id: a.category, assignment: a, data: cat, order: a.order };
-      })
-      .filter(item => item.data);
-
-    const matchItems = matchAssignments
-      .filter(a => a.field === fieldId)
-      .map(a => {
-        const match = matches.find(m => m.id === a.match);
-        return { type: 'match', id: a.match, assignment: a, data: match, order: a.order };
-      })
-      .filter(item => item.data);
-
-    const breakItems = fieldBreaks
-      .filter(b => b.field === fieldId)
-      .map(b => ({ type: 'break', id: b.id, assignment: null, data: b, order: b.order }));
-
-    return [...catItems, ...matchItems, ...breakItems].sort((a, b) => a.order - b.order);
+    return fieldItemsMap.get(fieldId) || [];
   };
 
   // ── Handlers ─────────────────────────────────────
@@ -348,7 +395,6 @@ export default function ProgramarePage() {
       return;
     }
 
-    // Assignment from unassigned panel or another field
     if (type === 'category') await assignCatToField(id, targetFieldId);
     else if (type === 'match') await assignMatchToField(id, targetFieldId);
   };
@@ -423,7 +469,7 @@ export default function ProgramarePage() {
 
   // ── Generate matches for a fight category ────────
   const generateMatches = async (catId) => {
-    const cat = allCats.find(c => c.id === catId);
+    const cat = categoryMap.get(catId);
     if (!cat) return;
     const enrolled = cat.enrolled_athletes || [];
     if (enrolled.length < 2) return;
@@ -508,7 +554,7 @@ export default function ProgramarePage() {
               if (!refTimeMap[refId]) refTimeMap[refId] = [];
               refTimeMap[refId].push({
                 fieldId: field.id,
-                fieldName: field.name,
+                fieldName: formatFieldLabel(field.name),
                 startMin, endMin,
                 itemName: item.data?.name || `#${item.id}`,
               });
@@ -630,12 +676,12 @@ export default function ProgramarePage() {
             <div key={slot} className="relative">
               <button
                 onClick={(e) => { e.stopPropagation(); setRefPickerOpen(isOpen ? null : { type: itemType, id: itemId, slot }); }}
-                className={`text-[8px] rounded px-1 py-0.5 border transition min-w-[20px] text-center ${
-                  conflict
-                    ? 'bg-red-100 border-red-400 text-red-700 hover:bg-red-200 ring-1 ring-red-300'
+                className={`text-xs rounded px-1.5 py-1 border transition min-w-[28px] text-center ${
+                    conflict
+                    ? 'border-black bg-yellow-300 text-black hover:bg-yellow-200'
                     : refId
-                      ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
-                      : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'
+                      ? 'border-black bg-yellow-100 text-black hover:bg-yellow-200'
+                      : 'border-black bg-white text-gray-600 hover:bg-yellow-50'
                 }`}
                 title={conflict
                   ? `⚠ Conflict: ${refName} este și pe ${conflict.fieldName} (${conflict.itemName})`
@@ -645,12 +691,12 @@ export default function ProgramarePage() {
               </button>
               {isOpen && (
                 <div ref={refPickerRef}
-                  className="absolute top-full left-0 z-50 mt-0.5 w-52 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl text-[10px]"
-                  onClick={e => e.stopPropagation()}
+                  className="absolute top-full left-0 z-50 mt-1 w-56 max-h-56 overflow-y-auto border border-black bg-white shadow-xl text-sm"
+                title="Scoate de pe teren"
                 >
                   <button
                     onClick={() => assignReferee(itemType, itemId, slot, null)}
-                    className="w-full text-left px-2 py-1.5 text-gray-400 hover:bg-gray-50 italic"
+                    className="w-full px-2 py-1.5 text-left italic text-gray-500 hover:bg-yellow-50"
                   >— Fără arbitru —</button>
                   {referees.map(ref => {
                     const refConflict = fieldId != null && startMin != null && endMin != null
@@ -659,12 +705,12 @@ export default function ProgramarePage() {
                     return (
                       <button key={ref.id}
                         onClick={() => assignReferee(itemType, itemId, slot, ref.id)}
-                        className={`w-full text-left px-2 py-1.5 hover:bg-blue-50 transition flex items-center justify-between ${
-                          ref.id === refId ? 'bg-blue-100 font-semibold' : ''
-                        } ${refConflict ? 'text-red-600' : ''}`}
+                        className={`w-full text-left px-2 py-1.5 transition flex items-center justify-between ${
+                          ref.id === refId ? 'bg-yellow-200 font-semibold' : 'hover:bg-yellow-50'
+                        } ${refConflict ? 'text-gray-900' : ''}`}
                       >
                         <span>{ref.last_name} {ref.first_name}</span>
-                        {refConflict && <span className="text-[8px] text-red-500 ml-1">⚠ {refConflict.fieldName}</span>}
+                        {refConflict && <span className="text-xs text-red-500 ml-1">⚠ {refConflict.fieldName}</span>}
                       </button>
                     );
                   })}
@@ -684,6 +730,11 @@ export default function ProgramarePage() {
     if (!data) return null;
 
     const badge = isCat ? TYPE_BADGES[data.type] : TYPE_BADGES.fight;
+    const matchCat = !isCat ? categoryMap.get(data.category) : null;
+    const matchCategoryName = matchCat?.name || data.category_name || 'Meci';
+    const matchGroupName = matchCat?.groupName || '';
+    const matchGenderLabel = matchCat?.gender ? (GENDER_LABELS[matchCat.gender] || matchCat.gender) : '';
+    const matchTypeLabel = !isCat ? (ROUND_LABELS[data.match_type] || data.match_type || '') : '';
     const duration = item.assignment?.estimated_duration || (isCat ? 15 : 10);
     const isEditingThis = editingDuration?.type === item.type && editingDuration?.id === item.id;
     const enrolledCount = isCat ? (data.enrolled_athletes?.length || 0) : null;
@@ -693,39 +744,46 @@ export default function ProgramarePage() {
         draggable
         onDragStart={(e) => handleDragStart(e, item.type, item.id, item.assignment?.field)}
         onDragEnd={handleDragEnd}
-        className="group rounded-lg border bg-white p-2 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing mb-1.5"
+        className="group mb-2 cursor-grab border-2 border-black bg-white p-2.5 shadow-sm transition-all active:cursor-grabbing hover:bg-yellow-50 hover:shadow-md"
       >
-        <div className="flex items-start justify-between gap-1">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1 flex-wrap">
-              <span className={`inline-block rounded px-1 py-0.5 text-[8px] font-bold ${badge?.bg || 'bg-gray-100 text-gray-600'}`}>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-bold ${badge?.bg || 'bg-gray-100 text-gray-600'}`}>
                 {badge?.label || '?'}
               </span>
               {isCat && data.gender && (
-                <span className={`inline-block rounded px-1 py-0.5 text-[8px] font-medium ${GENDER_BG[data.gender] || 'bg-gray-100'} text-gray-700`}>
-                  {GENDER_LABELS[data.gender]?.slice(0, 1) || '?'}
+                <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${GENDER_BG[data.gender] || 'bg-gray-100'} text-gray-700`}>
+                  {(GENDER_LABELS[data.gender] || '?').toUpperCase()}
                 </span>
               )}
               {enrolledCount !== null && (
-                <span className="text-[8px] text-gray-400">{enrolledCount} sp.</span>
+                <span className="text-xs text-gray-500">{enrolledCount} sportivi</span>
+              )}
+              {!isCat && data.match_number && (
+                <span className="text-xs text-gray-500 font-mono">#{data.match_number}</span>
               )}
             </div>
-            <p className="text-[11px] font-semibold text-gray-900 truncate mt-0.5 leading-tight">
-              {isCat ? data.name : (
-                (data.red_corner_full_name || data.blue_corner_full_name)
-                  ? `${data.red_corner_full_name || '?'} vs ${data.blue_corner_full_name || '?'}`
-                  : (data.match_number || data.name || 'Meci')
-              )}
-            </p>
+            {isCat ? (
+              <p className="mt-0.5 text-sm font-semibold leading-tight text-gray-900 whitespace-normal break-words">{data.name}</p>
+            ) : null}
             {isCat && data.groupName && (
-              <p className="text-[9px] text-gray-400 truncate">{data.groupName}</p>
+              <p className="text-xs text-gray-500 whitespace-normal break-words">{data.groupName}</p>
             )}
             {!isCat && (
-              <p className="text-[9px] text-gray-500 truncate">
-                {data.red_corner_full_name || '?'}{data.red_corner_club_name ? ` (${data.red_corner_club_name})` : ''}
-                <span className="text-red-400 font-bold mx-0.5">vs</span>
-                {data.blue_corner_full_name || '?'}{data.blue_corner_club_name ? ` (${data.blue_corner_club_name})` : ''}
-              </p>
+              <>
+                <div className="flex flex-wrap gap-1 mt-0.5">
+                  <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{matchCategoryName}</span>
+                  {matchGroupName && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{matchGroupName}</span>}
+                  {matchGenderLabel && <span className={`border border-black px-1.5 py-0.5 text-xs text-gray-700 ${GENDER_BG[matchCat?.gender] || 'bg-gray-100'}`}>{matchGenderLabel}</span>}
+                  {matchTypeLabel && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs font-semibold text-gray-800">{matchTypeLabel}</span>}
+                </div>
+                <p className="mt-0.5 text-sm font-semibold leading-tight whitespace-normal break-words">
+                  <span className="text-red-600">{data.red_corner_full_name || '?'}</span>{data.red_corner_club_name ? <span className="text-gray-500 font-normal"> ({data.red_corner_club_name})</span> : null}
+                  <span className="mx-0.5 font-bold text-gray-500">vs</span>
+                  <span className="text-blue-600">{data.blue_corner_full_name || '?'}</span>{data.blue_corner_club_name ? <span className="text-gray-500 font-normal"> ({data.blue_corner_club_name})</span> : null}
+                </p>
+              </>
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -734,7 +792,7 @@ export default function ProgramarePage() {
               isEditingThis ? (
                 <input
                   type="number" min="1" max="120" autoFocus
-                  className="w-10 text-center text-[10px] border border-blue-400 rounded px-0.5 py-0.5 outline-none bg-blue-50"
+                  className="w-12 border border-gray-500 bg-white px-1 py-0.5 text-center text-sm outline-none"
                   value={editingDuration.value}
                   onChange={(e) => setEditingDuration({ ...editingDuration, value: e.target.value })}
                   onBlur={saveDuration}
@@ -743,7 +801,7 @@ export default function ProgramarePage() {
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); setEditingDuration({ type: item.type, id: item.id, value: String(duration) }); }}
-                  className="text-[9px] text-gray-500 bg-gray-100 rounded px-1 py-0.5 hover:bg-blue-100 transition"
+                  className="border border-black bg-yellow-100 px-1.5 py-0.5 text-sm text-gray-800 transition hover:bg-yellow-200"
                   title="Click pentru a edita durata"
                 >
                   {duration}′
@@ -754,7 +812,7 @@ export default function ProgramarePage() {
             {isCat && item.assignment && (
               <button
                 onClick={(e) => { e.stopPropagation(); openCategoryDetail(item.id); }}
-                className="hidden group-hover:inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[9px] font-bold hover:bg-blue-500 hover:text-white transition"
+                className="hidden h-5 w-5 items-center justify-center border border-black bg-white text-xs font-bold text-gray-700 transition hover:bg-yellow-100 group-hover:inline-flex"
                 title="Detalii categorie"
               >ℹ</button>
             )}
@@ -763,7 +821,7 @@ export default function ProgramarePage() {
               <button
                 onClick={(e) => { e.stopPropagation(); isCat ? unassignCat(item.id) : unassignMatch(item.id); }}
                 disabled={busy}
-                className="hidden group-hover:inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-500 text-[9px] font-bold hover:bg-red-500 hover:text-white transition disabled:opacity-40"
+                className="hidden h-5 w-5 items-center justify-center border border-black bg-white text-xs font-bold text-gray-700 transition hover:bg-yellow-100 disabled:opacity-40 group-hover:inline-flex"
                 title="Scoate din tatami"
               >×</button>
             )}
@@ -792,85 +850,77 @@ export default function ProgramarePage() {
           draggable
           onDragStart={(e) => handleDragStart(e, type, id)}
           onDragEnd={handleDragEnd}
-          className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-2 cursor-grab active:cursor-grabbing hover:bg-white hover:border-gray-400 hover:shadow-sm transition mb-1.5"
+          className="mb-2 cursor-grab border-2 border-dashed border-black bg-white p-2.5 transition active:cursor-grabbing hover:bg-yellow-50 hover:shadow-sm"
         >
-          <div className="flex items-center gap-1 mb-1">
-            <span className={`inline-block rounded px-1 py-0.5 text-[8px] font-bold ${badge?.bg || 'bg-gray-100'}`}>
+            <div className="mb-1.5 flex items-start gap-1.5">
+            <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-bold ${badge?.bg || 'bg-gray-100'}`}>
               {badge?.label}
             </span>
             {genderLabel && (
-              <span className={`inline-block rounded px-1 py-0.5 text-[7px] font-medium ${genderBg} text-gray-700`}>
+              <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${genderBg} text-gray-700`}>
                 {genderLabel}
               </span>
             )}
-            <span className="text-[10px] font-medium text-gray-700 truncate flex-1">{data.name}</span>
+              <span className="flex-1 text-sm font-bold leading-snug text-gray-800 whitespace-normal break-words">{data.name}</span>
           </div>
           {data.groupName && (
-            <div className="text-[8px] text-gray-400 mb-0.5 truncate">📁 {data.groupName}</div>
+            <div className="mb-0.5 text-xs text-gray-500 whitespace-normal break-words">{data.groupName}</div>
           )}
-          <div className="flex items-center gap-2 text-[8px] text-gray-500">
-            <span>👥 {enrolledCount} sportiv{enrolledCount !== 1 ? 'i' : ''}</span>
+          <div className="flex items-center gap-2 text-xs text-gray-600">
+            <span>{enrolledCount} sportiv{enrolledCount !== 1 ? 'i' : ''}</span>
           </div>
-          {enrolledCount > 0 && enrolledCount <= 6 && (
-            <div className="mt-1 space-y-0.5">
-              {enrolled.slice(0, 6).map((ea, idx) => {
-                const a = ea.athlete_details || ea;
-                return (
-                  <div key={a.id || idx} className="text-[8px] text-gray-400 truncate pl-2">
-                    {idx + 1}. {a.last_name || a.name || ''} {a.first_name || ''}
-                    {a.club_name ? ` (${a.club_name})` : ''}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       );
     }
 
     // Fight match
     const roundLabel = ROUND_LABELS[data.match_type] || data.match_type || '';
+    const matchCat = categoryMap.get(data.category);
+    const matchCategoryName = matchCat?.name || data.category_name || 'Meci';
+    const matchGroupName = matchCat?.groupName || '';
+    const matchGenderLabel = matchCat?.gender ? (GENDER_LABELS[matchCat.gender] || matchCat.gender) : '';
     return (
       <div
         draggable
         onDragStart={(e) => handleDragStart(e, type, id)}
         onDragEnd={handleDragEnd}
-        className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-2 cursor-grab active:cursor-grabbing hover:bg-white hover:border-gray-400 hover:shadow-sm transition mb-1.5"
+        className="mb-2 cursor-grab border-2 border-dashed border-black bg-white p-2.5 transition active:cursor-grabbing hover:bg-yellow-50 hover:shadow-sm"
       >
-        <div className="flex items-center gap-1 mb-1">
-          <span className={`inline-block rounded px-1 py-0.5 text-[8px] font-bold ${badge?.bg || 'bg-gray-100'}`}>
+        <div className="mb-1.5 flex items-start gap-1.5">
+          <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-bold ${badge?.bg || 'bg-gray-100'}`}>
             {badge?.label}
           </span>
-          {roundLabel && (
-            <span className="text-[7px] bg-amber-100 text-amber-700 rounded px-1 py-0.5 font-medium">
-              {roundLabel}
-            </span>
-          )}
-          <span className="text-[9px] text-gray-400 font-mono shrink-0">#{data.match_number}</span>
+          <span className="text-xs text-gray-500 font-mono shrink-0">#{data.match_number}</span>
+        </div>
+        <div className="flex flex-wrap gap-1 mb-1">
+          <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{matchCategoryName}</span>
+          {matchGroupName && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{matchGroupName}</span>}
+          {matchGenderLabel && <span className={`border border-black px-1.5 py-0.5 text-xs text-gray-700 ${GENDER_BG[matchCat?.gender] || 'bg-gray-100'}`}>{matchGenderLabel}</span>}
+          {roundLabel && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs font-medium text-gray-800">{roundLabel}</span>}
         </div>
         {/* Corners */}
         <div className="space-y-0.5 mt-1">
-          <div className="flex items-center gap-1 text-[9px]">
-            <div className="w-1.5 h-1.5 rounded-sm bg-red-500 shrink-0" />
-            <span className="truncate text-gray-700 font-medium">
+          <div className="flex items-center gap-1 text-sm">
+            <div className="h-1.5 w-1.5 shrink-0 bg-red-500" />
+            <span className="font-semibold text-red-600 whitespace-normal break-words">
               {data.red_corner_full_name
-                ? <>{data.red_corner_full_name}{data.red_corner_club_name && <span className="text-[7px] text-gray-400 ml-0.5">({data.red_corner_club_name})</span>}</>
+                ? <>{data.red_corner_full_name}{data.red_corner_club_name && <span className="text-xs text-gray-500 ml-0.5">({data.red_corner_club_name})</span>}</>
                 : <span className="italic text-gray-400">TBD</span>
               }
             </span>
           </div>
-          <div className="flex items-center gap-1 text-[9px]">
-            <div className="w-1.5 h-1.5 rounded-sm bg-blue-500 shrink-0" />
-            <span className="truncate text-gray-700 font-medium">
+          <div className="flex items-center gap-1 text-sm">
+            <div className="h-1.5 w-1.5 shrink-0 bg-blue-500" />
+            <span className="font-semibold text-blue-600 whitespace-normal break-words">
               {data.blue_corner_full_name
-                ? <>{data.blue_corner_full_name}{data.blue_corner_club_name && <span className="text-[7px] text-gray-400 ml-0.5">({data.blue_corner_club_name})</span>}</>
+                ? <>{data.blue_corner_full_name}{data.blue_corner_club_name && <span className="text-xs text-gray-500 ml-0.5">({data.blue_corner_club_name})</span>}</>
                 : <span className="italic text-gray-400">TBD</span>
               }
             </span>
           </div>
         </div>
         {data.round_number && (
-          <div className="text-[7px] text-gray-400 mt-1">Runda {data.round_number}</div>
+          <div className="text-xs text-gray-500 mt-1">Runda {data.round_number}</div>
         )}
       </div>
     );
@@ -887,7 +937,7 @@ export default function ProgramarePage() {
         draggable
         onDragStart={(e) => handleDragStart(e, 'break', brk.id, brk.field)}
         onDragEnd={handleDragEnd}
-        className="group rounded-lg border-2 border-dashed border-amber-300 bg-amber-50/70 p-2 mb-1.5 transition-all cursor-grab active:cursor-grabbing"
+        className="group mb-2 cursor-grab border-2 border-dashed border-black bg-white p-2.5 transition-all active:cursor-grabbing hover:bg-yellow-50"
       >
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -895,7 +945,7 @@ export default function ProgramarePage() {
             {isEditing ? (
               <input
                 type="text" autoFocus
-                className="text-[11px] font-semibold text-amber-900 bg-white border border-amber-400 rounded px-1.5 py-0.5 outline-none flex-1 min-w-0"
+                className="flex-1 min-w-0 border border-gray-500 bg-white px-2 py-1 text-sm font-semibold text-gray-900 outline-none"
                 value={editingBreak.label}
                 onChange={(e) => setEditingBreak({ ...editingBreak, label: e.target.value })}
                 onBlur={saveBreak}
@@ -903,7 +953,7 @@ export default function ProgramarePage() {
               />
             ) : (
               <span
-                className="text-[11px] font-semibold text-amber-900 truncate cursor-pointer hover:underline"
+                className="truncate cursor-pointer text-sm font-semibold text-gray-900 hover:underline"
                 onClick={() => setEditingBreak({ id: brk.id, label: brk.label, duration: brk.duration })}
                 title="Click pentru a edita"
               >
@@ -915,7 +965,7 @@ export default function ProgramarePage() {
             {isEditing ? (
               <input
                 type="number" min="5" max="180"
-                className="w-12 text-center text-[10px] border border-amber-400 rounded px-0.5 py-0.5 outline-none bg-white"
+                className="w-14 border border-gray-500 bg-white px-1 py-0.5 text-center text-sm outline-none"
                 value={editingBreak.duration}
                 onChange={(e) => setEditingBreak({ ...editingBreak, duration: e.target.value })}
                 onBlur={saveBreak}
@@ -924,7 +974,7 @@ export default function ProgramarePage() {
             ) : (
               <button
                 onClick={() => setEditingBreak({ id: brk.id, label: brk.label, duration: brk.duration })}
-                className="text-[9px] text-amber-700 bg-amber-100 rounded px-1 py-0.5 hover:bg-amber-200 transition font-medium"
+                className="border border-black bg-yellow-100 px-1.5 py-0.5 text-sm font-medium text-gray-800 transition hover:bg-yellow-200"
                 title="Click pentru a edita durata"
               >
                 {brk.duration}′
@@ -933,7 +983,7 @@ export default function ProgramarePage() {
             <button
               onClick={() => removeBreak(brk.id)}
               disabled={busy}
-              className="hidden group-hover:inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-500 text-[9px] font-bold hover:bg-red-500 hover:text-white transition disabled:opacity-40"
+              className="hidden h-5 w-5 items-center justify-center border border-black bg-white text-xs font-bold text-gray-700 transition hover:bg-yellow-100 disabled:opacity-40 group-hover:inline-flex"
               title="Șterge pauza"
             >×</button>
           </div>
@@ -943,11 +993,11 @@ export default function ProgramarePage() {
   };
 
   // ── Field count management ───────────────────────
-  const [fieldCount, setFieldCount] = useState(0);
+  const [fieldCount, setFieldCount] = useState(2);
   const [savingFields, setSavingFields] = useState(false);
   const [tatamiLocked, setTatamiLocked] = useState(false);
 
-  useEffect(() => { setFieldCount(fields.length); }, [fields.length]);
+  useEffect(() => { setFieldCount(fields.length || 2); }, [fields.length]);
 
   const handleSetFieldCount = async (newCount) => {
     if (newCount < 0 || newCount > 20 || !eventId) return;
@@ -975,12 +1025,12 @@ export default function ProgramarePage() {
       <div className="flex-1 flex items-center justify-center bg-gray-50 p-4 text-center">
         <div>
           <p className="text-2xl mb-2">🏟️</p>
-          <p className="text-sm font-semibold text-gray-700 mb-3">Câte tatami / terenuri sunt?</p>
+          <p className="text-sm font-semibold text-gray-700 mb-3">Câte terenuri sunt?</p>
           <div className="flex items-center justify-center gap-3 mb-3">
             <button
               onClick={() => handleSetFieldCount(fieldCount - 1)}
               disabled={fieldCount <= 0 || savingFields}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-lg font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-30"
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-black bg-white text-lg font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-30"
             >−</button>
             <span className="min-w-[3rem] text-center text-2xl font-bold text-gray-900">
               {savingFields ? '…' : fieldCount}
@@ -988,58 +1038,57 @@ export default function ProgramarePage() {
             <button
               onClick={() => handleSetFieldCount(fieldCount + 1)}
               disabled={fieldCount >= 20 || savingFields}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-lg font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-30"
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-black bg-white text-lg font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-30"
             >+</button>
           </div>
           {fieldCount > 0 && (
             <button
               onClick={() => { setTatamiLocked(true); handleSetFieldCount(fieldCount); }}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition"
-            >🔒 Blochează {fieldCount} tatami</button>
+              className="border border-black bg-yellow-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-yellow-200"
+            >🔒 Blochează {fieldCount} terenuri</button>
           )}
-          <p className="text-[10px] text-gray-400 mt-2">Max 20 terenuri · Selectează și blochează</p>
+          <p className="text-sm text-gray-500 mt-2">Max 20 terenuri · Selectează și blochează</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-gray-100">
+    <div className="flex-1 flex overflow-hidden bg-white p-2 gap-2">
 
       {/* ═══ LEFT PANEL — Unassigned items ═══ */}
-      <div className="w-56 sm:w-64 shrink-0 border-r border-gray-300 bg-white flex flex-col overflow-hidden">
+      <div className="w-80 sm:w-96 shrink-0 flex flex-col overflow-hidden border-2 border-black bg-white shadow-sm">
         {/* Field count stepper with lock/unlock */}
-        <div className="px-2 py-1.5 border-b border-gray-200 bg-blue-50 flex items-center justify-between gap-1">
-          <span className="text-[10px] font-semibold text-gray-700">🏟️ Tatami</span>
+        <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-yellow-300 px-3 py-2">
+          <span className="text-sm font-bold uppercase tracking-wide text-gray-900">Terenuri</span>
           {tatamiLocked ? (
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-gray-900">{fields.length}</span>
-              <span className="text-[9px] text-green-600">🔒</span>
               <button onClick={() => setTatamiLocked(false)}
-                className="text-[9px] text-gray-400 hover:text-red-500 transition" title="Deblochează numărul de tatami">🔓</button>
+                className="text-sm text-gray-700 transition hover:text-black" title="Deblochează numărul de terenuri">🔓</button>
             </div>
           ) : (
             <div className="flex items-center gap-1">
               <button onClick={() => handleSetFieldCount(fields.length - 1)} disabled={fields.length <= 1 || savingFields}
-                className="flex h-5 w-5 items-center justify-center rounded border border-gray-300 text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-30">−</button>
-              <span className="min-w-[1.5rem] text-center text-xs font-bold text-gray-900">{savingFields ? '…' : fields.length}</span>
+                className="flex h-6 w-6 items-center justify-center rounded border border-black bg-white text-sm font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-30">−</button>
+              <span className="min-w-[1.75rem] text-center text-sm font-bold text-gray-900">{savingFields ? '…' : fields.length}</span>
               <button onClick={() => handleSetFieldCount(fields.length + 1)} disabled={fields.length >= 20 || savingFields}
-                className="flex h-5 w-5 items-center justify-center rounded border border-gray-300 text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-30">+</button>
+                className="flex h-6 w-6 items-center justify-center rounded border border-black bg-white text-sm font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-30">+</button>
               <button onClick={() => setTatamiLocked(true)}
-                className="flex h-5 w-5 items-center justify-center rounded text-[9px] text-gray-400 hover:text-green-600 transition" title="Blochează numărul de tatami">🔒</button>
+                className="flex h-6 w-6 items-center justify-center rounded text-sm text-gray-700 transition hover:text-black" title="Blochează numărul de terenuri">🔒</button>
             </div>
           )}
         </div>
-        <div className="px-2 py-2 border-b border-gray-200 bg-gray-50">
-          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">📋 Nealocate</h3>
-          <p className="text-[9px] text-gray-400 mt-0.5">Trage categorii sau meciuri pe un tatami</p>
+        <div className="border-b-2 border-black bg-yellow-100 px-3 py-2">
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Nealocate</h3>
+          <p className="mt-0.5 text-sm text-gray-600">Trage categorii sau meciuri pe un teren</p>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-3">
+          <div className="flex-1 overflow-y-auto bg-yellow-50/40 p-3 space-y-3">
 
           {/* Solo/Team categories */}
           {unassignedCats.length > 0 && (
             <div>
-              <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide mb-1">Tehnica ({unassignedCats.length})</p>
+              <p className="mb-2 text-sm font-bold text-gray-700 uppercase tracking-wide">Tehnica ({unassignedCats.length})</p>
               {unassignedCats.map(cat => (
                 <UnassignedCard key={cat.id} type="category" id={cat.id} data={cat} />
               ))}
@@ -1049,28 +1098,28 @@ export default function ProgramarePage() {
           {/* Fight categories with matches */}
           {fightCats.length > 0 && (
             <div>
-              <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wide mb-1">Luptă</p>
+              <p className="mb-2 text-sm font-bold text-gray-700 uppercase tracking-wide">Luptă</p>
               {fightCats.map(cat => {
                 const catMatches = matchesByCat[cat.id] || [];
                 const unassignedCatMatches = catMatches.filter(m => !matchAssignmentMap[m.id]);
                 return (
                   <div key={cat.id} className="mb-2">
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[10px] font-semibold text-gray-700 truncate flex-1">{cat.name}</span>
+                      <span className="flex-1 text-sm font-semibold leading-snug text-gray-700 whitespace-normal break-words">{cat.name}</span>
                       {catMatches.length === 0 && (cat.enrolled_athletes?.length || 0) >= 2 && (
                         <button
                           onClick={() => generateMatches(cat.id)}
                           disabled={busy}
-                          className="text-[8px] bg-red-100 text-red-600 rounded px-1.5 py-0.5 hover:bg-red-200 transition font-medium disabled:opacity-40 shrink-0 ml-1"
+                          className="ml-1 shrink-0 border border-black bg-yellow-100 px-2 py-0.5 text-xs font-medium text-gray-800 transition hover:bg-yellow-200 disabled:opacity-40"
                         >⚔ Generează</button>
                       )}
                     </div>
                     {catMatches.length === 0 ? (
-                      <p className="text-[8px] text-gray-400 italic ml-1">
+                      <p className="text-xs text-gray-500 italic ml-1">
                         {(cat.enrolled_athletes?.length || 0) < 2 ? 'Prea puțini sportivi' : 'Apasă Generează'}
                       </p>
                     ) : unassignedCatMatches.length === 0 ? (
-                      <p className="text-[8px] text-green-600 ml-1">✓ Toate meciurile alocate</p>
+                      <p className="ml-1 text-xs text-gray-700">✓ Toate meciurile alocate</p>
                     ) : (
                       unassignedCatMatches.map(m => (
                         <UnassignedCard key={m.id} type="match" id={m.id} data={m} />
@@ -1086,13 +1135,13 @@ export default function ProgramarePage() {
             const cm = matchesByCat[c.id] || [];
             return cm.length > 0 && cm.every(m => matchAssignmentMap[m.id]);
           }) && (
-            <p className="text-[10px] text-green-600 italic text-center py-4">✓ Totul este alocat!</p>
+            <p className="py-4 text-center text-sm italic text-gray-700">✓ Totul este alocat!</p>
           )}
         </div>
       </div>
 
       {/* ═══ FIELD COLUMNS — fill available width ═══ */}
-      <div className="flex-1 flex overflow-x-auto gap-2 p-2">
+      <div className="flex-1 flex overflow-x-auto gap-2 pb-1">
         {fields.map(field => {
           const items = computeStartTimes(fieldItems(field.id), field);
           const totalMin = items.reduce((s, i) => s + i.duration, 0);
@@ -1104,28 +1153,29 @@ export default function ProgramarePage() {
           return (
             <div
               key={field.id}
-              className={`flex-1 min-w-[220px] flex flex-col rounded-xl border-2 transition-all ${
+              className={`flex-1 min-w-[300px] flex flex-col border-2 transition-all shadow-sm ${
                 isDragOver
-                  ? 'border-blue-400 bg-blue-50/50 shadow-lg'
-                  : 'border-gray-200 bg-white'
+                  ? 'border-black bg-yellow-50 shadow-lg'
+                  : 'border-black bg-white'
               }`}
               onDragOver={(e) => handleDragOver(e, field.id)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, field.id)}
             >
               {/* Field header */}
-              <div className={`px-3 py-2 rounded-t-xl border-b ${isDragOver ? 'bg-blue-100 border-blue-300' : 'bg-gray-50 border-gray-200'}`}>
+              <div className={`border-b-2 border-black ${isDragOver ? 'bg-yellow-200' : 'bg-yellow-300'}`}>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-gray-800">{field.name}</h3>
-                  <span className="text-[9px] text-gray-400">{items.length} probe</span>
+                  <h3 className="px-3 py-2 text-sm font-bold uppercase tracking-wide text-gray-900">{formatFieldLabel(field.name)}</h3>
+                  <span className="px-3 py-2 text-xs font-semibold text-gray-700">{items.length} probe</span>
                 </div>
+              </div>
+              <div className="flex items-center gap-1 border-b-2 border-black bg-yellow-100 px-3 py-2">
                 {/* Start time editor */}
-                <div className="flex items-center gap-1 mt-1">
-                  <span className="text-[9px] text-gray-500">🕐</span>
+                  <span className="text-sm text-gray-600">🕐</span>
                   {isEditingTime ? (
                     <input
                       type="time" autoFocus
-                      className="text-[10px] border border-blue-400 rounded px-1 py-0.5 outline-none bg-blue-50 w-20"
+                      className="w-24 border border-black bg-white px-1.5 py-0.5 text-sm outline-none"
                       value={editingStartTime.value}
                       onChange={(e) => setEditingStartTime({ ...editingStartTime, value: e.target.value })}
                       onBlur={() => saveStartTime(field.id, editingStartTime.value)}
@@ -1137,24 +1187,23 @@ export default function ProgramarePage() {
                   ) : (
                     <button
                       onClick={() => setEditingStartTime({ fieldId: field.id, value: field.start_time || '09:00' })}
-                      className="text-[10px] text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded px-1 py-0.5 transition"
+                      className="border border-transparent px-1.5 py-0.5 text-sm text-gray-700 transition hover:border-black hover:bg-yellow-200"
                       title="Click pentru a seta ora de start"
                     >
                       {field.start_time ? formatTime(...field.start_time.split(':').map(Number)) : 'Setează ora'}
                     </button>
                   )}
                   {totalMin > 0 && (
-                    <span className="text-[9px] text-gray-400 ml-auto">
+                    <span className="ml-auto text-xs font-medium text-gray-600">
                       {endTime ? `→ ${formatTime(endTime.h, endTime.m)}` : `${Math.floor(totalMin / 60) > 0 ? `${Math.floor(totalMin / 60)}h ` : ''}${totalMin % 60}min`}
                     </span>
                   )}
-                </div>
               </div>
 
               {/* Items */}
-              <div className="flex-1 overflow-y-auto p-2 min-h-[120px]">
+              <div className="flex-1 overflow-y-auto min-h-[120px] bg-yellow-50/30 p-3">
                 {items.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-[10px] text-gray-300 italic">
+                  <div className="flex items-center justify-center h-full text-sm text-gray-400 italic">
                     Trage aici o categorie sau un meci
                   </div>
                 ) : (
@@ -1165,19 +1214,19 @@ export default function ProgramarePage() {
                     >
                       {/* Drop indicator — blue line before this item */}
                       {dropIndicator?.fieldId === field.id && dropIndicator?.index === idx && (
-                        <div className="h-0.5 bg-blue-500 rounded-full mx-1 my-1 shadow-sm shadow-blue-300 transition-all" />
+                        <div className="mx-1 my-1 h-0.5 bg-gray-800 transition-all" />
                       )}
                       {/* Time indicator */}
                       <div className="flex items-center gap-1 mb-0.5">
-                        <span className="text-[8px] text-gray-400 font-mono shrink-0">
+                        <span className="text-xs text-gray-500 font-mono shrink-0">
                           {item.clockStart
-                            ? <span className="text-blue-600 font-semibold">{formatTime(item.clockStart.h, item.clockStart.m)}</span>
+                            ? <span className="font-semibold text-gray-800">{formatTime(item.clockStart.h, item.clockStart.m)}</span>
                             : `+${item.startMin}′`
                           }
                         </span>
                         <div className="flex-1 border-t border-dashed border-gray-200" />
                         {item.clockEnd && (
-                          <span className="text-[7px] text-gray-300 font-mono shrink-0">
+                          <span className="text-xs text-gray-400 font-mono shrink-0">
                             {formatTime(item.clockEnd.h, item.clockEnd.m)}
                           </span>
                         )}
@@ -1188,13 +1237,13 @@ export default function ProgramarePage() {
                 )}
                 {/* Drop indicator at end of list */}
                 {dropIndicator?.fieldId === field.id && dropIndicator?.index === items.length && items.length > 0 && (
-                  <div className="h-0.5 bg-blue-500 rounded-full mx-1 my-1 shadow-sm shadow-blue-300 transition-all" />
+                  <div className="mx-1 my-1 h-0.5 bg-gray-800 transition-all" />
                 )}
                 {/* Add break button */}
                 <button
                   onClick={() => addBreak(field.id)}
                   disabled={busy}
-                  className="w-full mt-1 py-1.5 rounded-lg border-2 border-dashed border-amber-200 text-[10px] text-amber-600 font-medium hover:bg-amber-50 hover:border-amber-300 transition disabled:opacity-40"
+                  className="mt-1 w-full border-2 border-dashed border-black py-2 text-sm font-medium text-gray-800 transition hover:bg-yellow-100 disabled:opacity-40"
                 >
                   ☕ + Pauză
                 </button>
@@ -1206,7 +1255,7 @@ export default function ProgramarePage() {
 
       {/* ═══ CATEGORY DETAIL MODAL ═══ */}
       {detailModal && (() => {
-        const cat = allCats.find(c => c.id === detailModal.catId);
+        const cat = categoryMap.get(detailModal.catId);
         if (!cat) return null;
         const enrolled = cat.enrolled_athletes || [];
         const refAss = catRefMap[cat.id];
@@ -1251,39 +1300,39 @@ export default function ProgramarePage() {
           else if (detailRefScores.length > 0) catStatus = 'in_progress';
         }
         const STATUS_DISPLAY = {
-          not_started: { label: 'Neînceput', bg: 'bg-gray-100 text-gray-600', icon: '⏳' },
-          in_progress: { label: 'În desfășurare', bg: 'bg-yellow-100 text-yellow-700', icon: '▶️' },
-          finished: { label: 'Finalizat', bg: 'bg-green-100 text-green-700', icon: '✅' },
+          not_started: { label: 'Neînceput', bg: 'border border-black bg-white text-gray-700', icon: '⏳' },
+          in_progress: { label: 'În desfășurare', bg: 'border border-black bg-yellow-100 text-gray-800', icon: '▶️' },
+          finished: { label: 'Finalizat', bg: 'border border-black bg-yellow-300 text-black', icon: '✅' },
         };
         const sd = STATUS_DISPLAY[catStatus];
 
         return (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm"
             onClick={() => { setDetailModal(null); setDetailScores([]); setDetailRefScores([]); }}>
-            <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
+            <div className="flex max-h-[85vh] w-[90vw] max-w-4xl flex-col overflow-hidden border-2 border-black bg-white shadow-2xl"
               onClick={e => e.stopPropagation()}>
 
               {/* Header */}
-              <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+              <div className="flex items-center justify-between border-b-2 border-black bg-yellow-100 px-5 py-4">
                 <div>
                   <h2 className="text-base font-bold text-gray-900">{cat.name}</h2>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                    <span className={`inline-block rounded px-1.5 py-0.5 text-sm font-bold ${
                       TYPE_BADGES[cat.type]?.bg || 'bg-gray-100'
                     }`}>{TYPE_BADGES[cat.type]?.label}</span>
                     {cat.gender && (
-                      <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-700`}>
+                      <span className={`inline-block rounded px-1.5 py-0.5 text-sm font-medium ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-700`}>
                         {GENDER_LABELS[cat.gender]}
                       </span>
                     )}
-                    {cat.groupName && <span className="text-[10px] text-gray-400">{cat.groupName}</span>}
-                    <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold ${sd.bg}`}>
+                    {cat.groupName && <span className="text-sm text-gray-500">{cat.groupName}</span>}
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-sm font-semibold ${sd.bg}`}>
                       {sd.icon} {sd.label}
                     </span>
                   </div>
                 </div>
                 <button onClick={() => { setDetailModal(null); setDetailScores([]); setDetailRefScores([]); }}
-                  className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 text-lg flex items-center justify-center transition">×</button>
+                  className="flex h-8 w-8 items-center justify-center border border-black bg-white text-lg text-gray-600 transition hover:bg-yellow-200">×</button>
               </div>
 
               {/* Body */}
@@ -1291,11 +1340,11 @@ export default function ProgramarePage() {
 
                 {/* Referees assigned */}
                 <div>
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Arbitri asignați</h3>
+                  <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">Arbitri asignați</h3>
                   <div className="flex gap-2 flex-wrap">
                     {refSlots.map(r => (
-                      <div key={r.slot} className={`rounded-lg border px-3 py-1.5 text-xs ${
-                        r.id ? 'bg-blue-50 border-blue-200 text-blue-800 font-medium' : 'bg-gray-50 border-gray-200 text-gray-400 italic'
+                      <div key={r.slot} className={`border px-3 py-2 text-sm ${
+                        r.id ? 'border-black bg-yellow-100 font-medium text-gray-800' : 'border-black bg-white italic text-gray-400'
                       }`}>
                         R{r.slot}: {r.name || 'Neasignat'}
                       </div>
@@ -1305,18 +1354,18 @@ export default function ProgramarePage() {
 
                 {/* Athletes list */}
                 <div>
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">
+                  <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">
                     Sportivi înscriși ({enrolled.length})
                   </h3>
                   {enrolled.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">Niciun sportiv înscris</p>
+                    <p className="text-sm text-gray-400 italic">Niciun sportiv înscris</p>
                   ) : (
-                    <div className="text-xs text-gray-600 space-y-1">
+                    <div className="text-sm text-gray-600 space-y-1">
                       {enrolled.map((ea, idx) => {
                         const ath = ea.athlete_details || ea;
                         return (
                           <div key={ath.id || idx} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50">
-                            <span className="text-gray-400 w-5 text-right font-mono text-[10px]">{idx + 1}.</span>
+                            <span className="text-gray-400 w-5 text-right font-mono text-sm">{idx + 1}.</span>
                             <span className="font-medium">{ath.last_name || ath.name || ''} {ath.first_name || ''}</span>
                             {ath.club_name && <span className="text-gray-400">({ath.club_name})</span>}
                           </div>
@@ -1328,24 +1377,24 @@ export default function ProgramarePage() {
 
                 {/* Score matrix */}
                 <div>
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Punctaje arbitri</h3>
+                  <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">Punctaje arbitri</h3>
                   {detailLoading ? (
-                    <p className="text-xs text-gray-400 italic">Se încarcă...</p>
+                    <p className="text-sm text-gray-400 italic">Se încarcă...</p>
                   ) : detailScores.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">Nu există punctaje încă</p>
+                    <p className="text-sm text-gray-400 italic">Nu există punctaje încă</p>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs border-collapse">
+                      <table className="w-full text-sm border-collapse">
                         <thead>
-                          <tr className="bg-gray-50">
-                            <th className="text-left px-2 py-1.5 border-b border-gray-200 font-semibold text-gray-600">#</th>
-                            <th className="text-left px-2 py-1.5 border-b border-gray-200 font-semibold text-gray-600">Sportiv</th>
+                          <tr className="bg-yellow-100">
+                            <th className="border-b border-black px-2 py-1.5 text-left font-semibold text-gray-700">#</th>
+                            <th className="border-b border-black px-2 py-1.5 text-left font-semibold text-gray-700">Sportiv</th>
                             {activeRefs.map(r => (
-                              <th key={r.slot} className="text-center px-2 py-1.5 border-b border-gray-200 font-semibold text-blue-600 min-w-[50px]">
+                                <th key={r.slot} className="min-w-[50px] border-b border-black px-2 py-1.5 text-center font-semibold text-gray-700">
                                 R{r.slot}
                               </th>
                             ))}
-                            <th className="text-center px-2 py-1.5 border-b border-gray-200 font-semibold text-gray-800">Total</th>
+                            <th className="border-b border-black px-2 py-1.5 text-center font-semibold text-gray-800">Total</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1363,15 +1412,15 @@ export default function ProgramarePage() {
                               total = middle.reduce((s, v) => s + Number(v), 0);
                             }
                             return (
-                              <tr key={as.id} className="hover:bg-gray-50">
-                                <td className="px-2 py-1.5 border-b border-gray-100 text-gray-400 font-mono">{idx + 1}</td>
-                                <td className="px-2 py-1.5 border-b border-gray-100 font-medium text-gray-800">{athName}</td>
+                              <tr key={as.id} className="hover:bg-yellow-50">
+                                <td className="border-b border-gray-200 px-2 py-1.5 font-mono text-gray-400">{idx + 1}</td>
+                                <td className="border-b border-gray-200 px-2 py-1.5 font-medium text-gray-800">{athName}</td>
                                 {activeRefs.map(r => {
                                   const val = scores[r.id];
                                   const isMin = sortedVals.length >= 5 && val != null && Number(val) === sortedVals[0];
                                   const isMax = sortedVals.length >= 5 && val != null && Number(val) === sortedVals[sortedVals.length - 1];
                                   return (
-                                    <td key={r.slot} className={`text-center px-2 py-1.5 border-b border-gray-100 font-mono ${
+                                    <td key={r.slot} className={`border-b border-gray-200 px-2 py-1.5 text-center font-mono ${
                                       val == null ? 'text-gray-300' :
                                       isMin || isMax ? 'text-gray-400 line-through' : 'text-gray-800 font-semibold'
                                     }`}>
@@ -1379,7 +1428,7 @@ export default function ProgramarePage() {
                                     </td>
                                   );
                                 })}
-                                <td className="text-center px-2 py-1.5 border-b border-gray-100 font-bold text-blue-700">
+                                <td className="border-b border-gray-200 px-2 py-1.5 text-center font-bold text-gray-900">
                                   {total != null ? total.toFixed(1) : '—'}
                                 </td>
                               </tr>

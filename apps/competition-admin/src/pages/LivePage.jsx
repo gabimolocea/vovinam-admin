@@ -1,6 +1,6 @@
-import React, { useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CentralizatorContext } from './CategoriesLayout';
+import { CentralizatorContext, GENDER_BG } from './CategoriesLayout';
 import {
   fieldAPI, monitorAPI, matchAPI,
   matchFieldAssignmentAPI, matchEventAPI, fieldBreakAPI,
@@ -14,9 +14,9 @@ import {
 const PUBLIC_DISPLAY_PORT = 5177;
 
 const STATUS_CFG = {
-  not_started:  { label: 'Neînceput',      dot: 'bg-gray-400',  bg: 'bg-gray-50',  border: 'border-gray-200', badge: 'bg-gray-100 text-gray-600' },
-  in_progress:  { label: 'În desfășurare', dot: 'bg-green-500 animate-pulse', bg: 'bg-green-50', border: 'border-green-300', badge: 'bg-green-100 text-green-700' },
-  completed:    { label: 'Finalizat',      dot: 'bg-emerald-500',  bg: 'bg-emerald-50',  border: 'border-emerald-300', badge: 'bg-emerald-100 text-emerald-700' },
+  not_started:  { label: 'Neînceput',      dot: 'bg-gray-500',  bg: 'bg-white',  border: 'border-black', badge: 'border border-black bg-white text-gray-700' },
+  in_progress:  { label: 'În desfășurare', dot: 'bg-emerald-500 animate-pulse', bg: 'bg-yellow-50/60', border: 'border-black', badge: 'border border-black bg-yellow-100 text-gray-800' },
+  completed:    { label: 'Finalizat',      dot: 'bg-black',  bg: 'bg-gray-100',  border: 'border-black', badge: 'border border-black bg-gray-200 text-black' },
 };
 
 export default function LivePage() {
@@ -33,12 +33,17 @@ export default function LivePage() {
   const [matchRefScores, setMatchRefScores] = useState([]);
   const [matchEvents, setMatchEvents] = useState([]);
   const [fieldBreaks, setFieldBreaks] = useState([]);
-  const [viewMode, setViewMode] = useState('all');
   const [loading, setLoading] = useState(true);
   const pollRef = useRef(null);
 
   // Collect all categories from context
-  const allCats = (() => {
+  const groupMap = useMemo(() => {
+    const map = new Map();
+    for (const group of groups || []) map.set(group.id, group);
+    return map;
+  }, [groups]);
+
+  const allCats = useMemo(() => {
     if (!columnStructure) return [];
     const seen = new Set();
     const result = [];
@@ -46,35 +51,67 @@ export default function LivePage() {
       for (const cat of col.cats) {
         if (seen.has(cat.id)) continue;
         seen.add(cat.id);
-        const group = groups.find(g => g.id === cat.group);
+        const group = groupMap.get(cat.group);
         result.push({ ...cat, groupName: group?.name || '' });
       }
     }
     return result;
-  })();
+  }, [columnStructure, groupMap]);
 
-  const fetchData = useCallback(async () => {
+  const categoryMap = useMemo(() => {
+    const map = new Map();
+    for (const cat of allCats) map.set(cat.id, cat);
+    return map;
+  }, [allCats]);
+
+  const matchMap = useMemo(() => {
+    const map = new Map();
+    for (const match of matches) map.set(match.id, match);
+    return map;
+  }, [matches]);
+
+  const fieldBreaksByField = useMemo(() => {
+    const map = new Map();
+    for (const fieldBreak of fieldBreaks) {
+      if (!map.has(fieldBreak.field)) map.set(fieldBreak.field, []);
+      map.get(fieldBreak.field).push(fieldBreak);
+    }
+    return map;
+  }, [fieldBreaks]);
+
+  const fetchStaticData = useCallback(async () => {
     if (!eventId) return;
     try {
-      const [fR, sR, caR, maR, mR, mrsR, meR, fbR] = await Promise.all([
+      const [fR, fbR] = await Promise.all([
         fieldAPI.list({ event_id: eventId }),
+        fieldBreakAPI.list({ event_id: eventId }),
+      ]);
+      const arr = r => r.data?.results || r.data || [];
+      setFields(arr(fR).sort((a, b) => (a.field_number ?? a.id) - (b.field_number ?? b.id)));
+      setFieldBreaks(arr(fbR));
+    } catch (err) {
+      console.error('Live data fetch error:', err);
+    }
+  }, [eventId]);
+
+  const fetchLiveState = useCallback(async () => {
+    if (!eventId) return;
+    try {
+      const [sR, caR, maR, mR, mrsR, meR] = await Promise.all([
         monitorAPI.sessions.list({ event_id: eventId }),
         fieldAPI.assignments.list({ event_id: eventId }),
         matchFieldAssignmentAPI.list({ event_id: eventId }),
         matchAPI.list({ event_id: eventId }),
         matchRefereeScoreAPI.list({ event_id: eventId }),
         matchEventAPI.list({ event_id: eventId }),
-        fieldBreakAPI.list({ event_id: eventId }),
       ]);
       const arr = r => r.data?.results || r.data || [];
-      setFields(arr(fR).sort((a, b) => (a.field_number ?? a.id) - (b.field_number ?? b.id)));
       setSessions(arr(sR));
       setCatAssignments(arr(caR));
       setMatchAssignments(arr(maR));
       setMatches(arr(mR));
       setMatchRefScores(arr(mrsR));
       setMatchEvents(arr(meR));
-      setFieldBreaks(arr(fbR));
     } catch (err) {
       console.error('Live data fetch error:', err);
     } finally {
@@ -83,10 +120,49 @@ export default function LivePage() {
   }, [eventId]);
 
   useEffect(() => {
-    fetchData();
-    pollRef.current = setInterval(fetchData, 3000);
+    Promise.all([fetchStaticData(), fetchLiveState()]);
+    pollRef.current = setInterval(fetchLiveState, 3000);
     return () => clearInterval(pollRef.current);
-  }, [fetchData]);
+  }, [fetchLiveState, fetchStaticData]);
+
+  const fieldDataMap = useMemo(() => {
+    const sessionsByField = new Map();
+    for (const session of sessions) sessionsByField.set(session.field, session);
+
+    const catAssignmentsByField = new Map();
+    for (const assignment of catAssignments) {
+      if (!catAssignmentsByField.has(assignment.field)) catAssignmentsByField.set(assignment.field, []);
+      catAssignmentsByField.get(assignment.field).push(assignment);
+    }
+
+    const matchAssignmentsByField = new Map();
+    for (const assignment of matchAssignments) {
+      if (!matchAssignmentsByField.has(assignment.field)) matchAssignmentsByField.set(assignment.field, []);
+      matchAssignmentsByField.get(assignment.field).push(assignment);
+    }
+
+    const data = new Map();
+    for (const field of fields) {
+      const fieldCatAss = (catAssignmentsByField.get(field.id) || []).slice().sort((a, b) => a.order - b.order);
+      const fieldMatchAss = (matchAssignmentsByField.get(field.id) || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      data.set(field.id, {
+        session: sessionsByField.get(field.id),
+        fieldCats: fieldCatAss
+          .map(assignment => {
+            const cat = categoryMap.get(assignment.category);
+            return cat ? { ...cat, _assignment: assignment } : null;
+          })
+          .filter(Boolean),
+        fieldMatches: fieldMatchAss
+          .map(assignment => {
+            const match = matchMap.get(assignment.match);
+            return match ? { ...match, _assignment: assignment } : null;
+          })
+          .filter(Boolean),
+      });
+    }
+    return data;
+  }, [sessions, catAssignments, matchAssignments, fields, categoryMap, matchMap]);
 
   if (!ctx) return null;
 
@@ -106,72 +182,15 @@ export default function LivePage() {
     );
   }
 
-  const getFieldData = (field) => {
-    const session = sessions.find(s => s.field === field.id);
-    const fieldCatAss = catAssignments
-      .filter(a => a.field === field.id)
-      .sort((a, b) => a.order - b.order);
-    const fieldMatchAss = matchAssignments
-      .filter(a => a.field === field.id)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const fieldCats = fieldCatAss
-      .map(a => {
-        const cat = allCats.find(c => c.id === a.category);
-        return cat ? { ...cat, _assignment: a } : null;
-      })
-      .filter(Boolean);
-    const fieldMatches = fieldMatchAss
-      .map(a => {
-        const m = matches.find(mm => mm.id === a.match);
-        return m ? { ...m, _assignment: a } : null;
-      })
-      .filter(Boolean);
-    return { session, fieldCats, fieldMatches };
-  };
-
-  const displayedFields = viewMode === 'all' ? fields : fields.filter(f => f.id === viewMode);
-
-  const isSingle = viewMode !== 'all';
+  const displayedFields = fields;
+  const isSingle = false;
 
   return (
-    <div className={`flex-1 overflow-auto bg-gray-100 ${isSingle ? 'flex flex-col p-2' : 'p-3'}`}>
-      {/* ═══ VIEW MODE TOOLBAR ═══ */}
-      <div className="flex items-center gap-3 mb-3 bg-white border border-gray-200 px-4 py-3 shadow-sm overflow-x-auto shrink-0">
-        <span className="text-sm font-bold text-gray-500 uppercase tracking-wider mr-1 shrink-0">Vizualizare:</span>
-        <button
-          onClick={() => setViewMode('all')}
-          className={`text-base px-5 py-2.5 font-semibold transition shrink-0 ${
-            viewMode === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-                    Toate Tatami
-        </button>
-        {fields.map(f => {
-          const fSession = sessions.find(s => s.field === f.id);
-          const isActive = fSession && (fSession.current_category || fSession.current_match);
-          return (
-            <button
-              key={f.id}
-              onClick={() => setViewMode(f.id)}
-              className={`text-base px-5 py-2.5 font-semibold transition shrink-0 ${
-                viewMode === f.id
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : isActive
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200 ring-1 ring-green-300'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {isActive && <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 mr-2 animate-pulse" />}
-              {f.name}
-            </button>
-          );
-        })}
-      </div>
-
+    <div className={`flex-1 overflow-auto bg-white ${isSingle ? 'flex flex-col p-2 gap-2' : 'p-3'}`}>
       {/* ═══ FIELD PANELS ═══ */}
-      <div className={isSingle ? 'flex-1 min-h-0 flex flex-col' : 'grid grid-cols-1 lg:grid-cols-2 gap-3'}>
+      <div className={isSingle ? 'flex-1 min-h-0 flex flex-col' : 'grid grid-cols-1 gap-4 lg:grid-cols-2'}>
         {displayedFields.map(field => {
-          const { session, fieldCats, fieldMatches } = getFieldData(field);
+          const { session, fieldCats, fieldMatches } = fieldDataMap.get(field.id) || { session: null, fieldCats: [], fieldMatches: [] };
           return (
             <FieldPanel
               key={field.id}
@@ -183,10 +202,10 @@ export default function LivePage() {
               matches={matches}
               matchRefScores={matchRefScores}
               matchEvents={matchEvents}
-              fieldBreaks={fieldBreaks.filter(b => b.field === field.id)}
+              fieldBreaks={fieldBreaksByField.get(field.id) || []}
               catAssignments={catAssignments}
               matchAssignments={matchAssignments}
-              onRefresh={fetchData}
+              onRefresh={fetchLiveState}
               singleView={isSingle}
               navigate={navigate}
               eventId={routeEventId}
@@ -208,8 +227,6 @@ function FieldPanel({
   navigate, eventId,
 }) {
   const [busy, setBusy] = useState(false);
-  const dragItemRef = useRef(null);
-  const [dropIndicator, setDropIndicator] = useState(null); // null | 'category' | 'match'
   const [statusConfirmData, setStatusConfirmData] = useState(null); // { item, newStatus }
 
   const isIdle = !session || session.status === 'idle';
@@ -301,88 +318,29 @@ function FieldPanel({
     await matchFieldAssignmentAPI.update(assignmentId, { status: newStatus });
   });
 
-  // ── Drag & Drop reorder within schedule ──
-  const handleDragStart = (e, item) => {
-    dragItemRef.current = item;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', `${item.type}:${item.id}`);
-    requestAnimationFrame(() => {
-      e.target.style.opacity = '0.4';
-    });
-  };
-  const handleDragEnd = (e) => {
-    dragItemRef.current = null;
-    setDropIndicator(null);
-    e.target.style.opacity = '';
-  };
-  const handleItemDragOver = (e, index) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = e.currentTarget.getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const dropIndex = e.clientY < midY ? index : index + 1;
-    setDropIndicator(prev => prev === dropIndex ? prev : dropIndex);
-  };
-  const handleDrop = async (e) => {
-    e.preventDefault();
-    const item = dragItemRef.current;
-    const targetIndex = dropIndicator;
-    dragItemRef.current = null;
-    setDropIndicator(null);
-    if (!item || targetIndex == null) return;
-    const currentIndex = scheduleItems.findIndex(i => i.type === item.type && i.id === item.id);
-    if (currentIndex === -1 || currentIndex === targetIndex || currentIndex === targetIndex - 1) return;
-
-    const newItems = [...scheduleItems];
-    const [removed] = newItems.splice(currentIndex, 1);
-    const adj = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
-    newItems.splice(adj, 0, removed);
-
-    // Build updates grouped by type
-    const catUpdates = [], matchUpdates = [], breakUpdates = [];
-    newItems.forEach((it, idx) => {
-      if (it.type === 'category') catUpdates.push({ id: it.assignmentId, field: field.id, order: idx });
-      else if (it.type === 'match') matchUpdates.push({ id: it.assignmentId, field: field.id, order: idx });
-      else if (it.type === 'break') breakUpdates.push({ id: it.id, order: idx });
-    });
-    try {
-      const promises = [];
-      if (catUpdates.length) promises.push(fieldAPI.assignments.bulkReorder(catUpdates));
-      if (matchUpdates.length) promises.push(matchFieldAssignmentAPI.bulkReorder(matchUpdates));
-      if (breakUpdates.length) promises.push(fieldBreakAPI.bulkReorder(breakUpdates));
-      await Promise.all(promises);
-      onRefresh();
-    } catch (err) { console.error('Reorder failed:', err); }
-  };
-
   return (
-    <div className={`border border-gray-300 bg-white shadow-sm overflow-hidden ${singleView ? 'flex-1 flex flex-col min-h-0' : ''}`}>
+    <div className={`overflow-hidden border-2 border-black bg-white shadow-sm ${singleView ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
       {/* ═══ HEADER ═══ */}
-      <div className="flex items-center justify-between bg-gray-800 text-white px-5 py-3 shrink-0">
+      <div className="flex items-center justify-between border-b border-black bg-white px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-2xl font-bold">{field.name}</span>
-          <span className={`h-3.5 w-3.5 rounded-full ${isIdle ? 'bg-gray-500' : 'bg-green-500 animate-pulse'}`} />
-          <span className="text-sm text-gray-400 uppercase tracking-wider font-medium">
+          <span className="text-lg font-bold uppercase tracking-wide text-gray-900">{field.name}</span>
+          <span className={`h-3.5 w-3.5 ${isIdle ? 'bg-gray-500' : 'bg-emerald-500 animate-pulse'}`} />
+          <span className="text-sm font-medium uppercase tracking-wider text-gray-700">
             {isIdle ? 'Inactiv' : session?.status === 'scores_revealed' ? 'Scoruri afișate' : 'În desfășurare'}
           </span>
         </div>
         <button
           onClick={() => window.open(displayUrl, '_blank')}
-          className="flex items-center gap-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 px-5 py-2.5 font-semibold transition border border-gray-600"
+          className="flex items-center gap-2 border border-black bg-yellow-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-yellow-200"
         >
-          📺 Public Display
+          Afisare TV
         </button>
       </div>
 
       {/* ═══ BODY: Schedule / Programa (full width) ═══ */}
-      <div className={`${singleView ? 'flex-1 min-h-0 overflow-y-auto' : ''} bg-gray-50`}
-        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-        onDrop={handleDrop}
-        onDragLeave={() => setDropIndicator(null)}
-      >
-          <div className="px-4 py-3 bg-gray-100 border-b border-gray-200 sticky top-0 z-10">
-            <p className="text-sm font-bold text-gray-600 uppercase tracking-wide">Programa ({scheduleItems.length})</p>
+      <div className={`${singleView ? 'flex-1 min-h-0 overflow-y-auto' : ''} bg-gray-50/50`}>
+          <div className="sticky top-0 z-10 border-b-2 border-black bg-white px-4 py-3">
+            <p className="text-sm font-bold uppercase tracking-wide text-gray-900">Programa ({scheduleItems.length})</p>
           </div>
           <div className="p-3 space-y-2">
             {scheduleItems.length === 0 && (
@@ -395,55 +353,42 @@ function FieldPanel({
 
               return (
                 <React.Fragment key={`${item.type}-${item.id}`}>
-                  {/* Drop indicator line */}
-                  {dropIndicator === idx && (
-                    <div className="h-0.5 bg-indigo-500 rounded-full mx-1 my-0.5" />
-                  )}
-
                   {item.type === 'break' ? (
                     /* ─── Break item ─── */
-                    <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 border border-orange-200 text-sm text-orange-700 cursor-grab"
-                      draggable onDragStart={e => handleDragStart(e, item)} onDragEnd={handleDragEnd} onDragOver={e => handleItemDragOver(e, idx)}>
-                      <span className="text-base text-orange-600 font-medium">&bull;</span>
-                      <span className="font-semibold flex-1 truncate">{item.data?.label || 'Pauză'}</span>
-                      <span className="text-xs text-orange-500">{item.data?.duration || 60}s</span>
+                    <div className="flex items-center gap-2 border-2 border-dashed border-black bg-white px-4 py-3 text-sm text-gray-800">
+                      <span className="text-base font-medium text-gray-800">&bull;</span>
+                      <span className="flex-1 font-semibold">{item.data?.label || 'Pauză'}</span>
+                      <span className="text-xs text-gray-700">{item.data?.duration || 60}s</span>
                     </div>
                   ) : (
                     /* ─── Category / Match item ─── */
-                    <div className={`flex flex-wrap items-center gap-2 sm:gap-2.5 border px-3 sm:px-4 py-2.5 sm:py-3 transition ${
+                    <div className={`flex flex-wrap items-center gap-2 border px-3 py-2.5 transition sm:gap-2.5 sm:px-4 sm:py-3 ${
                       item.status === 'completed'
-                        ? 'border-gray-200 bg-gray-100/80 opacity-50 cursor-default'
+                        ? 'border-black bg-gray-100 opacity-60 cursor-default'
                         : isActiveItem
-                          ? 'border-green-400 bg-green-50 ring-2 ring-green-300 shadow-sm cursor-grab'
+                          ? 'border-black bg-yellow-200 ring-2 ring-yellow-300 shadow-sm'
                           : idx === nextItemIndex
-                            ? st.border + ' bg-orange-50/50 ring-2 ring-orange-200 shadow-sm cursor-grab'
-                            : st.border + ' ' + st.bg + ' hover:shadow-sm cursor-grab'
+                            ? st.border + ' bg-white shadow-sm'
+                            : st.border + ' ' + st.bg + ' hover:shadow-sm'
                     }`}
-                      draggable={item.status !== 'completed'}
-                      onDragStart={item.status !== 'completed' ? (e => handleDragStart(e, item)) : undefined}
-                      onDragEnd={item.status !== 'completed' ? handleDragEnd : undefined}
-                      onDragOver={e => handleItemDragOver(e, idx)}>
-                      {/* Drag handle — hidden for completed */}
-                      {item.status !== 'completed' && (
-                        <span className="text-gray-300 text-sm cursor-grab mr-0.5 select-none">⠿</span>
-                      )}
+                    >
 
                       {/* Status dot */}
-                      <span className={`h-3 w-3 rounded-full shrink-0 ${item.status === 'completed' ? 'bg-gray-400' : st.dot}`} />
+                      <span className={`h-3.5 w-3.5 shrink-0 ${item.status === 'completed' ? 'bg-gray-400' : st.dot}`} />
 
                       {/* Name + info */}
                       <div className="flex-1 min-w-0">
                         {item.type === 'category' ? (
                           <>
-                            <span className="text-sm md:text-base font-bold text-gray-900 block">{item.data.name}</span>
+                            <span className="block text-sm font-bold text-gray-900 md:text-base whitespace-normal break-words">{item.data.name}</span>
                             <div className="flex flex-wrap gap-1 mt-0.5">
-                              {item.data.groupName && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5">{item.data.groupName}</span>}
-                              {item.data.gender && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5">{genderLabels[item.data.gender] || item.data.gender}</span>}
+                              {item.data.groupName && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{item.data.groupName}</span>}
+                              {item.data.gender && <span className={`border border-black px-1.5 py-0.5 text-xs text-gray-700 ${GENDER_BG[item.data.gender] || 'bg-gray-100'}`}>{genderLabels[item.data.gender] || item.data.gender}</span>}
                             </div>
                           </>
                         ) : (
                           <>
-                            <span className="text-sm md:text-base font-bold truncate block">
+                            <span className="block text-sm font-bold md:text-base whitespace-normal break-words">
                               {item.data.match_number && <span className="text-gray-400 mr-1">{item.data.match_number}</span>}
                               <span className="text-red-600">{item.data.red_corner_full_name || 'TBD'}</span>
                               <span className="text-gray-400 mx-1">vs</span>
@@ -452,89 +397,90 @@ function FieldPanel({
                             {(() => {
                               const matchCat = allCats.find(c => c.id === item.data.category);
                               return (
-                                <span className="text-xs text-gray-400 truncate block">
-                                  {matchCat?.name || item.data.category_name}{matchCat?.groupName ? ` • ${matchCat.groupName}` : ''}{matchCat?.gender ? ` • ${genderLabels[matchCat.gender]}` : ''} • <span className="font-semibold text-indigo-500">{matchTypeLabels[item.data.match_type] || item.data.match_type}</span>
-                                </span>
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {(matchCat?.name || item.data.category_name) && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{matchCat?.name || item.data.category_name}</span>}
+                                  {matchCat?.groupName && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{matchCat.groupName}</span>}
+                                  {matchCat?.gender && <span className={`border border-black px-1.5 py-0.5 text-xs text-gray-700 ${GENDER_BG[matchCat.gender] || 'bg-gray-100'}`}>{genderLabels[matchCat.gender] || matchCat.gender}</span>}
+                                  {item.data.match_type && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs font-semibold text-gray-800">{matchTypeLabels[item.data.match_type] || item.data.match_type}</span>}
+                                </div>
                               );
                             })()}
                           </>
                         )}
                       </div>
 
-                      {/* URMEAZĂ badge */}
-                      {idx === nextItemIndex && !isActiveItem && item.status !== 'completed' && (
-                        <span className="text-xs font-bold text-orange-700 bg-orange-100 border border-orange-200 px-2.5 py-1 shrink-0 uppercase">Urmează</span>
-                      )}
+                      <div className="flex w-full flex-wrap items-center gap-2 pt-1 sm:w-auto sm:pt-0">
+                        {/* URMEAZĂ badge */}
+                        {idx === nextItemIndex && !isActiveItem && item.status !== 'completed' && (
+                          <span className="shrink-0 border border-black bg-yellow-300 px-2.5 py-1 text-xs font-bold uppercase text-black">Urmează</span>
+                        )}
 
-                      {/* Status dropdown */}
-                      <select
-                        value={item.status || 'not_started'}
-                        onChange={async e => {
-                          const newStatus = e.target.value;
-                          // If changing FROM completed, ask for confirmation
-                          if (item.status === 'completed' && newStatus !== 'completed') {
-                            setStatusConfirmData({ item, newStatus });
-                            e.target.value = 'completed'; // reset select visually
-                            return;
-                          }
-                          // If setting to in_progress, also start the session on this field
-                          if (newStatus === 'in_progress') {
-                            for (const si of scheduleItems) {
-                              if (si === item || si.type === 'break' || si.status !== 'in_progress') continue;
-                              try {
-                                if (si.type === 'category') await fieldAPI.assignments.update(si.assignmentId, { status: 'not_started' });
-                                else await matchFieldAssignmentAPI.update(si.assignmentId, { status: 'not_started' });
-                              } catch {}
+                        {/* Status dropdown */}
+                        <select
+                          value={item.status || 'not_started'}
+                          onChange={async e => {
+                            const newStatus = e.target.value;
+                            // If changing FROM completed, ask for confirmation
+                            if (item.status === 'completed' && newStatus !== 'completed') {
+                              setStatusConfirmData({ item, newStatus });
+                              e.target.value = 'completed'; // reset select visually
+                              return;
                             }
-                            // Sync session — start displaying this item
-                            const catId = item.type === 'category' ? item.id : null;
-                            const matchId = item.type === 'match' ? item.id : null;
-                            await switchDisplay(catId, matchId, null);
-                          }
-                          // If setting to not_started and this item was active, idle the session
-                          if (newStatus === 'not_started' && isActiveItem) {
-                            await setIdle();
-                          }
-                          if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
-                          else updateMatchAssignmentStatus(item.assignmentId, newStatus);
-                        }}
-                        disabled={busy}
-                        className={`text-xs font-bold uppercase px-2.5 py-1.5 border-none cursor-pointer ${st.badge}`}
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <option value="not_started">Neînceput</option>
-                        <option value="in_progress">Activ</option>
-                        <option value="completed">Finalizat</option>
-                      </select>
+                            // If setting to in_progress, also start the session on this field
+                            if (newStatus === 'in_progress') {
+                              for (const si of scheduleItems) {
+                                if (si === item || si.type === 'break' || si.status !== 'in_progress') continue;
+                                try {
+                                  if (si.type === 'category') await fieldAPI.assignments.update(si.assignmentId, { status: 'not_started' });
+                                  else await matchFieldAssignmentAPI.update(si.assignmentId, { status: 'not_started' });
+                                } catch {}
+                              }
+                              // Sync session — start displaying this item
+                              const catId = item.type === 'category' ? item.id : null;
+                              const matchId = item.type === 'match' ? item.id : null;
+                              await switchDisplay(catId, matchId, null);
+                            }
+                            // If setting to not_started and this item was active, idle the session
+                            if (newStatus === 'not_started' && isActiveItem) {
+                              await setIdle();
+                            }
+                            if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
+                            else updateMatchAssignmentStatus(item.assignmentId, newStatus);
+                          }}
+                          disabled={busy}
+                          className={`w-full cursor-pointer px-2.5 py-1.5 text-xs font-bold uppercase sm:w-auto ${st.badge}`}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <option value="not_started">Neînceput</option>
+                          <option value="in_progress">Activ</option>
+                          <option value="completed">Finalizat</option>
+                        </select>
 
-                      {/* VEZI DETALII — always shown */}
-                      <button
-                        onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match', item.id)}
-                        className={`text-sm px-4 py-2 font-bold shrink-0 ${
-                          item.status === 'completed'
-                            ? 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >VEZI DETALII</button>
+                        {/* VEZI DETALII — always shown */}
+                        <button
+                          onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match', item.id)}
+                          className={`w-full border px-4 py-2 text-sm font-bold sm:w-auto ${
+                            item.status === 'completed'
+                              ? 'border-black bg-white text-gray-400 hover:bg-gray-50'
+                              : 'border-black bg-yellow-100 text-gray-700 hover:bg-yellow-200'
+                          }`}
+                        >VEZI DETALII</button>
+                      </div>
                     </div>
                   )}
                 </React.Fragment>
               );
             })}
-            {/* Final drop indicator */}
-            {dropIndicator === scheduleItems.length && (
-              <div className="h-0.5 bg-indigo-500 rounded-full mx-1 my-0.5" />
-            )}
           </div>
       </div>
 
       {/* ── Status change from Finalizat confirmation modal ── */}
       {statusConfirmData && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setStatusConfirmData(null)}>
-          <div className="bg-white shadow-2xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-sm space-y-4 border-2 border-black bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-900 text-center">Schimbă statusul</h3>
             <p className="text-sm text-gray-600 text-center">
-              Această probă este marcată ca <span className="font-bold text-emerald-600">Finalizată</span>. Ești sigur că vrei să schimbi statusul în <span className="font-bold text-gray-900">{statusConfirmData.newStatus === 'not_started' ? 'Neînceput' : 'Activ'}</span>?
+              Această probă este marcată ca <span className="font-bold text-gray-900">Finalizată</span>. Ești sigur că vrei să schimbi statusul în <span className="font-bold text-gray-900">{statusConfirmData.newStatus === 'not_started' ? 'Neînceput' : 'Activ'}</span>?
             </p>
             <div className="flex gap-2">
               <button
@@ -544,13 +490,13 @@ function FieldPanel({
                   if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
                   else updateMatchAssignmentStatus(item.assignmentId, newStatus);
                 }}
-                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white px-4 py-3 font-bold text-base transition"
+                className="flex-1 border border-black bg-yellow-300 px-4 py-3 text-base font-bold text-black transition hover:bg-yellow-200"
               >
                 Da, schimbă
               </button>
               <button
                 onClick={() => setStatusConfirmData(null)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-3 font-bold text-base transition"
+                className="flex-1 border border-black bg-white px-4 py-3 text-base font-bold text-gray-700 transition hover:bg-yellow-100"
               >
                 Anulează
               </button>

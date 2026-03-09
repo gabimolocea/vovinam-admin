@@ -61,7 +61,7 @@ export function DisplayPreviewProvider({ children }) {
       {/* ── Floating preview iframes ── */}
       {[...openPreviews].map((fId, idx) => {
         const field = fields.find(f => f.id === fId);
-        const label = field?.name || `Tatami ${fId}`;
+        const label = field?.name || `Teren ${fId}`;
         // Stack previews from bottom-right, offset upward
         const bottom = 16 + idx * 245;
 

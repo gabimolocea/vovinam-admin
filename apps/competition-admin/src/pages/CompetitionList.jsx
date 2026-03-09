@@ -3,6 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { competitionAPI } from '@shared/lib/api';
 import { Spinner } from '@shared/components/ui';
 
+function formatDate(value) {
+  if (!value) return '—';
+  const normalized = String(value).split('T')[0];
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return normalized;
+  return parsed.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function getCompetitionStatus(ev, today) {
+  const endDate = ev.end_date || ev.start_date || '';
+  if (endDate && endDate < today) {
+    return { label: 'Încheiată', className: 'bg-gray-100 text-gray-700 border border-gray-300' };
+  }
+  return { label: 'Activă / viitoare', className: 'bg-yellow-200 text-black border border-black' };
+}
+
 export default function CompetitionList() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,9 +42,10 @@ export default function CompetitionList() {
           <p className="text-sm text-gray-500">Nu există competiții disponibile momentan.</p>
           <button
             onClick={() => navigate('/competitions/new')}
-            className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+            className="frvv-btn-add mt-4"
           >
-            + Competiție nouă
+            <span className="frvv-btn-add-icon">+</span>
+            Competiție nouă
           </button>
         </div>
       </div>
@@ -47,81 +64,110 @@ export default function CompetitionList() {
     return (b.start_date || '').localeCompare(a.start_date || '');
   });
 
-  const upcoming = sorted.filter(ev => (ev.end_date || ev.start_date || '') >= today);
-  const past = sorted.filter(ev => (ev.end_date || ev.start_date || '') < today);
+  const renderPeriod = (ev) => (
+    <>
+      {formatDate(ev.start_date)}
+      {ev.end_date && ev.end_date !== ev.start_date ? ` → ${formatDate(ev.end_date)}` : ''}
+    </>
+  );
+
+  const renderLocation = (ev) => ev.city_name || '—';
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Competiții</h1>
-          <p className="text-sm text-gray-500">Administrează toate competițiile și evenimentele</p>
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-end">
         <button
           onClick={() => navigate('/competitions/new')}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+          className="frvv-btn-add"
         >
-          + Competiție nouă
+          <span className="frvv-btn-add-icon">+</span>
+          Competiție nouă
         </button>
       </div>
 
-      {/* ── UPCOMING / ACTIVE ── */}
-      {upcoming.length > 0 && (
-        <>
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Competiții în desfășurare</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-8">
-            {upcoming.map(ev => (
-              <button
-                key={ev.id}
-                onClick={() => navigate(`/competitions/${ev.id}/categories`)}
-                className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-400 hover:shadow-md transition-all group"
-              >
-                <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-700 truncate">
-                  {ev.name}
-                </h3>
-                {ev.start_date && (
-                  <p className="text-xs text-gray-500 mt-1">📅 {ev.start_date}{ev.end_date && ` → ${ev.end_date}`}</p>
-                )}
-                {(ev.location || ev.place) && (
-                  <p className="text-xs text-gray-400 mt-0.5 truncate">📍 {ev.location || ev.place}</p>
-                )}
-                <span className="inline-block mt-2 text-[10px] text-blue-600 font-medium">
-                  Deschide centralizator →
+      <div className="space-y-3 md:hidden">
+        {sorted.map((ev) => {
+          const status = getCompetitionStatus(ev, today);
+          return (
+            <button
+              key={ev.id}
+              type="button"
+              onClick={() => navigate(`/competitions/${ev.id}/categories`)}
+              className="w-full border-2 border-black bg-white p-4 text-left shadow-sm transition hover:bg-yellow-50"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-black uppercase tracking-wide text-gray-900">{ev.name}</h2>
+                </div>
+                <span className={`shrink-0 inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${status.className}`}>
+                  {status.label}
                 </span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+              </div>
 
-      {/* ── PAST / EXPIRED ── */}
-      {past.length > 0 && (
-        <>
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Competiții încheiate</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {past.map(ev => (
-              <button
-                key={ev.id}
-                onClick={() => navigate(`/competitions/${ev.id}/categories`)}
-                className="text-left rounded-xl border border-gray-100 bg-gray-50 p-4 opacity-60 hover:opacity-80 transition-all"
-              >
-                <h3 className="text-sm font-medium text-gray-500 truncate">
-                  {ev.name}
-                </h3>
-                {ev.start_date && (
-                  <p className="text-[11px] text-gray-400 mt-1">📅 {ev.start_date}{ev.end_date && ` → ${ev.end_date}`}</p>
-                )}
-                {(ev.location || ev.place) && (
-                  <p className="text-[11px] text-gray-400 mt-0.5 truncate">📍 {ev.location || ev.place}</p>
-                )}
-                <span className="inline-block mt-2 text-[10px] text-gray-400 font-medium">
-                  Încheiat
-                </span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+              <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-gray-700">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Perioadă</p>
+                  <p className="mt-1 font-medium">{renderPeriod(ev)}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Oraș</p>
+                  <p className="mt-1 font-medium">{renderLocation(ev)}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <span className="frvv-btn-primary px-3 py-1.5 text-xs">Deschide</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto border-2 border-black bg-white md:block">
+        <table className="min-w-full border-collapse text-sm">
+          <thead className="bg-black text-white">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-yellow-200">Competiție</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-yellow-200">Perioadă</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-yellow-200">Oraș</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-yellow-200">Status</th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-yellow-200">Acțiune</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((ev, index) => {
+              const status = getCompetitionStatus(ev, today);
+              return (
+                <tr key={ev.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="border-t border-gray-200 px-4 py-3 align-top md:min-w-[320px]">
+                    <div className="font-bold text-gray-900">{ev.name}</div>
+                  </td>
+                  <td className="border-t border-gray-200 px-4 py-3 align-top text-gray-700">
+                    {renderPeriod(ev)}
+                  </td>
+                  <td className="border-t border-gray-200 px-4 py-3 align-top text-gray-700">
+                    {renderLocation(ev)}
+                  </td>
+                  <td className="border-t border-gray-200 px-4 py-3 align-top">
+                    <span className={`inline-flex items-center px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${status.className}`}>
+                      {status.label}
+                    </span>
+                  </td>
+                  <td className="border-t border-gray-200 px-4 py-3 text-right align-top">
+                    <button
+                      onClick={() => navigate(`/competitions/${ev.id}/categories`)}
+                      className="frvv-btn-primary px-3 py-1.5 text-xs"
+                    >
+                      Deschide
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
     </div>
   );
 }

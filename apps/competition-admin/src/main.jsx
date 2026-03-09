@@ -8,12 +8,14 @@ import '@shared/styles/index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <DisplayPreviewProvider>
-          <App />
-        </DisplayPreviewProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <div className="competition-admin-app">
+      <BrowserRouter>
+        <AuthProvider>
+          <DisplayPreviewProvider>
+            <App />
+          </DisplayPreviewProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </div>
   </React.StrictMode>,
 );

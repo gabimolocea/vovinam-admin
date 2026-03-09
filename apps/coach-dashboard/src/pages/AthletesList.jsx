@@ -1,37 +1,107 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { athleteAPI } from '@shared/lib/api';
+import { athleteAPI, visaAPI } from '@shared/lib/api';
 import { PageHeader, Spinner, EmptyState, DataTable, StatusBadge } from '@shared/components/ui';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:8000';
+
+const STATUS_LABELS = {
+  approved: 'Aprobat',
+  pending: 'În așteptare',
+  rejected: 'Respins',
+  revision_required: 'Necesită revizie',
+};
+
+function imgUrl(path) {
+  if (!path) return null;
+  if (String(path).startsWith('http')) return path;
+  return `${API_BASE}${String(path).startsWith('/') ? '' : '/'}${path}`;
+}
+
+const AVATAR_PLACEHOLDER = '/avatar-placeholder.svg';
+
+function normalizeList(data) {
+  return Array.isArray(data) ? data : data?.results ?? [];
+}
+
+function getLatestVisaByAthlete(items) {
+  const map = new Map();
+  items.forEach((item) => {
+    const athleteId = item?.athlete;
+    if (!athleteId) return;
+    const current = map.get(athleteId);
+    const currentDate = current?.issued_date ? new Date(current.issued_date).getTime() : 0;
+    const nextDate = item?.issued_date ? new Date(item.issued_date).getTime() : 0;
+    if (!current || nextDate >= currentDate) {
+      map.set(athleteId, item);
+    }
+  });
+  return map;
+}
+
+function VisaBadge({ visa }) {
+  if (!visa) {
+    return <span className="inline-flex rounded-full border border-gray-300 bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-500">Lipsește</span>;
+  }
+
+  return visa.is_valid ? (
+    <span className="inline-flex rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">Validă</span>
+  ) : (
+    <span className="inline-flex rounded-full border border-red-300 bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">Invalidă</span>
+  );
+}
+
+function ApprovalInfoIcon() {
+  return (
+    <span
+      title="Sportivii trebuie aprobați de adminul federației înainte să fie validați complet în sistem."
+      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-blue-300 bg-blue-100 text-[10px] font-black text-blue-700"
+    >
+      i
+    </span>
+  );
+}
 
 export default function AthletesList() {
   const [athletes, setAthletes] = useState([]);
+  const [annualVisas, setAnnualVisas] = useState([]);
+  const [medicalVisas, setMedicalVisas] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    athleteAPI.list({ my_club: true }).then(({ data }) => {
-      setAthletes(Array.isArray(data) ? data : data.results ?? []);
+    Promise.all([
+      athleteAPI.list({ my_club: true }),
+      visaAPI.annual.list().catch(() => ({ data: [] })),
+      visaAPI.medical.list().catch(() => ({ data: [] })),
+    ]).then(([athletesRes, annualRes, medicalRes]) => {
+      setAthletes(normalizeList(athletesRes.data));
+      setAnnualVisas(normalizeList(annualRes.data));
+      setMedicalVisas(normalizeList(medicalRes.data));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  const latestAnnualVisaByAthlete = useMemo(() => getLatestVisaByAthlete(annualVisas), [annualVisas]);
+  const latestMedicalVisaByAthlete = useMemo(() => getLatestVisaByAthlete(medicalVisas), [medicalVisas]);
 
   const columns = [
     {
       key: 'photo',
       label: '',
       render: (r) => {
-        const initials = `${(r.first_name?.[0] || '').toUpperCase()}${(r.last_name?.[0] || '').toUpperCase()}`;
-        const colors = ['bg-blue-500','bg-emerald-500','bg-purple-500','bg-rose-500','bg-amber-500','bg-cyan-500','bg-indigo-500','bg-teal-500'];
-        const colorIdx = (r.id || 0) % colors.length;
+        const profileImageUrl = imgUrl(r.profile_image);
         return (
-          <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
-            {r.profile_image ? (
-              <img src={r.profile_image} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className={`w-full h-full flex items-center justify-center text-white text-xs font-bold ${colors[colorIdx]}`}>
-                {initials || '?'}
-              </div>
-            )}
+          <div className="h-10 w-10 rounded-full overflow-hidden shrink-0 border border-gray-200 bg-gray-100">
+            <img
+              src={profileImageUrl || AVATAR_PLACEHOLDER}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = AVATAR_PLACEHOLDER;
+              }}
+            />
           </div>
         );
       },
@@ -39,7 +109,26 @@ export default function AthletesList() {
     { key: 'name', label: 'Nume', render: (r) => `${r.last_name || ''} ${r.first_name || ''}`.trim() || r.full_name || '—' },
     { key: 'current_grade', label: 'Grad', render: (r) => r.current_grade?.name || r.current_grade_name || '—' },
     { key: 'date_of_birth', label: 'Data nașterii', render: (r) => r.date_of_birth || '—' },
-    { key: 'status', label: 'Status', render: (r) => <StatusBadge status={r.status} /> },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (r) => (
+        <div className="flex items-center gap-2">
+          <StatusBadge status={r.status} label={STATUS_LABELS[r.status] || r.status || '—'} />
+          <ApprovalInfoIcon />
+        </div>
+      ),
+    },
+    {
+      key: 'annual_visa',
+      label: 'Viza anuală',
+      render: (r) => <VisaBadge visa={latestAnnualVisaByAthlete.get(r.id)} />,
+    },
+    {
+      key: 'medical_visa',
+      label: 'Viza medicală',
+      render: (r) => <VisaBadge visa={latestMedicalVisaByAthlete.get(r.id)} />,
+    },
   ];
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
@@ -49,9 +138,10 @@ export default function AthletesList() {
       <PageHeader title="Sportivi" subtitle="Sportivii din clubul tău">
         <button
           onClick={() => navigate('/athletes/new')}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition"
+          className="frvv-btn-add"
         >
-          + Adaugă sportiv
+          <span className="frvv-btn-add-icon">+</span>
+          Adaugă sportiv
         </button>
       </PageHeader>
       {athletes.length === 0 ? (

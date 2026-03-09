@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@shared';
+import Logo from '@shared/components/Logo';
 
 const navItems = [
   { to: '/', label: 'Events', icon: '🏆' },
@@ -17,32 +18,33 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="frvv-shell">
       {/* Top nav */}
-      <header className="border-b border-gray-200 bg-white">
+      <header className="frvv-shell-header">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Athlete Portal</h1>
-            <p className="text-xs text-gray-500">FRVV — Enrollment</p>
+          <div className="flex items-center gap-3">
+            <Logo size={32} />
+            <div>
+              <h1 className="text-lg font-black uppercase tracking-wide text-yellow-200">Athlete Portal</h1>
+              <p className="text-xs text-yellow-100/75">FRVV — Enrollment</p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">{user?.first_name || user?.email}</span>
-            <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-red-600">
+            <span className="text-sm text-yellow-100/85">{user?.first_name || user?.email}</span>
+            <button onClick={handleLogout} className="border border-yellow-400/50 px-2.5 py-1 text-xs font-semibold text-yellow-100 hover:bg-yellow-300 hover:text-black">
               Logout
             </button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 px-4">
+        <nav className="mx-auto flex max-w-5xl gap-1 px-4 pb-2">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) =>
-                `border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'border-blue-600 text-blue-700'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                `frvv-shell-navlink ${
+                  isActive ? 'frvv-shell-navlink-active' : 'frvv-shell-navlink-inactive'
                 }`
               }
             >
@@ -53,7 +55,7 @@ export default function Layout() {
         </nav>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="frvv-shell-main mx-auto max-w-5xl px-4 py-8">
         <Outlet />
       </main>
     </div>

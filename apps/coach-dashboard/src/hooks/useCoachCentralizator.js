@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { categoryAPI, groupAPI, clubAPI, enrollmentAPI, athleteAPI, competitionAPI } from '@shared/lib/api';
+import { categoryAPI, groupAPI, clubAPI, enrollmentAPI, athleteAPI, competitionAPI, teamAPI } from '@shared/lib/api';
 import { useAuth } from '@shared';
+
+const isTeamCategoryType = (type) => type === 'team' || type === 'teams';
 
 /**
  * Hook for the coach-dashboard centralizator.
@@ -29,6 +31,7 @@ export default function useCoachCentralizator(eventId) {
   const [enrollPickerCell, setEnrollPickerCell] = useState(null);
   const [clubAthleteCache, setClubAthleteCache] = useState({});
   const enrollPickerRef = useRef(null);
+  const [teamBuilderBusy, setTeamBuilderBusy] = useState(false);
 
   /* ── data fetching ── */
   const fetchAll = useCallback(async () => {
@@ -141,7 +144,12 @@ export default function useCoachCentralizator(eventId) {
     const rows = filteredClubs.map(club => ({
       clubId: club.id,
       club: club.name,
-      athletes: (athletesByClubId[club.id] || []).sort((a, b) => a.name.localeCompare(b.name)),
+      athletes: (athletesByClubId[club.id] || []).sort((a, b) => {
+        const aCount = Object.keys(a.enrollments || {}).length;
+        const bCount = Object.keys(b.enrollments || {}).length;
+        if (aCount !== bCount) return bCount - aCount;
+        return a.name.localeCompare(b.name);
+      }),
     }));
 
     return { clubRows: rows, athleteMap: aMap };
@@ -161,18 +169,25 @@ export default function useCoachCentralizator(eventId) {
      HANDLERS (coach-restricted — own club only)
      ════════════════════════════════════════════════════ */
 
-  const handleUnenroll = (enrollmentId, athleteName, catName, e) => {
+  const handleUnenroll = (enrollmentId, athleteName, catName, e, options = {}) => {
     e.stopPropagation();
+    const enrollmentType = options.enrollmentType || 'athlete';
     setConfirmModal({
-      title: 'Scoate sportivul',
-      message: `Ești sigur că vrei să scoți sportivul „${athleteName}" din categoria „${catName}"?`,
+      title: enrollmentType === 'team' ? 'Scoate echipa' : 'Scoate sportivul',
+      message: enrollmentType === 'team'
+        ? `Ești sigur că vrei să scoți echipa „${athleteName}" din categoria „${catName}"?`
+        : `Ești sigur că vrei să scoți sportivul „${athleteName}" din categoria „${catName}"?`,
       icon: '🚫',
       color: 'orange',
-      confirmLabel: 'Scoate din categorie',
+      confirmLabel: enrollmentType === 'team' ? 'Scoate echipa' : 'Scoate din categorie',
       onConfirm: async () => {
         setBusy(true);
         try {
-          await enrollmentAPI.categoryAthletes.delete(enrollmentId);
+          if (enrollmentType === 'team') {
+            await enrollmentAPI.categoryTeams.delete(enrollmentId);
+          } else {
+            await enrollmentAPI.categoryAthletes.delete(enrollmentId);
+          }
           await fetchAll();
         } finally { setBusy(false); setConfirmModal(null); }
       },
@@ -188,8 +203,7 @@ export default function useCoachCentralizator(eventId) {
       setEnrollPickerCell(null);
       return;
     }
-    const rect = e.currentTarget.getBoundingClientRect();
-    setEnrollPickerCell({ clubId, catId, rect });
+    setEnrollPickerCell({ clubId, catId });
     if (!clubAthleteCache[clubId]) {
       try {
         const res = await athleteAPI.list({ club: clubId });
@@ -234,6 +248,47 @@ export default function useCoachCentralizator(eventId) {
     await handleToggleEnroll(athleteId, catId, weightValue || null);
   };
 
+  const createTeamEnrollment = async (catId, athleteIds) => {
+    const cat = categories.find((item) => item.id === catId);
+    if (!cat || !isTeamCategoryType(cat.type) || athleteIds.length < 2) return;
+
+    const selectedIds = [...new Set((athleteIds || []).map(Number).filter(Boolean))];
+    const clubAthletes = clubAthleteCache[myClubId] || [];
+    const selectedAthletes = clubAthletes.filter((athlete) => selectedIds.includes(athlete.id));
+    if (selectedAthletes.length !== selectedIds.length) {
+      window.alert('Poți adăuga doar sportivi din clubul tău.');
+      return;
+    }
+
+    const selectedSignature = selectedAthletes.map((athlete) => athlete.id).sort((a, b) => a - b).join('-');
+    const duplicateTeam = (cat.enrolled_teams || []).find((team) => {
+      const memberSignature = (team.members || []).map((member) => member.id).sort((a, b) => a - b).join('-');
+      return memberSignature && memberSignature === selectedSignature;
+    });
+    if (duplicateTeam) {
+      window.alert('Echipa este deja înscrisă în această categorie.');
+      return;
+    }
+
+    setTeamBuilderBusy(true);
+    setBusy(true);
+    try {
+      const { data: team } = await teamAPI.create({ name: `Team ${Date.now()}` });
+      for (const athleteId of selectedIds) {
+        await teamAPI.members.create({ team: team.id, athlete: athleteId });
+      }
+      await enrollmentAPI.categoryTeams.create({ category: catId, team: team.id });
+      setEnrollPickerCell(null);
+      await fetchAll();
+    } catch (error) {
+      console.error('Failed to enroll team', error);
+      window.alert(error?.response?.data?.error || 'Nu s-a putut înrola echipa.');
+    } finally {
+      setBusy(false);
+      setTeamBuilderBusy(false);
+    }
+  };
+
   /* ── close menus on outside click / escape ── */
   useEffect(() => {
     if (!eventId) return;
@@ -259,11 +314,13 @@ export default function useCoachCentralizator(eventId) {
     confirmModal, setConfirmModal,
     enrollPickerCell, setEnrollPickerCell, clubAthleteCache, enrollPickerRef,
     weightModal, setWeightModal, weightValue, setWeightValue,
+    teamBuilderBusy,
     // Handlers
     fetchAll,
     handleUnenroll,
     handleCellClick,
     handleToggleEnroll,
     handleWeightSubmit,
+    createTeamEnrollment,
   };
 }

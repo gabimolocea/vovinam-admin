@@ -4,6 +4,65 @@ import api from '@shared/lib/api';
 
 const POLL_INTERVAL = 2000;
 
+const normalizeId = (value) => {
+  if (value == null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isNaN(numeric) ? value : numeric;
+};
+
+const normalizeName = (value = '') => String(value)
+  .normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+
+const teamMatchesCurrentAthlete = (team, athleteId, athleteName) => {
+  const members = team?.team_members || team?.members || [];
+  const normalizedAthleteId = normalizeId(athleteId);
+  const normalizedAthleteName = normalizeName(athleteName);
+
+  return members.some(member => {
+    const memberId = normalizeId(member?.id);
+    if (normalizedAthleteId != null && memberId === normalizedAthleteId) {
+      return true;
+    }
+
+    const candidateNames = [
+      member?.name,
+      [member?.first_name, member?.last_name].filter(Boolean).join(' '),
+      [member?.last_name, member?.first_name].filter(Boolean).join(' '),
+    ].map(normalizeName).filter(Boolean);
+
+    return normalizedAthleteName && candidateNames.includes(normalizedAthleteName);
+  });
+};
+
+const joinTeamMemberNames = (members = []) => members
+  .map(member => member?.name || [member?.first_name, member?.last_name].filter(Boolean).join(' ').trim())
+  .filter(Boolean)
+  .join(' & ');
+
+const stripTrailingClubSuffix = (teamName = '', clubName = '') => {
+  const normalizedTeamName = String(teamName || '').trim();
+  const normalizedClubName = String(clubName || '').trim();
+
+  if (!normalizedTeamName || !normalizedClubName) {
+    return normalizedTeamName;
+  }
+
+  const suffix = ` (${normalizedClubName})`;
+  if (normalizedTeamName.endsWith(suffix)) {
+    return normalizedTeamName.slice(0, -suffix.length).trim();
+  }
+
+  return normalizedTeamName;
+};
+
+const normalizeTeamDisplayName = (teamName = '', clubName = '') => stripTrailingClubSuffix(teamName, clubName).replace(/\s+și\s+/gi, ' & ').trim();
+
+const isTeamCategoryType = (value) => ['team', 'teams'].includes(value);
+
 
 export default function DisplayScreen() {
   const { fieldId } = useParams();
@@ -11,6 +70,7 @@ export default function DisplayScreen() {
   const [category, setCategory] = useState(null);
   const [match, setMatch] = useState(null);
   const [athlete, setAthlete] = useState(null);
+  const [activeTeam, setActiveTeam] = useState(null);
   const [group, setGroup] = useState(null);
   const [event, setEvent] = useState(null);
   const [refScores, setRefScores] = useState([]);       // CategoryRefereeScore[]
@@ -24,6 +84,8 @@ export default function DisplayScreen() {
 
   const fetchSession = useCallback(async () => {
     try {
+      let currentCategoryData = null;
+
       // Get monitor session for this field
       const { data: sessions } = await api.get('/monitor-sessions/', { params: { field: fieldId } });
       const list = Array.isArray(sessions) ? sessions : sessions.results ?? [];
@@ -34,6 +96,7 @@ export default function DisplayScreen() {
         setCategory(null);
         setMatch(null);
         setAthlete(null);
+        setActiveTeam(null);
         setRefScores([]);
         setMatchRefScores([]);
         setMatchRefAssignment(null);
@@ -42,21 +105,16 @@ export default function DisplayScreen() {
         return;
       }
 
-      // Fetch category details
-      if (sess.current_category) {
-        const { data: cat } = await api.get(`/categories/${sess.current_category}/`);
-        setCategory(cat);
-        // Fetch group
-        if (cat.group) {
-          const { data: grp } = await api.get(`/groups/${cat.group}/`);
-          setGroup(grp);
-        }
-        // Fetch event
-        if (cat.event) {
-          const { data: evt } = await api.get(`/competitions/${cat.event}/`);
-          setEvent(evt);
-        }
-      }
+      const sessionTeamFallback = sess.current_team_name
+        ? {
+            team_name: sess.current_team_name,
+            team_club_name: sess.current_team_club_name || '',
+            team_members: Array.isArray(sess.current_team_members) ? sess.current_team_members : [],
+            members: Array.isArray(sess.current_team_members) ? sess.current_team_members : [],
+            id: sess.current_athlete_score_id || null,
+          }
+        : null;
+      setActiveTeam(sessionTeamFallback || null);
 
       // Fetch current athlete (for solo/team)
       if (sess.current_athlete) {
@@ -83,21 +141,87 @@ export default function DisplayScreen() {
         const { data: mra } = await api.get('/match-referee-assignments/', { params: { match_id: sess.current_match } });
         const mraList = Array.isArray(mra) ? mra : mra.results ?? [];
         setMatchRefAssignment(mraList[0] || null);
+
+        const categoryId = sess.current_category || m.category || null;
+        if (categoryId) {
+          const { data: cat } = await api.get(`/categories/${categoryId}/`);
+          currentCategoryData = cat;
+          setCategory(cat);
+
+          if (cat.group) {
+            const { data: grp } = await api.get(`/groups/${cat.group}/`);
+            setGroup(grp);
+          } else {
+            setGroup(null);
+          }
+
+          if (cat.event) {
+            const { data: evt } = await api.get(`/competitions/${cat.event}/`);
+            setEvent(evt);
+          } else {
+            setEvent(null);
+          }
+        } else {
+          setCategory(null);
+          setGroup(null);
+          setEvent(null);
+        }
       } else {
         setMatch(null);
         setRounds([]);
         setMatchRefScores([]);
         setMatchRefAssignment(null);
         setMatchEvents([]);
+
+        if (sess.current_category) {
+          const { data: cat } = await api.get(`/categories/${sess.current_category}/`);
+          currentCategoryData = cat;
+          setCategory(cat);
+
+          if (cat.group) {
+            const { data: grp } = await api.get(`/groups/${cat.group}/`);
+            setGroup(grp);
+          } else {
+            setGroup(null);
+          }
+
+          if (cat.event) {
+            const { data: evt } = await api.get(`/competitions/${cat.event}/`);
+            setEvent(evt);
+          } else {
+            setEvent(null);
+          }
+        } else {
+          setCategory(null);
+          setGroup(null);
+          setEvent(null);
+        }
       }
 
       // Fetch category referee scores (for solo/team — scores for current athlete)
-      if (sess.current_category && sess.current_athlete) {
-        const { data: crs } = await api.get('/category-referee-score/', {
-          params: { category: sess.current_category, athlete: sess.current_athlete }
-        });
-        const scores = Array.isArray(crs) ? crs : crs.results ?? [];
-        setRefScores(scores);
+      if (sess.current_category && (sess.current_athlete || sess.current_athlete_score_id || sess.current_team_name)) {
+        if (isTeamCategoryType(currentCategoryData?.type)) {
+          const activeAthleteId = normalizeId(sess.current_athlete);
+          const activeAthleteName = sess.current_athlete_name || [athlete?.first_name, athlete?.last_name].filter(Boolean).join(' ');
+          const activeEnrollment = (currentCategoryData?.enrolled_teams || []).find(team => teamMatchesCurrentAthlete(team, activeAthleteId, activeAthleteName));
+          const currentTeam = activeEnrollment || sessionTeamFallback || null;
+          setActiveTeam(currentTeam);
+
+          const { data: crs } = await api.get('/category-referee-score/', {
+            params: sess.current_athlete_score_id
+              ? { category: sess.current_category, athlete_score: sess.current_athlete_score_id }
+              : { category: sess.current_category }
+          });
+          const scores = Array.isArray(crs) ? crs : crs.results ?? [];
+          const targetAthleteScoreId = sess.current_athlete_score_id || null;
+          setRefScores(targetAthleteScoreId ? scores.filter(score => normalizeId(score.athlete_score) === normalizeId(targetAthleteScoreId)) : []);
+        } else {
+          const { data: crs } = await api.get('/category-referee-score/', {
+            params: { category: sess.current_category, athlete: sess.current_athlete }
+          });
+          const scores = Array.isArray(crs) ? crs : crs.results ?? [];
+          setRefScores(scores);
+        }
 
         // Reveal only when admin explicitly sets scores_revealed
         if (sess.status === 'scores_revealed') {
@@ -157,9 +281,10 @@ export default function DisplayScreen() {
       category={category}
       group={group}
       athlete={athlete}
+      activeTeam={activeTeam}
       refScores={refScores}
       revealed={revealed}
-      isSolo={category?.type === 'solo'}
+      isSolo={!isTeamCategoryType(category?.type)}
       session={session}
       isDisqualified={!!(category?.enrolled_athletes || []).find(ea => (ea.athlete?.id ?? ea.athlete) === session?.current_athlete)?.disqualified}
     />
@@ -186,7 +311,7 @@ function IdleScreen({ event }) {
    SOLO / TEAM DISPLAY — TV-optimised, black background,
    same visual language as FightDisplay
    ═══════════════════════════════════════════════════════ */
-function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed, isSolo, session, isDisqualified }) {
+function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScores, revealed, isSolo, session, isDisqualified }) {
   // ── Delayed total reveal: show referee scores first, then after 7s switch to total screen ──
   const [showTotalScreen, setShowTotalScreen] = useState(false);
   const totalTimerRef = useRef(null);
@@ -223,10 +348,19 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
     total = allScores.reduce((s, v) => s + v, 0);
   }
 
+  const teamMembersLabel = !isSolo && Array.isArray(activeTeam?.team_members || activeTeam?.members)
+    ? joinTeamMemberNames(activeTeam.team_members || activeTeam.members)
+    : '';
+  const rawTeamName = !isSolo
+    ? (activeTeam?.team_name || activeTeam?.name || teamMembersLabel || session?.current_athlete_name || '—')
+    : '';
   const athleteName = isSolo
     ? (athlete ? `${athlete.last_name || ''} ${athlete.first_name || ''}`.trim() : '—')
-    : (category?.team_name || category?.name || '—');
-  const clubName = athlete?.club?.name || '';
+    : normalizeTeamDisplayName(rawTeamName, activeTeam?.team_club_name || activeTeam?.club_name || '');
+  const clubName = isSolo
+    ? (athlete?.club?.name || '')
+    : (activeTeam?.team_club_name || activeTeam?.club_name || '');
+  const hasDisplaySubject = isSolo ? !!athlete : !!activeTeam || !!teamMembersLabel;
 
   // Group display with years
   const groupDisplay = (() => {
@@ -240,7 +374,7 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
 
   const genderLabel = category?.gender === 'male' ? 'Masculin' : category?.gender === 'female' ? 'Feminin' : category?.gender === 'mixt' ? 'Mixt' : '';
   const categoryDisplay = [category?.name, genderLabel].filter(Boolean).join(', ');
-  const typeLabel = category?.type === 'teams' ? 'ECHIPE' : 'SOLO';
+  const typeLabel = isTeamCategoryType(category?.type) ? 'ECHIPE' : 'SOLO';
 
   return (
     <div className="h-screen w-screen bg-black flex flex-col overflow-hidden select-none" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
@@ -250,7 +384,7 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
         <h1 className="text-[3.5vw] font-normal text-yellow-400 text-center leading-tight tracking-wide uppercase" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
           {event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM'}
         </h1>
-        <img src="/frvv-logo.png" alt="Vovinam" className="h-[20vh] w-auto object-contain" />
+        <img src="/vovinam-logo.png" alt="Vovinam" className="h-[24vh] w-auto object-contain" />
       </div>
 
       {/* ═══ CATEGORY INFO BAR ═══ */}
@@ -263,13 +397,16 @@ function SoloTeamDisplay({ event, category, group, athlete, refScores, revealed,
       {/* ═══ MAIN CONTENT ═══ */}
       <div className="flex-1 flex flex-col items-center justify-center px-[3vw] py-[2vh] min-h-0">
         {/* Athlete / Team name */}
-        {athlete ? (
+        {hasDisplaySubject ? (
           <div className="text-center mb-[3vh]">
             <h2 className={`text-[5vw] font-black leading-tight tracking-tight ${isDisqualified ? 'text-red-400 line-through' : 'text-white'}`}>
               {athleteName}
             </h2>
             {clubName && (
               <p className="text-[2.5vw] font-black text-white/70 uppercase mt-[0.5vh]">{clubName}</p>
+            )}
+            {!isSolo && teamMembersLabel && teamMembersLabel !== athleteName && (
+              <p className="text-[1.6vw] font-medium text-white/55 mt-[0.8vh]">{teamMembersLabel}</p>
             )}
             {isDisqualified && (
               <p className="text-[3vw] font-black text-red-500 uppercase mt-[1vh] animate-pulse">DESCALIFICAT</p>
@@ -367,12 +504,12 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
 
   // Round type label
   const roundTypeLabel = (
-    match?.round === 'finals' ? 'FINALA'
-    : match?.round === 'semi-finals' ? 'SEMIFINALA'
-    : match?.round === 'quarter-finals' ? 'SFERTURI'
-    : match?.round === 'bronze' ? 'MECI BRONZ'
-    : match?.round === 'qualifications' ? 'CALIFICARE'
-    : match?.round ? match.round.toUpperCase()
+    match?.match_type === 'finals' ? 'FINALA'
+    : match?.match_type === 'semi-finals' ? 'SEMIFINALA'
+    : match?.match_type === 'quarter-finals' ? 'SFERTURI'
+    : match?.match_type === 'bronze' ? 'MECI BRONZ'
+    : match?.match_type === 'qualifications' ? 'CALIFICARE'
+    : match?.match_type ? String(match.match_type).replace(/-/g, ' ').toUpperCase()
     : ''
   );
 
@@ -523,7 +660,7 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
         <h1 className="text-[3.5vw] font-normal text-yellow-400 text-center leading-tight tracking-wide uppercase" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
           {event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM'}
         </h1>
-        <img src="/frvv-logo.png" alt="Vovinam" className="h-[20vh] w-auto object-contain" />
+        <img src="/vovinam-logo.png" alt="Vovinam" className="h-[24vh] w-auto object-contain" />
       </div>
 
       {/* ═══ TIMER (centered) + CATEGORY INFO (absolute right) ═══ */}

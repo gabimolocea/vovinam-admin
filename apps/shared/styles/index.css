@@ -2,8 +2,144 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --frvv-dark: #00334D;
+}
+
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    @apply bg-white text-gray-900 antialiased;
+  }
+
+  .competition-admin-app [class*='rounded'] {
+    border-radius: 0 !important;
+  }
+}
+
+@layer components {
+  .frvv-shell {
+    @apply min-h-screen bg-white text-gray-900;
+  }
+
+  .frvv-shell-header {
+    @apply border-b-2 border-yellow-400 bg-black text-white;
+  }
+
+  .frvv-shell-navlink {
+    @apply border border-transparent px-3 py-1.5 text-sm font-semibold uppercase tracking-wide text-yellow-100 transition;
+  }
+
+  .frvv-shell-navlink-active {
+    @apply border-yellow-400 bg-yellow-300 text-black;
+  }
+
+  .frvv-shell-navlink-inactive {
+    @apply hover:border-yellow-400 hover:bg-yellow-100 hover:text-black;
+  }
+
+  .frvv-shell-main {
+    @apply bg-white;
+  }
+
+  .frvv-surface {
+    @apply border-2 border-black bg-white;
+  }
+
+  .frvv-input {
+    @apply border-2 border-black bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-yellow-500 focus:ring-0;
+  }
+
+  .frvv-btn-primary {
+    @apply border-2 border-black bg-yellow-300 px-4 py-2 text-sm font-bold text-black transition hover:bg-yellow-400 disabled:opacity-50;
+  }
+
+  .frvv-btn-secondary {
+    @apply border-2 border-black bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-yellow-100;
+  }
+
+  .frvv-btn-add {
+    @apply inline-flex items-center justify-center gap-2 border-2 border-green-700 bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700 disabled:opacity-50;
+  }
+
+  .frvv-btn-add-icon {
+    @apply inline-flex h-5 w-5 items-center justify-center border border-white/40 bg-white/15 text-sm leading-none;
+  }
+
+  .frvv-chip {
+    @apply inline-flex items-center border border-black bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-black;
+  }
+
+  .frvv-live-fullscreen {
+    @apply bg-white;
+  }
+
+  .frvv-live-fullscreen [class*='shadow'] {
+    box-shadow: none !important;
+  }
+}
+
+@layer utilities {
+  [class*='shadow'] {
+    box-shadow: none !important;
+  }
+
+  .bg-black {
+    background-color: var(--frvv-dark) !important;
+  }
+
+  .text-black {
+    color: var(--frvv-dark) !important;
+  }
+
+  .border-black {
+    border-color: var(--frvv-dark) !important;
+  }
+
+  .border-t-black {
+    border-top-color: var(--frvv-dark) !important;
+  }
+
+  .border-b-black {
+    border-bottom-color: var(--frvv-dark) !important;
+  }
+
+  .border-l-black {
+    border-left-color: var(--frvv-dark) !important;
+  }
+
+  .border-r-black {
+    border-right-color: var(--frvv-dark) !important;
+  }
+
+  .bg-black\/40 {
+    background-color: rgb(0 51 77 / 0.4) !important;
+  }
+
+  .bg-black\/50 {
+    background-color: rgb(0 51 77 / 0.5) !important;
+  }
+
+  .bg-black\/60 {
+    background-color: rgb(0 51 77 / 0.6) !important;
+  }
+
+  .border-black\/20 {
+    border-color: rgb(0 51 77 / 0.2) !important;
+  }
+
+  .border-black\/30 {
+    border-color: rgb(0 51 77 / 0.3) !important;
+  }
+
+  .border-black\/40 {
+    border-color: rgb(0 51 77 / 0.4) !important;
+  }
+
+  .hover\:text-black:hover {
+    color: var(--frvv-dark) !important;
+  }
+
+  .hover\:bg-black:hover {
+    background-color: var(--frvv-dark) !important;
   }
 }
