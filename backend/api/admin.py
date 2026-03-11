@@ -843,7 +843,7 @@ try:
                 )
                 
                 html = '<div style="margin-top: 10px;">' + ' '.join(links) + '</div>'
-                return format_html(html)
+                return mark_safe(html)
             
             quick_add_links.short_description = 'Acțiuni rapide'
             
@@ -1670,7 +1670,10 @@ class CategoryAthleteScoreInline(admin.TabularInline):
                     referees.append(f"R{i}: {ref.first_name} {ref.last_name}")
                 else:
                     referees.append(f"R{i}: Nealocat")
-            return format_html('<div style="font-size: 11px; color: #666; white-space: nowrap;">' + '<br>'.join(referees) + '</div>')
+            return format_html(
+                '<div style="font-size: 11px; color: #666; white-space: nowrap;">{}</div>',
+                mark_safe('<br>'.join(referees))
+            )
         except:
             return "Niciun arbitru alocat"
     
@@ -1793,7 +1796,10 @@ class CategoryTeamScoreInline(admin.TabularInline):
                     referees.append(f"R{i}: {ref.first_name} {ref.last_name}")
                 else:
                     referees.append(f"R{i}: Nealocat")
-            return format_html('<div style="font-size: 12px; color: #666;">' + '<br>'.join(referees) + '</div>')
+            return format_html(
+                '<div style="font-size: 12px; color: #666;">{}</div>',
+                mark_safe('<br>'.join(referees))
+            )
         except:
             return "Niciun arbitru alocat acestei categorii"
     
@@ -2863,7 +2869,7 @@ class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
         """Display match completion progress in list view"""
         stats = BracketStats.get_stats(obj)
         if stats['total_matches'] == 0:
-            return format_html('<span style="color: #999;">—</span>')
+            return mark_safe('<span style="color: #999;">—</span>')
         
         return format_html(
             '<div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 3px; overflow: hidden; position: relative;">'
@@ -3644,7 +3650,7 @@ class MatchAdmin(admin.ModelAdmin):
             .order_by('referee__last_name', 'referee__first_name', 'round__round_number', 'id')
         )
         if not scores:
-            return format_html('<span style="color:#999;">Nu există încă scoruri live introduse din frontend.</span>')
+            return mark_safe('<span style="color:#999;">Nu există încă scoruri live introduse din frontend.</span>')
 
         grouped = {}
         for score in scores:
@@ -3713,7 +3719,7 @@ class MatchAdmin(admin.ModelAdmin):
             .order_by('-created_at')
         )
         if not penalties:
-            return format_html('<span style="color:#999;">Nu există încă penalizări centrale introduse din frontend.</span>')
+            return mark_safe('<span style="color:#999;">Nu există încă penalizări centrale introduse din frontend.</span>')
 
         rows = []
         for penalty in penalties:
@@ -4439,6 +4445,7 @@ class AthleteAdminForm(forms.ModelForm):
         'user': _('Utilizator'),
         'first_name': _('Prenume'),
         'last_name': _('Nume'),
+        'gender': _('Gen'),
         'date_of_birth': _('Data nașterii'),
         'address': _('Adresă'),
         'mobile_number': _('Telefon mobil'),
@@ -4494,7 +4501,7 @@ class AthleteAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Informații personale', {
-            'fields': ('user', 'first_name', 'last_name', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
+            'fields': ('user', 'first_name', 'last_name', 'gender', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
         }),
         ('Informații sportive și club', {
             'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_referee')
@@ -5172,14 +5179,14 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         """Display calculated score with details in change form"""
         from .models import FightCategory
         if isinstance(obj.category, FightCategory):
-            return format_html('<em>Nu se aplică (doar pentru categoriile solo/echipe)</em>')
+            return mark_safe('<em>Nu se aplică (doar pentru categoriile solo/echipe)</em>')
         
         score = obj.calculated_score
         count = obj.referee_score_count
         
         if score is None:
             if count == 0:
-                return format_html('<strong style="color: red;">Nu au fost trimise încă scoruri de arbitraj</strong>')
+                return mark_safe('<strong style="color: red;">Nu au fost trimise încă scoruri de arbitraj</strong>')
             else:
                 return format_html(
                     '<strong style="color: orange;">Incomplet: {}/{} scoruri de arbitraj trimise</strong><br>'
@@ -5211,7 +5218,7 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         """Display referee score count with validation status"""
         from .models import FightCategory
         if isinstance(obj.category, FightCategory):
-            return format_html('<em>N/A</em>')
+            return mark_safe('<em>N/A</em>')
         
         count = obj.referee_score_count
         if count == 5:
@@ -5231,13 +5238,13 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
                 obj.pk, obj.pk, obj.pk
             )
         elif obj.status == 'approved':
-            return format_html('<span style="color: green;">Aprobat</span>')
+            return mark_safe('<span style="color: green;">Aprobat</span>')
         elif obj.status == 'rejected':
-            return format_html('<span style="color: red;">Respins</span>')
+            return mark_safe('<span style="color: red;">Respins</span>')
         elif obj.status == 'revision_required':
-            return format_html('<span style="color: orange;">Revizuire necesară</span>')
+            return mark_safe('<span style="color: orange;">Revizuire necesară</span>')
         elif not obj.submitted_by_athlete:
-            return format_html('<span style="color: blue;">Înregistrare arbitru</span>')
+            return mark_safe('<span style="color: blue;">Înregistrare arbitru</span>')
         return ''
     get_action_buttons.short_description = _('Acțiuni')
     

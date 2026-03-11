@@ -834,7 +834,6 @@ export default function LiveFullscreenPage() {
             refScores={refScores}
             refPresence={refPresence.filter(rp => rp.category === currentCat.id)}
             competitionReferees={competitionReferees}
-            scoreEvents={categoryScoreEvents.filter(event => event.category_id === currentCat.id)}
             recordingSession={currentFieldRecordingSession}
             busy={busy}
             setBusy={setBusy}
@@ -901,7 +900,7 @@ export default function LiveFullscreenPage() {
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
-function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, refPresence, competitionReferees, scoreEvents, recordingSession, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories }) {
+function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, refPresence, competitionReferees, recordingSession, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories }) {
   const isTeamCategory = cat.type === 'team';
   const enrolled = isTeamCategory ? (cat.enrolled_teams || []) : (cat.enrolled_athletes || []);
 
@@ -1192,29 +1191,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
   return (
     <div className="flex w-full flex-col gap-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
-        <div className="border border-black bg-white p-4 xl:col-span-2">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-gray-500">Timeline arbitri</p>
-              <p className="mt-1 text-sm text-gray-700">Ultimele modificări de punctaj pentru probă.</p>
-            </div>
-            <span className="border border-black bg-black px-2 py-1 text-xs font-bold text-white">{scoreEvents.length}</span>
-          </div>
-          <div className="mt-3 max-h-48 space-y-2 overflow-auto pr-1">
-            {scoreEvents.length ? scoreEvents.slice().reverse().slice(0, 8).map(event => (
-              <div key={event.id} className="border border-black/10 bg-gray-50 px-3 py-2 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-black text-gray-900">{event.referee_name || 'Arbitru'}</span>
-                  <span className="font-bold uppercase text-gray-500">{event.action}</span>
-                </div>
-                <p className="mt-1 text-gray-700">{event.athlete_name || 'Sportiv'} · {event.previous_score ?? '—'} → {event.score_value ?? '—'}</p>
-              </div>
-            )) : <p className="text-sm text-gray-400">Nu există evenimente încă.</p>}
-          </div>
-        </div>
-      </div>
-
       {/* ── Category info header (like match info tags) ── */}
       <div className="bg-white">
         <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">

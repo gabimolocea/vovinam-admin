@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { cityAPI, gradeAPI } from '@shared/lib/api';
 
@@ -44,8 +44,8 @@ export default function CreateAthlete() {
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
 
   useEffect(() => {
-    cityAPI.list().then(r => setCities(r.data?.results || r.data || [])).catch(() => {});
-    gradeAPI.list().then(r => setGrades(r.data?.results || r.data || [])).catch(() => {});
+    cityAPI.list().then((r) => setCities(r.data?.results || r.data || [])).catch(() => {});
+    gradeAPI.list().then((r) => setGrades(r.data?.results || r.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -68,16 +68,13 @@ export default function CreateAthlete() {
       return a.name.localeCompare(b.name, 'ro');
     });
 
-    if (!normalizedQuery) {
-      return sortedCities;
-    }
-
+    if (!normalizedQuery) return sortedCities;
     return sortedCities.filter((city) => normalizeText(city.name).includes(normalizedQuery));
   }, [cities, cityQuery]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
   const selectCity = (city) => {
@@ -165,8 +162,7 @@ export default function CreateAthlete() {
   return (
     <div className="mx-auto max-w-5xl p-4 md:p-6">
       <div className="mb-6 flex items-center gap-3">
-        <button onClick={() => navigate('/')}
-          className="frvv-btn-secondary">← Înapoi</button>
+        <button onClick={() => navigate('/')} className="frvv-btn-secondary">← Înapoi</button>
         <div>
           <h1 className="text-2xl font-black uppercase tracking-wide text-black">Adaugă sportiv</h1>
           <p className="text-sm text-gray-500">Completează profilul și documentele sportivului.</p>
@@ -174,16 +170,15 @@ export default function CreateAthlete() {
       </div>
 
       {error && (
-        <div className="mb-4 border-2 border-red-300 bg-red-50 p-3 text-sm text-red-700 whitespace-pre-line">
+        <div className="mb-4 whitespace-pre-line border-2 border-red-300 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ═══ DATE PERSONALE ═══ */}
         <fieldset className="frvv-surface p-4 md:p-5">
           <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Date personale</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+          <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Prenume *" name="first_name" value={form.first_name} onChange={handleChange} required />
             <Field label="Nume *" name="last_name" value={form.last_name} onChange={handleChange} required />
             <SelectField label="Gen *" name="gender" value={form.gender} onChange={handleChange} options={GENDER_OPTIONS} required />
@@ -195,21 +190,19 @@ export default function CreateAthlete() {
           </div>
         </fieldset>
 
-        {/* ═══ CONTACT URGENȚĂ ═══ */}
         <fieldset className="frvv-surface p-4 md:p-5">
           <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Contact de urgență</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+          <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Nume contact" name="emergency_contact_name" value={form.emergency_contact_name} onChange={handleChange} />
             <Field label="Telefon contact" name="emergency_contact_phone" value={form.emergency_contact_phone} onChange={handleChange} />
           </div>
         </fieldset>
 
-        {/* ═══ DATE SPORTIVE ═══ */}
         <fieldset className="frvv-surface p-4 md:p-5">
           <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Date sportive</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+          <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div ref={cityBoxRef} className="relative">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Oraș</label>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Oraș</label>
               <input
                 type="text"
                 value={cityQuery}
@@ -251,19 +244,16 @@ export default function CreateAthlete() {
                 </div>
               )}
             </div>
-            <SelectField label="Grad curent" name="current_grade" value={form.current_grade} onChange={handleChange}
-              options={grades} labelKey="name" />
+            <SelectField label="Grad curent" name="current_grade" value={form.current_grade} onChange={handleChange} options={grades} labelKey="name" />
             <Field label="Data înregistrării" name="registered_date" type="date" value={form.registered_date} onChange={handleChange} />
             <Field label="Data expirării" name="expiration_date" type="date" value={form.expiration_date} onChange={handleChange} />
             <div className="flex items-center gap-6 sm:col-span-2">
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" name="is_coach" checked={form.is_coach} onChange={handleChange}
-                  className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="is_coach" checked={form.is_coach} onChange={handleChange} className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
                 Antrenor
               </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" name="is_referee" checked={form.is_referee} onChange={handleChange}
-                  className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="is_referee" checked={form.is_referee} onChange={handleChange} className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
                 Arbitru
               </label>
             </div>
@@ -273,54 +263,53 @@ export default function CreateAthlete() {
           </div>
         </fieldset>
 
-        {/* ═══ DOCUMENTE ═══ */}
         <fieldset className="frvv-surface p-4 md:p-5">
           <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Documente</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            {/* Profile Image */}
+          <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Fotografie sportiv</label>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Fotografie sportiv</label>
               <div className="flex items-center gap-4">
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex h-24 w-24 items-center justify-center overflow-hidden border-2 border-dashed border-black bg-gray-50 cursor-pointer transition hover:bg-yellow-50"
+                  className="flex h-24 w-24 cursor-pointer items-center justify-center overflow-hidden border-2 border-dashed border-black bg-gray-50 transition hover:bg-yellow-50"
                 >
                   {profilePreview ? (
-                    <img src={profilePreview} alt="Preview" className="w-full h-full object-cover" />
+                    <img src={profilePreview} alt="Preview" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-gray-400 text-xs text-center px-1">Click pentru a alege</span>
+                    <span className="px-1 text-center text-xs text-gray-400">Click pentru a alege</span>
                   )}
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 {profileImage && (
                   <div className="text-xs text-gray-500">
-                    <p className="font-medium truncate max-w-[140px]">{profileImage.name}</p>
-                    <button type="button"
+                    <p className="max-w-[140px] truncate font-medium">{profileImage.name}</p>
+                    <button
+                      type="button"
                       onClick={() => { setProfileImage(null); setProfilePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                      className="text-red-500 hover:text-red-700 mt-1">Șterge</button>
+                      className="mt-1 text-red-500 hover:text-red-700"
+                    >
+                      Șterge
+                    </button>
                   </div>
                 )}
               </div>
             </div>
-            {/* Medical Certificate */}
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Certificat medical</label>
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+              <label className="mb-1 block text-xs font-medium text-gray-600">Certificat medical</label>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
                 onChange={(e) => setMedicalCert(e.target.files?.[0] || null)}
-                className="block w-full text-xs text-gray-500 file:mr-2 file:border file:border-black file:bg-yellow-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-black hover:file:bg-yellow-200 cursor-pointer" />
-              {medicalCert && <p className="text-[10px] text-gray-400 mt-1 truncate">{medicalCert.name}</p>}
+                className="block w-full cursor-pointer text-xs text-gray-500 file:mr-2 file:border file:border-black file:bg-yellow-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-black hover:file:bg-yellow-200"
+              />
+              {medicalCert && <p className="mt-1 truncate text-[10px] text-gray-400">{medicalCert.name}</p>}
             </div>
           </div>
         </fieldset>
 
-        {/* ═══ ACTIONS ═══ */}
         <div className="flex items-center justify-end gap-3 pt-2">
-          <button type="button" onClick={() => navigate('/')}
-            className="frvv-btn-secondary">
-            Anulează
-          </button>
-          <button type="submit" disabled={saving}
-            className="frvv-btn-add">
+          <button type="button" onClick={() => navigate('/')} className="frvv-btn-secondary">Anulează</button>
+          <button type="submit" disabled={saving} className="frvv-btn-add">
             <span className="frvv-btn-add-icon">+</span>
             {saving ? 'Se salvează…' : 'Salvează sportivul'}
           </button>
@@ -330,14 +319,13 @@ export default function CreateAthlete() {
   );
 }
 
-/* ── Reusable field ── */
 function Field({ label, name, value, onChange, type = 'text', required, multiline }) {
   const cls = 'frvv-input w-full';
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
       {multiline ? (
-        <textarea name={name} value={value} onChange={onChange} rows={3} className={cls + ' resize-none min-h-[96px]'} />
+        <textarea name={name} value={value} onChange={onChange} rows={3} className={`${cls} resize-none min-h-[96px]`} />
       ) : (
         <input type={type} name={name} value={value} onChange={onChange} required={required} className={cls} />
       )}
@@ -345,16 +333,14 @@ function Field({ label, name, value, onChange, type = 'text', required, multilin
   );
 }
 
-/* ── Reusable select ── */
 function SelectField({ label, name, value, onChange, options, labelKey = 'name', required = false }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      <select name={name} value={value} onChange={onChange} required={required}
-        className="frvv-input w-full bg-white">
+      <label className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
+      <select name={name} value={value} onChange={onChange} required={required} className="frvv-input w-full bg-white">
         <option value="">— Alege —</option>
-        {options.map(o => (
-          <option key={o.id} value={o.id}>{o[labelKey]}</option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>{option[labelKey]}</option>
         ))}
       </select>
     </div>

@@ -41,13 +41,22 @@ export default function CompetitionList() {
           <div className="text-4xl mb-3">🏆</div>
           <h2 className="text-base font-bold text-gray-700 mb-1">Fără competiții</h2>
           <p className="text-sm text-gray-500">Nu există competiții disponibile momentan.</p>
-          <button
-            onClick={() => navigate('/competitions/new')}
-            className="frvv-btn-add mt-4"
-          >
-            <span className="frvv-btn-add-icon">+</span>
-            Competiție nouă
-          </button>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={() => navigate('/competitions/new')}
+              className="frvv-btn-add"
+            >
+              <span className="frvv-btn-add-icon">+</span>
+              Competiție nouă
+            </button>
+            <button
+              onClick={() => navigate('/athletes/new')}
+              className="frvv-btn-add"
+            >
+              <span className="frvv-btn-add-icon">+</span>
+              Adaugă sportiv
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -76,7 +85,14 @@ export default function CompetitionList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-3">
+        <button
+          onClick={() => navigate('/athletes/new')}
+          className="frvv-btn-add"
+        >
+          <span className="frvv-btn-add-icon">+</span>
+          Adaugă sportiv
+        </button>
         <button
           onClick={() => navigate('/competitions/new')}
           className="frvv-btn-add"

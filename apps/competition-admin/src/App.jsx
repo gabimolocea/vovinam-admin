@@ -4,6 +4,7 @@ import LoginPage from '@shared/components/LoginPage';
 import Layout from './components/Layout';
 import CompetitionList from './pages/CompetitionList';
 import CompetitionForm from './pages/CompetitionForm';
+import CreateAthlete from './pages/CreateAthlete';
 import CategoriesLayout from './pages/CategoriesLayout';
 import CentralizatorPage from './pages/CentralizatorPage';
 import TehnicaPage from './pages/TehnicaPage';
@@ -50,6 +51,7 @@ export default function App() {
       >
         <Route index element={<CompetitionList />} />
         <Route path="competitions/new" element={<CompetitionForm />} />
+        <Route path="athletes/new" element={<CreateAthlete />} />
         <Route path="competitions/:id/results" element={<ResultsPage />} />
         <Route path="competitions/:id/sync" element={<LegacySyncRedirect />} />
       </Route>
