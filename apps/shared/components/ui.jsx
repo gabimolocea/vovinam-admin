@@ -85,3 +85,20 @@ export function DataTable({ columns, rows, onRowClick }) {
     </div>
   );
 }
+
+export function formatGroupBadgeLabel(groupOrName, rangeSource = null) {
+  const group = groupOrName && typeof groupOrName === 'object' ? groupOrName : null;
+  const name = typeof groupOrName === 'string'
+    ? groupOrName
+    : group?.name || rangeSource?.group_name || '';
+
+  if (!name) return '';
+
+  const start = group?.birth_year_start ?? rangeSource?.birth_year_start ?? null;
+  const end = group?.birth_year_end ?? rangeSource?.birth_year_end ?? null;
+
+  if (start && end) return `${name} (${start} - ${end})`;
+  if (start) return `${name} (${start}+)`;
+  if (end) return `${name} (până la ${end})`;
+  return name;
+}

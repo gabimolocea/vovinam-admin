@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.urls import reverse
 from django.conf import settings
@@ -82,11 +83,28 @@ class NewsPost(SEOModel):
         return self.title
 
 class Event(SEOModel):
+    SYNC_MODE_CHOICES = [
+        ('cloud', _('Cloud')),
+        ('local_event', _('Eveniment local')),
+    ]
+    LOCAL_SYNC_STATUS_CHOICES = [
+        ('idle', _('Neexportat')),
+        ('exported', _('Exportat local')),
+        ('local_in_progress', _('În desfășurare local')),
+        ('results_uploaded', _('Rezultate încărcate')),
+        ('completed', _('Sincronizare finalizată')),
+    ]
+
     title = models.CharField(max_length=200)
     slug = models.SlugField(unique=True, help_text="URL-friendly version of the title")
     description = CKEditor5Field('Description', config_name='extends', blank=True)  # Updated field
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
+    coach_registration_deadline = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='Deadline until coaches can complete competition centralizer data. Defaults to the event start date when left empty.'
+    )
     address = models.TextField(blank=True, help_text="Full address of the event")
     # Use City model (from api app) as a selector instead of free-text 'location'
     city = models.ForeignKey(
@@ -121,6 +139,37 @@ class Event(SEOModel):
         choices=STATUS_CHOICES,
         default='upcoming',
         help_text='Operational status of the event'
+    )
+    sync_mode = models.CharField(
+        max_length=20,
+        choices=SYNC_MODE_CHOICES,
+        default='cloud',
+        help_text='Indică dacă evenimentul este administrat în cloud sau în modul local de competiție.'
+    )
+    sync_locked = models.BooleanField(
+        default=False,
+        help_text='Blochează modificările operaționale în cloud după exportul către serverul local al competiției.'
+    )
+    exported_to_local_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='Momentul în care evenimentul a fost exportat pentru operare locală.'
+    )
+    results_uploaded_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='Momentul în care rezultatele locale au fost încărcate în cloud.'
+    )
+    sync_completed_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='Momentul în care sincronizarea locală a fost finalizată și evenimentul a revenit în cloud.'
+    )
+    local_sync_status = models.CharField(
+        max_length=24,
+        choices=LOCAL_SYNC_STATUS_CHOICES,
+        default='idle',
+        help_text='Starea fluxului de sincronizare cloud → local → cloud pentru acest eveniment.'
     )
     # registration fields removed (deprecated)
     price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
@@ -160,6 +209,40 @@ class Event(SEOModel):
     def is_past(self):
         """Event has ended"""
         return self.end_date < timezone.now()
+
+    @property
+    def effective_coach_registration_deadline(self):
+        return self.coach_registration_deadline or self.start_date
+
+    @property
+    def operational_lock_active(self):
+        return bool(self.sync_locked)
+
+    def mark_exported_to_local(self, exported_at=None):
+        self.sync_mode = 'local_event'
+        self.sync_locked = True
+        self.local_sync_status = 'exported'
+        self.exported_to_local_at = exported_at or timezone.now()
+        self.results_uploaded_at = None
+        self.sync_completed_at = None
+
+    def mark_results_uploaded(self, uploaded_at=None):
+        self.local_sync_status = 'results_uploaded'
+        self.results_uploaded_at = uploaded_at or timezone.now()
+
+    def mark_local_in_progress(self):
+        self.local_sync_status = 'local_in_progress'
+
+    def complete_local_sync(self, completed_at=None):
+        self.local_sync_status = 'completed'
+        self.sync_mode = 'cloud'
+        self.sync_locked = False
+        self.sync_completed_at = completed_at or timezone.now()
+
+    def clear_local_lock(self):
+        self.sync_locked = False
+        if self.local_sync_status == 'completed':
+            self.sync_mode = 'cloud'
 
 class AboutSection(models.Model):
     section_title = models.CharField(max_length=100)

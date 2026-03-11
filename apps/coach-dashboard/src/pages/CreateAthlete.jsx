@@ -1,6 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { cityAPI, gradeAPI } from '@shared/lib/api';
+
+const MAJOR_CITIES = ['București', 'Cluj-Napoca', 'Timișoara', 'Iași', 'Constanța', 'Brașov'];
+
+const normalizeText = (value = '') =>
+  String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 
 const INITIAL = {
   first_name: '',
@@ -30,15 +38,70 @@ export default function CreateAthlete() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef();
+  const cityBoxRef = useRef(null);
+  const [cityQuery, setCityQuery] = useState('');
+  const [showCitySuggestions, setShowCitySuggestions] = useState(false);
 
   useEffect(() => {
     cityAPI.list().then(r => setCities(r.data?.results || r.data || [])).catch(() => {});
     gradeAPI.list().then(r => setGrades(r.data?.results || r.data || [])).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (cityBoxRef.current && !cityBoxRef.current.contains(event.target)) {
+        setShowCitySuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredCities = useMemo(() => {
+    const normalizedQuery = normalizeText(cityQuery.trim());
+    const sortedCities = [...cities].sort((a, b) => {
+      const aMajor = MAJOR_CITIES.includes(a.name) ? 0 : 1;
+      const bMajor = MAJOR_CITIES.includes(b.name) ? 0 : 1;
+      if (aMajor !== bMajor) return aMajor - bMajor;
+      return a.name.localeCompare(b.name, 'ro');
+    });
+
+    if (!normalizedQuery) {
+      return sortedCities;
+    }
+
+    return sortedCities.filter((city) => normalizeText(city.name).includes(normalizedQuery));
+  }, [cities, cityQuery]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const selectCity = (city) => {
+    setForm((prev) => ({ ...prev, city: city.id }));
+    setCityQuery(city.name);
+    setShowCitySuggestions(false);
+  };
+
+  const handleCityChange = (e) => {
+    const value = e.target.value;
+    setCityQuery(value);
+    setShowCitySuggestions(true);
+
+    const exact = cities.find((city) => normalizeText(city.name) === normalizeText(value));
+    setForm((prev) => ({ ...prev, city: exact ? exact.id : '' }));
+  };
+
+  const handleCityBlur = () => {
+    const exact = cities.find((city) => normalizeText(city.name) === normalizeText(cityQuery));
+    if (!exact) {
+      setForm((prev) => ({ ...prev, city: '' }));
+    }
+    if (!cityQuery.trim()) {
+      setForm((prev) => ({ ...prev, city: '' }));
+    }
   };
 
   const handleImageChange = (e) => {
@@ -56,6 +119,11 @@ export default function CreateAthlete() {
 
     if (!form.first_name.trim() || !form.last_name.trim()) {
       setError('Prenumele și numele sunt obligatorii.');
+      return;
+    }
+
+    if (!form.date_of_birth) {
+      setError('Data nașterii este obligatorie.');
       return;
     }
 
@@ -112,7 +180,7 @@ export default function CreateAthlete() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
             <Field label="Prenume *" name="first_name" value={form.first_name} onChange={handleChange} required />
             <Field label="Nume *" name="last_name" value={form.last_name} onChange={handleChange} required />
-            <Field label="Data nașterii" name="date_of_birth" type="date" value={form.date_of_birth} onChange={handleChange} />
+            <Field label="Data nașterii *" name="date_of_birth" type="date" value={form.date_of_birth} onChange={handleChange} required />
             <Field label="Telefon" name="mobile_number" value={form.mobile_number} onChange={handleChange} />
             <div className="sm:col-span-2">
               <Field label="Adresă" name="address" value={form.address} onChange={handleChange} multiline />
@@ -133,8 +201,49 @@ export default function CreateAthlete() {
         <fieldset className="frvv-surface p-4 md:p-5">
           <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Date sportive</legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            <SelectField label="Oraș" name="city" value={form.city} onChange={handleChange}
-              options={cities} labelKey="name" />
+            <div ref={cityBoxRef} className="relative">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Oraș</label>
+              <input
+                type="text"
+                value={cityQuery}
+                onChange={handleCityChange}
+                onFocus={() => setShowCitySuggestions(true)}
+                onBlur={handleCityBlur}
+                placeholder="Caută orașul..."
+                className="frvv-input w-full pr-10"
+                autoComplete="off"
+              />
+              <div className="pointer-events-none absolute right-3 top-[34px] text-xs text-gray-500">⌕</div>
+              {showCitySuggestions && filteredCities.length > 0 && (
+                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border-2 border-black bg-white">
+                  {filteredCities.map((city, index) => {
+                    const selected = Number(form.city) === Number(city.id);
+                    const isMajor = MAJOR_CITIES.includes(city.name);
+                    return (
+                      <button
+                        key={city.id}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectCity(city)}
+                        className={`flex w-full items-center justify-between border-b border-black/10 px-3 py-2 text-left text-sm transition last:border-b-0 ${
+                          selected ? 'bg-yellow-100 font-semibold text-gray-900' : 'bg-white text-gray-700 hover:bg-yellow-50'
+                        }`}
+                      >
+                        <span className="truncate">{city.name}</span>
+                        <span className="ml-3 shrink-0 text-[10px] font-black uppercase tracking-wide text-gray-400">
+                          {selected ? 'SELECTAT' : (!cityQuery.trim() && isMajor && index < MAJOR_CITIES.length ? 'SUGERAT' : '')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {showCitySuggestions && filteredCities.length === 0 && cityQuery.trim() && (
+                <div className="absolute z-30 mt-1 w-full border-2 border-black bg-white px-3 py-3 text-sm text-gray-500">
+                  Niciun oraș găsit.
+                </div>
+              )}
+            </div>
             <SelectField label="Grad curent" name="current_grade" value={form.current_grade} onChange={handleChange}
               options={grades} labelKey="name" />
             <Field label="Data înregistrării" name="registered_date" type="date" value={form.registered_date} onChange={handleChange} />

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { refereeAPI } from '@shared/lib/api';
 import { useAuth } from '@shared';
-import { Spinner } from '@shared/components/ui';
+import { Spinner, formatGroupBadgeLabel } from '@shared/components/ui';
 
 const STATUS_CFG = {
   in_progress: { dot: 'bg-emerald-500 animate-pulse', border: 'border-black' },
@@ -92,7 +92,7 @@ export default function Dashboard() {
                   <div className="flex-1 min-w-0">
                     <span className="block text-sm font-bold text-gray-900 md:text-base whitespace-normal break-words">{cat.name || cat.category_name}</span>
                     <div className="flex flex-wrap gap-1 mt-0.5">
-                      {cat.group_name && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{cat.group_name}</span>}
+                      {cat.group_name && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{formatGroupBadgeLabel(cat.group_name, cat)}</span>}
                       {cat.gender && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs text-gray-700">{GENDER_LABELS[cat.gender] || cat.gender}</span>}
                     </div>
                   </div>
@@ -121,7 +121,7 @@ export default function Dashboard() {
                   <span className={`h-3.5 w-3.5 shrink-0 ${activeStatus.dot}`} />
                   <div className="flex-1 min-w-0">
                     <span className="block text-sm font-bold md:text-base whitespace-normal break-words">
-                      {match.match_number && <span className="text-gray-400 mr-1">{match.match_number}</span>}
+                      <span className="text-gray-400 mr-1">ID {match.id}</span>
                       <span className="text-gray-900">{match.red_corner_full_name || 'TBD'}</span>
                       <span className="text-gray-400 mx-1">vs</span>
                       <span className="text-gray-700">{match.blue_corner_full_name || 'TBD'}</span>
@@ -130,7 +130,7 @@ export default function Dashboard() {
                       {(match.category_name || `Meci #${match.id}`) && (
                         <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{match.category_name || `Meci #${match.id}`}</span>
                       )}
-                      {match.category_group_name && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{match.category_group_name}</span>}
+                      {match.category_group_name && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{formatGroupBadgeLabel(match.category_group_name, match)}</span>}
                       {match.category_gender && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs text-gray-700">{GENDER_LABELS[match.category_gender] || match.category_gender}</span>}
                     </div>
                     {match.match_type && (

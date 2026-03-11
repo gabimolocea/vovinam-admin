@@ -1,5 +1,6 @@
 from django.shortcuts import render
-from datetime import datetime
+from datetime import datetime, timedelta
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from django.db import models
 from django.db.models import Prefetch, Q
@@ -15,12 +16,272 @@ from .permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoach
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
+from django.core.files.base import ContentFile
 import logging
+from pathlib import Path
 
 # Ensure logger output appears in the console for debugging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(name)s %(message)s')
 from django.db import IntegrityError
 # Create your views here.
+
+
+def _get_effective_coach_registration_deadline(event):
+    if not event:
+        return None
+    return getattr(event, 'effective_coach_registration_deadline', None) or getattr(event, 'coach_registration_deadline', None) or getattr(event, 'start_date', None)
+
+
+def _coach_deadline_locked_response(user, event):
+    if not user or getattr(user, 'is_admin', False):
+        return None
+    deadline = _get_effective_coach_registration_deadline(event)
+    if deadline and timezone.now() > deadline:
+        return Response(
+            {
+                'error': 'Deadline-ul pentru completarea centralizatorului de către antrenori a expirat.',
+                'coach_registration_deadline': deadline,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return None
+
+
+def _event_operational_lock_response(event):
+    if not event or not getattr(event, 'operational_lock_active', False):
+        return None
+    return Response(
+        {
+            'error': 'Evenimentul este blocat pentru operare locală. Modificările operaționale în cloud sunt dezactivate.',
+            'event_id': event.id,
+            'sync_mode': getattr(event, 'sync_mode', None),
+            'sync_locked': getattr(event, 'sync_locked', False),
+            'local_sync_status': getattr(event, 'local_sync_status', None),
+        },
+        status=getattr(status, 'HTTP_423_LOCKED', 423),
+    )
+
+
+def _event_operational_guard_response(user, event):
+    locked = _event_operational_lock_response(event)
+    if locked is not None:
+        return locked
+    return _coach_deadline_locked_response(user, event)
+
+
+def _is_match_assigned_referee(match, athlete):
+    if not match or not athlete:
+        return False
+    if getattr(match, 'central_referee_id', None) == athlete.id:
+        return True
+    if match.referees.filter(pk=athlete.pk).exists():
+        return True
+
+    assignment = getattr(match, 'referee_assignment', None)
+    if assignment:
+        return athlete.id in {
+            assignment.referee_1_id,
+            assignment.referee_2_id,
+            assignment.referee_3_id,
+            assignment.referee_4_id,
+            assignment.referee_5_id,
+        }
+    return False
+
+
+def _coerce_bool(value, default=False):
+    if value in [None, '']:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _event_for_team(team):
+    if not team:
+        return None
+    enrollment = team.enrolled_categories.select_related('category__event').first()
+    if enrollment and enrollment.category_id:
+        return getattr(enrollment.category, 'event', None)
+    return None
+
+
+def _get_active_recording_session(event=None, field=None):
+    if not event or not field:
+        return None
+    return FieldRecordingSession.objects.filter(
+        event=event,
+        field=field,
+        status='recording'
+    ).order_by('-started_at', '-id').first()
+
+
+def _compute_video_offset_ms(recording_session, event_timestamp=None):
+    if not recording_session or not getattr(recording_session, 'started_at', None):
+        return None
+    target_timestamp = event_timestamp or timezone.now()
+    delta_ms = int((target_timestamp - recording_session.started_at).total_seconds() * 1000)
+    return max(delta_ms, 0)
+
+
+def _resolve_recording_session(request, *, event=None, field=None):
+    recording_session_id = request.data.get('recording_session') or request.query_params.get('recording_session')
+    if recording_session_id:
+        try:
+            return FieldRecordingSession.objects.get(pk=recording_session_id)
+        except FieldRecordingSession.DoesNotExist:
+            raise ValidationError({'recording_session': 'Recording session not found.'})
+    return _get_active_recording_session(event=event, field=field)
+
+
+REAL_TIME_POINT_VALIDATION_WINDOW_MS = 1500
+REAL_TIME_POINT_EVENT_CANDIDATE_LOOKBACK_MS = 5000
+
+
+def _get_point_event_round_signature(event):
+    metadata = event.metadata if isinstance(event.metadata, dict) else {}
+    round_id = metadata.get('round_id')
+    round_number = metadata.get('round')
+    return round_id, round_number
+
+
+def _get_point_event_comparison_timestamp_ms(event):
+    metadata = event.metadata if isinstance(event.metadata, dict) else {}
+    client_timestamp = metadata.get('client_timestamp_ms')
+    try:
+        if client_timestamp not in [None, '']:
+            return int(client_timestamp)
+    except (TypeError, ValueError):
+        pass
+
+    timestamp = getattr(event, 'timestamp', None)
+    if not timestamp:
+        return None
+    try:
+        return int(timestamp.timestamp() * 1000)
+    except Exception:
+        return None
+
+
+def _auto_validate_real_time_point_event(event):
+    if not event or getattr(getattr(event, 'match', None), 'display_mode', None) != 'real_time':
+        return [event] if event else []
+
+    if event.event_type != 'score':
+        return [event] if event else []
+
+    window_start = event.timestamp - timedelta(milliseconds=REAL_TIME_POINT_EVENT_CANDIDATE_LOOKBACK_MS)
+    window_end = event.timestamp + timedelta(milliseconds=REAL_TIME_POINT_EVENT_CANDIDATE_LOOKBACK_MS)
+    round_id, round_number = _get_point_event_round_signature(event)
+    event_comparison_timestamp = _get_point_event_comparison_timestamp_ms(event)
+
+    candidates = RefereePointEvent.objects.filter(
+        match_id=event.match_id,
+        side=event.side,
+        points=event.points,
+        event_type=event.event_type,
+        timestamp__gte=window_start,
+        timestamp__lte=window_end,
+    ).exclude(validation_status='rejected').select_related('match', 'referee').order_by('timestamp', 'id')
+
+    matched_events = []
+    for candidate in candidates:
+        candidate_comparison_timestamp = _get_point_event_comparison_timestamp_ms(candidate)
+        if event_comparison_timestamp is not None and candidate_comparison_timestamp is not None:
+            diff_ms = abs(candidate_comparison_timestamp - event_comparison_timestamp)
+            if diff_ms >= REAL_TIME_POINT_VALIDATION_WINDOW_MS:
+                continue
+        candidate_round_id, candidate_round_number = _get_point_event_round_signature(candidate)
+        if round_id and candidate_round_id and candidate_round_id != round_id:
+            continue
+        if not round_id and round_number and candidate_round_number and candidate_round_number != round_number:
+            continue
+        matched_events.append(candidate)
+
+    unique_referees = {item.referee_id for item in matched_events if item.referee_id}
+    if len(unique_referees) < 2:
+        return []
+
+    validated_at = timezone.now()
+    RefereePointEvent.objects.filter(
+        id__in=[item.id for item in matched_events],
+        validation_status='pending',
+    ).update(validation_status='validated', validated_at=validated_at)
+
+    return list(RefereePointEvent.objects.filter(id__in=[item.id for item in matched_events]).order_by('timestamp', 'id'))
+
+
+def _log_category_score_event(*, athlete_score, referee, action, source, created_by=None, score_value=None, previous_score=None, notes=None, recording_session=None, metadata=None):
+    CategoryRefereeScoreEvent.objects.create(
+        athlete_score=athlete_score,
+        referee=referee,
+        action=action,
+        source=source,
+        score_value=score_value,
+        previous_score=previous_score,
+        notes=notes,
+        created_by=created_by,
+        recording_session=recording_session,
+        video_offset_ms=_compute_video_offset_ms(recording_session),
+        metadata=metadata or {},
+    )
+
+
+def _sync_point_events_to_match_referee_scores(match_id, referee_id):
+    match = Match.objects.filter(pk=match_id).first()
+    if not match:
+        return
+
+    events = RefereePointEvent.objects.filter(
+        match_id=match_id,
+        referee_id=referee_id,
+        validation_status='validated',
+    ).order_by('timestamp', 'id')
+
+    totals_by_round = {}
+    for event in events:
+        metadata = event.metadata or {}
+        round_id = metadata.get('round_id')
+        round_number = metadata.get('round')
+        key = round_id or round_number
+        if key in [None, '']:
+            continue
+        bucket = totals_by_round.setdefault(key, {
+            'round_id': round_id,
+            'round_number': round_number,
+            'red': 0,
+            'blue': 0,
+        })
+        if event.side == 'red':
+            bucket['red'] += event.points or 0
+        elif event.side == 'blue':
+            bucket['blue'] += event.points or 0
+
+    kept_score_ids = []
+    for data in totals_by_round.values():
+        round_obj = None
+        if data['round_id']:
+            round_obj = MatchRound.objects.filter(pk=data['round_id'], match_id=match_id).first()
+        if round_obj is None and data['round_number'] not in [None, '']:
+            round_obj = MatchRound.objects.filter(match_id=match_id, round_number=data['round_number']).first()
+        if round_obj is None:
+            continue
+        score_obj, _ = MatchRefereeScore.objects.update_or_create(
+            match_id=match_id,
+            referee_id=referee_id,
+            round=round_obj,
+            defaults={
+                'red_corner_score': data['red'],
+                'blue_corner_score': data['blue'],
+                'notes': 'Auto-aggregated from referee point events',
+            }
+        )
+        kept_score_ids.append(score_obj.id)
+
+    stale_scores = MatchRefereeScore.objects.filter(match_id=match_id, referee_id=referee_id).exclude(round__isnull=True)
+    if kept_score_ids:
+        stale_scores = stale_scores.exclude(id__in=kept_score_ids)
+    stale_scores.delete()
 
 
 class RefereeAssignedCategoriesView(APIView):
@@ -277,8 +538,17 @@ class CompetitionViewSet(viewsets.ViewSet):
                 'city_name': ev.city.name if ev.city_id else None,
                 'start_date': ev.start_date,
                 'end_date': ev.end_date,
+                'coach_registration_deadline': ev.coach_registration_deadline,
+                'effective_coach_registration_deadline': getattr(ev, 'effective_coach_registration_deadline', ev.start_date),
                 'event_type': ev.event_type,
                 'status': getattr(ev, 'status', None),
+                'sync_mode': ev.sync_mode,
+                'sync_locked': ev.sync_locked,
+                'local_sync_status': ev.local_sync_status,
+                'exported_to_local_at': ev.exported_to_local_at,
+                'results_uploaded_at': getattr(ev, 'results_uploaded_at', None),
+                'sync_completed_at': getattr(ev, 'sync_completed_at', None),
+                'operational_lock_active': getattr(ev, 'operational_lock_active', False),
                 'description': ev.description,
                 'categories': cats
             })
@@ -295,8 +565,17 @@ class CompetitionViewSet(viewsets.ViewSet):
             'city_name': ev.city.name if ev.city_id else None,
             'start_date': ev.start_date,
             'end_date': ev.end_date,
+            'coach_registration_deadline': ev.coach_registration_deadline,
+            'effective_coach_registration_deadline': getattr(ev, 'effective_coach_registration_deadline', ev.start_date),
             'event_type': ev.event_type,
             'status': getattr(ev, 'status', None),
+            'sync_mode': ev.sync_mode,
+            'sync_locked': ev.sync_locked,
+            'local_sync_status': ev.local_sync_status,
+            'exported_to_local_at': ev.exported_to_local_at,
+            'results_uploaded_at': getattr(ev, 'results_uploaded_at', None),
+            'sync_completed_at': getattr(ev, 'sync_completed_at', None),
+            'operational_lock_active': getattr(ev, 'operational_lock_active', False),
             'description': ev.description,
         }
         if include_categories:
@@ -329,6 +608,9 @@ class CompetitionViewSet(viewsets.ViewSet):
         if parsed_date is not None:
             return timezone.make_aware(datetime.combine(parsed_date, datetime.min.time()))
         raise ValidationError({'start_date': ['Invalid date format.']})
+
+    def _default_coach_deadline(self, start_dt):
+        return start_dt
 
     def retrieve(self, request, pk=None):
         from landing.models import Event
@@ -373,6 +655,13 @@ class CompetitionViewSet(viewsets.ViewSet):
         while Event.objects.filter(slug=slug).exists():
             slug = f'{base_slug}-{counter}'
             counter += 1
+        coach_deadline = self._parse_event_datetime(
+            d.get('coach_registration_deadline'),
+            fallback=self._default_coach_deadline(parsed_start_date),
+        )
+        exported_to_local_at = self._parse_event_datetime(d.get('exported_to_local_at'))
+        results_uploaded_at = self._parse_event_datetime(d.get('results_uploaded_at'))
+        sync_completed_at = self._parse_event_datetime(d.get('sync_completed_at'))
         ev = Event.objects.create(
             title=title,
             slug=slug,
@@ -380,9 +669,16 @@ class CompetitionViewSet(viewsets.ViewSet):
             city=city,
             start_date=parsed_start_date,
             end_date=parsed_end_date,
+            coach_registration_deadline=coach_deadline,
             description=d.get('description', ''),
             event_type='competition',
             status=d.get('status', 'upcoming'),
+            sync_mode=d.get('sync_mode', 'cloud') or 'cloud',
+            sync_locked=_coerce_bool(d.get('sync_locked'), default=False),
+            local_sync_status=d.get('local_sync_status', 'idle') or 'idle',
+            exported_to_local_at=exported_to_local_at,
+            results_uploaded_at=results_uploaded_at,
+            sync_completed_at=sync_completed_at,
         )
         return Response(self._serialize_event(ev), status=201)
 
@@ -394,6 +690,12 @@ class CompetitionViewSet(viewsets.ViewSet):
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
         d = request.data
+        sync_only_fields = {'sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at'}
+        requested_fields = set(d.keys())
+        if getattr(ev, 'operational_lock_active', False) and requested_fields - sync_only_fields:
+            locked = _event_operational_lock_response(ev)
+            if locked is not None:
+                return locked
         if 'name' in d:
             ev.title = d['name']
         if 'address' in d or 'location' in d or 'place' in d:
@@ -417,12 +719,96 @@ class CompetitionViewSet(viewsets.ViewSet):
                 ev.end_date = self._parse_event_datetime(d['end_date'], fallback=ev.end_date)
             except ValidationError as exc:
                 return Response(exc.detail, status=400)
+        if 'coach_registration_deadline' in d:
+            try:
+                ev.coach_registration_deadline = self._parse_event_datetime(
+                    d.get('coach_registration_deadline'),
+                    fallback=self._default_coach_deadline(ev.start_date),
+                )
+            except ValidationError as exc:
+                return Response({'coach_registration_deadline': exc.detail.get('start_date', ['Invalid date format.'])}, status=400)
+        elif 'start_date' in d and not ev.coach_registration_deadline:
+            ev.coach_registration_deadline = self._default_coach_deadline(ev.start_date)
         if 'description' in d:
             ev.description = d['description']
         if 'status' in d:
             ev.status = d['status']
+        if 'sync_mode' in d:
+            ev.sync_mode = d.get('sync_mode') or ev.sync_mode
+        if 'sync_locked' in d:
+            ev.sync_locked = _coerce_bool(d.get('sync_locked'), default=ev.sync_locked)
+        if 'local_sync_status' in d:
+            ev.local_sync_status = d.get('local_sync_status') or ev.local_sync_status
+        if 'exported_to_local_at' in d:
+            try:
+                ev.exported_to_local_at = self._parse_event_datetime(d.get('exported_to_local_at'))
+            except ValidationError as exc:
+                return Response({'exported_to_local_at': exc.detail.get('start_date', ['Invalid date format.'])}, status=400)
+        if 'results_uploaded_at' in d:
+            try:
+                ev.results_uploaded_at = self._parse_event_datetime(d.get('results_uploaded_at'))
+            except ValidationError as exc:
+                return Response({'results_uploaded_at': exc.detail.get('start_date', ['Invalid date format.'])}, status=400)
+        if 'sync_completed_at' in d:
+            try:
+                ev.sync_completed_at = self._parse_event_datetime(d.get('sync_completed_at'))
+            except ValidationError as exc:
+                return Response({'sync_completed_at': exc.detail.get('start_date', ['Invalid date format.'])}, status=400)
         ev.save()
         return Response(self._serialize_event(ev, include_categories=True))
+
+    @action(detail=True, methods=['post'], url_path='complete-local-sync')
+    def complete_local_sync(self, request, pk=None):
+        from landing.models import Event
+
+        try:
+            ev = Event.objects.get(pk=pk, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        if ev.local_sync_status not in {'results_uploaded', 'completed'}:
+            return Response(
+                {'detail': 'Event results must be imported from local before sync can be completed.'},
+                status=400,
+            )
+
+        ev.complete_local_sync()
+        ev.save(update_fields=['sync_mode', 'sync_locked', 'local_sync_status', 'sync_completed_at'])
+        return Response(self._serialize_event(ev, include_categories=True), status=200)
+
+    @action(detail=True, methods=['post'], url_path='mark-results-uploaded')
+    def mark_results_uploaded(self, request, pk=None):
+        from landing.models import Event
+
+        try:
+            ev = Event.objects.get(pk=pk, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        if not ev.sync_locked:
+            return Response({'detail': 'Event must be locked for local operation.'}, status=400)
+
+        ev.mark_results_uploaded()
+        ev.save(update_fields=['local_sync_status', 'results_uploaded_at'])
+        return Response(self._serialize_event(ev, include_categories=True), status=200)
+
+    @action(detail=True, methods=['post'], url_path='mark-local-in-progress')
+    def mark_local_in_progress(self, request, pk=None):
+        from landing.models import Event
+
+        try:
+            ev = Event.objects.get(pk=pk, event_type='competition')
+        except Event.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        if not ev.sync_locked:
+            return Response({'detail': 'Event must be locked for local operation.'}, status=400)
+        if ev.local_sync_status not in {'exported', 'local_in_progress'}:
+            return Response({'detail': 'Event must be exported for local operation before it can be marked as in progress.'}, status=400)
+
+        ev.mark_local_in_progress()
+        ev.save(update_fields=['local_sync_status'])
+        return Response(self._serialize_event(ev, include_categories=True), status=200)
 
     @action(detail=True, methods=['post'], url_path='generate-standard-groups-categories')
     def generate_standard_groups_categories(self, request, pk=None):
@@ -536,37 +922,60 @@ class ClubViewSet(viewsets.ViewSet):
             Club.objects.filter(pk=club_id).update(display_order=idx)
         return Response({'status': 'ok'})
 
-    @action(detail=True, methods=['get', 'post'], permission_classes=[IsAdminOrReadOnly])
-    def point_events(self, request, pk=None):
-        """List or create referee point events for a match (async mode).
-
-        GET returns the audit trail. POST creates a RefereePointEvent (processed=false)
-        which can later be consumed by the aggregation command.
-        """
-        from .serializers import RefereePointEventSerializer
-        try:
-            match = Match.objects.get(pk=pk)
-        except Match.DoesNotExist:
-            return Response({'detail': 'Not found.'}, status=404)
-
-        if request.method == 'GET':
-            events = match.point_events.all().order_by('timestamp')
-            serializer = RefereePointEventSerializer(events, many=True)
-            return Response(serializer.data)
-
-        # POST: create event
-        data = request.data.copy()
-        data['match'] = pk
-        serializer = RefereePointEventSerializer(data=data, context={'request': request})
-        if serializer.is_valid():
-            ev = serializer.save(created_by=(request.user if getattr(request, 'user', None) and request.user.is_authenticated else None))
-            return Response(RefereePointEventSerializer(ev).data, status=201)
-        return Response(serializer.errors, status=400)
-
-
 class OfflineSyncViewSet(viewsets.ViewSet):
     """Offline snapshot and results upload endpoints for competition manager."""
     permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='event-pack')
+    def event_pack(self, request):
+        event_id = request.query_params.get('event_id')
+        if not event_id:
+            return Response({'detail': 'event_id query param is required.'}, status=400)
+
+        try:
+            from .sync.export_event_pack import build_event_pack
+
+            payload = build_event_pack(event_id=int(event_id))
+            event = Event.objects.get(pk=payload['event']['id'])
+            event.mark_exported_to_local(exported_at=payload['manifest']['exported_at'])
+            event.save(update_fields=['sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at'])
+
+            return Response(payload)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=404)
+
+    @action(detail=False, methods=['post'], url_path='event-pack/import')
+    def import_event_pack(self, request):
+        try:
+            from .sync.import_event_pack import import_event_pack
+
+            return Response(import_event_pack(request.data), status=200)
+        except (DjangoValidationError, ValidationError) as exc:
+            detail = getattr(exc, 'message_dict', None) or getattr(exc, 'detail', None) or str(exc)
+            return Response({'detail': detail}, status=400)
+
+    @action(detail=False, methods=['get'], url_path='event-results')
+    def event_results(self, request):
+        event_id = request.query_params.get('event_id')
+        if not event_id:
+            return Response({'detail': 'event_id query param is required.'}, status=400)
+
+        try:
+            from .sync.export_event_results import build_event_results_pack
+
+            return Response(build_event_results_pack(event_id=int(event_id)))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=404)
+
+    @action(detail=False, methods=['post'], url_path='event-results/import')
+    def import_event_results(self, request):
+        try:
+            from .sync.import_event_results import import_event_results
+
+            return Response(import_event_results(request.data), status=200)
+        except (DjangoValidationError, ValidationError) as exc:
+            detail = getattr(exc, 'message_dict', None) or getattr(exc, 'detail', None) or str(exc)
+            return Response({'detail': detail}, status=400)
 
     @action(detail=False, methods=['get'], url_path='athletes')
     def athletes(self, request):
@@ -1011,6 +1420,9 @@ class TeamViewSet(viewsets.ViewSet):
 
     def update(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        locked = _event_operational_lock_response(_event_for_team(instance))
+        if locked is not None:
+            return locked
         serializer = self.serializer_class(instance, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1019,6 +1431,9 @@ class TeamViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        locked = _event_operational_lock_response(_event_for_team(instance))
+        if locked is not None:
+            return locked
         instance.delete()
         return Response(status=204)
     
@@ -1037,6 +1452,10 @@ class TeamMemberViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        team = Team.objects.filter(pk=request.data.get('team')).first()
+        locked = _event_operational_lock_response(_event_for_team(team))
+        if locked is not None:
+            return locked
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1054,6 +1473,9 @@ class TeamMemberViewSet(viewsets.ViewSet):
     def destroy(self, request, pk=None):
         try:
             instance = self.queryset.get(pk=pk)
+            locked = _event_operational_lock_response(_event_for_team(instance.team))
+            if locked is not None:
+                return locked
             instance.delete()
             return Response(status=204)
         except TeamMember.DoesNotExist:
@@ -1082,6 +1504,10 @@ class MatchViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        category = Category.objects.select_related('event').filter(pk=request.data.get('category')).first()
+        locked = _event_operational_lock_response(getattr(category, 'event', None))
+        if locked is not None:
+            return locked
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1095,6 +1521,9 @@ class MatchViewSet(viewsets.ViewSet):
 
     def update(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        locked = _event_operational_lock_response(getattr(getattr(instance, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
         serializer = self.serializer_class(instance, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1103,6 +1532,9 @@ class MatchViewSet(viewsets.ViewSet):
 
     def partial_update(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        locked = _event_operational_lock_response(getattr(getattr(instance, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
         serializer = self.serializer_class(instance, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -1111,8 +1543,108 @@ class MatchViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        locked = _event_operational_lock_response(getattr(getattr(instance, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
         instance.delete()
         return Response(status=204)
+
+    @action(detail=True, methods=['get', 'post', 'delete'], permission_classes=[AllowAny])
+    def point_events(self, request, pk=None):
+        """List or create referee point events for a match (async mode).
+
+        GET returns the audit trail. POST creates a RefereePointEvent.
+        DELETE clears the audit trail for the match.
+        """
+        from .serializers import RefereePointEventSerializer
+
+        try:
+            match = Match.objects.get(pk=pk)
+        except Match.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        if request.method == 'GET':
+            events = match.point_events.all().order_by('timestamp')
+            validation_status = request.query_params.get('validation_status')
+            if validation_status:
+                events = events.filter(validation_status=validation_status)
+            referee_id = request.query_params.get('referee_id')
+            if referee_id:
+                events = events.filter(referee_id=referee_id)
+            serializer = RefereePointEventSerializer(events, many=True)
+            return Response(serializer.data)
+
+        if request.method == 'DELETE':
+            if not request.user or not request.user.is_authenticated or not getattr(request.user, 'is_admin', False):
+                return Response({'error': 'Only admins can clear point events.'}, status=status.HTTP_403_FORBIDDEN)
+            locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
+            if locked is not None:
+                return locked
+            deleted_count, _ = match.point_events.all().delete()
+            return Response({'deleted': deleted_count}, status=status.HTTP_200_OK)
+
+        locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
+
+        is_admin = bool(request.user and request.user.is_authenticated and getattr(request.user, 'is_admin', False))
+        requester_athlete = getattr(request.user, 'athlete', None) if request.user and request.user.is_authenticated else None
+
+        if not is_admin:
+            if not request.user or not request.user.is_authenticated:
+                return Response({'error': 'Authentication required.'}, status=status.HTTP_403_FORBIDDEN)
+            if not requester_athlete or not getattr(requester_athlete, 'is_referee', False):
+                return Response({'error': 'Only referees or admins can submit point events.'}, status=status.HTTP_403_FORBIDDEN)
+            if not _is_match_assigned_referee(match, requester_athlete):
+                return Response({'error': 'Nu ești arbitru alocat acestui meci.'}, status=status.HTTP_403_FORBIDDEN)
+
+        data = request.data.copy()
+        data['match'] = pk
+        requested_referee_id = data.get('referee')
+        if not requested_referee_id:
+            try:
+                data['referee'] = request.user.athlete.id
+            except Exception:
+                return Response({'error': 'Nu aveți un profil de arbitru asociat.'}, status=400)
+        elif not is_admin:
+            try:
+                if int(requested_referee_id) != requester_athlete.id:
+                    return Response({'error': 'Poți trimite puncte doar în numele tău.'}, status=status.HTTP_403_FORBIDDEN)
+            except (TypeError, ValueError):
+                return Response({'error': 'Referee invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        recording_session = _resolve_recording_session(
+            request,
+            event=getattr(getattr(match, 'category', None), 'event', None),
+            field=getattr(match, 'field', None),
+        )
+        if recording_session:
+            data['recording_session'] = recording_session.id
+
+        if not data.get('validation_status'):
+            data['validation_status'] = 'pending' if match.display_mode == 'real_time' else 'validated'
+
+        serializer = RefereePointEventSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            validation_status = serializer.validated_data.get('validation_status', 'validated')
+            ev = serializer.save(
+                created_by=(request.user if getattr(request, 'user', None) and request.user.is_authenticated else None),
+                validated_at=(timezone.now() if validation_status == 'validated' else None),
+                video_offset_ms=_compute_video_offset_ms(recording_session),
+            )
+
+            affected_events = [ev]
+            if match.display_mode == 'real_time':
+                affected_events = _auto_validate_real_time_point_event(ev) or [ev]
+
+            try:
+                for referee_id in {item.referee_id for item in affected_events if item.validation_status == 'validated'}:
+                    _sync_point_events_to_match_referee_scores(ev.match_id, referee_id)
+            except Exception:
+                pass
+            ev.refresh_from_db()
+            return Response(RefereePointEventSerializer(ev).data, status=201)
+        return Response(serializer.errors, status=400)
     
 class AnnualVisaViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminOrReadOnly]
@@ -1230,6 +1762,11 @@ class CategoryViewSet(viewsets.ViewSet):
         name = d.get('name', '').strip()
         if not name:
             return Response({'name': ['This field is required.']}, status=400)
+        from landing.models import Event
+        event = Event.objects.filter(pk=d.get('event')).first() if d.get('event') else None
+        locked = _event_operational_lock_response(event)
+        if locked is not None:
+            return locked
         create_data = {
             'name': name,
             'event_id': d.get('event'),
@@ -1256,6 +1793,9 @@ class CategoryViewSet(viewsets.ViewSet):
             instance = self.get_queryset().get(pk=pk)
         except Category.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
+        locked = _event_operational_lock_response(getattr(instance, 'event', None))
+        if locked is not None:
+            return locked
         # Only allow updating safe fields (name, gender, display_order)
         allowed = {'name', 'gender', 'display_order'}
         data = {k: v for k, v in request.data.items() if k in allowed}
@@ -1273,6 +1813,9 @@ class CategoryViewSet(viewsets.ViewSet):
             cat = self.get_queryset().get(pk=pk)
         except Category.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
+        locked = _event_operational_lock_response(getattr(cat, 'event', None))
+        if locked is not None:
+            return locked
         cat.delete()
         return Response(status=204)
 
@@ -1288,9 +1831,12 @@ class CategoryViewSet(viewsets.ViewSet):
             return Response({'detail': 'event_id and categories are required.'}, status=400)
         from landing.models import Event
         try:
-            Event.objects.get(pk=event_id)
+            event = Event.objects.get(pk=event_id)
         except Event.DoesNotExist:
             return Response({'detail': 'Event not found.'}, status=404)
+        locked = _event_operational_lock_response(event)
+        if locked is not None:
+            return locked
 
         # Build set of (name, group_id) pairs that already exist
         existing_pairs = set(
@@ -1331,9 +1877,161 @@ class CategoryViewSet(viewsets.ViewSet):
         order = request.data.get('order', [])
         if not order:
             return Response({'detail': 'order list is required.'}, status=400)
+        first_category = Category.objects.select_related('event').filter(pk=order[0]).first()
+        locked = _event_operational_lock_response(getattr(first_category, 'event', None))
+        if locked is not None:
+            return locked
         for idx, cat_id in enumerate(order):
             Category.objects.filter(pk=cat_id).update(display_order=idx)
         return Response({'status': 'ok'})
+
+
+class DiplomaTemplateViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminOrReadOnly]
+    serializer_class = DiplomaTemplateSerializer
+
+    TEMPLATE_KIND_ORDER = ['first_place', 'second_place', 'third_place', 'participation']
+    CATEGORY_SCOPE_ORDER = ['solo', 'team', 'fight', 'all']
+
+    def get_queryset(self):
+        return DiplomaTemplate.objects.select_related('event').all()
+
+    def _normalize_payload(self, request):
+        data = {}
+        if hasattr(request.data, 'keys'):
+            for key in request.data.keys():
+                if hasattr(request.data, 'getlist'):
+                    values = request.data.getlist(key)
+                    data[key] = values if len(values) > 1 else values[0]
+                else:
+                    data[key] = request.data.get(key)
+        else:
+            data = dict(request.data)
+
+        placements = data.get('placements')
+        if isinstance(placements, list) and len(placements) == 1:
+            placements = placements[0]
+        if isinstance(placements, str):
+            import json
+
+            placements = placements.strip()
+            data['placements'] = json.loads(placements) if placements else []
+        elif placements in [None, '']:
+            data['placements'] = []
+
+        if 'is_active' in data:
+            data['is_active'] = _coerce_bool(data.get('is_active'), default=True)
+        return data
+
+    def list(self, request):
+        queryset = self.get_queryset()
+        event_id = request.query_params.get('event')
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
+        serializer = self.serializer_class(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def create(self, request):
+        payload = self._normalize_payload(request)
+        serializer = self.serializer_class(data=payload, context={'request': request})
+        if serializer.is_valid():
+            instance = serializer.save()
+            return Response(self.serializer_class(instance, context={'request': request}).data, status=201)
+        return Response(serializer.errors, status=400)
+
+    def retrieve(self, request, pk=None):
+        try:
+            instance = self.get_queryset().get(pk=pk)
+        except DiplomaTemplate.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        serializer = self.serializer_class(instance, context={'request': request})
+        return Response(serializer.data)
+
+    def partial_update(self, request, pk=None):
+        try:
+            instance = self.get_queryset().get(pk=pk)
+        except DiplomaTemplate.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        payload = self._normalize_payload(request)
+        serializer = self.serializer_class(instance, data=payload, partial=True, context={'request': request})
+        if serializer.is_valid():
+            updated = serializer.save()
+            return Response(self.serializer_class(updated, context={'request': request}).data)
+        return Response(serializer.errors, status=400)
+
+    def _get_duplicate_slot(self, instance):
+        used_slots = set(
+            self.get_queryset()
+            .filter(event=instance.event)
+            .exclude(pk=instance.pk)
+            .values_list('template_kind', 'category_scope')
+        )
+
+        preferred_slots = [
+            (instance.template_kind, scope)
+            for scope in self.CATEGORY_SCOPE_ORDER
+            if scope != instance.category_scope
+        ] + [
+            (kind, instance.category_scope)
+            for kind in self.TEMPLATE_KIND_ORDER
+            if kind != instance.template_kind
+        ] + [
+            (kind, scope)
+            for kind in self.TEMPLATE_KIND_ORDER
+            for scope in self.CATEGORY_SCOPE_ORDER
+            if (kind, scope) != (instance.template_kind, instance.category_scope)
+        ]
+
+        for slot in preferred_slots:
+            if slot not in used_slots:
+                return slot
+        return None
+
+    @action(detail=True, methods=['post'], url_path='duplicate')
+    def duplicate(self, request, pk=None):
+        try:
+            instance = self.get_queryset().get(pk=pk)
+        except DiplomaTemplate.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        duplicate_slot = self._get_duplicate_slot(instance)
+        if not duplicate_slot:
+            return Response(
+                {'detail': 'Nu mai există combinații disponibile pentru duplicarea diplomei în acest eveniment.'},
+                status=400,
+            )
+
+        template_kind, category_scope = duplicate_slot
+        file_bytes = instance.pdf_file.read() if instance.pdf_file else b''
+        if instance.pdf_file:
+            instance.pdf_file.close()
+
+        original_name = Path(instance.pdf_file.name or 'template.pdf').name
+        stem = Path(original_name).stem
+        suffix = Path(original_name).suffix or '.pdf'
+
+        duplicate = DiplomaTemplate(
+            event=instance.event,
+            title=f'{instance.title} (copie)',
+            template_kind=template_kind,
+            category_scope=category_scope,
+            preview_orientation=instance.preview_orientation,
+            placements=instance.placements,
+            is_active=instance.is_active,
+        )
+        duplicate.pdf_file.save(f'{stem}-copy{suffix}', ContentFile(file_bytes), save=False)
+        duplicate.save()
+
+        serializer = self.serializer_class(duplicate, context={'request': request})
+        return Response(serializer.data, status=201)
+
+    def destroy(self, request, pk=None):
+        try:
+            instance = self.get_queryset().get(pk=pk)
+        except DiplomaTemplate.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=404)
+        instance.delete()
+        return Response(status=204)
 
 
 class CategoryAthleteViewSet(viewsets.ViewSet):
@@ -1376,6 +2074,14 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
     def create(self, request):
         # Non-admin users (coaches) can only enroll athletes from their own club
         user = request.user
+        category_id = request.data.get('category')
+        if category_id:
+            category = Category.objects.select_related('event').filter(pk=category_id).first()
+            if not category:
+                return Response({'error': 'Categoria nu a fost găsită.'}, status=404)
+            locked = _event_operational_guard_response(user, category.event)
+            if locked:
+                return locked
         if not user.is_admin:
             athlete_id = request.data.get('athlete')
             if athlete_id:
@@ -1400,6 +2106,9 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
 
     def partial_update(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
+        locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
+        if locked:
+            return locked
         serializer = self.serializer_class(instance, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -1408,6 +2117,9 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
+        locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
+        if locked:
+            return locked
         instance.delete()
         return Response(status=204)
 
@@ -1435,6 +2147,14 @@ class FightAthleteWeightViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        category_id = request.data.get('category')
+        if category_id:
+            category = Category.objects.select_related('event').filter(pk=category_id).first()
+            if not category:
+                return Response({'error': 'Categoria nu a fost găsită.'}, status=404)
+            locked = _event_operational_guard_response(request.user, category.event)
+            if locked:
+                return locked
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1451,6 +2171,9 @@ class FightAthleteWeightViewSet(viewsets.ViewSet):
     def partial_update(self, request, pk=None):
         try:
             instance = self.get_queryset().get(pk=pk)
+            locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
+            if locked:
+                return locked
             serializer = self.serializer_class(instance, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -1464,7 +2187,11 @@ class FightAthleteWeightViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         try:
-            self.get_queryset().get(pk=pk).delete()
+            instance = self.get_queryset().get(pk=pk)
+            locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
+            if locked:
+                return locked
+            instance.delete()
             return Response(status=204)
         except FightAthleteWeight.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
@@ -1503,6 +2230,10 @@ class CategoryTeamViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        category = Category.objects.select_related('event').filter(pk=request.data.get('category')).first()
+        locked = _event_operational_guard_response(request.user, getattr(category, 'event', None))
+        if locked:
+            return locked
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1516,6 +2247,9 @@ class CategoryTeamViewSet(viewsets.ViewSet):
 
     def partial_update(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
+        locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
+        if locked:
+            return locked
         serializer = self.serializer_class(instance, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -1527,6 +2261,9 @@ class CategoryTeamViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
+        locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
+        if locked:
+            return locked
         instance.delete()
         return Response(status=204)
 
@@ -1539,7 +2276,24 @@ class GradeHistoryViewSet(viewsets.ViewSet):
     serializer_class = GradeHistorySerializer
 
     def get_queryset(self):
-        return GradeHistory.objects.all()
+        qs = GradeHistory.objects.select_related('athlete__club', 'grade', 'event', 'examiner_1', 'examiner_2').all()
+        user = self.request.user
+
+        if user.is_staff or getattr(user, 'role', None) == 'admin':
+            pass
+        elif hasattr(user, 'athlete') and user.athlete:
+            if user.athlete.is_coach and user.athlete.club_id:
+                qs = qs.filter(athlete__club_id=user.athlete.club_id)
+            else:
+                qs = qs.filter(athlete=user.athlete)
+        else:
+            return GradeHistory.objects.none()
+
+        athlete_id = self.request.query_params.get('athlete')
+        if athlete_id:
+            qs = qs.filter(athlete_id=athlete_id)
+
+        return qs.order_by('-obtained_date', '-id')
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -1636,6 +2390,11 @@ class GroupViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        from landing.models import Event
+        event = Event.objects.filter(pk=request.data.get('event')).first() if request.data.get('event') else None
+        locked = _event_operational_lock_response(event)
+        if locked is not None:
+            return locked
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1649,6 +2408,9 @@ class GroupViewSet(viewsets.ViewSet):
 
     def update(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        locked = _event_operational_lock_response(getattr(instance, 'event', None))
+        if locked is not None:
+            return locked
         serializer = self.serializer_class(instance, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1657,6 +2419,9 @@ class GroupViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        locked = _event_operational_lock_response(getattr(instance, 'event', None))
+        if locked is not None:
+            return locked
         instance.delete()
         return Response(status=204)
 
@@ -1669,6 +2434,10 @@ class GroupViewSet(viewsets.ViewSet):
         order = request.data.get('order', [])
         if not order:
             return Response({'detail': 'order list is required.'}, status=400)
+        first_group = Group.objects.select_related('event').filter(pk=order[0]).first()
+        locked = _event_operational_lock_response(getattr(first_group, 'event', None))
+        if locked is not None:
+            return locked
         for idx, group_id in enumerate(order):
             Group.objects.filter(pk=group_id).update(display_order=idx)
         return Response({'status': 'ok'})
@@ -2199,15 +2968,44 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                 athlete_score=athlete_score,
                 referee_id=referee_id
             ).first()
+
+            recording_session = _resolve_recording_session(
+                request,
+                event=getattr(getattr(athlete_score, 'category', None), 'event', None),
+                field=getattr(getattr(getattr(athlete_score, 'category', None), 'field_assignment', None), 'field', None),
+            )
             
             if existing:
+                previous_score = existing.score
                 existing.score = serializer.validated_data.get('score', existing.score)
                 existing.notes = serializer.validated_data.get('notes', existing.notes)
                 existing.save()
+                _log_category_score_event(
+                    athlete_score=existing.athlete_score,
+                    referee=existing.referee,
+                    action='update',
+                    source='competition_admin' if is_admin else 'referee_app',
+                    created_by=request.user if request.user.is_authenticated else None,
+                    score_value=existing.score,
+                    previous_score=previous_score,
+                    notes=existing.notes,
+                    recording_session=recording_session,
+                )
                 return Response(CategoryRefereeScoreSerializer(existing).data)
             
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            instance = serializer.save()
+            _log_category_score_event(
+                athlete_score=instance.athlete_score,
+                referee=instance.referee,
+                action='create',
+                source='competition_admin' if is_admin else 'referee_app',
+                created_by=request.user if request.user.is_authenticated else None,
+                score_value=instance.score,
+                previous_score=None,
+                notes=instance.notes,
+                recording_session=recording_session,
+            )
+            return Response(CategoryRefereeScoreSerializer(instance).data, status=status.HTTP_201_CREATED)
         
         # If serializer failed due to unique_together, try updating the existing record
         if 'non_field_errors' in serializer.errors:
@@ -2216,9 +3014,26 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                     athlete_score_id=clean['athlete_score'],
                     referee_id=referee_id
                 )
+                previous_score = existing.score
                 existing.score = clean.get('score', existing.score)
                 existing.notes = clean.get('notes', existing.notes)
                 existing.save()
+                recording_session = _resolve_recording_session(
+                    request,
+                    event=getattr(getattr(existing.athlete_score, 'category', None), 'event', None),
+                    field=getattr(getattr(getattr(existing.athlete_score, 'category', None), 'field_assignment', None), 'field', None),
+                )
+                _log_category_score_event(
+                    athlete_score=existing.athlete_score,
+                    referee=existing.referee,
+                    action='update',
+                    source='competition_admin' if is_admin else 'referee_app',
+                    created_by=request.user if request.user.is_authenticated else None,
+                    score_value=existing.score,
+                    previous_score=previous_score,
+                    notes=existing.notes,
+                    recording_session=recording_session,
+                )
                 return Response(CategoryRefereeScoreSerializer(existing).data)
             except CategoryRefereeScore.DoesNotExist:
                 pass
@@ -2265,10 +3080,27 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        previous_score = score.score
         serializer = CategoryRefereeScoreSerializer(score, data=request.data, partial=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            instance = serializer.save()
+            recording_session = _resolve_recording_session(
+                request,
+                event=getattr(getattr(instance.athlete_score, 'category', None), 'event', None),
+                field=getattr(getattr(getattr(instance.athlete_score, 'category', None), 'field_assignment', None), 'field', None),
+            )
+            _log_category_score_event(
+                athlete_score=instance.athlete_score,
+                referee=instance.referee,
+                action='update',
+                source='competition_admin' if (user.is_staff or (hasattr(user, 'role') and user.role == 'admin')) else 'referee_app',
+                created_by=request.user if request.user.is_authenticated else None,
+                score_value=instance.score,
+                previous_score=previous_score,
+                notes=instance.notes,
+                recording_session=recording_session,
+            )
+            return Response(CategoryRefereeScoreSerializer(instance).data)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -2288,8 +3120,146 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        recording_session = _resolve_recording_session(
+            request,
+            event=getattr(getattr(score.athlete_score, 'category', None), 'event', None),
+            field=getattr(getattr(getattr(score.athlete_score, 'category', None), 'field_assignment', None), 'field', None),
+        )
+        _log_category_score_event(
+            athlete_score=score.athlete_score,
+            referee=score.referee,
+            action='delete',
+            source='competition_admin',
+            created_by=request.user if request.user.is_authenticated else None,
+            score_value=None,
+            previous_score=score.score,
+            notes=score.notes,
+            recording_session=recording_session,
+        )
         score.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CategoryRefereeScoreEventViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        queryset = CategoryRefereeScoreEvent.objects.select_related(
+            'athlete_score__athlete', 'athlete_score__category', 'referee', 'recording_session'
+        )
+
+        athlete_score_id = request.query_params.get('athlete_score')
+        if athlete_score_id:
+            queryset = queryset.filter(athlete_score_id=athlete_score_id)
+
+        category_id = request.query_params.get('category')
+        if category_id:
+            queryset = queryset.filter(athlete_score__category_id=category_id)
+
+        event_id = request.query_params.get('event_id')
+        if event_id:
+            queryset = queryset.filter(athlete_score__category__event_id=event_id)
+
+        referee_id = request.query_params.get('referee_id')
+        if referee_id:
+            queryset = queryset.filter(referee_id=referee_id)
+
+        recording_session_id = request.query_params.get('recording_session')
+        if recording_session_id:
+            queryset = queryset.filter(recording_session_id=recording_session_id)
+
+        serializer = CategoryRefereeScoreEventSerializer(queryset.order_by('timestamp', 'id'), many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = CategoryRefereeScoreEventSerializer(data=request.data)
+        if serializer.is_valid():
+            recording_session = None
+            athlete_score = serializer.validated_data['athlete_score']
+            if serializer.validated_data.get('recording_session'):
+                recording_session = serializer.validated_data['recording_session']
+            else:
+                recording_session = _resolve_recording_session(
+                    request,
+                    event=getattr(getattr(athlete_score, 'category', None), 'event', None),
+                    field=getattr(getattr(getattr(athlete_score, 'category', None), 'field_assignment', None), 'field', None),
+                )
+            instance = serializer.save(
+                created_by=request.user if request.user.is_authenticated else None,
+                recording_session=recording_session,
+                video_offset_ms=_compute_video_offset_ms(recording_session),
+            )
+            return Response(CategoryRefereeScoreEventSerializer(instance).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FieldRecordingSessionViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        queryset = FieldRecordingSession.objects.select_related('event', 'field')
+
+        event_id = request.query_params.get('event_id')
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
+
+        field_id = request.query_params.get('field_id')
+        if field_id:
+            queryset = queryset.filter(field_id=field_id)
+
+        status_value = request.query_params.get('status')
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+
+        serializer = FieldRecordingSessionSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        serializer = FieldRecordingSessionSerializer(data=request.data)
+        if serializer.is_valid():
+            instance = serializer.save()
+            return Response(FieldRecordingSessionSerializer(instance).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, pk=None):
+        try:
+            instance = FieldRecordingSession.objects.select_related('event', 'field').get(pk=pk)
+        except FieldRecordingSession.DoesNotExist:
+            return Response({'error': 'Recording session not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(FieldRecordingSessionSerializer(instance).data)
+
+    def update(self, request, pk=None):
+        try:
+            instance = FieldRecordingSession.objects.get(pk=pk)
+        except FieldRecordingSession.DoesNotExist:
+            return Response({'error': 'Recording session not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = FieldRecordingSessionSerializer(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            instance = serializer.save()
+            return Response(FieldRecordingSessionSerializer(instance).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def partial_update(self, request, pk=None):
+        return self.update(request, pk)
+
+    @action(detail=True, methods=['post'])
+    def stop(self, request, pk=None):
+        try:
+            instance = FieldRecordingSession.objects.get(pk=pk)
+        except FieldRecordingSession.DoesNotExist:
+            return Response({'error': 'Recording session not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        ended_at = parse_datetime(request.data.get('ended_at')) if request.data.get('ended_at') else timezone.now()
+        instance.status = request.data.get('status', 'stopped')
+        instance.ended_at = ended_at
+        for field_name in ['recording_file_name', 'recording_file_path', 'recording_url', 'notes']:
+            if field_name in request.data:
+                setattr(instance, field_name, request.data.get(field_name) or '')
+        if 'metadata' in request.data and isinstance(request.data.get('metadata'), dict):
+            instance.metadata = request.data['metadata']
+        instance.save()
+        return Response(FieldRecordingSessionSerializer(instance).data)
 
 
 class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
@@ -2330,6 +3300,13 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         event_id = self.request.query_params.get('event_id')
         if event_id is not None:
             queryset = queryset.filter(category__event_id=event_id)
+
+        athlete_id = self.request.query_params.get('athlete')
+        if athlete_id is not None:
+            queryset = queryset.filter(
+                models.Q(athlete_id=athlete_id) |
+                models.Q(team_members__id=athlete_id)
+            ).distinct()
         
         return queryset
 
@@ -2979,6 +3956,11 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """Create a new competition field"""
+        from landing.models import Event
+        event = Event.objects.filter(pk=request.data.get('event')).first() if request.data.get('event') else None
+        locked = _event_operational_lock_response(event)
+        if locked is not None:
+            return locked
         serializer = CompetitionFieldSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -3003,9 +3985,12 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
             return Response({'detail': 'count must be an integer between 0 and 20.'}, status=400)
         from landing.models import Event
         try:
-            Event.objects.get(pk=event_id, event_type='competition')
+            event = Event.objects.get(pk=event_id, event_type='competition')
         except Event.DoesNotExist:
             return Response({'detail': 'Competition not found.'}, status=404)
+        locked = _event_operational_lock_response(event)
+        if locked is not None:
+            return locked
 
         existing = list(CompetitionField.objects.filter(event_id=event_id).order_by('field_number'))
         current_count = len(existing)
@@ -3040,6 +4025,9 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
         """Update a competition field"""
         try:
             field = CompetitionField.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(field, 'event', None))
+            if locked is not None:
+                return locked
             serializer = CompetitionFieldSerializer(field, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -3056,6 +4044,9 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
         """Delete a competition field"""
         try:
             field = CompetitionField.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(field, 'event', None))
+            if locked is not None:
+                return locked
             field.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except CompetitionField.DoesNotExist:
@@ -3146,6 +4137,10 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """Create a category-field assignment"""
+        category = Category.objects.select_related('event').filter(pk=request.data.get('category')).first()
+        locked = _event_operational_lock_response(getattr(category, 'event', None))
+        if locked is not None:
+            return locked
         serializer = CategoryFieldAssignmentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -3165,6 +4160,9 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
         """Update a category-field assignment"""
         try:
             assignment = CategoryFieldAssignment.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(assignment, 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             serializer = CategoryFieldAssignmentSerializer(assignment, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -3181,6 +4179,9 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
         """Delete a category-field assignment"""
         try:
             assignment = CategoryFieldAssignment.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(assignment, 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             assignment.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except CategoryFieldAssignment.DoesNotExist:
@@ -3192,6 +4193,11 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
         Body: { items: [{ id, field, order, estimated_duration }, ...] }
         """
         items = request.data.get('items', [])
+        if items:
+            assignment = CategoryFieldAssignment.objects.select_related('category__event').filter(pk=items[0].get('id')).first()
+            locked = _event_operational_lock_response(getattr(getattr(assignment, 'category', None), 'event', None))
+            if locked is not None:
+                return locked
         for item in items:
             updates = {'order': item.get('order', 0)}
             if 'field' in item:
@@ -3224,6 +4230,10 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """Create a new monitor session"""
+        field = CompetitionField.objects.select_related('event').filter(pk=request.data.get('field')).first()
+        locked = _event_operational_lock_response(getattr(field, 'event', None))
+        if locked is not None:
+            return locked
         serializer = DisplayMonitorSessionSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -3243,6 +4253,9 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
         """Update a monitor session"""
         try:
             session = DisplayMonitorSession.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(session, 'field', None), 'event', None))
+            if locked is not None:
+                return locked
             serializer = DisplayMonitorSessionSerializer(session, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -3259,6 +4272,9 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
         """Delete a monitor session"""
         try:
             session = DisplayMonitorSession.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(session, 'field', None), 'event', None))
+            if locked is not None:
+                return locked
             session.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except DisplayMonitorSession.DoesNotExist:
@@ -3286,6 +4302,10 @@ class MatchRoundViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """Create a new match round"""
+        match = Match.objects.select_related('category__event').filter(pk=request.data.get('match')).first()
+        locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
         serializer = MatchRoundSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -3305,7 +4325,22 @@ class MatchRoundViewSet(viewsets.ViewSet):
         """Update a match round"""
         try:
             round_obj = MatchRound.objects.get(pk=pk)
-            serializer = MatchRoundSerializer(round_obj, data=request.data, partial=True)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(round_obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
+            data = request.data.copy()
+            next_status = data.get('status')
+            if next_status == 'completed':
+                if not data.get('ended_at'):
+                    data['ended_at'] = timezone.now().isoformat()
+                if round_obj.paused_at:
+                    pause_duration = int((timezone.now() - round_obj.paused_at).total_seconds())
+                    data['accumulated_pause_seconds'] = int(round_obj.accumulated_pause_seconds or 0) + max(pause_duration, 0)
+                    data['paused_at'] = None
+            elif next_status == 'active' and not data.get('started_at') and not round_obj.started_at:
+                data['started_at'] = timezone.now().isoformat()
+
+            serializer = MatchRoundSerializer(round_obj, data=data, partial=True)
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
@@ -3321,6 +4356,9 @@ class MatchRoundViewSet(viewsets.ViewSet):
         """Delete a match round"""
         try:
             round_obj = MatchRound.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(round_obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             round_obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchRound.DoesNotExist:
@@ -3511,6 +4549,10 @@ class MatchEventViewSet(viewsets.ViewSet):
 
     def create(self, request):
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        match = Match.objects.select_related('category__event').filter(pk=data.get('match')).first()
+        locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
         # Auto-set created_by to current user's athlete if available
         if hasattr(request.user, 'athlete'):
             data.setdefault('created_by', request.user.athlete.id)
@@ -3552,6 +4594,9 @@ class MatchEventViewSet(viewsets.ViewSet):
     def destroy(self, request, pk=None):
         try:
             obj = MatchEvent.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             try:
                 _delete_legacy_point_events(
                     obj.match_id,
@@ -3585,6 +4630,10 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
     
     def create(self, request):
         data = request.data.copy()
+        match = Match.objects.select_related('category__event').filter(pk=data.get('match')).first()
+        locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
         # Auto-populate referee from authenticated user's athlete profile
         if 'referee' not in data or not data['referee']:
             try:
@@ -3614,6 +4663,9 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
     def update(self, request, pk=None):
         try:
             obj = MatchRefereeScore.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             serializer = MatchRefereeScoreSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 instance = serializer.save()
@@ -3634,6 +4686,9 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
         """Delete a referee score"""
         try:
             obj = MatchRefereeScore.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             match_id = obj.match_id
             referee_id = obj.referee_id
             obj.delete()
@@ -3745,6 +4800,10 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        match = Match.objects.select_related('category__event').filter(pk=request.data.get('match')).first()
+        locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
         serializer = MatchFieldAssignmentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -3763,6 +4822,9 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
     def update(self, request, pk=None):
         try:
             obj = MatchFieldAssignment.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             serializer = MatchFieldAssignmentSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -3777,7 +4839,11 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         try:
-            MatchFieldAssignment.objects.get(pk=pk).delete()
+            obj = MatchFieldAssignment.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
+            obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchFieldAssignment.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -3788,6 +4854,11 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
         Body: { items: [{ id, field, order }, ...] }
         """
         items = request.data.get('items', [])
+        if items:
+            assignment = MatchFieldAssignment.objects.select_related('match__category__event').filter(pk=items[0].get('id')).first()
+            locked = _event_operational_lock_response(getattr(getattr(getattr(assignment, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
         for item in items:
             MatchFieldAssignment.objects.filter(pk=item['id']).update(
                 field_id=item.get('field'), order=item.get('order', 0)
@@ -3814,6 +4885,10 @@ class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        category = Category.objects.select_related('event').filter(pk=request.data.get('category')).first()
+        locked = _event_operational_lock_response(getattr(category, 'event', None))
+        if locked is not None:
+            return locked
         serializer = CategoryRefereeAssignmentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -3832,6 +4907,9 @@ class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
     def update(self, request, pk=None):
         try:
             obj = CategoryRefereeAssignment.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(obj, 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             serializer = CategoryRefereeAssignmentSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -3846,7 +4924,11 @@ class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         try:
-            CategoryRefereeAssignment.objects.get(pk=pk).delete()
+            obj = CategoryRefereeAssignment.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(obj, 'category', None), 'event', None))
+            if locked is not None:
+                return locked
+            obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except CategoryRefereeAssignment.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -3874,6 +4956,10 @@ class MatchRefereeAssignmentViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        match = Match.objects.select_related('category__event').filter(pk=request.data.get('match')).first()
+        locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
         serializer = MatchRefereeAssignmentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -3892,6 +4978,9 @@ class MatchRefereeAssignmentViewSet(viewsets.ViewSet):
     def update(self, request, pk=None):
         try:
             obj = MatchRefereeAssignment.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
             serializer = MatchRefereeAssignmentSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -3906,7 +4995,11 @@ class MatchRefereeAssignmentViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         try:
-            MatchRefereeAssignment.objects.get(pk=pk).delete()
+            obj = MatchRefereeAssignment.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
+            if locked is not None:
+                return locked
+            obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchRefereeAssignment.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -3925,6 +5018,11 @@ class CompetitionRefereeViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        from landing.models import Event
+        event = Event.objects.filter(pk=request.data.get('event')).first() if request.data.get('event') else None
+        locked = _event_operational_lock_response(event)
+        if locked is not None:
+            return locked
         serializer = CompetitionRefereeSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -3941,6 +5039,9 @@ class CompetitionRefereeViewSet(viewsets.ViewSet):
     def update(self, request, pk=None):
         try:
             obj = CompetitionReferee.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(obj, 'event', None))
+            if locked is not None:
+                return locked
             serializer = CompetitionRefereeSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -3955,7 +5056,11 @@ class CompetitionRefereeViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         try:
-            CompetitionReferee.objects.get(pk=pk).delete()
+            obj = CompetitionReferee.objects.get(pk=pk)
+            locked = _event_operational_lock_response(getattr(obj, 'event', None))
+            if locked is not None:
+                return locked
+            obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except CompetitionReferee.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)

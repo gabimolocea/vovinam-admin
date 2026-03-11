@@ -1,8 +1,16 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Spinner } from '@shared/components/ui';
-import { matchAPI, matchRefereeScoreAPI } from '@shared/lib/api';
+import { diplomaTemplateAPI, matchAPI, matchRefereeScoreAPI } from '@shared/lib/api';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
+import {
+  formatValueWithClub,
+  formatDiplomaGroupLabel,
+  formatDiplomaGroupWithGender,
+  generateDiplomaPdf,
+  getPlaceLabel,
+  resolveDiplomaTemplate,
+} from '../lib/diplomas';
 
 const PODIUM_STYLES = {
   1: 'bg-yellow-100 text-yellow-900 border-yellow-300',
@@ -175,6 +183,7 @@ export default function ClasamenteLuptaPage() {
   const ctx = useContext(CentralizatorContext);
   const [matches, setMatches] = useState([]);
   const [matchRefereeScores, setMatchRefereeScores] = useState([]);
+  const [diplomaTemplates, setDiplomaTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const columnStructure = ctx?.columnStructure ?? [];
 
@@ -184,19 +193,22 @@ export default function ClasamenteLuptaPage() {
     const loadMatches = async () => {
       setLoading(true);
       try {
-        const [{ data: matchData }, { data: scoreData }] = await Promise.all([
+        const [{ data: matchData }, { data: scoreData }, { data: diplomaData }] = await Promise.all([
           matchAPI.list({ event_id: eventId }),
           matchRefereeScoreAPI.list({ event_id: eventId }),
+          diplomaTemplateAPI.list({ event: eventId }).catch(() => ({ data: [] })),
         ]);
         if (isMounted) {
           setMatches(normalizeListPayload(matchData));
           setMatchRefereeScores(normalizeListPayload(scoreData));
+          setDiplomaTemplates(normalizeListPayload(diplomaData));
         }
       } catch (error) {
         console.error('Failed to load fight rankings:', error);
         if (isMounted) {
           setMatches([]);
           setMatchRefereeScores([]);
+          setDiplomaTemplates([]);
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -248,6 +260,61 @@ export default function ClasamenteLuptaPage() {
 
     return podiumMap;
   }, [matches, matchRefereeScores]);
+
+  const handleGenerateDiploma = async ({ category, group, place, athletes }) => {
+    let template = resolveDiplomaTemplate(diplomaTemplates, { place, scope: 'fight' });
+    if (!template) {
+      try {
+        const { data } = await diplomaTemplateAPI.list({ event: eventId });
+        const freshTemplates = normalizeListPayload(data);
+        setDiplomaTemplates(freshTemplates);
+        template = resolveDiplomaTemplate(freshTemplates, { place, scope: 'fight' });
+      } catch (error) {
+        console.error('Failed to refresh diploma templates:', error);
+      }
+    }
+    if (!template) {
+      window.alert('Nu există niciun șablon de diplomă disponibil pentru acest eveniment. Configurează unul în tab-ul Diplome.');
+      return;
+    }
+
+    const genderLabel = GENDER_LABELS[category.gender] || category.gender || '';
+  const groupLabel = formatDiplomaGroupLabel(group);
+
+    for (const athlete of athletes) {
+      const values = {
+        athlete_name: athlete.label,
+        athlete_with_club: formatValueWithClub(athlete.label, athlete.club),
+        club_name: athlete.club || '',
+        team_name: '',
+        team_with_club: '',
+        group_name: groupLabel,
+        group_with_gender: formatDiplomaGroupWithGender(group, genderLabel),
+        category_name: category.name,
+        gender: genderLabel,
+        event_name: ctx?.eventData?.name || `Competiția #${eventId}`,
+        place_label: getPlaceLabel(place),
+      };
+      const previewWindow = window.open('about:blank', '_blank');
+      if (previewWindow && previewWindow.document) {
+        previewWindow.document.write('<title>Generare diplomă</title><p style="font-family: sans-serif; padding: 16px;">Se generează diploma...</p>');
+        previewWindow.document.close();
+      }
+      try {
+        await generateDiplomaPdf({
+          template,
+          values,
+          fileName: `${values.place_label}-${athlete.label || category.name}`,
+          previewWindow,
+        });
+      } catch (error) {
+        if (previewWindow && !previewWindow.closed) previewWindow.close();
+        console.error('Failed to generate diploma PDF:', error);
+        window.alert(error.message || 'Nu s-a putut genera diploma.');
+        break;
+      }
+    }
+  };
 
   if (!ctx) return null;
 
@@ -329,6 +396,15 @@ export default function ClasamenteLuptaPage() {
                             <div className="font-medium">{label}</div>
                             {place === 3 && athletes.length > 1 && (
                               <div className="text-[11px] text-gray-500 mt-0.5">Loc împărțit între semifinaliști</div>
+                            )}
+                            {athletes.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateDiploma({ category: cat, group, place, athletes })}
+                                className="mt-2 inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                              >
+                                {athletes.length > 1 ? `Generează ${athletes.length} diplome` : 'Generează diploma'}
+                              </button>
                             )}
                           </td>
                           <td className="border border-black/30 px-2 py-1.5 text-sm text-gray-600">{club}</td>

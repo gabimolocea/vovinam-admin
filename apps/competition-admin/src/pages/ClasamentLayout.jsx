@@ -5,6 +5,7 @@ const tabs = [
   { to: 'tehnica', label: 'TEHNICA' },
   { to: 'lupta', label: 'LUPTA' },
   { to: 'cluburi', label: 'CLUBURI' },
+  { to: 'sportivi-inscrisi', label: 'SPORTIVI ÎNSCRIȘI' },
 ];
 
 export default function ClasamentLayout() {

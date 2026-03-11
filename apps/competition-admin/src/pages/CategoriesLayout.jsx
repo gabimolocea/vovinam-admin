@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
-import { Spinner } from '@shared/components/ui';
+import { Spinner, formatGroupBadgeLabel } from '@shared/components/ui';
 import Logo from '@shared/components/Logo';
 import { enrollmentAPI, teamAPI } from '@shared/lib/api';
 import useCentralizator from '../hooks/useCentralizator';
@@ -74,6 +74,8 @@ export default function CategoriesLayout() {
     { to: 'arbitri',     label: 'Arbitri' },
     { to: 'live',        label: 'Live' },
     { to: 'clasament',   label: 'Clasament' },
+    { to: 'diplome',     label: 'Diplome' },
+    { to: 'sync',        label: 'Sync' },
   ];
 
   return (
@@ -101,10 +103,10 @@ export default function CategoriesLayout() {
                   <button
                     key={f.id}
                     onClick={() => preview.togglePreview(f.id)}
-                    className={`min-h-[42px] border-2 border-black px-3 py-2 text-xs font-black uppercase tracking-wide transition sm:min-h-[46px] sm:px-4 sm:text-sm ${
+                    className={`border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold transition ${
                       preview.isOpen(f.id)
                         ? 'bg-yellow-300 text-black'
-                        : 'bg-white text-gray-700 hover:bg-yellow-100 hover:text-black'
+                        : 'text-gray-700 hover:bg-yellow-100 hover:text-black'
                     }`}
                     title={`${preview.isOpen(f.id) ? 'Ascunde' : 'Afișează'} ecranul ${formatFieldLabel(f.name)}`}
                   >
@@ -117,7 +119,9 @@ export default function CategoriesLayout() {
         </div>
 
         {/* ═══ PAGE CONTENT — child route ═══ */}
-        <Outlet />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Outlet />
+        </div>
 
         {/* ═══ BOTTOM TAB BAR — responsive ═══ */}
         <div className="shrink-0 flex h-12 items-center gap-1 overflow-x-auto border-t-2 border-yellow-400 bg-black px-1.5 select-none">
@@ -249,13 +253,12 @@ export default function CategoriesLayout() {
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => ctx.setConfirmModal(null)}>
             <div className="w-full max-w-md overflow-hidden border-2 border-black bg-white" onClick={e => e.stopPropagation()}>
               <div className="border-b-2 border-black bg-yellow-300 px-6 py-4 text-center">
-                <div className="mb-2 text-4xl">{ctx.confirmModal.icon || '⚠️'}</div>
                 <h3 className="text-lg font-black uppercase tracking-wide text-gray-900">{ctx.confirmModal.title}</h3>
               </div>
               <div className="p-6 text-center">
                 <p className="text-base leading-relaxed text-gray-700">{ctx.confirmModal.message}</p>
                 {ctx.confirmModal.detail && (
-                  <p className="mt-3 max-h-24 overflow-y-auto border border-black/20 bg-yellow-50 px-3 py-2 text-sm text-gray-600">
+                  <p className="mt-3 max-h-24 overflow-y-auto bg-yellow-50 px-3 py-2 text-sm text-gray-600">
                     {ctx.confirmModal.detail}
                   </p>
                 )}
@@ -334,18 +337,12 @@ export default function CategoriesLayout() {
               >
                 <div className="flex items-start justify-between gap-3 border-b-2 border-black bg-yellow-300 px-4 py-3">
                   <div>
-                    <p className="text-sm font-black uppercase tracking-wide text-gray-900">{clubName}</p>
+                    <p className="text-sm font-black uppercase tracking-wide text-gray-900">{isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}</p>
+                    <p className="mt-1 text-xs text-gray-700">{clubName}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                      <span className="frvv-chip">{group?.name || 'Grupă'}</span>
+                      <span className="frvv-chip">{formatGroupBadgeLabel(group) || 'Grupă'}</span>
                       <span className="frvv-chip">{catName}</span>
-                      {isTeamCategory && <span className="frvv-chip">Construire echipă</span>}
                     </div>
-                    {hasDateRange && (
-                      <p className="mt-2 text-xs text-gray-700">
-                        Născuți {dateStart} – {allowYounger ? '∞ (tineri acceptați)' : dateEnd}
-                        {ctx.eventDateStr && <span className="ml-1 text-gray-500">· Eveniment: {ctx.eventDateStr}</span>}
-                      </p>
-                    )}
                   </div>
                   <button onClick={() => ctx.setEnrollPickerCell(null)} className="border border-black bg-white px-3 py-1 text-sm font-bold text-gray-700 hover:bg-yellow-100">✕</button>
                 </div>

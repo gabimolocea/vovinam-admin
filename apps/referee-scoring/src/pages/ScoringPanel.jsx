@@ -2,11 +2,34 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { categoryAPI, refereeAPI, enrollmentAPI, monitorAPI, refereePresenceAPI } from '@shared/lib/api';
 import { useAuth } from '@shared';
-import { Spinner } from '@shared/components/ui';
+import { Spinner, formatGroupBadgeLabel } from '@shared/components/ui';
 
 const POLL_INTERVAL = 2000;
 const MAX_SCORE = 100;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const MODAL_SECONDARY_BUTTON = 'border border-black bg-white px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
+const MODAL_SUCCESS_BUTTON = 'border border-black bg-green-600 px-4 py-2.5 font-bold text-white transition hover:bg-green-700 disabled:opacity-40';
+
+function FullscreenStyleModal({ onClose, title, description, maxWidth = 'max-w-md', actions, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
+      <div className={`w-full ${maxWidth} overflow-hidden border-2 border-black bg-white shadow-2xl`} onClick={e => e.stopPropagation()}>
+        <div className="border-b-2 border-black bg-yellow-300 px-5 py-4">
+          <div>
+            <h3 className="text-xl font-black text-gray-900">{title}</h3>
+            {description ? <p className="mt-1 text-sm text-gray-700">{description}</p> : null}
+          </div>
+        </div>
+        {children ? <div className="space-y-4 px-5 py-4">{children}</div> : null}
+        {actions ? (
+          <div className="flex flex-col-reverse gap-2 border-t-2 border-black bg-gray-50 px-5 py-4 sm:flex-row sm:justify-end">
+            {actions}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 export default function ScoringPanel() {
   const { categoryId } = useParams();
@@ -28,6 +51,42 @@ export default function ScoringPanel() {
   const pollRef = useRef(null);
 
   const myAthleteId = user?.athlete_id || user?.athlete?.id;
+  const isTeamCategory = ['team', 'teams'].includes(category?.type);
+
+  const getEntryAthleteId = useCallback((entry) => {
+    if (!entry) return null;
+    if (isTeamCategory) {
+      return entry.team_details?.members?.[0]?.id
+        ?? entry.members?.[0]?.id
+        ?? entry.athlete
+        ?? entry.id
+        ?? null;
+    }
+    return entry.athlete || entry.id || null;
+  }, [isTeamCategory]);
+
+  const getEntryTeamId = useCallback((entry) => {
+    if (!entry || !isTeamCategory) return null;
+    return entry.team || entry.team_details?.id || null;
+  }, [isTeamCategory]);
+
+  const getEntryName = useCallback((entry) => {
+    if (!entry) return '';
+    if (isTeamCategory) {
+      return entry.team_name || entry.team_details?.name || `Echipă #${getEntryTeamId(entry) || entry.id}`;
+    }
+    const d = entry.athlete_details || {};
+    return `${d.last_name || ''} ${d.first_name || ''}`.trim() || entry.athlete_name || entry.full_name || `Sportiv #${getEntryAthleteId(entry)}`;
+  }, [getEntryAthleteId, getEntryTeamId, isTeamCategory]);
+
+  const getEntryClubName = useCallback((entry) => {
+    if (!entry) return '';
+    if (isTeamCategory) {
+      return entry.club_name || entry.team_details?.club_name || '';
+    }
+    const d = entry.athlete_details || {};
+    return d.club?.name || d.club_name || entry.club_name || '';
+  }, [isTeamCategory]);
 
   const clearPresence = useCallback(async () => {
     if (!myAthleteId || !categoryId) return;
@@ -53,9 +112,13 @@ export default function ScoringPanel() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [catRes, athRes, scoresRes] = await Promise.all([
-        categoryAPI.get(categoryId),
-        enrollmentAPI.categoryAthletes.list({ category: categoryId }),
+      const catRes = await categoryAPI.get(categoryId);
+      const categoryType = catRes.data?.type;
+      const useTeams = categoryType === 'team' || categoryType === 'teams';
+      const [athRes, scoresRes] = await Promise.all([
+        useTeams
+          ? enrollmentAPI.categoryTeams.list({ category: categoryId })
+          : enrollmentAPI.categoryAthletes.list({ category: categoryId }),
         refereeAPI.categoryScores.list({ category: categoryId }),
       ]);
       setCategory(catRes.data);
@@ -147,18 +210,29 @@ export default function ScoringPanel() {
 
   const resetScore = () => setDraftScore(MAX_SCORE);
 
-  const submitScore = async (athleteId) => {
+  const submitScore = async (entry) => {
+    const athleteId = getEntryAthleteId(entry);
+    const teamId = getEntryTeamId(entry);
     if (draftScore < 0 || draftScore > MAX_SCORE) {
       alert('Scorul trebuie să fie între 0 și 100');
       return;
     }
+    if (!athleteId) {
+      alert(isTeamCategory ? 'Nu s-a putut identifica echipa activă.' : 'Nu s-a putut identifica sportivul activ.');
+      return;
+    }
     setBusy(true);
     try {
-      await refereeAPI.categoryScores.create({
+      const payload = {
         category: parseInt(categoryId),
-        athlete: athleteId,
         score: draftScore,
-      });
+      };
+      if (isTeamCategory && teamId) {
+        payload.team_id = teamId;
+      } else {
+        payload.athlete = athleteId;
+      }
+      await refereeAPI.categoryScores.create(payload);
       setSubmitSuccess(athleteId);
       fetchAll();
     } catch (err) {
@@ -172,7 +246,11 @@ export default function ScoringPanel() {
 
   const genderLabels = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
   const hasActiveScoring = activeAthleteId && !getMyScore(activeAthleteId);
-  const allScored = athletes.length > 0 && athletes.every(a => getMyScore(a.athlete || a.id));
+  const activeEntry = athletes.find(entry => getEntryAthleteId(entry) === activeAthleteId) || null;
+  const allScored = athletes.length > 0 && athletes.every(entry => {
+    const athleteId = getEntryAthleteId(entry);
+    return athleteId ? !!getMyScore(athleteId) : false;
+  });
 
   // Auto-show finished popup once when all athletes scored
   useEffect(() => {
@@ -213,9 +291,9 @@ export default function ScoringPanel() {
 
       {/* Category info tags */}
       <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-yellow-100 border-b-2 border-black shrink-0 flex-wrap">
-        {category.group_name && <span className="frvv-chip">{category.group_name}</span>}
+        {category.group_name && <span className="frvv-chip">{formatGroupBadgeLabel(category.group_name, category)}</span>}
         {category.gender && <span className="frvv-chip">{genderLabels[category.gender] || category.gender}</span>}
-        <span className="frvv-chip uppercase">{category.type === 'teams' ? 'Echipe' : 'Solo'}</span>
+        <span className="frvv-chip uppercase">{isTeamCategory ? 'Echipe' : 'Solo'}</span>
       </div>
 
       {/* ── Athletes table ── */}
@@ -225,20 +303,19 @@ export default function ScoringPanel() {
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-100">
                 <th className="text-center px-1.5 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-8">#</th>
-                <th className="text-left px-3 py-2 text-xs font-bold text-gray-600 border border-gray-300">Sportiv</th>
+                <th className="text-left px-3 py-2 text-xs font-bold text-gray-600 border border-gray-300">{isTeamCategory ? 'Echipă' : 'Sportiv'}</th>
                 <th className="text-center px-2 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-16">Scor</th>
                 <th className="text-center px-1.5 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-10">✓</th>
               </tr>
             </thead>
             <tbody>
               {athletes.length === 0 && (
-                <tr><td colSpan={4} className="text-center py-8 text-gray-400 italic">Niciun sportiv înscris.</td></tr>
+                <tr><td colSpan={4} className="text-center py-8 text-gray-400 italic">{isTeamCategory ? 'Nicio echipă înscrisă.' : 'Niciun sportiv înscris.'}</td></tr>
               )}
               {athletes.map((entry, idx) => {
-                const athleteId = entry.athlete || entry.id;
-                const d = entry.athlete_details || {};
-                const name = `${d.last_name || ''} ${d.first_name || ''}`.trim() || entry.athlete_name || entry.full_name || `Sportiv #${athleteId}`;
-                const clubName = d.club?.name || d.club_name || entry.club_name || '';
+                const athleteId = getEntryAthleteId(entry);
+                const name = getEntryName(entry);
+                const clubName = getEntryClubName(entry);
                 const isActive = athleteId === activeAthleteId;
                 const existingScore = getMyScore(athleteId);
                 const justSubmitted = submitSuccess === athleteId;
@@ -250,12 +327,6 @@ export default function ScoringPanel() {
                     <td className="px-1.5 py-2.5 border border-gray-300 text-center text-gray-400 text-xs tabular-nums">{idx + 1}</td>
                     <td className="px-3 py-2.5 border border-gray-300">
                       <div className="flex items-center gap-2">
-                        {isActive && (
-                          <span className="relative flex h-2 w-2 shrink-0">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                          </span>
-                        )}
                         <div>
                           <p className={`font-semibold ${isActive ? 'text-green-800' : 'text-gray-900'} text-sm`}>{name}</p>
                           {clubName && <p className="text-[10px] text-gray-400">{clubName}</p>}
@@ -359,69 +430,60 @@ export default function ScoringPanel() {
 
       {/* Reset confirm modal */}
       {showResetConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowResetConfirm(false)}>
-          <div className="bg-white shadow-2xl p-6 max-w-sm w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="w-14 h-14 bg-amber-100 flex items-center justify-center mx-auto">
-              <span className="text-amber-600 text-2xl font-black">!</span>
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">Resetează scorul?</h3>
-            <p className="text-sm text-gray-600">Scorul va fi resetat la <span className="font-bold">{MAX_SCORE}</span> puncte.</p>
-            <div className="flex gap-2">
-              <button onClick={() => setShowResetConfirm(false)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 font-bold text-base transition">
-                Anulează
-              </button>
-              <button onClick={() => { setShowResetConfirm(false); resetScore(); }}
-                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 font-bold text-base transition">
-                Resetează
-              </button>
-            </div>
-          </div>
-        </div>
+        <FullscreenStyleModal
+          onClose={() => setShowResetConfirm(false)}
+          title="Resetezi scorul?"
+          description={`Revine la ${MAX_SCORE}.`}
+          icon="!"
+          actions={[
+            <button key="cancel" onClick={() => setShowResetConfirm(false)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
+            <button key="confirm" onClick={() => { setShowResetConfirm(false); resetScore(); }} className="border border-black bg-yellow-300 px-4 py-2.5 font-bold text-black transition hover:bg-yellow-200 disabled:opacity-40">Resetează</button>,
+          ]}
+        />
       )}
 
       {/* Submit confirm modal */}
       {showSubmitConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowSubmitConfirm(false)}>
-          <div className="bg-white shadow-2xl p-6 max-w-sm w-full text-center space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="w-14 h-14 bg-green-100 flex items-center justify-center mx-auto">
-              <span className="text-green-600 text-2xl font-black">✓</span>
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">Trimite scorul?</h3>
-            <p className="text-sm text-gray-600">Vei trimite scorul de <span className="font-black text-2xl text-gray-900">{draftScore}</span> puncte.</p>
-            <div className="flex gap-2">
-              <button onClick={() => setShowSubmitConfirm(false)}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 font-bold text-base transition">
-                Anulează
-              </button>
-              <button onClick={() => { setShowSubmitConfirm(false); submitScore(activeAthleteId); }}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 font-bold text-base transition">
-                Trimite
-              </button>
-            </div>
+        <FullscreenStyleModal
+          onClose={() => setShowSubmitConfirm(false)}
+          title="Trimite scorul?"
+          description="Verifică înainte de confirmare."
+          icon="✓"
+          actions={[
+            <button key="cancel" onClick={() => setShowSubmitConfirm(false)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
+            <button key="confirm" onClick={() => { setShowSubmitConfirm(false); submitScore(activeEntry); }} className={MODAL_SUCCESS_BUTTON}>Trimite</button>,
+          ]}
+        >
+          <div className="bg-gray-50 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">{isTeamCategory ? 'Echipă' : 'Sportiv'}</p>
+            <p className="mt-2 text-lg font-black text-gray-900">{activeEntry ? getEntryName(activeEntry) : 'Participant necunoscut'}</p>
+            {activeEntry && getEntryClubName(activeEntry) ? (
+              <p className="mt-1 text-sm text-gray-600">{getEntryClubName(activeEntry)}</p>
+            ) : null}
           </div>
-        </div>
+          <div className="bg-green-50 px-4 py-5 text-center">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-green-700">Scor</p>
+            <p className="mt-2 text-5xl font-black leading-none text-gray-900 tabular-nums">{draftScore}</p>
+          </div>
+        </FullscreenStyleModal>
       )}
 
       {/* Finished popup — all athletes scored */}
       {showFinishedPopup && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white shadow-2xl rounded-xl p-8 max-w-sm w-full text-center space-y-5">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <span className="text-green-600 text-3xl font-black">✓</span>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900">Mulțumim!</h3>
-            <p className="text-sm text-gray-600">Ați evaluat toți sportivii din această probă. Puteți reveni la pagina principală.</p>
-            <button onClick={() => { setShowFinishedPopup(false); navigate('/'); }}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-base transition">
-              Pagina principală
-            </button>
-            <button onClick={() => setShowFinishedPopup(false)}
-              className="w-full text-sm text-gray-500 hover:text-gray-700 font-medium transition">
-              Rămâi pe această pagină
-            </button>
+        <FullscreenStyleModal
+          onClose={() => setShowFinishedPopup(false)}
+          title="Mulțumim!"
+          description="Ai terminat evaluarea."
+          icon="✓"
+          actions={[
+            <button key="stay" onClick={() => setShowFinishedPopup(false)} className={MODAL_SECONDARY_BUTTON}>Rămâi pe această pagină</button>,
+            <button key="home" onClick={() => { setShowFinishedPopup(false); navigate('/'); }} className={MODAL_SUCCESS_BUTTON}>Pagina principală</button>,
+          ]}
+        >
+          <div className="bg-gray-50 p-4 text-center">
+            <p className="text-lg font-black text-gray-900">Toți participanții au fost evaluați.</p>
           </div>
-        </div>
+        </FullscreenStyleModal>
       )}
     </div>
   );

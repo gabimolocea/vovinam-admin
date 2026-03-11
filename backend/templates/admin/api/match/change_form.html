@@ -4,13 +4,19 @@
 
 {% block object-tools %}
     {{ block.super }}
-    {# central penalty action moved to a prominent button in the page content; remove duplicate object-tools link #}
+    {% if original %}
+    <li>
+        <form action="{% url 'admin:api_match_force_start' original.pk %}" method="post" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="button" style="cursor:pointer;">Pornește forțat</button>
+        </form>
+    </li>
+    {% endif %}
 {% endblock %}
 
 {# Add a prominent button near the top of the change form that opens the
-   "Add central penalty" view in a small popup window. This is clearer than
-   hiding the action in the object-tools menu for admins who frequently add
-   penalties. #}
+    penalty form in a small popup window. This is clearer than hiding the
+    action in the object-tools menu for admins who frequently add penalties. #}
 {% block content %}
     {{ block.super }}
 
@@ -44,15 +50,21 @@
                 try {
                     // URL to the dedicated add-central-penalty admin view for this match
                     var addUrl = "{% url 'admin:api_match_add_central_penalty' original.pk %}";
+                    var isCentralPenaltyTitle = function(title) {
+                        return title.indexOf('Penalizări centrale') !== -1
+                            || title.indexOf('Penalizare centrală') !== -1
+                            || title.indexOf('Central penalties') !== -1
+                            || title.indexOf('Central penalty') !== -1;
+                    };
 
                     // Look for inline groups and find the one that corresponds to
-                    // the CentralPenaltyInline (verbose_name_plural: "Central penalties").
+                    // the central-penalty inline, regardless of locale.
                     var groups = document.querySelectorAll('.inline-group, .inline-related');
                     Array.prototype.forEach.call(groups, function(group){
                         var heading = group.querySelector('h2, h3');
                         var title = heading && heading.textContent ? heading.textContent.trim() : '';
                         if(!title) title = group.textContent.trim().slice(0, 200);
-                        if(title.indexOf('Central penalties') === -1 && title.indexOf('Central penalty') === -1) return;
+                        if(!isCentralPenaltyTitle(title)) return;
 
                         // Find any "Add another" controls inside this inline and repoint them
                         // to the dedicated add view. Django admin typically renders an
@@ -72,14 +84,14 @@
                                     a.addEventListener('click', function(ev){
                                         ev.preventDefault();
                                         if(!hasCentral) {
-                                            alert("Please set the match's Central Referee before adding central penalties.");
+                                            alert("Setează mai întâi arbitrul central al meciului înainte de a adăuga penalizări centrale.");
                                             return;
                                         }
 
                                         // Build and show modal
                                         fetch(addUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
                                             .then(function(resp){
-                                                if(!resp.ok) throw new Error('Failed to load form');
+                                                if(!resp.ok) throw new Error('Nu s-a putut încărca formularul');
                                                 return resp.text();
                                             })
                                             .then(function(html){
@@ -178,13 +190,13 @@
                                                                                     var h = newGroups[i].querySelector('h2, h3');
                                                                                     var t = h && h.textContent ? h.textContent.trim() : '';
                                                                                     if(!t) t = newGroups[i].textContent.trim().slice(0,200);
-                                                                                    if(t.indexOf('Central penalties')!==-1 || t.indexOf('Central penalty')!==-1){
+                                                                                    if(isCentralPenaltyTitle(t)){
                                                                                         // Find matching old group and replace
                                                                                         for(var j=0;j<oldGroups.length;j++){
                                                                                             var oh = oldGroups[j].querySelector('h2, h3');
                                                                                             var ot = oh && oh.textContent ? oh.textContent.trim() : '';
                                                                                             if(!ot) ot = oldGroups[j].textContent.trim().slice(0,200);
-                                                                                            if(ot.indexOf('Central penalties')!==-1 || ot.indexOf('Central penalty')!==-1){
+                                                                                            if(isCentralPenaltyTitle(ot)){
                                                                                                 oldGroups[j].parentNode.replaceChild(newGroups[i].cloneNode(true), oldGroups[j]);
                                                                                                 break;
                                                                                             }
@@ -197,15 +209,15 @@
                                                                                 window.location.reload();
                                                                             }
                                                                 } else {
-                                                                    alert('Failed to create penalty: ' + (data && data.error ? data.error : 'Unknown'));
+                                                                    alert('Nu s-a putut crea penalizarea: ' + (data && data.error ? data.error : 'Necunoscut'));
                                                                 }
                                                             }).catch(function(err){
-                                                                alert('Error creating penalty: ' + err.message);
+                                                                alert('Eroare la crearea penalizării: ' + err.message);
                                                             });
                                                     });
                                                 }
                                             }).catch(function(err){
-                                                alert('Error loading form: ' + err.message);
+                                                alert('Eroare la încărcarea formularului: ' + err.message);
                                             });
                                     });
                                 } catch (inner) {

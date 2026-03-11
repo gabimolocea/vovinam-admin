@@ -11,6 +11,29 @@ const MODAL_SECONDARY_BUTTON = 'border border-black bg-white px-4 py-2.5 text-sm
 const MODAL_PRIMARY_BUTTON = 'border border-black bg-yellow-300 px-4 py-2.5 text-sm font-black text-black transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500';
 const MODAL_DANGER_BUTTON = 'border border-black bg-red-500 px-4 py-2.5 text-sm font-black text-white transition hover:bg-red-600 disabled:opacity-40';
 
+function formatGroupYears(group) {
+  if (!group) return '';
+  if (group.birth_year_start && group.birth_year_end) {
+    return `${group.birth_year_start} - ${group.birth_year_end}`;
+  }
+  if (group.birth_year_start) {
+    return `${group.birth_year_start}+`;
+  }
+  if (group.birth_year_end) {
+    return `până la ${group.birth_year_end}`;
+  }
+  if (group.birth_date_start && group.birth_date_end) {
+    return `${group.birth_date_start} - ${group.birth_date_end}`;
+  }
+  return '';
+}
+
+function formatGroupLabel(group) {
+  if (!group) return 'Grupă';
+  const years = formatGroupYears(group);
+  return years ? `${group.name} (${years})` : group.name;
+}
+
 export default function CompetitionCentralizator() {
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -41,7 +64,6 @@ export default function CompetitionCentralizator() {
           onClose={() => ctx.setConfirmModal(null)}
           title={ctx.confirmModal.title}
           description={ctx.confirmModal.message}
-          icon={ctx.confirmModal.icon || '⚠️'}
           maxWidth="max-w-md"
           footer={(
             <>
@@ -65,8 +87,7 @@ export default function CompetitionCentralizator() {
         <CoachModal
           onClose={() => ctx.setWeightModal(null)}
           title="Greutate sportiv"
-          description={`Introdu greutatea pentru ${ctx.weightModal.athleteName} înainte de înscriere.`}
-          icon="KG"
+          description={ctx.weightModal.athleteName}
           maxWidth="max-w-sm"
           footer={(
             <>
@@ -151,13 +172,12 @@ export default function CompetitionCentralizator() {
           <CoachModal
             onClose={() => ctx.setEnrollPickerCell(null)}
             title={clubName}
-            description={isFightCat ? 'Adaugă sportivi din clubul tău și completează greutatea direct în formular.' : 'Selectează sportivii eligibili din clubul tău pentru această categorie.'}
-            icon={isTeamCategory ? 'TM' : isFightCat ? 'KG' : 'AT'}
+            description={isFightCat ? 'Selectează sportivii și completează greutatea.' : 'Selectează sportivii eligibili.'}
             maxWidth="max-w-3xl"
             panelRef={ctx.enrollPickerRef}
             headerExtra={(
               <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="frvv-chip">{ctx.groups.find((group) => group.id === cat?.group)?.name || 'Grupă'}</span>
+                <span className="frvv-chip">{formatGroupLabel(ctx.groups.find((group) => group.id === cat?.group))}</span>
                 <span className="frvv-chip">{catName}</span>
                 <span className="frvv-chip">{TYPE_LABELS[cat?.type] || cat?.category_type || 'Categorie'}</span>
                 {isTeamCategory && <span className="frvv-chip">Construire echipă</span>}
@@ -318,7 +338,7 @@ export default function CompetitionCentralizator() {
   );
 }
 
-function CoachModal({ onClose, title, description, icon = 'FR', maxWidth = 'max-w-md', headerExtra = null, footer = null, panelRef = null, children = null }) {
+function CoachModal({ onClose, title, description, maxWidth = 'max-w-md', headerExtra = null, footer = null, panelRef = null, children = null }) {
   return (
     <div className="fixed inset-0 z-[320] flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
       <div
@@ -328,19 +348,13 @@ function CoachModal({ onClose, title, description, icon = 'FR', maxWidth = 'max-
       >
         <div className="flex items-start justify-between gap-4 border-b-2 border-black bg-yellow-300 px-5 py-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-gray-700">Panou antrenor</p>
-            <h3 className="mt-1 truncate text-xl font-black text-gray-900">{title}</h3>
-            {description ? <p className="mt-2 text-sm leading-6 text-gray-700">{description}</p> : null}
+            <h3 className="truncate text-xl font-black text-gray-900">{title}</h3>
+            {description ? <p className="mt-1 text-sm text-gray-700">{description}</p> : null}
             {headerExtra}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center border-2 border-black bg-white text-sm font-black uppercase text-gray-900">
-              {icon}
-            </span>
-            <button onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center border-2 border-black bg-white text-lg font-black text-gray-700 transition hover:bg-yellow-100 hover:text-black">
-              ×
-            </button>
-          </div>
+          <button onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center border-2 border-black bg-white text-lg font-black text-gray-700 transition hover:bg-yellow-100 hover:text-black">
+            ×
+          </button>
         </div>
         {children ? <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div> : null}
         {footer ? (
@@ -375,6 +389,9 @@ function CentralizatorTable({ ctx, onBack }) {
           <div className="mt-1 text-xs text-gray-500">
             {ctx.eventData?.name || 'Competiție'}{ctx.eventDateStr ? ` · ${ctx.eventDateStr}` : ''} · {ctx.groups.length} grupe · {ctx.categories.length} categorii · {ctx.totalAthletes} sportivi
           </div>
+          <div className={`mt-2 inline-flex items-center border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${ctx.isCoachDeadlinePassed ? 'border-red-300 bg-red-50 text-red-700' : 'border-black bg-yellow-100 text-black'}`}>
+            Deadline antrenori: {ctx.coachDeadlineDateStr || ctx.eventDateStr || '—'}
+          </div>
         </div>
         <div className="inline-flex w-full sm:w-auto overflow-hidden border-2 border-black bg-white">
           <button
@@ -391,6 +408,12 @@ function CentralizatorTable({ ctx, onBack }) {
           </button>
         </div>
       </div>
+
+      {ctx.isCoachDeadlinePassed && (
+        <div className="mb-4 border-2 border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          Deadline-ul pentru completarea centralizatorului de către antrenori a expirat. Înscrierile nu mai pot fi modificate.
+        </div>
+      )}
 
       {activeTab === 'tehnica' ? <CoachTehnicaView ctx={ctx} /> : <CoachLuptaView ctx={ctx} />}
     </div>
@@ -442,7 +465,7 @@ function CoachTehnicaView({ ctx }) {
             return (
               <div key={cat.id} className="overflow-hidden border-2 border-black bg-white">
                 <div className="border-b border-black bg-yellow-300 px-3 py-2 text-sm font-black text-gray-900">
-                  {group.name}
+                  {formatGroupLabel(group)}
                 </div>
                 <div className={`border-b border-black px-3 py-2 text-xs font-bold uppercase tracking-wide ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-900`}>
                   {cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}
@@ -465,7 +488,7 @@ function CoachTehnicaView({ ctx }) {
                         </div>
                         <button
                           onClick={(e) => handleUnenroll(entry.id, isTeamCategory ? teamLabel : athleteName, cat.name, e, isTeamCategory ? { enrollmentType: 'team' } : undefined)}
-                          disabled={busy}
+                          disabled={busy || ctx.isCoachDeadlinePassed}
                           className="inline-flex h-5 w-5 items-center justify-center border border-red-300 bg-red-50 text-xs font-bold text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-40"
                         >
                           ×
@@ -475,7 +498,7 @@ function CoachTehnicaView({ ctx }) {
                   })}
                 </div>
                 <div className="border-t-2 border-black p-3">
-                  <button onClick={(e) => handleCellClick(myClubId, cat.id, e)} className="frvv-btn-add w-full">
+                  <button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="frvv-btn-add w-full disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 disabled:border-gray-400">
                     <span className="frvv-btn-add-icon">+</span>
                     {isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}
                   </button>
@@ -528,7 +551,7 @@ function CoachLuptaView({ ctx }) {
             return (
               <div key={cat.id} className="overflow-hidden border-2 border-black bg-white">
                 <div className="border-b border-black bg-yellow-300 px-3 py-2 text-sm font-black text-gray-900">
-                  {group.name}
+                  {formatGroupLabel(group)}
                 </div>
                 <div className={`border-b border-black px-3 py-2 text-xs font-bold uppercase tracking-wide ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-900`}>
                   {cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}
@@ -555,7 +578,7 @@ function CoachLuptaView({ ctx }) {
                           <td className="px-3 py-2 text-center">
                             <button
                               onClick={(e) => handleUnenroll(entry.id, athleteName, cat.name, e)}
-                              disabled={busy}
+                              disabled={busy || ctx.isCoachDeadlinePassed}
                               className="inline-flex h-5 w-5 items-center justify-center border border-red-300 bg-red-50 text-xs font-bold text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-40"
                             >
                               ×
@@ -567,7 +590,7 @@ function CoachLuptaView({ ctx }) {
                   </tbody>
                 </table>
                 <div className="border-t-2 border-black p-3">
-                  <button onClick={(e) => handleCellClick(myClubId, cat.id, e)} className="frvv-btn-add w-full">
+                  <button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="frvv-btn-add w-full disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 disabled:border-gray-400">
                     <span className="frvv-btn-add-icon">+</span>
                     Adaugă sportiv
                   </button>

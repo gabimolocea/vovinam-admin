@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef } from 'rea
 import { useParams } from 'react-router-dom';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import { api } from '@shared';
+import { formatGroupBadgeLabel } from '@shared/components/ui';
 
 /* ── round label map ── */
 const ROUND_LABELS = {
@@ -42,7 +43,7 @@ export default function BracketPage() {
       if (c.type !== 'fight') continue;
       if (seenIds.has(c.id)) continue;
       seenIds.add(c.id);
-      fightCats.push({ ...c, groupName: col.group?.name });
+      fightCats.push({ ...c, groupName: formatGroupBadgeLabel(col.group, c) });
     }
   }
 
@@ -55,7 +56,7 @@ export default function BracketPage() {
 
   if (fightCats.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white p-4 text-center text-sm italic text-gray-400">
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-white p-4 text-center text-sm italic text-gray-400">
         📋 Nu există categorii de tip Luptă pentru această competiție.
       </div>
     );
@@ -80,8 +81,8 @@ export default function BracketPage() {
   });
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-3">
-      <div className={`mx-auto flex max-w-[1800px] flex-col gap-4 ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-white p-3">
+      <div className={`flex w-full flex-col gap-4 ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
         <div className="border-2 border-black bg-yellow-100 px-4 py-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -147,13 +148,13 @@ function MatchDetailModal({ match: m, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-lg max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="flex max-h-[85vh] w-[90vw] max-w-lg flex-col overflow-hidden border-2 border-black bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+        <div className="flex items-center justify-between border-b-2 border-black bg-yellow-300 px-5 py-3">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-gray-900">Meci #{m.match_number}</h2>
+              <h2 className="text-sm font-bold text-gray-900">Meci ID {m.id}</h2>
               <a
                 href={adminUrl}
                 target="_blank"
@@ -178,7 +179,7 @@ function MatchDetailModal({ match: m, onClose }) {
               )}
             </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 text-lg flex items-center justify-center transition">×</button>
+          <button onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center border-2 border-black bg-white text-lg font-black text-gray-700 transition hover:bg-yellow-100">×</button>
         </div>
 
         {/* Body */}
@@ -479,7 +480,7 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
   const groupLabel = category.groupName || category.group?.name || '';
 
   return (
-    <section className="overflow-hidden border-2 border-black bg-white shadow-sm">
+    <section className="shrink-0 overflow-hidden border-2 border-black bg-white shadow-sm">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-2 border-black bg-yellow-300 px-4 py-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
           {groupLabel && (
@@ -610,7 +611,7 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
               </div>
 
               {/* ── RIGHT: Bracket Tree ── */}
-              <div className="flex-1 overflow-auto bg-white p-4 sm:p-5">
+              <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto bg-white p-4 sm:p-5">
                 {matches.length === 0 ? (
                   <div className="flex min-h-[420px] items-center justify-center border-2 border-dashed border-black bg-yellow-50/30 px-6 text-center text-base text-gray-500">
                     <div>
@@ -667,7 +668,7 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
 
   /* layout constants */
   const CARD_W = 290;
-  const CARD_H = 164;
+  const CARD_H = 214;
   const COL_GAP = 84;   // horizontal gap between rounds (for connectors)
   const BASE_GAP = 24;  // vertical gap in round 1
 
@@ -748,7 +749,7 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
   }
 
   return (
-    <div className="relative" style={{ width: canvasW, height: canvasH }}>
+    <div className="relative min-w-max" style={{ width: canvasW, height: canvasH }}>
       {/* SVG connectors */}
       <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH}>
         {lines}
@@ -807,11 +808,15 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
   const redWon = m.winner === m.red_corner;
   const blueWon = m.winner === m.blue_corner;
   const isBye = (m.red_corner && !m.blue_corner) || (!m.red_corner && m.blue_corner);
-  const fullscreenHref = `/competitions/${eventId}/live-fullscreen?field=${m.field}&panel=match&id=${m.id}`;
+  const assignedFieldId = m.field_id || m.field || null;
+  const hasAssignedField = Boolean(assignedFieldId || m.field_number || m.field_name);
+  const fullscreenHref = assignedFieldId
+    ? `/competitions/${eventId}/live-fullscreen?field=${assignedFieldId}&panel=match&id=${m.id}`
+    : null;
 
   const handleMoreInfoClick = (e) => {
     e.stopPropagation();
-    if (!m.field) {
+    if (!hasAssignedField || !fullscreenHref) {
       const shouldSchedule = window.confirm('Acest meci nu este programat pe niciun tatami. Vrei să mergi la Programare pentru a-l programa?');
       if (shouldSchedule) {
         window.location.href = `/competitions/${eventId}/categories/programare`;
@@ -843,12 +848,12 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
   };
 
   return (
-    <div className={`flex min-h-[164px] cursor-pointer flex-col overflow-hidden border-2 bg-white text-sm shadow-sm transition-shadow hover:shadow-md ${
+    <div className={`flex min-h-[214px] cursor-pointer flex-col overflow-hidden border-2 bg-white text-sm shadow-sm transition-shadow hover:shadow-md ${
       hasWinner ? 'border-black' : isBye ? 'border-black' : 'border-black'
     }`} onClick={() => onMatchClick && onMatchClick(m)}>
       {/* header */}
       <div className="flex justify-between border-b-2 border-black bg-yellow-100 px-3 py-1 text-xs font-mono text-gray-600">
-        <span title={`ID: ${m.id}`}>#{m.match_number}</span>
+        <span title={`ID backend: ${m.id}`}>ID {m.id}</span>
         {hasWinner && <span className="font-bold text-gray-900">Finalizat</span>}
         {isBye && <span className="font-semibold text-gray-700">BYE</span>}
       </div>

@@ -1,12 +1,14 @@
-import React, { useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  eventAPI,
   fieldAPI, monitorAPI, roundAPI, matchAPI, scoreAPI,
   matchRefereeScoreAPI, matchFieldAssignmentAPI, refereeAPI,
   categoryRefereeAssignmentAPI, matchEventAPI, fieldBreakAPI,
   matchRefereeAssignmentAPI, groupAPI, categoryAPI, enrollmentAPI,
-  competitionRefereeAPI, refereePresenceAPI,
+  competitionRefereeAPI, refereePresenceAPI, recordingAPI, scoreTimelineAPI,
 } from '@shared/lib/api';
+import { formatGroupBadgeLabel } from '@shared/components/ui';
 import { GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 
@@ -33,6 +35,7 @@ const PANEL_BUTTON_NEUTRAL = `${PANEL_BUTTON_BASE} bg-white text-gray-700 hover:
 const PANEL_BUTTON_DANGER = `${PANEL_BUTTON_BASE} bg-white text-red-700 hover:bg-red-100`;
 const PANEL_BUTTON_SUCCESS = `${PANEL_BUTTON_BASE} bg-white text-green-700 hover:bg-green-100`;
 const PANEL_BUTTON_WARNING = `${PANEL_BUTTON_BASE} bg-yellow-300 text-black hover:bg-yellow-200`;
+const TOPNAV_REC_BUTTON = 'flex items-center gap-2 border bg-white px-4 py-2 text-sm font-bold uppercase tracking-[0.14em] transition disabled:opacity-40';
 const ROUND_CARD_SHELL = 'flex flex-col gap-4 border-2 border-black bg-white px-4 py-4';
 const ROUND_BODY_PANEL = 'bg-white px-4 py-4';
 const ROUND_SECONDARY_BUTTON = 'border border-black px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
@@ -55,7 +58,7 @@ const buildCategoriesWithGroups = (categories, groups) => {
   const groupMap = new Map((groups || []).map(group => [group.id, group]));
   return (categories || []).map(category => ({
     ...category,
-    groupName: groupMap.get(category.group)?.name || '',
+    groupName: formatGroupBadgeLabel(groupMap.get(category.group), category),
   }));
 };
 
@@ -91,6 +94,10 @@ export default function LiveFullscreenPage() {
   const [allCats, setAllCats] = useState(buildCategoriesWithGroups(cachedCategoryDataRef.current.categories, cachedCategoryDataRef.current.groups));
   const [competitionReferees, setCompetitionReferees] = useState([]);
   const [refPresence, setRefPresence] = useState([]);
+  const [recordingSessions, setRecordingSessions] = useState([]);
+  const [categoryScoreEvents, setCategoryScoreEvents] = useState([]);
+  const [matchPointEvents, setMatchPointEvents] = useState([]);
+  const [eventState, setEventState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -108,6 +115,7 @@ export default function LiveFullscreenPage() {
     try {
       const hasCachedCategories = cachedCategoryDataRef.current.categories.length > 0;
       const requests = [
+        eventAPI.get(eventId),
         fieldAPI.list({ event_id: eventId }),
         monitorAPI.sessions.list({ event_id: eventId }),
         fieldAPI.assignments.list({ event_id: eventId }),
@@ -122,6 +130,8 @@ export default function LiveFullscreenPage() {
         matchRefereeAssignmentAPI.list({ event_id: eventId }),
         competitionRefereeAPI.list({ event_id: eventId }),
         refereePresenceAPI.list({ event_id: eventId }),
+        recordingAPI.sessions.list({ event_id: eventId }),
+        scoreTimelineAPI.categoryRefereeEvents.list({ event_id: eventId }),
       ];
 
       if (!hasCachedCategories) {
@@ -130,7 +140,8 @@ export default function LiveFullscreenPage() {
       }
 
       const responses = await Promise.all(requests);
-      const [fR, sR, caR, maR, mR, rR, rsR, mrsR, asR, raR, meR, mraR, crR, rpR, gR, cR] = responses;
+      const [eventR, fR, sR, caR, maR, mR, rR, rsR, mrsR, asR, raR, meR, mraR, crR, rpR, recR, catEvR, gR, cR] = responses;
+      setEventState(eventR?.data || null);
       setFields(arr(fR));
       setSessions(arr(sR));
       setCatAssignments(arr(caR));
@@ -145,6 +156,8 @@ export default function LiveFullscreenPage() {
       setMatchRefAssignments(arr(mraR));
       setCompetitionReferees(arr(crR));
       setRefPresence(arr(rpR));
+      setRecordingSessions(arr(recR));
+      setCategoryScoreEvents(arr(catEvR));
 
       if (gR && cR) {
         const rawGroups = arr(gR);
@@ -173,12 +186,16 @@ export default function LiveFullscreenPage() {
         requests.push(scoreAPI.list({ category: itemId }));
         requests.push(refereePresenceAPI.list({ category: itemId }));
         requests.push(categoryRefereeAssignmentAPI.list({ event_id: eventId }));
+        requests.push(scoreTimelineAPI.categoryRefereeEvents.list({ category: itemId }));
+        requests.push(recordingAPI.sessions.list({ event_id: eventId, field_id: fieldId }));
       } else if (panelType === 'match' && itemId) {
         requests.push(matchAPI.get(itemId));
         requests.push(roundAPI.list({ match_id: itemId }));
         requests.push(matchRefereeScoreAPI.list({ match_id: itemId }));
         requests.push(matchEventAPI.list({ match_id: itemId }));
         requests.push(matchRefereeAssignmentAPI.list({ match_id: itemId }));
+        requests.push(refereeAPI.pointEvents.list(itemId));
+        requests.push(recordingAPI.sessions.list({ event_id: eventId, field_id: fieldId }));
       }
 
       const responses = await Promise.all(requests);
@@ -196,6 +213,8 @@ export default function LiveFullscreenPage() {
         setAthleteScores(arr(fourthR));
         setRefPresence(arr(responses[4]));
         setRefAssignments(arr(responses[5]));
+        setCategoryScoreEvents(arr(responses[6]));
+        setRecordingSessions(arr(responses[7]));
       } else if (panelType === 'match' && itemId) {
         const matchPayload = secondR?.data;
         if (matchPayload) {
@@ -205,11 +224,13 @@ export default function LiveFullscreenPage() {
         setMatchRefScores(arr(fourthR));
         setMatchEvents(arr(responses[4]));
         setMatchRefAssignments(arr(responses[5]));
+        setMatchPointEvents(arr(responses[6]));
+        setRecordingSessions(arr(responses[7]));
       }
     } catch (err) {
       console.error('Match state fetch error:', err);
     }
-  }, [eventId, itemId, panelType]);
+  }, [eventId, fieldId, itemId, panelType]);
 
   // Targeted category refresh (for DQ status updates etc.)
   const refreshCategories = useCallback(async () => {
@@ -255,6 +276,9 @@ export default function LiveFullscreenPage() {
   const currentMatch = fieldMatches.find(m => m.id === session?.current_match)
     || matches.find(m => m.id === session?.current_match)
     || (panelType === 'match' && itemId ? matches.find(m => m.id === itemId) : null);
+  const currentFieldRecordingSession = recordingSessions.find(rs => rs.field === fieldId && rs.status === 'recording')
+    || recordingSessions.find(rs => rs.field === fieldId)
+    || null;
   const currentCategoryRefAssignment = currentCat
     ? refAssignments.find(ra => ra.category === currentCat.id)
     : null;
@@ -296,11 +320,61 @@ export default function LiveFullscreenPage() {
     && (currentMatch.status === 'completed' || currentAssignment?.status === 'completed');
   const isCurrentCategoryFinalized = !!currentCat
     && currentAssignment?.status === 'completed';
+  const operationalLockActive = Boolean(eventState?.operational_lock_active);
+  const operationalLockMessage = eventState?.operational_lock_active
+    ? 'Evenimentul este blocat pentru operare locală. Pentru modificări live, lucrează din copia locală/LAN a competiției sau finalizează sincronizarea în cloud.'
+    : '';
+
+  const ensureOperationalWrite = useCallback(() => {
+    if (!operationalLockActive) return true;
+    window.alert(operationalLockMessage);
+    return false;
+  }, [operationalLockActive, operationalLockMessage]);
+
+  const isRecordingActive = currentFieldRecordingSession?.status === 'recording';
+  const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!currentFieldRecordingSession?.started_at) {
+      setRecordingElapsedSeconds(0);
+      return;
+    }
+
+    const computeElapsed = () => {
+      if (currentFieldRecordingSession?.computed_duration_seconds != null && !isRecordingActive) {
+        return Number(currentFieldRecordingSession.computed_duration_seconds) || 0;
+      }
+      const startedAtMs = new Date(currentFieldRecordingSession.started_at).getTime();
+      if (Number.isNaN(startedAtMs)) return 0;
+      const endMs = !isRecordingActive && currentFieldRecordingSession?.ended_at
+        ? new Date(currentFieldRecordingSession.ended_at).getTime()
+        : Date.now();
+      return Math.max(0, Math.floor((endMs - startedAtMs) / 1000));
+    };
+
+    setRecordingElapsedSeconds(computeElapsed());
+    if (!isRecordingActive) return;
+
+    const intervalId = window.setInterval(() => {
+      setRecordingElapsedSeconds(computeElapsed());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [currentFieldRecordingSession, isRecordingActive]);
+
+  const recordingTimerLabel = `REC ${String(Math.floor(recordingElapsedSeconds / 60)).padStart(2, '0')}:${String(recordingElapsedSeconds % 60).padStart(2, '0')}`;
 
   // ── API helpers ──
   const wrap = fn => async (...a) => {
+    if (!ensureOperationalWrite()) return;
     setBusy(true);
-    try { await fn(...a); await fetchMatchState(); } catch(e) { console.error(e); }
+    try {
+      await fn(...a);
+      await fetchMatchState();
+    } catch (e) {
+      console.error(e);
+      window.alert(e?.response?.data?.error || e?.response?.data?.detail || 'Operația nu a putut fi salvată.');
+    }
     setBusy(false);
   };
 
@@ -309,6 +383,49 @@ export default function LiveFullscreenPage() {
     if (session) await monitorAPI.sessions.update(session.id, data);
     else await monitorAPI.sessions.create({ field: fieldId, ...data });
   });
+  const startRecordingSession = async ({ auto = false } = {}) => {
+    if (isRecordingActive || !ensureOperationalWrite()) return;
+    setBusy(true);
+    try {
+      await recordingAPI.sessions.create({
+        event: Number(eventId),
+        field: fieldId,
+        title: `${formatFieldLabel(field?.name || `Teren ${fieldId}`)} live recording`,
+        status: 'recording',
+        started_at: new Date().toISOString(),
+        obs_scene_name: formatFieldLabel(field?.name || `Teren ${fieldId}`),
+        metadata: {
+          panel: panelType,
+          panel_id: itemId,
+          started_automatically: auto,
+        },
+      });
+      await fetchMatchState();
+    } catch (e) {
+      console.error(e);
+      window.alert('Nu s-a putut porni sesiunea de înregistrare.');
+    }
+    setBusy(false);
+  };
+  const stopRecordingSession = async ({ auto = false } = {}) => {
+    if (!currentFieldRecordingSession || currentFieldRecordingSession.status !== 'recording' || !ensureOperationalWrite()) return;
+    setBusy(true);
+    try {
+      await recordingAPI.sessions.stop(currentFieldRecordingSession.id, {
+        ended_at: new Date().toISOString(),
+        status: 'stopped',
+        metadata: {
+          ...(currentFieldRecordingSession.metadata || {}),
+          stopped_automatically: auto,
+        },
+      });
+      await fetchMatchState();
+    } catch (e) {
+      console.error(e);
+      window.alert('Nu s-a putut opri sesiunea de înregistrare.');
+    }
+    setBusy(false);
+  };
   const setIdle = () => switchDisplay(null, null, null, 'idle');
   const revealScores = () => {
     if (session) switchDisplay(session.current_category, session.current_match, session.current_athlete, 'scores_revealed');
@@ -317,6 +434,7 @@ export default function LiveFullscreenPage() {
     if (session) switchDisplay(session.current_category, session.current_match, session.current_athlete, 'decisions_revealed');
   };
   const revealWinner = async () => {
+    if (!ensureOperationalWrite()) return;
     if (session) {
       await switchDisplay(session.current_category, session.current_match, session.current_athlete, 'winner_revealed');
       // Auto-finalize the match when winner is revealed
@@ -335,7 +453,7 @@ export default function LiveFullscreenPage() {
   const startRound  = wrap(async id => { await roundAPI.update(id, { status: 'active', started_at: new Date().toISOString() }); });
   const endRound    = wrap(async id => { await roundAPI.update(id, { status: 'completed', ended_at: new Date().toISOString() }); });
   const resetRound  = wrap(async id => { await roundAPI.update(id, { status: 'scheduled', started_at: null, ended_at: null, paused_at: null, accumulated_pause_seconds: 0, extra_seconds: 0 }); });
-  const createRounds = wrap(async (matchId, n = 3, dur = 180) => {
+  const createRounds = wrap(async (matchId, n = 3, dur = 120) => {
     for (let i = 1; i <= n; i++) await roundAPI.create({ match: matchId, round_number: i, duration_seconds: dur });
   });
   const pauseRound = wrap(async (matchId, roundId) => {
@@ -404,6 +522,7 @@ export default function LiveFullscreenPage() {
     for (const ev of evts) {
       try { await matchEventAPI.delete(ev.id); } catch {}
     }
+    try { await refereeAPI.pointEvents.clear(matchId); } catch {}
     // Also delete all referee scores for this match
     const scores = matchRefScores.filter(s => s.match === matchId);
     for (const sc of scores) {
@@ -447,6 +566,7 @@ export default function LiveFullscreenPage() {
   const finishAndReturnToSchedule = async () => {
     setShowFinishConfirm(false);
     if (panelType === 'match' && currentMatch) {
+      await stopRecordingSession({ auto: true });
       setIdle();
       if (currentAssignment) {
         setBusy(true);
@@ -458,6 +578,7 @@ export default function LiveFullscreenPage() {
     }
 
     if (panelType === 'category' && currentCat && currentCat.type !== 'fight') {
+      await stopRecordingSession({ auto: true });
       setIdle();
       if (currentAssignment) {
         setBusy(true);
@@ -499,18 +620,22 @@ export default function LiveFullscreenPage() {
           )}
           {/* START / ÎNCHEIE for matches */}
           {panelType === 'match' && currentMatch && !isSessionActive && (
-            <button
-              onClick={async () => {
-                await switchDisplay(currentMatch.category, currentMatch.id, null);
-                if (currentAssignment) {
-                  setBusy(true);
-                  try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
-                  setBusy(false);
-                }
-              }}
-              disabled={busy || isCurrentMatchFinalized}
-              className={`text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition ${isCurrentMatchFinalized ? '' : 'ring-4 ring-green-300 animate-pulse'}`}
-            >START PROBA</button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={async () => {
+                  await startRecordingSession({ auto: true });
+                  await switchDisplay(currentMatch.category, currentMatch.id, null);
+                  if (currentAssignment) {
+                    setBusy(true);
+                    try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy || isCurrentMatchFinalized}
+                title="Butonul pornește proba doar dacă atât statusul logic al meciului, cât și statusul din programarea terenului nu sunt finalizate."
+                className={`text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition ${isCurrentMatchFinalized ? '' : 'ring-4 ring-green-300 animate-pulse'}`}
+              >START PROBA</button>
+            </div>
           )}
           {panelType === 'match' && currentMatch && isSessionActive && (
             <button
@@ -525,18 +650,22 @@ export default function LiveFullscreenPage() {
           )}
           {/* START / ÎNCHEIE for categories */}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
-            <button
-              onClick={async () => {
-                await switchDisplay(currentCat.id, null, null);
-                if (currentAssignment) {
-                  setBusy(true);
-                  try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
-                  setBusy(false);
-                }
-              }}
-              disabled={busy || isCurrentCategoryFinalized}
-              className="text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
-            >START PROBA</button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={async () => {
+                  await startRecordingSession({ auto: true });
+                  await switchDisplay(currentCat.id, null, null);
+                  if (currentAssignment) {
+                    setBusy(true);
+                    try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy || isCurrentCategoryFinalized}
+                title="Pentru probele tehnice, startul este controlat de statusul din programarea terenului."
+                className="text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
+              >START PROBA</button>
+            </div>
           )}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && isSessionActive && (
             <button
@@ -549,6 +678,17 @@ export default function LiveFullscreenPage() {
             className={`${TOPNAV_SECONDARY_BUTTON} text-center`}>
             Public Display
           </a>
+          <button
+            onClick={() => (isRecordingActive ? stopRecordingSession() : startRecordingSession())}
+            disabled={busy}
+            className={`${TOPNAV_REC_BUTTON} ${isRecordingActive ? 'border-red-500 text-black shadow-[0_0_0_2px_rgba(239,68,68,0.35)]' : 'border-black text-black hover:bg-red-50'}`}
+            title={isRecordingActive ? 'Oprește înregistrarea' : 'Pornește înregistrarea'}
+          >
+            <span className={`relative inline-flex h-3 w-3 rounded-full ${isRecordingActive ? 'bg-red-500' : 'bg-red-500'}`}>
+              {isRecordingActive ? <span className="absolute inset-0 animate-ping rounded-full bg-red-500 opacity-75" /> : null}
+            </span>
+            <span>{recordingTimerLabel}</span>
+          </button>
           <button
             onClick={() => preview.togglePreview(fieldId)}
             className={`text-sm px-4 py-2 font-medium transition border border-black ${preview.isOpen(fieldId) ? 'bg-yellow-300 hover:bg-yellow-200 text-black' : 'bg-white hover:bg-yellow-100 text-gray-700'}`}
@@ -680,6 +820,11 @@ export default function LiveFullscreenPage() {
 
       {/* ── Content ── */}
       <div className="flex-1 min-h-0 overflow-auto px-3 py-3 sm:px-4 lg:px-6">
+        {operationalLockActive && (
+          <div className="mb-4 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {operationalLockMessage}
+          </div>
+        )}
         {panelType === 'category' && currentCat && currentCat.type !== 'fight' ? (
           <FullscreenCategoryPanel
             cat={currentCat}
@@ -689,6 +834,8 @@ export default function LiveFullscreenPage() {
             refScores={refScores}
             refPresence={refPresence.filter(rp => rp.category === currentCat.id)}
             competitionReferees={competitionReferees}
+            scoreEvents={categoryScoreEvents.filter(event => event.category_id === currentCat.id)}
+            recordingSession={currentFieldRecordingSession}
             busy={busy}
             setBusy={setBusy}
             switchDisplay={switchDisplay}
@@ -705,11 +852,13 @@ export default function LiveFullscreenPage() {
             activeRound={activeRound}
             matchRefScores={matchRefScores.filter(s => s.match === currentMatch.id)}
             matchEvents={matchEvents.filter(e => e.match === currentMatch.id)}
+            pointEvents={matchPointEvents.filter(event => event.match === currentMatch.id)}
             matchRefAssignment={matchRefAssignments.find(a => a.match === currentMatch.id)}
             allCats={allCats}
             busy={busy}
             setBusy={setBusy}
             competitionReferees={competitionReferees}
+            recordingSession={currentFieldRecordingSession}
             setIdle={setIdle}
             startRound={startRound}
             endRound={endRound}
@@ -732,6 +881,9 @@ export default function LiveFullscreenPage() {
             swapCorners={swapCorners}
             setDecision={setDecision}
             onRefresh={fetchMatchState}
+            operationalLockActive={operationalLockActive}
+            operationalLockMessage={operationalLockMessage}
+            ensureOperationalWrite={ensureOperationalWrite}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-400 text-lg italic">
@@ -749,7 +901,7 @@ export default function LiveFullscreenPage() {
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
-function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, refPresence, competitionReferees, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories }) {
+function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, refPresence, competitionReferees, scoreEvents, recordingSession, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories }) {
   const isTeamCategory = cat.type === 'team';
   const enrolled = isTeamCategory ? (cat.enrolled_teams || []) : (cat.enrolled_athletes || []);
 
@@ -799,7 +951,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       ? (ea.team_name || teamMembersLabel || `#${ea.team}`)
       : (`${d.last_name || ''} ${d.first_name || ''}`.trim() || `#${athleteId}`);
     const clubName = isTeamCategory ? (ea.club_name || '') : (d.club_name || '');
-    const detailText = isTeamCategory ? teamMembersLabel : clubName;
+    const detailText = isTeamCategory ? teamMembersLabel : '';
     const catScore = isTeamCategory
       ? resolveTeamScore(ea)
       : athleteScores.find(as => (as.athlete?.id ?? as.athlete) === athleteId);
@@ -1040,6 +1192,29 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
   return (
     <div className="flex w-full flex-col gap-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <div className="border border-black bg-white p-4 xl:col-span-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-gray-500">Timeline arbitri</p>
+              <p className="mt-1 text-sm text-gray-700">Ultimele modificări de punctaj pentru probă.</p>
+            </div>
+            <span className="border border-black bg-black px-2 py-1 text-xs font-bold text-white">{scoreEvents.length}</span>
+          </div>
+          <div className="mt-3 max-h-48 space-y-2 overflow-auto pr-1">
+            {scoreEvents.length ? scoreEvents.slice().reverse().slice(0, 8).map(event => (
+              <div key={event.id} className="border border-black/10 bg-gray-50 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black text-gray-900">{event.referee_name || 'Arbitru'}</span>
+                  <span className="font-bold uppercase text-gray-500">{event.action}</span>
+                </div>
+                <p className="mt-1 text-gray-700">{event.athlete_name || 'Sportiv'} · {event.previous_score ?? '—'} → {event.score_value ?? '—'}</p>
+              </div>
+            )) : <p className="text-sm text-gray-400">Nu există evenimente încă.</p>}
+          </div>
+        </div>
+      </div>
+
       {/* ── Category info header (like match info tags) ── */}
       <div className="bg-white">
         <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
@@ -1280,6 +1455,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <tr>
                 <th className="w-10 border border-black bg-gray-200 px-3 py-2.5 text-left font-bold uppercase tracking-wide text-gray-700">#</th>
                 <th className="border border-black bg-gray-200 px-3 py-2.5 text-left font-bold uppercase tracking-wide text-gray-700">{isTeamCategory ? 'Echipă' : 'Sportiv'}</th>
+                <th className="w-48 border border-black bg-gray-200 px-3 py-2.5 text-left font-bold uppercase tracking-wide text-gray-700">Club</th>
                 {refCols.map(r => (<th key={r.pos} className="w-16 border border-black bg-gray-200 px-2 py-2.5 text-center font-bold uppercase tracking-wide text-gray-700">A{r.pos}</th>))}
                 <th className="w-20 border border-black bg-gray-200 px-3 py-2.5 text-center font-bold uppercase tracking-wide text-gray-700">Total</th>
                 <th className="w-16 border border-black bg-gray-200 px-2 py-2.5 text-center font-bold uppercase tracking-wide text-gray-700">Loc</th>
@@ -1302,8 +1478,10 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         {row.isActive && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-green-500 text-white px-2 py-0.5 animate-pulse">● Prezintă acum</span>}
                         {row.isRevealed && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-yellow-400 text-black px-2 py-0.5">✓ Scor afișat</span>}
                       </div>
-                      {row.clubName && <div className="mt-1 text-xs text-gray-500">{row.clubName}</div>}
                       {row.detailText && row.detailText !== row.athleteName && <div className="mt-1 text-xs text-gray-400">{row.detailText}</div>}
+                    </td>
+                    <td className="border border-black/20 px-3 py-2.5 text-sm text-gray-700">
+                      {row.clubName || '—'}
                     </td>
                     {row.vals.map((v, ri) => {
                       const r = refCols[ri];
@@ -1352,10 +1530,11 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
    FULLSCREEN MATCH PANEL
    ═══════════════════════════════════════════════════════ */
 function FullscreenMatchPanel({
-  match, session, matchRounds, activeRound, matchRefScores, matchEvents,
-  matchRefAssignment, allCats, busy, setBusy, competitionReferees, setIdle, startRound, endRound, resetRound, createRounds,
+  match, session, matchRounds, activeRound, matchRefScores, matchEvents, pointEvents,
+  matchRefAssignment, allCats, busy, setBusy, competitionReferees, recordingSession, setIdle, startRound, endRound, resetRound, createRounds,
   pauseRound, resumeRound, addWarning, addPenalty, addBonus, addInfraction, addDisqualification,
   removeLastEvent, adjustTime, resetMatch, finalizeMatch, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh,
+  operationalLockActive, operationalLockMessage, ensureOperationalWrite,
 }) {
   const [showRoundResetConfirm, setShowRoundResetConfirm] = useState(null); // round id
   const [showStopRoundConfirm, setShowStopRoundConfirm] = useState(null); // round id for stop confirm
@@ -1364,6 +1543,7 @@ function FullscreenMatchPanel({
   const [refModalData, setRefModalData] = useState(null); // { ref, matchId }
   const [replaceMatchRefData, setReplaceMatchRefData] = useState(null); // { pos, id, name }
   const [replacementMatchRefId, setReplacementMatchRefId] = useState('');
+  const [matchDisplayMode, setMatchDisplayMode] = useState(match.display_mode || 'reveal_final');
   const prevRoundStatusRef = useRef({});
 
   // Build referee list from match referee assignment
@@ -1384,6 +1564,7 @@ function FullscreenMatchPanel({
 
   const replaceMatchReferee = async () => {
     if (!replaceMatchRefData) return;
+    if (!ensureOperationalWrite()) return;
     const fieldName = `referee_${replaceMatchRefData.pos}`;
     const payload = {
       match: match.id,
@@ -1444,6 +1625,35 @@ function FullscreenMatchPanel({
   );
   const totalRounds = matchRounds.length;
   const isMatchFinalized = match.status === 'completed';
+  const settingsLocked = matchStarted || isMatchDisplayStarted || isMatchFinalized;
+  const operationalSettingsLocked = settingsLocked || operationalLockActive;
+  const selectedRoundPreset = useMemo(() => {
+    if (!matchRounds.length) return null;
+    const allTwoMinutes = matchRounds.every((round) => Number(round.duration_seconds) === 120);
+    if (allTwoMinutes && matchRounds.length === 3) return '3x2';
+    if (allTwoMinutes && matchRounds.length === 2) return '2x2';
+    if (matchRounds.length === 3) return '3x2';
+    if (matchRounds.length === 2) return '2x2';
+    return 'custom';
+  }, [matchRounds]);
+  const isThreeRoundPreset = selectedRoundPreset === '3x2';
+
+  useEffect(() => {
+    setMatchDisplayMode(match.display_mode || 'reveal_final');
+  }, [match.display_mode, match.id]);
+
+  useEffect(() => {
+    if (!session || session.current_match !== match.id || !allRoundsCompleted) return;
+
+    if (matchDisplayMode === 'real_time' && session.status === 'displaying') {
+      revealDecisions();
+      return;
+    }
+
+    if (matchDisplayMode === 'reveal_final' && session.status === 'decisions_revealed') {
+      switchDisplay(session.current_category, session.current_match, session.current_athlete, 'displaying');
+    }
+  }, [allRoundsCompleted, match.id, matchDisplayMode, revealDecisions, session, switchDisplay]);
 
   // Determine winner corner from referee decisions
   const redVotes = decisionsSubmitted.filter(s => s.winner_choice === 'red').length;
@@ -1491,6 +1701,156 @@ function FullscreenMatchPanel({
     setBreakTimers(prev => { const n = { ...prev }; delete n[idx]; return n; });
   };
 
+  const updateMatchDisplayMode = async (mode) => {
+    if (!mode || mode === matchDisplayMode || operationalSettingsLocked) return;
+    if (!ensureOperationalWrite()) return;
+    setBusy(true);
+    try {
+      await matchAPI.update(match.id, { display_mode: mode });
+      setMatchDisplayMode(mode);
+      await onRefresh();
+    } catch (error) {
+      console.error('Failed to update match display mode', error);
+      window.alert(error?.response?.data?.detail || 'Nu s-a putut salva modul de afișare al meciului.');
+    }
+    setBusy(false);
+  };
+
+  const applyRoundPreset = async (roundCount) => {
+    if (busy || operationalSettingsLocked) return;
+    if (!ensureOperationalWrite()) return;
+    setBusy(true);
+    try {
+      for (const round of matchRounds) {
+        // eslint-disable-next-line no-await-in-loop
+        await roundAPI.delete(round.id);
+      }
+      for (let i = 1; i <= roundCount; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await roundAPI.create({ match: match.id, round_number: i, duration_seconds: 120 });
+      }
+      await onRefresh();
+    } catch (error) {
+      console.error('Failed to apply round preset', error);
+      window.alert(error?.response?.data?.detail || 'Nu s-a putut salva presetul de reprize.');
+    }
+    setBusy(false);
+  };
+
+  const isLiveScoringMatch = match.display_mode === 'real_time';
+
+  const pointStatsByRef = useMemo(() => {
+    const stats = {};
+    const resolveRoundId = (event) => {
+      const metadata = event?.metadata || {};
+      if (metadata.round_id) return metadata.round_id;
+      if (metadata.round) {
+        return matchRounds.find(round => round.round_number === metadata.round)?.id || null;
+      }
+      return null;
+    };
+
+    (pointEvents || []).forEach((event) => {
+      if (!event?.referee) return;
+      const refereeId = event.referee;
+      const roundId = resolveRoundId(event) || 'unassigned';
+      const side = event.side === 'blue' ? 'blue' : 'red';
+      const points = Number(event.points || 0);
+
+      if (!stats[refereeId]) {
+        stats[refereeId] = {
+          rounds: {},
+          totals: {
+            sent: { red: 0, blue: 0 },
+            validated: { red: 0, blue: 0 },
+          },
+        };
+      }
+
+      if (!stats[refereeId].rounds[roundId]) {
+        stats[refereeId].rounds[roundId] = {
+          sent: { red: 0, blue: 0 },
+          validated: { red: 0, blue: 0 },
+        };
+      }
+
+      stats[refereeId].rounds[roundId].sent[side] += points;
+      stats[refereeId].totals.sent[side] += points;
+
+      if (event.validation_status === 'validated') {
+        stats[refereeId].rounds[roundId].validated[side] += points;
+        stats[refereeId].totals.validated[side] += points;
+      }
+    });
+
+    return stats;
+  }, [match.display_mode, matchRounds, pointEvents]);
+
+  const eventLogRows = useMemo(() => {
+    const typeLabels = {
+      warning_red: 'Avertisment Roșu',
+      warning_blue: 'Avertisment Albastru',
+      penalty_red: 'Penalizare Roșu',
+      penalty_blue: 'Penalizare Albastru',
+      bonus_red: 'Bonus Roșu',
+      bonus_blue: 'Bonus Albastru',
+      infraction_red: 'Abatere Roșu',
+      infraction_blue: 'Abatere Albastru',
+      disqualify_red: 'DESCALIFICARE Roșu',
+      disqualify_blue: 'DESCALIFICARE Albastru',
+      pause: 'Pauză',
+      resume: 'Reluare',
+      time_add: 'Timp adăugat',
+      time_remove: 'Timp scăzut',
+    };
+
+    const matchEventRows = (matchEvents || []).map((ev) => {
+      const isRedEvent = ev.event_type.includes('red');
+      const isBlueEvent = ev.event_type.includes('blue');
+      const isBonus = ev.event_type.startsWith('bonus');
+      const roundNum = ev.round ? matchRounds.find(r => r.id === ev.round)?.round_number : null;
+      const valueStr = ev.value ? (ev.event_type.startsWith('time') ? `${ev.value > 0 ? '+' : ''}${ev.value}s` : `${ev.value > 0 ? '+' : ''}${ev.value}p`) : '—';
+
+      return {
+        key: `match-${ev.id}`,
+        timestamp: ev.created_at || null,
+        time: ev.created_at ? new Date(ev.created_at).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+        label: typeLabels[ev.event_type] || ev.event_type_display || ev.event_type,
+        sublabel: null,
+        dotClass: isRedEvent ? 'bg-red-500' : isBlueEvent ? 'bg-blue-500' : 'bg-gray-400',
+        labelClass: isBonus ? 'text-green-600' : isRedEvent ? 'text-red-600' : isBlueEvent ? 'text-blue-600' : 'text-gray-600',
+        value: valueStr,
+        valueClass: isBonus ? 'text-green-600' : ev.value < 0 ? 'text-red-600' : 'text-gray-500',
+        roundLabel: roundNum ? `R${roundNum}` : '—',
+      };
+    });
+
+    const pointEventRows = (pointEvents || []).map((event) => {
+      const roundNum = event.metadata?.round || (event.metadata?.round_id ? matchRounds.find(r => r.id === event.metadata.round_id)?.round_number : null);
+      const statusLabel = event.validation_status_label || (event.validation_status === 'pending' ? 'În așteptare' : event.validation_status === 'rejected' ? 'Respins' : 'Validat');
+      const isValidated = event.validation_status === 'validated';
+      const isPending = event.validation_status === 'pending';
+      const isRejected = event.validation_status === 'rejected';
+
+      return {
+        key: `point-${event.id}`,
+        timestamp: event.timestamp || null,
+        time: event.timestamp ? new Date(event.timestamp).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+        label: `Punct arbitru ${event.side === 'red' ? 'Roșu' : 'Albastru'}`,
+        sublabel: `${event.referee_name || `#${event.referee}`} · ${statusLabel}${event.video_offset_ms != null ? ` · ${event.video_offset_ms} ms` : ''}`,
+        dotClass: event.side === 'red' ? 'bg-red-500' : 'bg-blue-500',
+        labelClass: event.side === 'red' ? 'text-red-600' : 'text-blue-600',
+        value: `${event.points > 0 ? '+' : ''}${event.points}p`,
+        valueClass: isValidated ? 'text-green-600' : isRejected ? 'text-red-600' : isPending ? 'text-yellow-600' : 'text-gray-500',
+        roundLabel: roundNum ? `R${roundNum}` : '—',
+      };
+    });
+
+    return [...matchEventRows, ...pointEventRows]
+      .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
+      .slice(0, 80);
+  }, [matchEvents, pointEvents, matchRounds]);
+
   return (
     <div className="w-full space-y-4 relative">
       {/* Reset round confirm dialog */}
@@ -1501,7 +1861,7 @@ function FullscreenMatchPanel({
           description="Repriza va fi marcată ca finalizată și nu va mai putea fi continuată."
           actions={[
             <button key="cancel" onClick={() => setShowStopRoundConfirm(null)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
-            <button key="confirm" onClick={() => { endRound(showStopRoundConfirm); setShowStopRoundConfirm(null); }} disabled={busy} className={MODAL_DANGER_BUTTON}>Oprește repriza</button>,
+            <button key="confirm" onClick={async () => { const roundId = showStopRoundConfirm; setShowStopRoundConfirm(null); await endRound(roundId); }} disabled={busy} className={MODAL_DANGER_BUTTON}>Oprește repriza</button>,
           ]}
         />
       )}
@@ -1617,9 +1977,53 @@ function FullscreenMatchPanel({
         const matchCat = allCats?.find(c => c.id === match.category);
         const matchTypeLabels = { 'qualifications': 'Calificări', 'quarter-finals': 'Sferturi', 'semi-finals': 'Semi-finală', 'finals': 'Finală', 'bronze': 'Bronz' };
         return matchCat ? (
-          <div className="w-full overflow-hidden border-2 border-black bg-white shadow-sm">
+          <div className="w-full overflow-hidden bg-white shadow-sm">
             <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
-              <div className="hidden xl:block" aria-hidden="true" />
+              <div className="flex flex-wrap items-start gap-2 xl:self-start">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={matchDisplayMode === 'real_time'}
+                  onClick={() => updateMatchDisplayMode(matchDisplayMode === 'real_time' ? 'reveal_final' : 'real_time')}
+                  disabled={busy || operationalSettingsLocked}
+                  className={`relative inline-flex h-9 min-w-[236px] items-center overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 disabled:cursor-not-allowed disabled:opacity-50 ${matchDisplayMode === 'real_time' ? 'border-emerald-700 bg-emerald-500/95 text-white' : 'border-amber-700 bg-amber-300 text-black'}`}
+                  title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Modul nu mai poate fi schimbat după ce meciul a început.' : 'Schimbă modul de afișare'}
+                >
+                  <span
+                    className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-full border border-black/20 bg-white/95 shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform duration-200 ${matchDisplayMode === 'real_time' ? 'translate-x-[calc(100%+2px)]' : 'translate-x-0'}`}
+                    aria-hidden="true"
+                  />
+                  <span className="relative z-10 grid w-full grid-cols-2 items-center gap-2 px-3 whitespace-nowrap">
+                    <span className={`text-center transition-colors ${matchDisplayMode === 'real_time' ? 'text-white/75' : 'text-black'}`}>Decizia la final</span>
+                    <span className={`text-center transition-colors ${matchDisplayMode === 'real_time' ? 'text-black' : 'text-black/70'}`}>Scor timp real</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isThreeRoundPreset}
+                  onClick={() => applyRoundPreset(isThreeRoundPreset ? 2 : 3)}
+                  disabled={busy || operationalSettingsLocked}
+                  className={`relative inline-flex h-9 min-w-[168px] items-center overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 disabled:cursor-not-allowed disabled:opacity-50 ${isThreeRoundPreset ? 'border-emerald-700 bg-emerald-500/95 text-white' : 'border-sky-700 bg-sky-500 text-white'}`}
+                  title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Presetul nu mai poate fi schimbat după ce meciul a început.' : 'Comută între 3 x 2 și 2 x 2'}
+                >
+                  <span
+                    className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-full border border-black/20 bg-white/95 shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform duration-200 ${isThreeRoundPreset ? 'translate-x-0' : 'translate-x-[calc(100%+2px)]'}`}
+                    aria-hidden="true"
+                  />
+                  <span className="relative z-10 grid w-full grid-cols-2 items-center gap-2 px-3 whitespace-nowrap">
+                    <span className={`text-center transition-colors ${isThreeRoundPreset ? 'text-black' : 'text-white/75'}`}>3x2min</span>
+                    <span className={`text-center transition-colors ${isThreeRoundPreset ? 'text-white/75' : 'text-black'}`}>2x2min</span>
+                  </span>
+                </button>
+
+                {operationalLockActive ? (
+                  <div className="w-full max-w-[360px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    {operationalLockMessage}
+                  </div>
+                ) : null}
+              </div>
               <div className="min-w-0 xl:col-start-2">
                 <div className="flex flex-col items-center gap-4 text-center">
                   <div className="grid w-full grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-5">
@@ -1817,9 +2221,7 @@ function FullscreenMatchPanel({
         </div>
         {matchRounds.length === 0 ? (
           <div className="flex flex-wrap items-center gap-3 border-2 border-black bg-white px-4 py-4">
-            <span className="text-sm text-gray-500">Nu exista reprize.</span>
-            <button onClick={() => createRounds(match.id, 3, 180)} disabled={busy} className={MODAL_SUCCESS_BUTTON}>+ 3 x 3min</button>
-            <button onClick={() => createRounds(match.id, 2, 120)} disabled={busy} className={MODAL_SUCCESS_BUTTON}>+ 2 x 2min</button>
+            <span className="text-sm text-gray-500">Nu există reprize. Alege presetul din panoul „Preset reprize” de mai sus.</span>
           </div>
         ) : (
           <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch">
@@ -2006,6 +2408,7 @@ function FullscreenMatchPanel({
                 <div className="flex justify-center">
                   {allRoundsCompleted && session?.status !== 'winner_revealed' && (
                     <button onClick={() => {
+                      if (!ensureOperationalWrite()) return;
                       const submitted = matchRefScores.filter(s => s.winner_choice && s.round == null).length;
                       const total = matchReferees.length || 5;
                       if (submitted < total) {
@@ -2013,15 +2416,20 @@ function FullscreenMatchPanel({
                       } else {
                         revealWinner();
                       }
-                    }} disabled={busy}
+                    }} disabled={busy || operationalLockActive}
                       className={`text-base text-white px-8 py-3 font-bold shadow-sm disabled:opacity-40 transition whitespace-nowrap ${allRefereesDecided ? 'bg-green-600 hover:bg-green-700 ring-4 ring-green-300 animate-pulse' : 'bg-green-600 hover:bg-green-700'}`}>
                       Afișează câștigător
                     </button>
                   )}
                   {session?.status === 'winner_revealed' && (
-                    <button onClick={() => { if (session) switchDisplay(session.current_category, session.current_match, session.current_athlete, 'displaying'); }} disabled={busy}
+                    <button onClick={() => {
+                      if (!ensureOperationalWrite()) return;
+                      if (session) {
+                        switchDisplay(session.current_category, session.current_match, session.current_athlete, 'displaying');
+                      }
+                    }} disabled={busy || operationalLockActive}
                       className="text-base bg-gray-500 hover:bg-gray-600 text-white px-8 py-3 font-bold shadow-sm disabled:opacity-40 transition whitespace-nowrap">
-                      ← Ascunde câștigătorul
+                      Ascunde câștigător
                     </button>
                   )}
                 </div>
@@ -2049,7 +2457,7 @@ function FullscreenMatchPanel({
                     R{r.round_number}
                   </th>
                 ))}
-                <th colSpan={2} className="border border-black border-l-[3px] border-l-black bg-yellow-300 px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-black">TOTAL</th>
+                <th colSpan={2} className="border border-black border-l-[3px] border-l-black bg-yellow-300 px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-black">{isLiveScoringMatch ? 'Puncte validate' : 'TOTAL'}</th>
                 {allRefereesDecided && <th className="border border-black bg-gray-200 px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-gray-700">Decizie</th>}
               </tr>
             </thead>
@@ -2057,6 +2465,7 @@ function FullscreenMatchPanel({
               {matchRefSlots.map((ref, refIdx) => {
                 const refScoresForRef = matchRefScores.filter(s => s.referee === ref.id);
                 const winnerChoice = refScoresForRef.find(s => s.winner_choice && s.round == null)?.winner_choice;
+                const livePointStats = ref.id ? pointStatsByRef[ref.id] : null;
                 return (
                   <tr key={ref.pos} className={`${refIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} transition hover:bg-yellow-50/50`}>
                     <td className="max-w-[160px] truncate border border-black/20 px-4 py-2.5 text-sm font-medium text-gray-700"><span className="mr-1 font-bold text-black">A{ref.pos}</span> {ref.name || `Arbitru ${ref.pos}`}</td>
@@ -2064,13 +2473,24 @@ function FullscreenMatchPanel({
                       const roundScore = refScoresForRef.find(s => s.round === r.id);
                       const redScore = roundScore?.red_corner_score != null ? Number(roundScore.red_corner_score) : null;
                       const blueScore = roundScore?.blue_corner_score != null ? Number(roundScore.blue_corner_score) : null;
+                      const liveRoundStats = livePointStats?.rounds?.[r.id] || { sent: { red: 0, blue: 0 }, validated: { red: 0, blue: 0 } };
                       return (
                         <React.Fragment key={r.id}>
                           <td className={`border border-black/20 px-2 py-2.5 text-center text-sm font-bold tabular-nums ${rIdx > 0 ? 'border-l-[3px] border-l-black/50' : ''}`}>
-                            {redScore != null ? <span className="text-red-600">{redScore}</span> : <span className="text-gray-300">-</span>}
+                            {isLiveScoringMatch ? (
+                              <div className="flex flex-col items-center leading-tight">
+                                <span className="text-xs font-medium text-gray-400">{liveRoundStats.sent.red !== 0 ? liveRoundStats.sent.red : '—'}</span>
+                                <span className={liveRoundStats.validated.red !== 0 ? 'text-red-600' : 'text-gray-300'}>{liveRoundStats.validated.red !== 0 ? liveRoundStats.validated.red : '—'}</span>
+                              </div>
+                            ) : redScore != null ? <span className="text-red-600">{redScore}</span> : <span className="text-gray-300">-</span>}
                           </td>
                           <td className="border border-black/20 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
-                            {blueScore != null ? <span className="text-blue-600">{blueScore}</span> : <span className="text-gray-300">-</span>}
+                            {isLiveScoringMatch ? (
+                              <div className="flex flex-col items-center leading-tight">
+                                <span className="text-xs font-medium text-gray-400">{liveRoundStats.sent.blue !== 0 ? liveRoundStats.sent.blue : '—'}</span>
+                                <span className={liveRoundStats.validated.blue !== 0 ? 'text-blue-600' : 'text-gray-300'}>{liveRoundStats.validated.blue !== 0 ? liveRoundStats.validated.blue : '—'}</span>
+                              </div>
+                            ) : blueScore != null ? <span className="text-blue-600">{blueScore}</span> : <span className="text-gray-300">-</span>}
                           </td>
                         </React.Fragment>
                       );
@@ -2082,13 +2502,19 @@ function FullscreenMatchPanel({
                       const refGrandRed = refRedTotal + adjustRed;
                       const refGrandBlue = refBlueTotal + adjustBlue;
                       const hasScores = roundScoresForRef.length > 0;
+                      const liveValidatedTotals = livePointStats?.totals?.validated || { red: 0, blue: 0 };
+                      const hasLiveValidatedTotals = liveValidatedTotals.red !== 0 || liveValidatedTotals.blue !== 0;
                       return (
                         <>
                           <td className="border border-black/20 border-l-[3px] border-l-black bg-yellow-50 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
-                            {hasScores ? <span className="text-red-700">{refGrandRed} {adjustRed !== 0 && <span className={`text-xs font-medium ${adjustRed > 0 ? 'text-green-600' : 'text-red-500'}`}>({adjustRed > 0 ? '+' : ''}{adjustRed})</span>}</span> : <span className="text-gray-300">-</span>}
+                            {isLiveScoringMatch
+                              ? (hasLiveValidatedTotals ? <span className="text-red-700">{liveValidatedTotals.red}</span> : <span className="text-gray-300">-</span>)
+                              : (hasScores ? <span className="text-red-700">{refGrandRed} {adjustRed !== 0 && <span className={`text-xs font-medium ${adjustRed > 0 ? 'text-green-600' : 'text-red-500'}`}>({adjustRed > 0 ? '+' : ''}{adjustRed})</span>}</span> : <span className="text-gray-300">-</span>)}
                           </td>
                           <td className="border border-black/20 bg-yellow-50 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
-                            {hasScores ? <span className="text-blue-700">{refGrandBlue} {adjustBlue !== 0 && <span className={`text-xs font-medium ${adjustBlue > 0 ? 'text-green-600' : 'text-red-500'}`}>({adjustBlue > 0 ? '+' : ''}{adjustBlue})</span>}</span> : <span className="text-gray-300">-</span>}
+                            {isLiveScoringMatch
+                              ? (hasLiveValidatedTotals ? <span className="text-blue-700">{liveValidatedTotals.blue}</span> : <span className="text-gray-300">-</span>)
+                              : (hasScores ? <span className="text-blue-700">{refGrandBlue} {adjustBlue !== 0 && <span className={`text-xs font-medium ${adjustBlue > 0 ? 'text-green-600' : 'text-red-500'}`}>({adjustBlue > 0 ? '+' : ''}{adjustBlue})</span>}</span> : <span className="text-gray-300">-</span>)}
                           </td>
                         </>
                       );
@@ -2116,7 +2542,7 @@ function FullscreenMatchPanel({
       {/* EVENT LOG — always visible, scrollable, 10-row default height */}
       <div className="overflow-hidden border-2 border-black bg-white shadow-sm">
         <div className="border-b-2 border-black bg-gray-100 px-4 py-3">
-          <p className="text-sm font-bold uppercase tracking-wide text-gray-700">Evenimente ({matchEvents.length})</p>
+          <p className="text-sm font-bold uppercase tracking-wide text-gray-700">Evenimente ({eventLogRows.length})</p>
         </div>
         <div className="overflow-y-auto" style={{ height: '320px' }}>
           <table className="w-full border-collapse">
@@ -2129,47 +2555,26 @@ function FullscreenMatchPanel({
               </tr>
             </thead>
             <tbody>
-              {matchEvents.length === 0 ? (
+              {eventLogRows.length === 0 ? (
                 <tr><td colSpan="4" className="border border-black/20 px-3 py-6 text-center text-sm italic text-gray-400">Niciun eveniment înregistrat</td></tr>
               ) : (
-                [...matchEvents].reverse().slice(0, 50).map((ev, evIdx) => {
-                  const typeLabels = {
-                    warning_red: 'Avertisment Rosu',
-                    warning_blue: 'Avertisment Albastru',
-                    penalty_red: 'Penalizare Rosu',
-                    penalty_blue: 'Penalizare Albastru',
-                    bonus_red: 'Bonus Rosu',
-                    bonus_blue: 'Bonus Albastru',
-                    infraction_red: 'Abatere Rosu',
-                    infraction_blue: 'Abatere Albastru',
-                    disqualify_red: 'DESCALIFICARE Rosu',
-                    disqualify_blue: 'DESCALIFICARE Albastru',
-                    pause: 'Pauza',
-                    resume: 'Reluare',
-                    time_add: 'Timp adaugat',
-                    time_remove: 'Timp scazut',
-                  };
-                  const time = ev.created_at ? new Date(ev.created_at).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-                  const isRedEvent = ev.event_type.includes('red');
-                  const isBlueEvent = ev.event_type.includes('blue');
-                  const isBonus = ev.event_type.startsWith('bonus');
-                  const roundNum = ev.round ? matchRounds.find(r => r.id === ev.round)?.round_number : null;
-                  const valueStr = ev.value ? (ev.event_type.startsWith('time') ? `${ev.value > 0 ? '+' : ''}${ev.value}s` : `${ev.value > 0 ? '+' : ''}${ev.value}p`) : '—';
+                eventLogRows.map((ev, evIdx) => {
                   return (
-                    <tr key={ev.id} className={evIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="border border-black/20 px-3 py-1.5 text-xs text-gray-400 tabular-nums whitespace-nowrap">{time}</td>
+                    <tr key={ev.key} className={evIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="border border-black/20 px-3 py-1.5 text-xs text-gray-400 tabular-nums whitespace-nowrap">{ev.time}</td>
                       <td className="border border-black/20 px-3 py-1.5">
                         <div className="flex items-center gap-1.5">
-                          <span className={`w-2 h-2  shrink-0 ${isRedEvent ? 'bg-red-500' : isBlueEvent ? 'bg-blue-500' : 'bg-gray-400'}`} />
-                          <span className={`text-sm font-medium ${isBonus ? 'text-green-600' : isRedEvent ? 'text-red-600' : isBlueEvent ? 'text-blue-600' : 'text-gray-600'}`}>
-                            {typeLabels[ev.event_type] || ev.event_type_display || ev.event_type}
-                          </span>
+                          <span className={`w-2 h-2 shrink-0 ${ev.dotClass}`} />
+                          <div>
+                            <span className={`text-sm font-medium ${ev.labelClass}`}>{ev.label}</span>
+                            {ev.sublabel ? <p className="text-[11px] text-gray-500">{ev.sublabel}</p> : null}
+                          </div>
                         </div>
                       </td>
                       <td className="border border-black/20 px-3 py-1.5 text-center text-sm font-bold tabular-nums">
-                        <span className={isBonus ? 'text-green-600' : ev.value < 0 ? 'text-red-600' : 'text-gray-500'}>{valueStr}</span>
+                        <span className={ev.valueClass}>{ev.value}</span>
                       </td>
-                      <td className="border border-black/20 px-3 py-1.5 text-center text-xs text-gray-500">{roundNum ? `R${roundNum}` : '—'}</td>
+                      <td className="border border-black/20 px-3 py-1.5 text-center text-xs text-gray-500">{ev.roundLabel}</td>
                     </tr>
                   );
                 })
@@ -2182,19 +2587,15 @@ function FullscreenMatchPanel({
   );
 }
 
-function FullscreenModal({ onClose, title, description, icon = '!', maxWidth = 'max-w-md', actions, children }) {
+function FullscreenModal({ onClose, title, description, maxWidth = 'max-w-md', actions, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
       <div className={`w-full ${maxWidth} overflow-hidden border-2 border-black bg-white shadow-2xl`} onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4 border-b-2 border-black bg-yellow-300 px-5 py-4">
+        <div className="border-b-2 border-black bg-yellow-300 px-5 py-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-700">FRVV Live</p>
-            <h3 className="mt-1 text-xl font-black text-gray-900">{title}</h3>
-            {description ? <p className="mt-2 text-sm leading-6 text-gray-700">{description}</p> : null}
+            <h3 className="text-xl font-black text-gray-900">{title}</h3>
+            {description ? <p className="mt-1 text-sm text-gray-700">{description}</p> : null}
           </div>
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center border-2 border-black bg-white text-lg font-black text-gray-900">
-            {icon}
-          </span>
         </div>
         {children ? <div className="space-y-4 px-5 py-4">{children}</div> : null}
         {actions ? (

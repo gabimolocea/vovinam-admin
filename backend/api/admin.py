@@ -1,4 +1,5 @@
 ﻿from django.contrib import admin, messages
+from django.contrib.admin.models import LogEntry
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
@@ -19,6 +20,7 @@ import datetime
 import json
 import urllib.parse
 from django.utils.safestring import mark_safe
+from django.template.response import TemplateResponse
 from .models import (
     City,
     Club,
@@ -38,6 +40,8 @@ from .models import (
     CategoryTeam,
     CategoryAthlete,
     Match,
+    MatchEvent,
+    MatchRefereeScore,
     RefereeScore,
     RefereePointEvent,
     CategoryAthleteScore,
@@ -53,7 +57,31 @@ from .models import (
     CompetitionField,
     CategoryFieldAssignment,
     MatchFieldAssignment,
+    MatchRound,
+    CompetitionReferee,
+    DisplayMonitorSession,
 )
+
+
+def get_event_referee_queryset_for_match(match=None, event_id=None):
+    qs = Athlete.objects.filter(is_referee=True, status='approved')
+
+    resolved_event_id = event_id
+    if resolved_event_id is None and match is not None:
+        try:
+            resolved_event_id = getattr(getattr(match, 'category', None), 'event_id', None)
+        except Exception:
+            resolved_event_id = None
+
+    if not resolved_event_id:
+        return qs.distinct().order_by('last_name', 'first_name')
+
+    roster_ids = CompetitionReferee.objects.filter(event_id=resolved_event_id).values_list('athlete_id', flat=True)
+    roster_qs = qs.filter(pk__in=roster_ids)
+    if roster_qs.exists():
+        return roster_qs.distinct().order_by('last_name', 'first_name')
+
+    return qs.distinct().order_by('last_name', 'first_name')
 
 # Optional grouping configuration used by the admin grouping template tag.
 # Map a user-facing group title to a list of model names (object names).
@@ -71,7 +99,7 @@ ADMIN_MODEL_GROUPS = {
         'User',
         'UserProxy',
     ],
-    'COMPETITION MANAGEMENT': [
+    'ADMINISTRARE COMPETIȚII': [
         'Event',
         'Group',
         'Category',
@@ -168,15 +196,15 @@ class AthleteInline(admin.TabularInline):
     fields = ('athlete_selector', 'current_grade_display')
     readonly_fields = ('current_grade_display',)
     extra = 1  # Allow adding athletes from the tab
-    verbose_name = _('Athlete')
-    verbose_name_plural = _('Athletes')
+    verbose_name = _('Sportiv')
+    verbose_name_plural = _('Sportivi')
     can_delete = True  # Allow removing athletes from the club
 
     def current_grade_display(self, obj):
         if obj and obj.current_grade:
             return obj.current_grade.name
         return '—'
-    current_grade_display.short_description = _('Grade')
+    current_grade_display.short_description = _('Grad')
     
     def get_athlete_link(self, obj):
         """Display athlete name as clickable link to their detail page"""
@@ -187,7 +215,7 @@ class AthleteInline(admin.TabularInline):
             except Exception:
                 return f"{obj.first_name} {obj.last_name}"
         return '-'
-    get_athlete_link.short_description = _('Name')
+    get_athlete_link.short_description = _('Nume')
     
     def has_add_permission(self, request, obj=None):
         return True
@@ -251,8 +279,8 @@ class CategoryAthleteInline(admin.TabularInline):
     extra = 0
     fields = ('athlete', 'place')
     autocomplete_fields = ['athlete']  # Enable autocomplete for the athlete field
-    verbose_name = _('Athlete')
-    verbose_name_plural = _('Athletes')
+    verbose_name = _('Sportiv')
+    verbose_name_plural = _('Sportivi')
 
     class Media:
         css = {
@@ -307,18 +335,18 @@ class CategoryAthleteInline(admin.TabularInline):
         if obj:
             from .models import FightCategory, SoloCategory
             if isinstance(obj, FightCategory):
-                self.verbose_name = _('Athlete')
-                self.verbose_name_plural = _('ENROLLED ATHLETES')
+                self.verbose_name = _('Sportiv')
+                self.verbose_name_plural = _('SPORTIVI ÎNSCRIȘI')
                 self.fields = ('athlete', 'place')
             elif isinstance(obj, SoloCategory):
-                self.verbose_name = _('Enrolled Athlete')
-                self.verbose_name_plural = _('Enrolled Athletes')
+                self.verbose_name = _('Sportiv înscris')
+                self.verbose_name_plural = _('Sportivi înscriși')
                 self.fields = ('athlete', 'ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score', 'total_display', 'place', 'disqualified')
                 self.readonly_fields = ('total_display',)
             else:
                 # For generic Category views (shouldn't happen often)
-                self.verbose_name = _('Athlete')
-                self.verbose_name_plural = _('Athletes')
+                self.verbose_name = _('Sportiv')
+                self.verbose_name_plural = _('Sportivi')
                 self.fields = ('athlete', 'place')
         return super().get_formset(request, obj, **kwargs)
     
@@ -327,7 +355,7 @@ class CategoryAthleteInline(admin.TabularInline):
         if obj and obj.total_score is not None:
             return f"{obj.total_score:.2f}"
         return "-"
-    total_display.short_description = 'Total'
+    total_display.short_description = _('Total')
 
     def athlete_with_club(self, obj):
         """
@@ -336,7 +364,7 @@ class CategoryAthleteInline(admin.TabularInline):
         if obj.athlete.club:
             return f"{obj.athlete.first_name} {obj.athlete.last_name} ({obj.athlete.club.name})"
         return f"{obj.athlete.first_name} {obj.athlete.last_name}"
-    athlete_with_club.short_description = _('Athlete (Club)')
+    athlete_with_club.short_description = _('Sportiv (Club)')
 
     def category_with_event(self, obj):
         """
@@ -345,9 +373,9 @@ class CategoryAthleteInline(admin.TabularInline):
         if obj.category and obj.category.event:
             return f"{obj.category.name} ({obj.category.event.title})"
         elif obj.category:
-            return f"{obj.category.name} (No Event)"
+            return f"{obj.category.name} (Fără eveniment)"
         return "N/A"
-    category_with_event.short_description = _('Category (Event)')
+    category_with_event.short_description = _('Categorie (Eveniment)')
 
     def category_type(self, obj):
         """
@@ -355,13 +383,13 @@ class CategoryAthleteInline(admin.TabularInline):
         """
         from .models import FightCategory, SoloCategory, TeamCategory
         if isinstance(obj.category, FightCategory):
-            return 'Fight'
+            return 'Luptă'
         elif isinstance(obj.category, SoloCategory):
             return 'Solo'
         elif isinstance(obj.category, TeamCategory):
-            return 'Team'
-        return 'Unknown'
-    category_type.short_description = _('Category Type')
+            return 'Echipă'
+        return 'Necunoscut'
+    category_type.short_description = _('Tip categorie')
 
 
 # Custom Team Results display - using the improved approach from before
@@ -418,11 +446,11 @@ class GradeHistoryAdminForm(forms.ModelForm):
                 existing = approved or qs.order_by('submitted_date', 'pk').first()
                 try:
                     url = reverse('admin:api_gradehistory_change', args=(existing.pk,))
-                    link = format_html('<a href="{}">view existing record</a>', url)
-                    message = format_html('An entry for this athlete and grade already exists. {}', link)
+                    link = format_html('<a href="{}">vezi înregistrarea existentă</a>', url)
+                    message = format_html('Există deja o înregistrare pentru acest sportiv și acest grad. {}', link)
                 except Exception:
                     # Fallback to plain text message if reverse fails
-                    message = 'An entry for this athlete and grade already exists.'
+                    message = 'Există deja o înregistrare pentru acest sportiv și acest grad.'
                 # Attach error to the grade field for a friendly admin message with link
                 raise ValidationError({'grade': message})
         return cleaned
@@ -446,17 +474,12 @@ try:
                 cleaned['health_status'] = None
             # If medical visa, require health_status
             if visa_type == 'medical' and not cleaned.get('health_status'):
-                raise ValidationError({'health_status': 'Health status is required for medical visas.'})
+                raise ValidationError({'health_status': 'Starea de sănătate este obligatorie pentru vizele medicale.'})
             return cleaned
     @admin.register(Visa)
     class VisaAdmin(admin.ModelAdmin):
         form = VisaAdminForm
         list_display = ('athlete_with_club', 'visa_type', 'issued_date', 'visa_status', 'status', 'submitted_date')
-        # Use a custom change list template so we can expose two dedicated
-        # "Add" buttons: one for Medical and one for Annual visas. These
-        # buttons link to the add form with ?visa_type=<type> so the form
-        # is pre-configured.
-        change_list_template = 'admin/api/visa/change_list.html'
         search_fields = ('athlete__first_name', 'athlete__last_name')
         list_filter = ('visa_type', 'status')
         readonly_fields = ('visa_status',)
@@ -471,7 +494,7 @@ try:
                 club_name = f" ({obj.athlete.club.name})" if obj.athlete.club else ""
                 return f"{obj.athlete.first_name} {obj.athlete.last_name}{club_name}"
             return "-"
-        athlete_with_club.short_description = 'Athlete'
+        athlete_with_club.short_description = _('Sportiv')
         athlete_with_club.admin_order_field = 'athlete__first_name'
 
         def visa_status(self, obj):
@@ -594,8 +617,8 @@ class VisaInline(admin.TabularInline):
     extra = 0
     fields = ('visa_type', 'issued_date', 'visa_status', 'document', 'image', 'notes')
     readonly_fields = ('visa_status',)
-    verbose_name = _('Visa')
-    verbose_name_plural = _('Visas')
+    verbose_name = _('Viză')
+    verbose_name_plural = _('Vize')
     
     def has_add_permission(self, request, obj=None):
         return False
@@ -619,8 +642,8 @@ class TrainingSeminarParticipationInline(admin.TabularInline):
     fk_name = 'event'  # Specify which FK to use (event vs seminar)
     extra = 0
     show_change_link = True
-    verbose_name = _('Event Participation')
-    verbose_name_plural = _('Event Participations')
+    verbose_name = _('Participare la eveniment')
+    verbose_name_plural = _('Participări la eveniment')
     # Show a compact set of fields to keep the inline small and readable.
     # Use the `athlete_link` read-only method instead of the full athlete FK
     # to keep the UI compact (click through to the athlete page to edit).
@@ -683,7 +706,7 @@ class TrainingSeminarParticipationInline(admin.TabularInline):
             return format_html('<a href="/admin/api/athlete/{}/change/">{} {}</a>', obj.athlete.pk, obj.athlete.first_name, obj.athlete.last_name)
         except Exception:
             return str(getattr(obj, 'athlete', ''))
-    athlete_link.short_description = _('Athlete')
+    athlete_link.short_description = _('Sportiv')
 
 class AthleteTrainingSeminarParticipationInline(admin.TabularInline):
     """Inline on Athlete admin to show the athlete's approved seminar enrollments."""
@@ -691,8 +714,8 @@ class AthleteTrainingSeminarParticipationInline(admin.TabularInline):
     fk_name = 'athlete'
     extra = 0
     show_change_link = True
-    verbose_name = _('Enrolled Event')
-    verbose_name_plural = _('Enrolled Events')
+    verbose_name = _('Eveniment înscris')
+    verbose_name_plural = _('Evenimente înscrise')
     # Make the inline read-only on the Athlete page: we show existing enrollments
     # but don't allow adding/editing inline here. To add a new enrollment the
     # admin will be redirected to the dedicated add form with the athlete
@@ -787,42 +810,42 @@ try:
             def quick_add_links(self, obj):
                 """Display quick-add links for categories and matches"""
                 if not obj.pk:
-                    return "Save the event first to see quick-add links."
+                    return "Salvează mai întâi evenimentul pentru a vedea acțiunile rapide."
                 
                 from django.urls import reverse
                 links = []
                 
                 # Link to add Solo Category
                 solo_add_url = reverse('admin:api_solocategory_add') + f'?event={obj.pk}'
-                links.append(f'<a class="button" href="{solo_add_url}">+ Add Solo Category</a>')
+                links.append(f'<a class="button" href="{solo_add_url}">+ Adaugă categorie solo</a>')
                 
                 # Link to add Team Category
                 team_add_url = reverse('admin:api_teamcategory_add') + f'?event={obj.pk}'
-                links.append(f'<a class="button" href="{team_add_url}">+ Add Team Category</a>')
+                links.append(f'<a class="button" href="{team_add_url}">+ Adaugă categorie echipe</a>')
                 
                 # Link to add Fight Category
                 fight_add_url = reverse('admin:api_fightcategory_add') + f'?event={obj.pk}'
-                links.append(f'<a class="button" href="{fight_add_url}">+ Add Fight Category</a>')
+                links.append(f'<a class="button" href="{fight_add_url}">+ Adaugă categorie luptă</a>')
                 
                 # Link to view categories for this event
                 categories_url = reverse('admin:api_solocategory_changelist') + f'?event={obj.pk}'
-                links.append(f'<a class="button" href="{categories_url}">View All Categories</a>')
+                links.append(f'<a class="button" href="{categories_url}">Vezi toate categoriile</a>')
                 
                 # Link to view matches for this event
                 matches_url = reverse('admin:api_match_changelist') + f'?category__event__id={obj.pk}'
-                links.append(f'<a class="button" href="{matches_url}">View All Matches</a>')
+                links.append(f'<a class="button" href="{matches_url}">Vezi toate meciurile</a>')
 
                 generate_url = reverse('admin:api_event_generate_standard_structure', args=[obj.pk])
                 links.append(
                     f'<a class="button" href="{generate_url}" '
                     f'onclick="return confirm(\'Generez grupele și categoriile standard lipsă pentru această competiție?\')">'
-                    f'Generate Standard Groups & Categories</a>'
+                    f'Generează grupele și categoriile standard</a>'
                 )
                 
                 html = '<div style="margin-top: 10px;">' + ' '.join(links) + '</div>'
                 return format_html(html)
             
-            quick_add_links.short_description = 'Quick Actions'
+            quick_add_links.short_description = 'Acțiuni rapide'
             
             def get_fieldsets(self, request, obj=None):
                 """Add quick_add_links field to fieldsets if editing"""
@@ -863,14 +886,14 @@ try:
 
                 event = Event.objects.filter(pk=event_id).first()
                 if not event:
-                    self.message_user(request, 'Competition not found.', level=messages.ERROR)
+                    self.message_user(request, 'Competiția nu a fost găsită.', level=messages.ERROR)
                     return HttpResponseRedirect(reverse('admin:api_event_changelist'))
 
                 result = ensure_standard_competition_groups_and_categories(event)
                 self.message_user(
                     request,
                     (
-                        'Standard structure synchronized. '
+                        'Structura standard a fost sincronizată. '
                         f"Grupe create: {result['groups_created']}, actualizate: {result['groups_updated']}; "
                         f"categorii create: {result['categories_created']}, actualizate: {result['categories_updated']}."
                     ),
@@ -989,7 +1012,7 @@ try:
 
                 # Only block if neither event nor seminar is provided.
                 if not cleaned.get('seminar') and not cleaned.get('event'):
-                    raise ValidationError({'event': 'Please select an event.'})
+                    raise ValidationError({'event': 'Selectează un eveniment.'})
 
                 return cleaned
 
@@ -1044,8 +1067,8 @@ class MatchInline(admin.TabularInline):
     exclude = ('field',)
     readonly_fields = ('winner_display', 'match_link')
     show_change_link = False
-    verbose_name = "Match"
-    verbose_name_plural = "Matches"
+    verbose_name = "Meci"
+    verbose_name_plural = "Meciuri"
 
     def winner_display(self, obj):
         """Display computed winner from scoring system"""
@@ -1053,9 +1076,9 @@ class MatchInline(admin.TabularInline):
             winner = obj.winner
             if winner:
                 return f"{winner.first_name} {winner.last_name}"
-            return "No winner yet"
+            return "Fără câștigător încă"
         return "-"
-    winner_display.short_description = "Winner"
+    winner_display.short_description = "Câștigător"
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """
@@ -1070,28 +1093,29 @@ class MatchInline(admin.TabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def match_link(self, obj):
-        """Render a small 'View' link to the match change page for this inline row."""
+        """Render a small link to the match change page for this inline row."""
         try:
             if not obj or not getattr(obj, 'pk', None):
                 return ''
             url = reverse('admin:api_match_change', args=(obj.pk,))
-            return format_html('<a href="{}" class="related-link" target="_blank">View</a>', url)
+            return format_html('<a href="{}" class="related-link" target="_blank">Deschide</a>', url)
         except Exception:
             return ''
-    match_link.short_description = _('Match details')
+    match_link.short_description = _('Detalii meci')
 
 class RefereeScoreInline(admin.TabularInline):
     model = RefereeScore
     extra = 0
+    classes = ('collapse',)
     # Show per-round columns (3 rounds default) plus totals and adjusted totals
     # Use a custom form so per-round fields are editable and saved as events.
     class RefereeScoreForm(forms.ModelForm):
-        red_round_1 = forms.IntegerField(required=False, label='Red R1', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        red_round_2 = forms.IntegerField(required=False, label='Red R2', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        red_round_3 = forms.IntegerField(required=False, label='Red R3', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        blue_round_1 = forms.IntegerField(required=False, label='Blue R1', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        blue_round_2 = forms.IntegerField(required=False, label='Blue R2', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
-        blue_round_3 = forms.IntegerField(required=False, label='Blue R3', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        red_round_1 = forms.IntegerField(required=False, label='Roșu R1', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        red_round_2 = forms.IntegerField(required=False, label='Roșu R2', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        red_round_3 = forms.IntegerField(required=False, label='Roșu R3', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        blue_round_1 = forms.IntegerField(required=False, label='Albastru R1', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        blue_round_2 = forms.IntegerField(required=False, label='Albastru R2', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
+        blue_round_3 = forms.IntegerField(required=False, label='Albastru R3', widget=forms.NumberInput(attrs={'style': 'width: 50px;'}))
 
         class Meta:
             model = RefereeScore
@@ -1106,13 +1130,7 @@ class RefereeScoreInline(admin.TabularInline):
                 try:
                     inst = getattr(self, 'instance', None)
                     match = getattr(inst, 'match', None) if inst else None
-                    event_id = getattr(getattr(match, 'category', None), 'event_id', None)
-                    if event_id:
-                        self.fields['referee'].queryset = Athlete.objects.filter(
-                            is_referee=True,
-                            seminar_participations__event_id=event_id,
-                            seminar_participations__status='approved'
-                        ).distinct()
+                    self.fields['referee'].queryset = get_event_referee_queryset_for_match(match=match)
                 except Exception:
                     pass
             try:
@@ -1154,8 +1172,8 @@ class RefereeScoreInline(admin.TabularInline):
     extra = 5
     max_num = 5
     can_delete = False
-    verbose_name = ''
-    verbose_name_plural = 'Referee Scores'
+    verbose_name = 'Scor arbitru vechi'
+    verbose_name_plural = 'Scoruri arbitri vechi (sincronizate / opționale)'
     fields = (
         'referee',
         'red_round_1', 'blue_round_1',  # ROUND 1
@@ -1182,7 +1200,7 @@ class RefereeScoreInline(admin.TabularInline):
                 pass
         # For new forms or unknown position, return empty (will be set via CSS counter)
         return ''
-    ref_number.short_description = 'REFEREE'
+    ref_number.short_description = 'ARBITRU'
     
     def get_formset(self, request, obj=None, **kwargs):
         """Customize formset to always show exactly 5 forms"""
@@ -1207,12 +1225,8 @@ class RefereeScoreInline(admin.TabularInline):
             formset.clean = clean
             formset._unique_referee_wrapped = True
         try:
-            if obj and obj.category and obj.category.event_id:
-                qs = Athlete.objects.filter(
-                    is_referee=True,
-                    seminar_participations__event_id=obj.category.event_id,
-                    seminar_participations__status='approved'
-                ).distinct()
+            if obj:
+                qs = get_event_referee_queryset_for_match(match=obj)
                 if 'referee' in formset.form.base_fields:
                     formset.form.base_fields['referee'].queryset = qs
         except Exception:
@@ -1221,16 +1235,12 @@ class RefereeScoreInline(admin.TabularInline):
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'referee':
-            qs = Athlete.objects.filter(is_referee=True)
+            qs = Athlete.objects.filter(is_referee=True, status='approved')
             try:
                 match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
                 if match_id:
                     match = Match.objects.filter(pk=match_id).select_related('category__event').first()
-                    if match and match.category and match.category.event_id:
-                        qs = qs.filter(
-                            seminar_participations__event_id=match.category.event_id,
-                            seminar_participations__status='approved'
-                        )
+                    qs = get_event_referee_queryset_for_match(match=match)
             except Exception:
                 pass
             kwargs['queryset'] = qs.distinct()
@@ -1250,19 +1260,19 @@ class RefereeScoreInline(admin.TabularInline):
             return p.get('adj_red', '')
         except Exception:
             return obj.red_corner_score or ''
-    red_total.short_description = _('RED TOTAL')
+    red_total.short_description = _('TOTAL ROȘU')
 
     def red_round_1(self, obj):
         return self._red_round(obj, 1)
-    red_round_1.short_description = _('RED')
+    red_round_1.short_description = _('ROȘU')
 
     def red_round_2(self, obj):
         return self._red_round(obj, 2)
-    red_round_2.short_description = _('RED')
+    red_round_2.short_description = _('ROȘU')
 
     def red_round_3(self, obj):
         return self._red_round(obj, 3)
-    red_round_3.short_description = _('RED')
+    red_round_3.short_description = _('ROȘU')
 
     def _red_round(self, obj, rd):
         try:
@@ -1292,19 +1302,19 @@ class RefereeScoreInline(admin.TabularInline):
             return p.get('adj_blue', '')
         except Exception:
             return obj.blue_corner_score or ''
-    blue_total.short_description = _('BLUE TOTAL')
+    blue_total.short_description = _('TOTAL ALBASTRU')
 
     def blue_round_1(self, obj):
         return self._blue_round(obj, 1)
-    blue_round_1.short_description = _('BLUE')
+    blue_round_1.short_description = _('ALBASTRU')
 
     def blue_round_2(self, obj):
         return self._blue_round(obj, 2)
-    blue_round_2.short_description = _('BLUE')
+    blue_round_2.short_description = _('ALBASTRU')
 
     def blue_round_3(self, obj):
         return self._blue_round(obj, 3)
-    blue_round_3.short_description = _('BLUE')
+    blue_round_3.short_description = _('ALBASTRU')
 
     def _blue_round(self, obj, rd):
         try:
@@ -1333,13 +1343,13 @@ class RefereeScoreInline(admin.TabularInline):
                 return ''
             w = p.get('winner')
             if w == 'red':
-                return 'Red'
+                return 'Roșu'
             elif w == 'blue':
-                return 'Blue'
+                return 'Albastru'
             return ''
         except Exception:
             return ''
-    winner_display.short_description = _('Winner (adj)')
+    winner_display.short_description = _('Câștigător (ajustat)')
 
     def winner_combined(self, obj):
         """Single read-only Winner column.
@@ -1352,9 +1362,9 @@ class RefereeScoreInline(admin.TabularInline):
             if obj is not None:
                 w = getattr(obj, 'winner', None)
                 if w == 'red':
-                    return 'Red'
+                    return 'Roșu'
                 elif w == 'blue':
-                    return 'Blue'
+                    return 'Albastru'
 
             # Otherwise compute adjusted winner
             from api.scoring import compute_match_results
@@ -1365,19 +1375,13 @@ class RefereeScoreInline(admin.TabularInline):
                 return ''
             w = p.get('winner')
             if w == 'red':
-                return 'Red'
+                return 'Roșu'
             elif w == 'blue':
-                return 'Blue'
+                return 'Albastru'
             return ''
         except Exception:
             return ''
-    winner_combined.short_description = _('Winner')
-    
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        """Filter referee dropdown to show only approved athletes with is_referee=True"""
-        if db_field.name == 'referee':
-            kwargs["queryset"] = Athlete.objects.filter(is_referee=True, status='approved')
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    winner_combined.short_description = _('Câștigător')
     
     class Media:
         css = {
@@ -1429,17 +1433,17 @@ class CentralPenaltyInlineForm(forms.ModelForm):
         required=False,
         min_value=1,
         max_value=3,
-        label='Round',
-        help_text='Which round (1, 2, or 3)',
+        label='Rundă',
+        help_text='Ce rundă este vizată (1, 2 sau 3)',
         widget=forms.NumberInput(attrs={'style': 'width: 80px;'})
     )
     
     penalty_reason = forms.CharField(
         required=False,
         max_length=200,
-        label='Reason',
-        help_text='E.g., "excessive contact", "illegal technique", "unsportsmanlike conduct"',
-        widget=forms.TextInput(attrs={'style': 'width: 250px;', 'placeholder': 'excessive contact'})
+        label='Motiv',
+        help_text='Ex.: „contact excesiv”, „tehnică ilegală”, „comportament nesportiv”',
+        widget=forms.TextInput(attrs={'style': 'width: 250px;', 'placeholder': 'contact excesiv'})
     )
     
     class Meta:
@@ -1489,13 +1493,26 @@ class CentralPenaltyInline(admin.TabularInline):
     model = RefereePointEvent
     form = CentralPenaltyInlineForm
     extra = 1
+    classes = ('collapse',)
     fields = ('referee', 'side', 'points', 'penalty_round', 'penalty_reason', 'created_by', 'timestamp')
     readonly_fields = ('created_by', 'timestamp')
-    autocomplete_fields = ['referee']
     formset = CentralPenaltyInlineFormSet
     can_delete = True
-    verbose_name = _('Central penalty')
-    verbose_name_plural = _('Central penalties')
+    verbose_name = _('Penalizare centrală veche')
+    verbose_name_plural = _('Penalizări centrale vechi (sincronizate / opționale)')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'referee':
+            qs = Athlete.objects.filter(is_referee=True, status='approved')
+            try:
+                match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if match_id:
+                    match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+                    qs = get_event_referee_queryset_for_match(match=match)
+            except Exception:
+                pass
+            kwargs['queryset'] = qs
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -1551,8 +1568,8 @@ class CategoryRefereeAssignmentInline(admin.StackedInline):
     can_delete = False
     autocomplete_fields = ('referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5')
     fields = ('referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5')
-    verbose_name = _('Referees')
-    verbose_name_plural = _('Referees')
+    verbose_name = _('Arbitru')
+    verbose_name_plural = _('Arbitri')
     
     class Media:
         css = {
@@ -1635,13 +1652,13 @@ class CategoryAthleteScoreInline(admin.TabularInline):
     fields = ('athlete', 'r1_score_field', 'r2_score_field', 'r3_score_field', 'r4_score_field', 'r5_score_field', 'get_total_score', 'status', 'referee_assignment_display')
     readonly_fields = ('get_total_score', 'referee_assignment_display')
     ordering = ('-submitted_date',)
-    verbose_name = _('Athlete Score')
-    verbose_name_plural = _('Athlete Scores (Solo Category)')
+    verbose_name = _('Scor sportiv')
+    verbose_name_plural = _('Scoruri sportivi (categorie solo)')
     
     def referee_assignment_display(self, obj):
         """Display the assigned referees for this category"""
         if not obj.category:
-            return "No category assigned"
+            return "Nicio categorie atribuită"
         
         try:
             assignment = obj.category.referee_assignment
@@ -1652,12 +1669,12 @@ class CategoryAthleteScoreInline(admin.TabularInline):
                 if ref:
                     referees.append(f"R{i}: {ref.first_name} {ref.last_name}")
                 else:
-                    referees.append(f"R{i}: Not assigned")
+                    referees.append(f"R{i}: Nealocat")
             return format_html('<div style="font-size: 11px; color: #666; white-space: nowrap;">' + '<br>'.join(referees) + '</div>')
         except:
-            return "No referees assigned"
+            return "Niciun arbitru alocat"
     
-    referee_assignment_display.short_description = 'Referees'
+    referee_assignment_display.short_description = 'Arbitri'
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'athlete':
@@ -1670,7 +1687,7 @@ class CategoryAthleteScoreInline(admin.TabularInline):
             return formfield
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
-    @admin.display(description='Total Score')
+    @admin.display(description='Scor total')
     def get_total_score(self, obj):
         """Display the calculated total score"""
         if obj.pk:
@@ -1681,8 +1698,8 @@ class CategoryTeamScoreInlineForm(forms.ModelForm):
     """Custom form for team enrollment (CategoryAthleteScore with type='teams')"""
     team_name_select = forms.ChoiceField(
         required=False,
-        label='Team Name',
-        help_text='Select from enrolled teams'
+        label='Nume echipă',
+        help_text='Selectează dintre echipele înscrise'
     )
     
     class Meta:
@@ -1752,8 +1769,8 @@ class CategoryTeamScoreInline(admin.TabularInline):
     fields = ('team_name_select', 'get_r1_score', 'get_r2_score', 'get_r3_score', 'get_r4_score', 'get_r5_score', 'get_total_score', 'status', 'notes')
     readonly_fields = ('get_r1_score', 'get_r2_score', 'get_r3_score', 'get_r4_score', 'get_r5_score', 'get_total_score', 'referee_assignment_display')
     ordering = ('-submitted_date',)
-    verbose_name = _('Team Entry')
-    verbose_name_plural = _('Team Entries')
+    verbose_name = _('Înscriere echipă')
+    verbose_name_plural = _('Înscrieri echipe')
     fk_name = 'category'
     
     def get_queryset(self, request):
@@ -1764,7 +1781,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
     def referee_assignment_display(self, obj):
         """Display the assigned referees for this category"""
         if not obj.category:
-            return "No category assigned"
+            return "Nicio categorie atribuită"
         
         try:
             assignment = obj.category.referee_assignment
@@ -1775,12 +1792,12 @@ class CategoryTeamScoreInline(admin.TabularInline):
                 if ref:
                     referees.append(f"R{i}: {ref.first_name} {ref.last_name}")
                 else:
-                    referees.append(f"R{i}: Not assigned")
+                    referees.append(f"R{i}: Nealocat")
             return format_html('<div style="font-size: 12px; color: #666;">' + '<br>'.join(referees) + '</div>')
         except:
-            return "No referees assigned to this category"
+            return "Niciun arbitru alocat acestei categorii"
     
-    referee_assignment_display.short_description = 'Assigned Referees'
+    referee_assignment_display.short_description = 'Arbitri alocați'
     
     def get_formset(self, request, obj=None, **kwargs):
         """Pass the category instance to the form"""
@@ -1809,7 +1826,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(1)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
                              '/admin/api/categoryscore/add/', obj.pk)
         return '-'
     
@@ -1820,7 +1837,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(2)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
                              '/admin/api/categoryscore/add/', obj.pk)
         return '-'
     
@@ -1831,7 +1848,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(3)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
                              '/admin/api/categoryscore/add/', obj.pk)
         return '-'
     
@@ -1842,7 +1859,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(4)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
                              '/admin/api/categoryscore/add/', obj.pk)
         return '-'
     
@@ -1853,7 +1870,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(5)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Add Score</a>', 
+            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
                              '/admin/api/categoryscore/add/', obj.pk)
         return '-'
     
@@ -1909,8 +1926,8 @@ class TeamMemberInline(admin.TabularInline):
     model = TeamMember
     extra = 1  # Allow adding new athletes to the team
     autocomplete_fields = ['athlete']
-    verbose_name = _('Team Member')
-    verbose_name_plural = _('Team Members')
+    verbose_name = _('Membru echipă')
+    verbose_name_plural = _('Membri echipă')
 
 class EnrolledTeamsInline(admin.TabularInline):
     model = CategoryTeam
@@ -1918,7 +1935,7 @@ class EnrolledTeamsInline(admin.TabularInline):
     autocomplete_fields = ['team']  # Add autocomplete for team selection
     fields = ('team', 'ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score', 'total_display', 'place', 'disqualified')
     readonly_fields = ('total_display',)
-    verbose_name_plural = _('Teams Enrolled')  # Rename the section title
+    verbose_name_plural = _('Echipe înscrise')  # Rename the section title
     
     class Media:
         css = {
@@ -1973,8 +1990,8 @@ class AthleteSoloResultsInline(admin.TabularInline):
     """
     model = CategoryAthlete
     extra = 0
-    verbose_name = _('Solo Results')
-    verbose_name_plural = _('Solo Results')
+    verbose_name = _('Rezultat solo')
+    verbose_name_plural = _('Rezultate solo')
     can_add = False  # Disable the "Add another" button
     can_delete = False  # Disable the "Delete" button
     show_change_link = False  # Hide the "Change" link
@@ -1996,7 +2013,7 @@ class AthleteSoloResultsInline(admin.TabularInline):
         Display the category name.
         """
         return obj.category.name
-    category_name.short_description = _('Category Name')
+    category_name.short_description = _('Nume categorie')
 
     def competition_name(self, obj):
         """
@@ -2005,20 +2022,20 @@ class AthleteSoloResultsInline(admin.TabularInline):
         if obj.category and obj.category.event:
             return obj.category.event.title
         return _('N/A')
-    competition_name.short_description = _('Event Name')
+    competition_name.short_description = _('Nume eveniment')
 
     def results(self, obj):
         """
         Display the results of the athlete for solo categories.
         """
         if obj.category.first_place == obj.athlete:
-            return _('1st Place')
+            return _('Locul 1')
         elif obj.category.second_place == obj.athlete:
-            return _('2nd Place')
+            return _('Locul 2')
         elif obj.category.third_place == obj.athlete:
-            return _('3rd Place')
-        return _('No Placement')
-    results.short_description = _('Place Obtained')
+            return _('Locul 3')
+        return _('Fără clasare')
+    results.short_description = _('Loc obținut')
 
 
 class AthleteTeamResultsInline(admin.TabularInline):
@@ -2030,8 +2047,8 @@ class AthleteTeamResultsInline(admin.TabularInline):
     """
     model = CategoryAthleteScore
     extra = 0
-    verbose_name = _('Team Result')
-    verbose_name_plural = _('Team Results')
+    verbose_name = _('Rezultat echipă')
+    verbose_name_plural = _('Rezultate echipe')
     can_add = False
     can_delete = False
     show_change_link = True
@@ -2068,15 +2085,15 @@ class AthleteTeamResultsInline(admin.TabularInline):
 
     def competition_name(self, obj):
         return obj.category.event.title if obj.category and obj.category.event else 'N/A'
-    competition_name.short_description = _('Event')
+    competition_name.short_description = _('Eveniment')
 
     def category_name(self, obj):
         return obj.category.name if obj.category else 'N/A'
-    category_name.short_description = _('Category')
+    category_name.short_description = _('Categorie')
 
     def team_members_display(self, obj):
         return ', '.join([f"{m.first_name} {m.last_name}" for m in obj.team_members.all()])
-    team_members_display.short_description = _('Team Members')
+    team_members_display.short_description = _('Membri echipă')
 
 
 class AthleteFightResultsInline(admin.TabularInline):
@@ -2085,8 +2102,8 @@ class AthleteFightResultsInline(admin.TabularInline):
     """
     model = CategoryAthlete
     extra = 0
-    verbose_name = "Fight Results"
-    verbose_name_plural = "Fight Results"
+    verbose_name = "Rezultat luptă"
+    verbose_name_plural = "Rezultate luptă"
     can_add = False  # Disable the "Add another" button
     can_delete = False  # Disable the "Delete" button
     show_change_link = False  # Hide the "Change" link
@@ -2108,27 +2125,27 @@ class AthleteFightResultsInline(admin.TabularInline):
         Display the category name.
         """
         return obj.category.name
-    category_name.short_description = "Category Name"
+    category_name.short_description = "Nume categorie"
 
     def competition_name(self, obj):
         """
         Display the event name.
         """
         return obj.category.event.title if obj.category.event else "N/A"
-    competition_name.short_description = "Event Name"
+    competition_name.short_description = "Nume eveniment"
 
     def results(self, obj):
         """
         Display the results of the athlete for fight categories.
         """
         if obj.category.first_place == obj.athlete:
-            return "1st Place"
+            return "Locul 1"
         elif obj.category.second_place == obj.athlete:
-            return "2nd Place"
+            return "Locul 2"
         elif obj.category.third_place == obj.athlete:
-            return "3rd Place"
-        return "No Placement"
-    results.short_description = "Place Obtained"
+            return "Locul 3"
+        return "Fără clasare"
+    results.short_description = "Loc obținut"
 
 
 # Register City model
@@ -2193,14 +2210,14 @@ class ClubAdmin(admin.ModelAdmin):
 
     # Organize fields in the admin form
     fieldsets = (
-        ('Club Details', {
+        ('Detalii club', {
             'fields': ('name', 'logo', 'city', 'address', 'mobile_number', 'website')
         }),
-        ('Coaches', {
+        ('Antrenori', {
             'fields': ('coaches',),
-            'description': 'Select athletes who are coaches for this club. Only athletes marked as coaches will appear in the list.'
+            'description': 'Selectează sportivii care sunt antrenori pentru acest club. În listă apar doar sportivii marcați ca antrenori.'
         }),
-        ('Timestamps', {
+        ('Marcaje temporale', {
             'fields': ('modified',)  # Only include editable fields
         }),
     )
@@ -2213,13 +2230,13 @@ class ClubAdmin(admin.ModelAdmin):
     def athlete_count(self, obj):
         """Display the number of athletes in this club"""
         return obj.athletes.count()
-    athlete_count.short_description = _('Athletes')
+    athlete_count.short_description = _('Sportivi')
     athlete_count.admin_order_field = 'athletes__count'
     
     def coach_count(self, obj):
         """Display the number of coaches in this club"""
         return obj.coaches.count()
-    coach_count.short_description = _('Coaches')
+    coach_count.short_description = _('Antrenori')
     
     def get_queryset(self, request):
         """Optimize queryset to include athlete count for sorting"""
@@ -2298,86 +2315,23 @@ def get_dashboard_context():
     city_counts = [c['count'] for c in clubs_by_city_qs]
 
     context = {
-        'club_labels': mark_safe(json.dumps(club_labels)),
-        'club_counts': mark_safe(json.dumps(club_counts)),
-        'visa_stats': mark_safe(json.dumps({'expired': expired_count, 'valid': valid_count, 'not_available': not_available})),
-        'new_athlete_labels': mark_safe(json.dumps(series_labels)),
-        'new_athlete_counts': mark_safe(json.dumps(series_counts)),
-        'city_labels': mark_safe(json.dumps(city_labels)),
-        'city_counts': mark_safe(json.dumps(city_counts)),
+        'club_labels': club_labels,
+        'club_counts': club_counts,
+        'visa_stats': {'expired': expired_count, 'valid': valid_count, 'not_available': not_available},
+        'new_athlete_labels': series_labels,
+        'new_athlete_counts': series_counts,
+        'city_labels': city_labels,
+        'city_counts': city_counts,
     }
-    # Ensure templates that iterate over app lists won't render modules in the
-    # content area. Provide empty structures as a defensive measure.
-    context['app_list'] = []
-    context['ordered_apps'] = []
-    context['available_apps'] = []
     return context
 
 
 def dashboard_view(request):
     """Dashboard route kept for direct access; renders template with context."""
     context = get_dashboard_context()
-    return render(request, 'admin/api/dashboard.html', context)
-
-
-# Register the dashboard URL on the admin site
-def _get_admin_urls(original_get_urls):
-    def get_urls():
-        urls = original_get_urls()
-        my_urls = [
-            path('api-dashboard/', admin.site.admin_view(dashboard_view), name='api-dashboard'),
-        ]
-        return my_urls + urls
-    return get_urls
-
-# Patch admin site urls once
-admin.site.get_urls = _get_admin_urls(admin.site.get_urls)
-# Replace the default admin index template with our dashboard so /admin/ shows charts
-try:
-    admin.site.index_template = 'admin/api/dashboard.html'
-except Exception:
-    # Older Django versions may not support index_template assignment; ignore safely
-    pass
-
-
-# Provide a custom admin index view that supplies our dashboard context so
-# the template has the JSON variables it expects when Django renders /admin/.
-def _admin_index_with_dashboard(request, extra_context=None):
-    """Admin index replacement that injects the dashboard context."""
-    context = get_dashboard_context()
-    # Merge standard admin context (site header/title, etc.) so the template
-    # can render the usual admin chrome (and app list for the sidebar).
-    try:
-        std = admin.site.each_context(request)
-        context.update(std)
-    except Exception:
-        pass
-
-    # Provide the app_list (models grouped by app) like the default index view
-    try:
-        # Provide a separate app list for the sidebar to avoid rendering the
-        # same modules inside the content area. `app_list` is intentionally
-        # set empty so default index content doesn't render module blocks.
-        context['sidebar_app_list'] = admin.site.get_app_list(request)
-        context['app_list'] = []
-    except Exception:
-        context['sidebar_app_list'] = []
-        context['app_list'] = []
-
-    if extra_context:
-        try:
-            context.update(extra_context)
-        except Exception:
-            pass
-    return render(request, 'admin/api/dashboard.html', context)
-
-# Register the custom index view on the admin site (wrapped with admin_view)
-try:
-    admin.site.index = admin.site.admin_view(_admin_index_with_dashboard)
-except Exception:
-    # If assignment fails for some Django versions, the index_template fallback
-    # remains and the /admin/api-dashboard/ route still works.
-    pass
+    context.update(admin.site.each_context(request))
+    context['app_list'] = admin.site.get_app_list(request)
+    return render(request, 'admin/index.html', context)
 
 
 # FrontendTheme admin removed â€” frontend theme management has been disabled.
@@ -2454,7 +2408,7 @@ class GradeAdmin(admin.ModelAdmin):
         if obj.image:
             return format_html('<img src="{}" style="max-height: 50px; max-width: 100px;" />', obj.image.url)
         return '-'
-    image_preview.short_description = 'Image Preview'
+    image_preview.short_description = 'Previzualizare imagine'
 
 
 class GradeHistoryAdminForm(forms.ModelForm):
@@ -2510,8 +2464,8 @@ class FederationRoleAdmin(admin.ModelAdmin):
         Custom method to display athletes associated with the federation role.
         """
         athletes = Athlete.objects.filter(federation_role=obj)
-        return ", ".join([f"{athlete.first_name} {athlete.last_name}" for athlete in athletes]) if athletes else "None"
-    get_associated_athletes.short_description = _('Associated Athletes')
+        return ", ".join([f"{athlete.first_name} {athlete.last_name}" for athlete in athletes]) if athletes else "Niciunul"
+    get_associated_athletes.short_description = _('Sportivi asociați')
 
 
 # Competition model is now represented as an Event (event_type='competition').
@@ -2525,19 +2479,19 @@ class CategoryTeamInline(admin.TabularInline):
     autocomplete_fields = ['category']
     fields = ('category', 'place_obtained')
     readonly_fields = ('place_obtained',)
-    verbose_name_plural = "TEAM ENROLLED TO FOLLOWING CATEGORIES"  # Rename the section title
+    verbose_name_plural = "ECHIPĂ ÎNSCRISĂ ÎN URMĂTOARELE CATEGORII"  # Rename the section title
     def place_obtained(self, obj):
         """
         Display the place obtained by the team in the category.
         """
         if obj.category.first_place_team == obj.team:
-            return "1st Place"
+            return "Locul 1"
         elif obj.category.second_place_team == obj.team:
-            return "2nd Place"
+            return "Locul 2"
         elif obj.category.third_place_team == obj.team:
-            return "3rd Place"
-        return "No Placement"
-    place_obtained.short_description = "Place Obtained"
+            return "Locul 3"
+        return "Fără clasare"
+    place_obtained.short_description = "Loc obținut"
 
 class GroupInline(admin.TabularInline):
     """
@@ -2546,8 +2500,8 @@ class GroupInline(admin.TabularInline):
     model = Group
     extra = 1  # Number of empty forms to display
     fields = ('name',)  # Only display the name field
-    verbose_name = "Group"
-    verbose_name_plural = "Groups"
+    verbose_name = "Grupă"
+    verbose_name_plural = "Grupe"
 
 class CategoryAdminForm(forms.ModelForm):
     class Meta:
@@ -2558,8 +2512,8 @@ class CategoryAdminForm(forms.ModelForm):
 class CategoryFieldAssignmentInline(admin.StackedInline):
     model = CategoryFieldAssignment
     extra = 0
-    verbose_name = 'Field Assignment'
-    verbose_name_plural = 'Field Assignment'
+    verbose_name = 'Programare teren'
+    verbose_name_plural = 'Programări teren'
     fields = (
         'field',
         'status',
@@ -2582,7 +2536,7 @@ class CategoryFieldAssignmentInline(admin.StackedInline):
             except Exception:
                 pass
             formfield.queryset = qs
-            formfield.label_from_instance = lambda obj: f"Field {obj.field_number}"
+            formfield.label_from_instance = lambda obj: f"Teren {obj.field_number}"
         return formfield
 
 @admin.register(Category)
@@ -2597,7 +2551,7 @@ class CategoryAdmin(admin.ModelAdmin):
     def name_link(self, obj):
         url = reverse('admin:api_category_change', args=(obj.pk,))
         return format_html('<a href="{}" style="font-weight: 500;">{}</a>', url, obj.name)
-    name_link.short_description = 'Name'
+    name_link.short_description = 'Nume'
     name_link.admin_order_field = 'name'
     
 @admin.register(SoloCategory)
@@ -2609,9 +2563,9 @@ class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     competition_field = 'event'
     
     fieldsets = [
-        ('Category Details', {
+        ('Detalii categorie', {
             'fields': ('event', 'group', 'name', 'gender'),
-            'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Athletes inline below.'
+            'description': 'Grupa organizează categoriile pe intervale de vârstă (de exemplu, sportivi născuți între 2015-2018). Atribuie locurile direct în secțiunea Sportivi de mai jos.'
         }),
     ]
 
@@ -2641,7 +2595,7 @@ class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
         """Display category name as bold clickable link"""
         url = reverse('admin:api_solocategory_change', args=(obj.pk,))
         return format_html('<a href="{}" style="font-weight: 500;">{}</a>', url, obj.name)
-    category_name_display.short_description = 'Category Name'
+    category_name_display.short_description = 'Nume categorie'
     category_name_display.admin_order_field = 'name'
     
     def get_group_display(self, obj):
@@ -2650,8 +2604,8 @@ class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
             if obj.group.birth_year_start and obj.group.birth_year_end:
                 return f"{obj.group.name} ({obj.group.birth_year_start}-{obj.group.birth_year_end})"
             return obj.group.name
-        return "No Group"
-    get_group_display.short_description = 'Age Group'
+        return "Fără grupă"
+    get_group_display.short_description = 'Grupă de vârstă'
     get_group_display.admin_order_field = 'group__name'
     
     def get_inlines(self, request, obj=None):
@@ -2702,8 +2656,8 @@ class SoloCategoryAdmin(VersionAdmin, admin.ModelAdmin):
 
     def display_winners(self, obj):
         """Display the individual winners"""
-        return f"1st: {obj.first_place}, 2nd: {obj.second_place}, 3rd: {obj.third_place}"
-    display_winners.short_description = _('Winners')
+        return f"Locul 1: {obj.first_place}, Locul 2: {obj.second_place}, Locul 3: {obj.third_place}"
+    display_winners.short_description = _('Câștigători')
 
     def save_model(self, request, obj, form, change):
         """Trigger validation before saving"""
@@ -2725,9 +2679,9 @@ class TeamCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     competition_field = 'event'
     
     fieldsets = [
-        ('Category Details', {
+        ('Detalii categorie', {
             'fields': ('event', 'group', 'name', 'gender'),
-            'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Teams inline below.'
+            'description': 'Grupa organizează categoriile pe intervale de vârstă (de exemplu, sportivi născuți între 2015-2018). Atribuie locurile direct în secțiunea Echipe de mai jos.'
         }),
     ]
 
@@ -2757,7 +2711,7 @@ class TeamCategoryAdmin(VersionAdmin, admin.ModelAdmin):
         """Display category name as bold clickable link"""
         url = reverse('admin:api_teamcategory_change', args=(obj.pk,))
         return format_html('<a href="{}" style="font-weight: 500;">{}</a>', url, obj.name)
-    category_name_display.short_description = 'Category Name'
+    category_name_display.short_description = 'Nume categorie'
     category_name_display.admin_order_field = 'name'
     
     def get_group_display(self, obj):
@@ -2766,8 +2720,8 @@ class TeamCategoryAdmin(VersionAdmin, admin.ModelAdmin):
             if obj.group.birth_year_start and obj.group.birth_year_end:
                 return f"{obj.group.name} ({obj.group.birth_year_start}-{obj.group.birth_year_end})"
             return obj.group.name
-        return "No Group"
-    get_group_display.short_description = 'Age Group'
+        return "Fără grupă"
+    get_group_display.short_description = 'Grupă de vârstă'
     get_group_display.admin_order_field = 'group__name'
     
     def get_inlines(self, request, obj=None):
@@ -2781,8 +2735,8 @@ class TeamCategoryAdmin(VersionAdmin, admin.ModelAdmin):
 
     def display_winners(self, obj):
         """Display the team winners"""
-        return f"1st: {obj.first_place_team}, 2nd: {obj.second_place_team}, 3rd: {obj.third_place_team}"
-    display_winners.short_description = _('Winners')
+        return f"Locul 1: {obj.first_place_team}, Locul 2: {obj.second_place_team}, Locul 3: {obj.third_place_team}"
+    display_winners.short_description = _('Câștigători')
 
     def save_model(self, request, obj, form, change):
         """Trigger validation before saving"""
@@ -2839,8 +2793,8 @@ class FightAthleteWeightInline(admin.TabularInline):
     extra = 1
     fields = ('athlete', 'pre_weight_kg', 'current_weight_kg', 'is_disqualified', 'disqualification_reason', 'place')
     autocomplete_fields = ['athlete']
-    verbose_name = _('Enrolled Athlete')
-    verbose_name_plural = _('Enrolled Athletes')
+    verbose_name = _('Sportiv înscris')
+    verbose_name_plural = _('Sportivi înscriși')
 
 
 @admin.register(FightCategory)
@@ -2852,11 +2806,11 @@ class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     competition_field = 'event'
     
     fieldsets = [
-        ('Category Details', {
+        ('Detalii categorie', {
             'fields': ('event', 'group', 'name', 'gender'),
-            'description': 'Group organizes categories by age range (e.g., athletes born 2015-2018). Assign places directly in the Athletes inline below.'
+            'description': 'Grupa organizează categoriile pe intervale de vârstă (de exemplu, sportivi născuți între 2015-2018). Atribuie locurile direct în secțiunea Sportivi de mai jos.'
         }),
-        ('Brackets', {
+        ('Tablou competițional', {
             'fields': ('bracket_display', 'bracket_stats_display'),
             'classes': ('collapse',),
         }),
@@ -2889,10 +2843,10 @@ class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
     def category_name_display(self, obj):
         """Display category name as bold clickable link"""
         url = reverse('admin:api_fightcategory_change', args=(obj.pk,))
-        group_name = obj.group.name if obj.group else 'No Group'
+        group_name = obj.group.name if obj.group else 'Fără grupă'
         display_name = f"{obj.name} ({group_name})"
         return format_html('<a href="{}" style="font-weight: 500;">{}</a>', url, display_name)
-    category_name_display.short_description = 'Category Name'
+    category_name_display.short_description = 'Nume categorie'
     category_name_display.admin_order_field = 'name'
     
     def get_group_display(self, obj):
@@ -2901,8 +2855,8 @@ class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
             if obj.group.birth_year_start and obj.group.birth_year_end:
                 return f"{obj.group.name} ({obj.group.birth_year_start}-{obj.group.birth_year_end})"
             return obj.group.name
-        return "No Group"
-    get_group_display.short_description = 'Age Group'
+        return "Fără grupă"
+    get_group_display.short_description = 'Grupă de vârstă'
     get_group_display.admin_order_field = 'group__name'
     
     def match_progress(self, obj):
@@ -2920,17 +2874,17 @@ class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
             stats['completed'],
             stats['total_matches']
         )
-    match_progress.short_description = 'Progress'
+    match_progress.short_description = 'Progres'
     
     def bracket_display(self, obj):
         """Display tournament bracket visualization"""
         return bracket_visualization_readonly_field(self, obj)
-    bracket_display.short_description = "Tournament Bracket"
+    bracket_display.short_description = "Tablou competițional"
     
     def bracket_stats_display(self, obj):
         """Display bracket statistics"""
         return BracketStats.get_stats_display(obj)
-    bracket_stats_display.short_description = "Bracket Statistics"
+    bracket_stats_display.short_description = "Statistici tablou"
     
     def get_inlines(self, request, obj=None):
         """Include enrolled athletes with weights and matches for fight categories"""
@@ -2942,8 +2896,8 @@ class FightCategoryAdmin(VersionAdmin, admin.ModelAdmin):
 
     def display_winners(self, obj):
         """Display the fight winners"""
-        return f"1st: {obj.first_place}, 2nd: {obj.second_place}, 3rd: {obj.third_place}"
-    display_winners.short_description = _('Winners')
+        return f"Locul 1: {obj.first_place}, Locul 2: {obj.second_place}, Locul 3: {obj.third_place}"
+    display_winners.short_description = _('Câștigători')
 
     def save_model(self, request, obj, form, change):
         """Trigger validation before saving"""
@@ -2959,16 +2913,16 @@ class FightAthleteWeightAdmin(admin.ModelAdmin):
     search_fields = ('athlete__first_name', 'athlete__last_name', 'category__name')
     autocomplete_fields = ['athlete', 'category']
     fieldsets = (
-        ('Athlete & Category', {
+        ('Sportiv și categorie', {
             'fields': ('category', 'athlete')
         }),
-        ('Weight Measurements', {
+        ('Măsurători greutate', {
             'fields': ('pre_weight_kg', 'current_weight_kg', 'weight_loss_percentage')
         }),
-        ('Disqualification', {
+        ('Descalificare', {
             'fields': ('is_disqualified', 'disqualification_reason')
         }),
-        ('Record', {
+        ('Înregistrare', {
             'fields': ('recorded_at',),
             'classes': ('collapse',)
         }),
@@ -3016,8 +2970,8 @@ class TeamAdmin(admin.ModelAdmin):
         Display the categories assigned to the team.
         """
         categories = obj.categories.all()
-        return ", ".join([category.name for category in categories]) if categories else "No Categories Assigned"
-    assigned_categories.short_description = _('Assigned Categories')
+        return ", ".join([category.name for category in categories]) if categories else "Nicio categorie atribuită"
+    assigned_categories.short_description = _('Categorii atribuite')
 
     def save_model(self, request, obj, form, change):
         """
@@ -3043,8 +2997,8 @@ class RefereePointEventInline(admin.TabularInline):
     extra = 1
     fields = ('referee', 'side', 'points', 'reason')
     readonly_fields = ()
-    verbose_name = 'Central referee penalty'
-    verbose_name_plural = 'Central referee penalties'
+    verbose_name = 'Penalizare arbitru central'
+    verbose_name_plural = 'Penalizări arbitru central'
     can_delete = True
 
     # No custom Media for metadata editor â€” keep plain textarea behavior
@@ -3052,8 +3006,8 @@ class RefereePointEventInline(admin.TabularInline):
     class RefereePointEventForm(forms.ModelForm):
         # Provide a structured JSON editor widget for the metadata field so admins
         # can see and insert the expected keys (round, central, reason, origin)
-        reason = forms.CharField(required=False, label='Reason (optional)')
-        round = forms.IntegerField(min_value=1, required=False, initial=1, label='Round')
+        reason = forms.CharField(required=False, label='Motiv (opțional)')
+        round = forms.IntegerField(min_value=1, required=False, initial=1, label='Rundă')
 
         # metadata remains stored on the model; we don't expose a guided widget here
 
@@ -3215,8 +3169,8 @@ class AthletePerformanceVideoInline(admin.TabularInline):
     extra = 0
     fields = ('athlete_display', 'video_file', 'video_url', 'recorded_at', 'is_public')
     readonly_fields = ('athlete_display',)
-    verbose_name = _('Solo Performance Video')
-    verbose_name_plural = _('Solo Performance Videos')
+    verbose_name = _('Video prestație solo')
+    verbose_name_plural = _('Videoclipuri prestație solo')
     show_change_link = True
     
     def athlete_display(self, obj):
@@ -3225,7 +3179,7 @@ class AthletePerformanceVideoInline(admin.TabularInline):
             athlete = obj.athlete_score.athlete
             return f"{athlete.first_name} {athlete.last_name}"
         return '-'
-    athlete_display.short_description = 'Athlete'
+    athlete_display.short_description = 'Sportiv'
     
     def get_queryset(self, request):
         """Filter videos by category from parent object"""
@@ -3254,8 +3208,8 @@ class AthletePerformanceVideoForm(forms.ModelForm):
                 
                 group = category.group if category else None
                 event = category.event if category else None
-                group_name = group.name if group else 'No Group'
-                event_title = event.title if event else 'No Competition'
+                group_name = group.name if group else 'Fără grupă'
+                event_title = event.title if event else 'Fără competiție'
                 return (
                     f"{athlete.first_name} {athlete.last_name} - "
                     f"{category.name} - {group_name} - {event_title}"
@@ -3277,12 +3231,12 @@ class TeamPerformanceVideoForm(forms.ModelForm):
                 category = obj.category
                 
                 if not team or not category:
-                    return f"{team.name if team else 'Unknown'}"
+                    return f"{team.name if team else 'Necunoscut'}"
                 
                 group = category.group if category else None
                 event = category.event if category else None
-                group_name = group.name if group else 'No Group'
-                event_title = event.title if event else 'No Competition'
+                group_name = group.name if group else 'Fără grupă'
+                event_title = event.title if event else 'Fără competiție'
                 return (
                     f"{team.name} - "
                     f"{category.name} - {group_name} - {event_title}"
@@ -3307,8 +3261,8 @@ class MatchVideoRecordingForm(forms.ModelForm):
                 
                 group = category.group if category else None
                 event = category.event if category else None
-                group_name = group.name if group else 'No Group'
-                event_title = event.title if event else 'No Competition'
+                group_name = group.name if group else 'Fără grupă'
+                event_title = event.title if event else 'Fără competiție'
                 return (
                     f"{obj.name} - "
                     f"{category.name} - {group_name} - {event_title}"
@@ -3322,8 +3276,8 @@ class TeamPerformanceVideoInline(admin.TabularInline):
     extra = 0
     fields = ('team_display', 'video_file', 'video_url', 'recorded_at', 'is_public')
     readonly_fields = ('team_display',)
-    verbose_name = _('Performance Video')
-    verbose_name_plural = _('Performance Videos')
+    verbose_name = _('Video prestație')
+    verbose_name_plural = _('Videoclipuri prestație')
     show_change_link = True
     
     def team_display(self, obj):
@@ -3331,7 +3285,7 @@ class TeamPerformanceVideoInline(admin.TabularInline):
         if obj.category_team and obj.category_team.team:
             return obj.category_team.team.name
         return '-'
-    team_display.short_description = 'Team'
+    team_display.short_description = 'Echipă'
     
     def get_queryset(self, request):
         """Filter videos by category from parent object"""
@@ -3347,8 +3301,8 @@ class MatchVideoRecordingInline(admin.TabularInline):
     model = MatchVideoRecording
     extra = 0
     fields = ('video_file', 'video_url', 'recorded_at', 'is_public')
-    verbose_name = _('Video Recording')
-    verbose_name_plural = _('Video Recordings (Optional)')
+    verbose_name = _('Înregistrare video')
+    verbose_name_plural = _('Înregistrări video (opțional)')
     show_change_link = True
 
 
@@ -3376,33 +3330,124 @@ class MatchRefereeAssignmentInline(admin.TabularInline):
     form = MatchRefereeAssignmentForm
     extra = 0
     fields = ('referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5')
-    autocomplete_fields = ['referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5']
-    verbose_name = _('Referee Assignment')
-    verbose_name_plural = _('Referee Assignments')
+    verbose_name = _('Atribuire arbitri')
+    verbose_name_plural = _('Atribuire arbitri')
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name.startswith('referee_'):
-            qs = Athlete.objects.filter(is_referee=True)
+            qs = Athlete.objects.filter(is_referee=True, status='approved')
             try:
                 match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
                 if match_id:
                     match = Match.objects.filter(pk=match_id).select_related('category__event').first()
-                    if match and match.category and match.category.event_id:
-                        qs = qs.filter(
-                            seminar_participations__event_id=match.category.event_id,
-                            seminar_participations__status='approved'
-                        )
+                    qs = get_event_referee_queryset_for_match(match=match)
             except Exception:
                 pass
             kwargs['queryset'] = qs.distinct()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
-class MatchFieldAssignmentInline(admin.StackedInline):
-    model = MatchFieldAssignment
+class LiveMatchRefereeScoreInline(admin.TabularInline):
+    model = MatchRefereeScore
     extra = 0
-    verbose_name = 'Field Assignment'
-    verbose_name_plural = 'Field Assignment'
+    fields = ('referee', 'round', 'red_corner_score', 'blue_corner_score', 'winner_choice_display', 'submitted_date')
+    readonly_fields = ('winner_choice_display', 'submitted_date')
+    verbose_name = 'Scor arbitru live'
+    verbose_name_plural = 'Scoruri arbitri live (sursa principală)'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('referee', 'round').order_by('referee__last_name', 'referee__first_name', 'round__round_number', 'id')
+
+    def winner_choice_display(self, obj):
+        if not obj:
+            return '—'
+        winner = obj.winner_choice
+        if winner == 'red':
+            return 'Roșu'
+        if winner == 'blue':
+            return 'Albastru'
+        return 'Egalitate'
+    winner_choice_display.short_description = 'Câștigător'
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        match = None
+        try:
+            match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+            if match_id:
+                match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+        except Exception:
+            match = None
+
+        if db_field.name == 'referee':
+            kwargs['queryset'] = get_event_referee_queryset_for_match(match=match)
+        elif db_field.name == 'round':
+            kwargs['queryset'] = MatchRound.objects.filter(match=match).order_by('round_number') if match else MatchRound.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class LiveCentralPenaltyEventInlineForm(forms.ModelForm):
+    class Meta:
+        model = MatchEvent
+        fields = ('created_by', 'corner', 'value', 'round', 'notes')
+
+    def clean_corner(self):
+        corner = self.cleaned_data.get('corner')
+        if corner not in ('red', 'blue'):
+            raise forms.ValidationError('Alege roșu sau albastru pentru o penalizare centrală.')
+        return corner
+
+    def clean_value(self):
+        value = self.cleaned_data.get('value')
+        if value is None:
+            return -1
+        return value if value <= 0 else -value
+
+
+class LiveCentralPenaltyEventInline(admin.TabularInline):
+    model = MatchEvent
+    form = LiveCentralPenaltyEventInlineForm
+    extra = 0
+    fields = ('created_by', 'corner', 'value', 'round', 'notes', 'created_at')
+    readonly_fields = ('created_at',)
+    verbose_name = 'Penalizare centrală live'
+    verbose_name_plural = 'Penalizări centrale live (sursa principală)'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(event_type__in=['penalty_red', 'penalty_blue']).select_related('created_by', 'round').order_by('-created_at')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        match = None
+        try:
+            match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+            if match_id:
+                match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+        except Exception:
+            match = None
+
+        if db_field.name == 'created_by':
+            kwargs['queryset'] = get_event_referee_queryset_for_match(match=match)
+        elif db_field.name == 'round':
+            kwargs['queryset'] = MatchRound.objects.filter(match=match).order_by('round_number') if match else MatchRound.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class MatchFieldAssignmentInline(admin.StackedInline):
+    class MatchFieldAssignmentInlineForm(forms.ModelForm):
+        class Meta:
+            model = MatchFieldAssignment
+            fields = '__all__'
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            if 'status' in self.fields:
+                self.fields['status'].label = 'Status în programare teren'
+                self.fields['status'].help_text = 'Controlează starea meciului în programare/live pentru terenul alocat.'
+
+    model = MatchFieldAssignment
+    form = MatchFieldAssignmentInlineForm
+    extra = 0
+    verbose_name = 'Programare teren'
+    verbose_name_plural = 'Programare teren'
     fields = (
         'field',
         'status',
@@ -3440,17 +3485,21 @@ class MatchAdmin(admin.ModelAdmin):
     change_form_template = 'admin/api/match/change_form.html'
 
     fieldsets = (
-        ('MATCH DETAILS', {
+        ('DETALII MECI', {
             # Central referee is selected in the Central Penalties inline below
             # Winner is read-only and computed from referee scores/penalties
-            'fields': ('category', 'match_type', 'red_corner', 'blue_corner', 'winner_display'),
-            'description': 'Identify matches by their primary key (ID). Winner is automatically computed from referee scores and penalties.'
+            'fields': ('category', 'match_type', 'status', 'red_corner', 'blue_corner', 'winner_display'),
+            'description': 'Identifică meciul după ID. Câștigătorul este calculat automat din scorurile arbitrilor și penalizări.'
         } ),
+        ('DATE LIVE (MODELE NOI DE SCORARE)', {
+            'fields': ('frontend_referee_scores_panel', 'frontend_central_penalties_panel'),
+            'description': 'Vizualizare doar-citire a datelor scrise de frontend-ul live/fullscreen. Nu depinde de rândurile legacy sincronizate.',
+        }),
     )
 
     autocomplete_fields = ['red_corner', 'blue_corner']  # Winner is computed and read-only
 
-    readonly_fields = ('winner_display',)
+    readonly_fields = ('winner_display', 'frontend_referee_scores_panel', 'frontend_central_penalties_panel')
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'field':
@@ -3493,6 +3542,14 @@ class MatchAdmin(admin.ModelAdmin):
         return initial
 
     def get_form(self, request, obj=None, **kwargs):
+        form_class = super().get_form(request, obj, **kwargs)
+        if 'status' in form_class.base_fields:
+            form_class.base_fields['status'].label = 'Status logic meci'
+            form_class.base_fields['status'].help_text = (
+                'Controlează starea internă a meciului (scheduled / active / completed). '
+                'Frontend-ul de meci ține cont și de statusul din programarea terenului.'
+            )
+
         if obj and obj.field_id:
             try:
                 assignment = MatchFieldAssignment.objects.filter(match=obj).first()
@@ -3503,7 +3560,7 @@ class MatchAdmin(admin.ModelAdmin):
                     assignment.save(update_fields=['field'])
             except Exception:
                 pass
-        return super().get_form(request, obj, **kwargs)
+        return form_class
 
     def save_formset(self, request, form, formset, change):
         if formset.model == MatchFieldAssignment:
@@ -3515,6 +3572,59 @@ class MatchAdmin(admin.ModelAdmin):
                     form.instance.field_id = inst.field_id
                     form.instance.save(update_fields=['field'])
             formset.save_m2m()
+        elif formset.model == MatchRefereeScore:
+            from .views import _sync_match_referee_score_to_legacy
+
+            affected_referee_ids = set()
+            instances = formset.save(commit=False)
+            for deleted in formset.deleted_objects:
+                if deleted.referee_id:
+                    affected_referee_ids.add(deleted.referee_id)
+                deleted.delete()
+
+            for inst in instances:
+                inst.match = form.instance
+                inst.save()
+                if inst.referee_id:
+                    affected_referee_ids.add(inst.referee_id)
+
+            formset.save_m2m()
+
+            for referee_id in affected_referee_ids:
+                _sync_match_referee_score_to_legacy(form.instance.id, referee_id)
+        elif formset.model == MatchEvent:
+            from .views import _delete_legacy_point_events, _legacy_metadata_matches, _sync_match_event_to_legacy
+
+            deleted_event_ids = []
+            instances = formset.save(commit=False)
+            for deleted in formset.deleted_objects:
+                deleted_event_ids.append(deleted.id)
+                deleted.delete()
+
+            for inst in instances:
+                inst.match = form.instance
+                if inst.corner == 'red':
+                    inst.event_type = 'penalty_red'
+                elif inst.corner == 'blue':
+                    inst.event_type = 'penalty_blue'
+
+                if not inst.created_by_id and hasattr(request.user, 'athlete'):
+                    inst.created_by = request.user.athlete
+
+                inst.save()
+                _sync_match_event_to_legacy(inst)
+
+            formset.save_m2m()
+
+            for deleted_event_id in deleted_event_ids:
+                _delete_legacy_point_events(
+                    form.instance.id,
+                    lambda event, deleted_id=deleted_event_id: _legacy_metadata_matches(
+                        event.metadata,
+                        origin='match_event_sync',
+                        match_event_id=deleted_id,
+                    )
+                )
         else:
             super().save_formset(request, form, formset, change)
     
@@ -3524,8 +3634,129 @@ class MatchAdmin(admin.ModelAdmin):
     get_id_display.short_description = 'ID'
     get_id_display.admin_order_field = 'pk'
 
-    # Show field assignment, referee scores, central penalties, and video recordings
-    inlines = [MatchFieldAssignmentInline, RefereeScoreInline, CentralPenaltyInline, MatchVideoRecordingInline]
+    def frontend_referee_scores_panel(self, obj):
+        if not obj or not obj.pk:
+            return 'Salvează mai întâi meciul.'
+
+        scores = list(
+            MatchRefereeScore.objects.filter(match=obj)
+            .select_related('referee', 'round')
+            .order_by('referee__last_name', 'referee__first_name', 'round__round_number', 'id')
+        )
+        if not scores:
+            return format_html('<span style="color:#999;">Nu există încă scoruri live introduse din frontend.</span>')
+
+        grouped = {}
+        for score in scores:
+            referee = score.referee
+            if not referee:
+                continue
+            entry = grouped.setdefault(referee.id, {
+                'name': f'{referee.first_name} {referee.last_name}'.strip() or f'Referee #{referee.id}',
+                'rounds': {},
+                'final': score if score.round_id is None else None,
+            })
+            if score.round_id is None:
+                entry['final'] = score
+            else:
+                entry['rounds'][score.round.round_number] = score
+
+        rows = []
+        for entry in grouped.values():
+            round_cells = []
+            for round_number in (1, 2, 3):
+                round_score = entry['rounds'].get(round_number)
+                if round_score:
+                    round_cells.append(f'<td style="padding:6px 8px; border:1px solid #ddd; text-align:center;">{round_score.red_corner_score} - {round_score.blue_corner_score}</td>')
+                else:
+                    round_cells.append('<td style="padding:6px 8px; border:1px solid #ddd; text-align:center; color:#999;">—</td>')
+
+            final_score = entry['final']
+            if final_score:
+                winner = 'Roșu' if final_score.winner_choice == 'red' else ('Albastru' if final_score.winner_choice == 'blue' else 'Egalitate')
+                final_cell = f'{final_score.red_corner_score} - {final_score.blue_corner_score}'
+            else:
+                winner = '—'
+                final_cell = '—'
+
+            rows.append(
+                '<tr>'
+                f'<td style="padding:6px 8px; border:1px solid #ddd;">{entry["name"]}</td>'
+                + ''.join(round_cells)
+                + f'<td style="padding:6px 8px; border:1px solid #ddd; text-align:center;">{final_cell}</td>'
+                + f'<td style="padding:6px 8px; border:1px solid #ddd; text-align:center; font-weight:600;">{winner}</td>'
+                + '</tr>'
+            )
+
+        html = (
+            '<table style="border-collapse:collapse; min-width:760px;">'
+            '<thead><tr>'
+            '<th style="padding:6px 8px; border:1px solid #ddd; text-align:left;">Arbitru</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd;">R1</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd;">R2</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd;">R3</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd;">Final</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd;">Câștigător</th>'
+            '</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>'
+        )
+        return mark_safe(html)
+    frontend_referee_scores_panel.short_description = 'Scoruri arbitri din frontend'
+
+    def frontend_central_penalties_panel(self, obj):
+        if not obj or not obj.pk:
+            return 'Salvează mai întâi meciul.'
+
+        penalties = list(
+            MatchEvent.objects.filter(match=obj, event_type__in=['penalty_red', 'penalty_blue'])
+            .select_related('round', 'created_by')
+            .order_by('-created_at')
+        )
+        if not penalties:
+            return format_html('<span style="color:#999;">Nu există încă penalizări centrale introduse din frontend.</span>')
+
+        rows = []
+        for penalty in penalties:
+            creator = '—'
+            if penalty.created_by_id:
+                creator = f'{penalty.created_by.first_name} {penalty.created_by.last_name}'.strip() or str(penalty.created_by_id)
+            round_label = penalty.round.round_number if penalty.round_id else '—'
+            side = 'Roșu' if penalty.corner == 'red' else ('Albastru' if penalty.corner == 'blue' else penalty.corner)
+            rows.append(
+                '<tr>'
+                f'<td style="padding:6px 8px; border:1px solid #ddd;">{side}</td>'
+                f'<td style="padding:6px 8px; border:1px solid #ddd; text-align:center;">{penalty.value}</td>'
+                f'<td style="padding:6px 8px; border:1px solid #ddd; text-align:center;">{round_label}</td>'
+                f'<td style="padding:6px 8px; border:1px solid #ddd;">{penalty.notes or "—"}</td>'
+                f'<td style="padding:6px 8px; border:1px solid #ddd;">{creator}</td>'
+                f'<td style="padding:6px 8px; border:1px solid #ddd; white-space:nowrap;">{timezone.localtime(penalty.created_at).strftime("%Y-%m-%d %H:%M:%S")}</td>'
+                '</tr>'
+            )
+
+        html = (
+            '<table style="border-collapse:collapse; min-width:760px;">'
+            '<thead><tr>'
+            '<th style="padding:6px 8px; border:1px solid #ddd; text-align:left;">Parte</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd;">Puncte</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd;">Rundă</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd; text-align:left;">Motiv</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd; text-align:left;">Creat de</th>'
+            '<th style="padding:6px 8px; border:1px solid #ddd; text-align:left;">Timestamp</th>'
+            '</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>'
+        )
+        return mark_safe(html)
+    frontend_central_penalties_panel.short_description = 'Penalizări centrale din frontend'
+
+    # Show field assignment, referee assignment, live source-of-truth scoring, and recordings.
+    # Legacy inlines remain defined in this module for backward compatibility but are not shown here.
+    inlines = [
+        MatchFieldAssignmentInline,
+        MatchRefereeAssignmentInline,
+        LiveMatchRefereeScoreInline,
+        LiveCentralPenaltyEventInline,
+        MatchVideoRecordingInline,
+    ]
 
     class Media:
         js = ('/static/api/js/referee_inline_winner.js', '/static/api/js/recompute_match_results.js', '/static/api/js/category_scores.js',)
@@ -3540,11 +3771,11 @@ class MatchAdmin(admin.ModelAdmin):
         url = reverse('admin:api_match_change', args=(obj.pk,))
         red = obj.red_corner
         blue = obj.blue_corner
-        red_name = f"{red.first_name} {red.last_name}" if red else "TBD"
-        blue_name = f"{blue.first_name} {blue.last_name}" if blue else "TBD"
-        match_name = f"{red_name} (Red Corner) vs {blue_name} (Blue Corner)"
+        red_name = f"{red.first_name} {red.last_name}" if red else "De stabilit"
+        blue_name = f"{blue.first_name} {blue.last_name}" if blue else "De stabilit"
+        match_name = f"{red_name} (Colț roșu) vs {blue_name} (Colț albastru)"
         return format_html('<a href="{}" style="font-weight: bold;">{}</a>', url, match_name)
-    name_with_corners.short_description = _('Match Name')
+    name_with_corners.short_description = _('Nume meci')
 
     def central_referee_display(self, obj):
         """
@@ -3552,22 +3783,22 @@ class MatchAdmin(admin.ModelAdmin):
         """
         if obj.central_referee:
             return f"{obj.central_referee.first_name} {obj.central_referee.last_name}"
-        return "TBD"
-    central_referee_display.short_description = _('Central Referee')
+        return "De stabilit"
+    central_referee_display.short_description = _('Arbitru central')
 
     def competition(self, obj):
         """
         Display the event name associated with the match.
         """
         return obj.category.event.title if obj.category.event else "N/A"
-    competition.short_description = _('Event')
+    competition.short_description = _('Eveniment')
 
     def category_link(self, obj):
         """
         Display the category name as a bold clickable link.
         """
         return format_html('<a href="/admin/api/category/{}/change/" style="font-weight: bold;">{}</a>', obj.category.id, obj.category.name)
-    category_link.short_description = _('Category')
+    category_link.short_description = _('Categorie')
 
     def get_winner(self, obj):
         """
@@ -3584,8 +3815,8 @@ class MatchAdmin(admin.ModelAdmin):
         except Exception:
             # fall back to stored winner
             pass
-        return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else "TBD"
-    get_winner.short_description = _('Winner')
+        return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else "De stabilit"
+    get_winner.short_description = _('Câștigător')
 
     def winner_display(self, obj):
         """Computed winner display for the change form.
@@ -3600,14 +3831,14 @@ class MatchAdmin(admin.ModelAdmin):
             mw = results.get('match_winner')
             if mw:
                 return f"{mw.first_name} {mw.last_name}"
-            return 'TBD'
+            return 'De stabilit'
         except Exception:
             # Fall back to stored winner if compute fails
             try:
-                return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else 'TBD'
+                return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else 'De stabilit'
             except Exception:
-                return 'TBD'
-    winner_display.short_description = _('Winner')
+                return 'De stabilit'
+    winner_display.short_description = _('Câștigător')
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """
@@ -3644,12 +3875,66 @@ class MatchAdmin(admin.ModelAdmin):
                 name='api_match_add_central_penalty',
             ),
             path(
+                '<path:object_id>/force-start/',
+                self.admin_site.admin_view(self.force_start_view),
+                name='api_match_force_start',
+            ),
+            path(
                 '<path:object_id>/recompute-results/',
                 self.admin_site.admin_view(self.recompute_results_view),
                 name='api_match_recompute_results',
             ),
         ]
         return custom_urls + urls
+
+    def force_start_view(self, request, object_id, *args, **kwargs):
+        from django.shortcuts import get_object_or_404
+
+        if request.method != 'POST':
+            messages.error(request, 'Pornirea forțată necesită o cerere POST.')
+            return HttpResponseRedirect(reverse('admin:api_match_change', args=[object_id]))
+
+        match = get_object_or_404(Match.objects.select_related('category', 'field'), pk=object_id)
+
+        try:
+            match.status = 'active'
+            match.save(update_fields=['status'])
+
+            assignment = MatchFieldAssignment.objects.filter(match=match).select_related('field').first()
+            field_obj = getattr(assignment, 'field', None) or getattr(match, 'field', None)
+            now = timezone.now()
+
+            if assignment:
+                assignment.status = 'in_progress'
+                if not assignment.actual_start_time:
+                    assignment.actual_start_time = now
+                assignment.actual_end_time = None
+                assignment.save(update_fields=['status', 'actual_start_time', 'actual_end_time'])
+            elif field_obj:
+                MatchFieldAssignment.objects.create(
+                    match=match,
+                    field=field_obj,
+                    status='in_progress',
+                    actual_start_time=now,
+                    order=0,
+                )
+
+            if field_obj:
+                DisplayMonitorSession.objects.update_or_create(
+                    field=field_obj,
+                    defaults={
+                        'current_category_id': match.category_id,
+                        'current_match_id': match.pk,
+                        'current_athlete': None,
+                        'status': 'displaying',
+                    }
+                )
+
+            messages.success(request, f'Meciul #{match.pk} a fost pornit forțat din admin.')
+        except Exception as exc:
+            messages.error(request, f'Pornirea forțată a eșuat: {exc}')
+
+        return HttpResponseRedirect(reverse('admin:api_match_change', args=[object_id]))
 
     def add_central_penalty_view(self, request, object_id, *args, **kwargs):
         """Admin view to create a central-referee penalty for the given match.
@@ -3665,8 +3950,8 @@ class MatchAdmin(admin.ModelAdmin):
         if central is None:
             # For AJAX, return JSON error; for normal requests redirect back with a message
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-                return JsonResponse({'ok': False, 'error': 'No central referee set'}, status=400)
-            messages.error(request, 'This match does not have a central referee set.')
+                return JsonResponse({'ok': False, 'error': 'Nu este setat niciun arbitru central'}, status=400)
+            messages.error(request, 'Acest meci nu are setat un arbitru central.')
             return redirect(reverse('admin:api_match_change', args=[object_id]))
 
         if request.method == 'POST':
@@ -4089,12 +4374,12 @@ class GroupAdmin(admin.ModelAdmin):
     search_fields = ('name', 'event__title')
     list_filter = ('event',)
     fieldsets = (
-        ('Basic Information', {
+        ('Informații de bază', {
             'fields': ('name', 'event')
         }),
-        ('Age Range', {
+        ('Interval vârstă', {
             'fields': ('birth_year_start', 'birth_year_end'),
-            'description': 'Define the birth year range for athletes in this group (e.g., 2015-2018)'
+            'description': 'Definește intervalul anilor de naștere pentru sportivii din această grupă (de exemplu, 2015-2018)'
         }),
     )
     
@@ -4105,15 +4390,15 @@ class GroupAdmin(admin.ModelAdmin):
         elif obj.birth_year_start:
             return f"{obj.birth_year_start}+"
         elif obj.birth_year_end:
-            return f"up to {obj.birth_year_end}"
-        return "Not set"
-    get_age_range.short_description = 'Birth Year Range'
+            return f"până la {obj.birth_year_end}"
+        return "Nesetat"
+    get_age_range.short_description = 'Interval ani naștere'
     
     def get_category_count(self, obj):
         """Display number of categories in this group"""
         count = obj.categories.count()
-        return f"{count} categories"
-    get_category_count.short_description = 'Categories'
+        return f"{count} categorii"
+    get_category_count.short_description = 'Categorii'
 
 
 # User Admin
@@ -4130,10 +4415,10 @@ class UserAdmin(BaseUserAdmin):
     
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
-        ('Personal info', {'fields': ('first_name', 'last_name', 'email')}),
-        ('Role & Permissions', {'fields': ('role', 'is_active', 'is_staff', 'is_superuser')}),
-        ('Groups & Permissions', {'fields': ('groups', 'user_permissions')}),
-        ('Important dates', {'fields': ('last_login', 'date_joined')}),
+        ('Date personale', {'fields': ('first_name', 'last_name', 'email')}),
+        ('Rol și permisiuni', {'fields': ('role', 'is_active', 'is_staff', 'is_superuser')}),
+        ('Grupuri și permisiuni', {'fields': ('groups', 'user_permissions')}),
+        ('Date importante', {'fields': ('last_login', 'date_joined')}),
     )
     
     add_fieldsets = (
@@ -4145,8 +4430,48 @@ class UserAdmin(BaseUserAdmin):
 
 
 # Athlete Profile Management Admin
+class AthleteAdminForm(forms.ModelForm):
+    class Meta:
+        model = Athlete
+        fields = '__all__'
+
+    FIELD_LABELS = {
+        'user': _('Utilizator'),
+        'first_name': _('Prenume'),
+        'last_name': _('Nume'),
+        'date_of_birth': _('Data nașterii'),
+        'address': _('Adresă'),
+        'mobile_number': _('Telefon mobil'),
+        'profile_image': _('Fotografie profil'),
+        'club': _('Club'),
+        'city': _('Oraș'),
+        'current_grade': _('Grad curent'),
+        'federation_role': _('Rol în federație'),
+        'title': _('Titlu'),
+        'registered_date': _('Data înregistrării'),
+        'expiration_date': _('Data expirării'),
+        'is_coach': _('Este antrenor'),
+        'is_referee': _('Este arbitru'),
+        'emergency_contact_name': _('Nume contact de urgență'),
+        'emergency_contact_phone': _('Telefon contact de urgență'),
+        'status': _('Status'),
+        'reviewed_by': _('Revizuit de'),
+        'admin_notes': _('Notițe administrator'),
+        'medical_certificate': _('Certificat medical'),
+        'previous_experience': _('Experiență anterioară'),
+        'team_place': _('Loc obținut cu echipa'),
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, label in self.FIELD_LABELS.items():
+            if field_name in self.fields:
+                self.fields[field_name].label = label
+
 @admin.register(Athlete)
 class AthleteAdmin(admin.ModelAdmin):
+    form = AthleteAdminForm
+    change_form_template = 'admin/api/athlete/change_form.html'
     # Merge photo and name into a single narrow column (no header label).
     # Also show referee/coach flags, compact grade name, club, and action buttons on the far right.
     list_display = [
@@ -4155,7 +4480,7 @@ class AthleteAdmin(admin.ModelAdmin):
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
     search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
-    readonly_fields = ['submitted_date', 'reviewed_date', 'current_grade', 'add_enrolled_event_link', 'add_grade_history_link']
+    readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'team_results_summary']
     ordering = ['-submitted_date']
     inlines = [
         GradeHistoryInline,
@@ -4163,30 +4488,50 @@ class AthleteAdmin(admin.ModelAdmin):
         AthleteTrainingSeminarParticipationInline,
         AthleteSoloResultsInline,
         AthleteFightResultsInline,
-        AthleteTeamResultsInline,
         # Team results displayed via custom method in fieldsets instead of inline
-        # (team results are now shown via AthleteTeamResultsInline)
+        # to avoid admin inline parent-instance validation issues for M2M team members.
     ]
     
     fieldsets = (
-        ('Personal Information', {
+        ('Informații personale', {
             'fields': ('user', 'first_name', 'last_name', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
         }),
-        ('Sports & Club Information', {
-            'fields': ('club', 'city', 'current_grade', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_referee')
+        ('Informații sportive și club', {
+            'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_referee')
         }),
-        ('Emergency Contact', {
+        ('Contact de urgență', {
             'fields': ('emergency_contact_name', 'emergency_contact_phone')
         }),
+        ('Rezultate echipe', {
+            'fields': ('team_results_summary',)
+        }),
         # Team results are shown via the AthleteTeamResultsInline instead of a custom field
-        ('Approval Workflow', {
-            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'add_enrolled_event_link', 'add_grade_history_link')
+        ('Flux de aprobare', {
+            'fields': ('status', 'submitted_date_display', 'reviewed_date_display', 'reviewed_by', 'add_enrolled_event_link', 'add_grade_history_link')
         }),
     )
+
+    def current_grade_display_readonly(self, obj):
+        if not obj or not obj.current_grade:
+            return '—'
+        return obj.current_grade.name
+    current_grade_display_readonly.short_description = _('Grad curent')
+
+    def submitted_date_display(self, obj):
+        if not obj or not obj.submitted_date:
+            return '—'
+        return obj.submitted_date
+    submitted_date_display.short_description = _('Data trimiterii')
+
+    def reviewed_date_display(self, obj):
+        if not obj or not obj.reviewed_date:
+            return '—'
+        return obj.reviewed_date
+    reviewed_date_display.short_description = _('Data revizuirii')
     
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
-    get_full_name.short_description = _('Name')
+    get_full_name.short_description = _('Nume')
     get_full_name.admin_order_field = 'first_name'
 
     def photo_and_name(self, obj):
@@ -4248,7 +4593,7 @@ class AthleteAdmin(admin.ModelAdmin):
             return obj.current_grade.name if obj.current_grade else ''
         except Exception:
             return ''
-    grade_display.short_description = 'Grade'
+    grade_display.short_description = 'Grad'
     # Order by the underlying grade rank if available
     grade_display.admin_order_field = 'current_grade__rank_order'
 
@@ -4302,13 +4647,52 @@ class AthleteAdmin(admin.ModelAdmin):
                 '</svg>'
             )
             return mark_safe(fallback)
-    profile_image_thumbnail.short_description = _('Photo')
+    profile_image_thumbnail.short_description = _('Fotografie')
     profile_image_thumbnail.allow_tags = True
     
     def user_email(self, obj):
-        return obj.user.email if obj.user else 'No user'
+        return obj.user.email if obj.user else 'Fără utilizator'
     user_email.short_description = _('Email')
     user_email.admin_order_field = 'user__email'
+
+    def team_results_summary(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+
+        results = (
+            CategoryAthleteScore.objects
+            .filter(type='teams')
+            .filter(models.Q(athlete=obj) | models.Q(team_members=obj))
+            .select_related('category__event')
+            .prefetch_related('team_members')
+            .distinct()
+        )
+
+        if not results.exists():
+            return '—'
+
+        items = []
+        for result in results:
+            event_name = getattr(getattr(result.category, 'event', None), 'title', '—')
+            category_name = getattr(result.category, 'name', '—')
+            team_name = result.team_name or ', '.join(
+                f"{member.first_name} {member.last_name}" for member in result.team_members.all()
+            ) or '—'
+            placement = result.placement_claimed or '—'
+            status_value = result.get_status_display() if hasattr(result, 'get_status_display') else (result.status or '—')
+            items.append(
+                format_html(
+                    '<li><strong>{}</strong> — {} — {} — loc: {} — status: {}</li>',
+                    event_name,
+                    category_name,
+                    team_name,
+                    placement,
+                    status_value,
+                )
+            )
+
+        return format_html('<ul style="margin:0;padding-left:18px;">{}</ul>', mark_safe(''.join(str(item) for item in items)))
+    team_results_summary.short_description = _('Rezultate echipe')
     
     def get_action_buttons(self, obj):
         if obj.status == 'pending':
@@ -4319,12 +4703,12 @@ class AthleteAdmin(admin.ModelAdmin):
                 '<a class="button" href="{}">{}</a> '
                 '<a class="button" href="{}">{}</a> '
                 '<a class="button" href="{}">{}</a>',
-                approve_url, _('Approve'), reject_url, _('Reject'), revision_url, _('Request Revision')
+                approve_url, _('Aprobă'), reject_url, _('Respinge'), revision_url, _('Solicită revizuirea')
             )
         return obj.get_status_display()
-    get_action_buttons.short_description = _('Actions')
+    get_action_buttons.short_description = _('Acțiuni')
     
-    # Team results are now displayed via AthleteTeamResultsInline above.
+    # Team results are displayed via `team_results_summary()` to avoid M2M inline validation issues.
 
     def get_search_results(self, request, queryset, search_term):
         """
@@ -4348,6 +4732,85 @@ class AthleteAdmin(admin.ModelAdmin):
         """
         super().save_model(request, obj, form, change)
         obj.update_current_grade()  # Automatically update current_grade
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if not formfield:
+            return formfield
+
+        if db_field.name in {
+            'user',
+            'club',
+            'city',
+            'current_grade',
+            'federation_role',
+            'title',
+            'reviewed_by',
+            'approved_by',
+        }:
+            widget = formfield.widget
+            for attr in ('can_add_related', 'can_change_related', 'can_delete_related', 'can_view_related'):
+                if hasattr(widget, attr):
+                    setattr(widget, attr, False)
+
+        return formfield
+
+    def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        response = super().changeform_view(request, object_id, form_url, extra_context)
+
+        if request.method == 'POST' and isinstance(response, TemplateResponse):
+            context = getattr(response, 'context_data', {}) or {}
+            errors = []
+
+            adminform = context.get('adminform')
+            if adminform is not None:
+                form = getattr(adminform, 'form', None)
+                if form is not None:
+                    errors.extend(str(error) for error in form.non_field_errors())
+                    for field_name, field_errors in form.errors.items():
+                        if field_name == '__all__':
+                            continue
+                        label = field_name
+                        try:
+                            label = form.fields[field_name].label or field_name
+                        except Exception:
+                            pass
+                        errors.extend(f'{label}: {error}' for error in field_errors)
+
+            for inline_admin_formset in context.get('inline_admin_formsets', []) or []:
+                opts = getattr(inline_admin_formset, 'opts', None)
+                inline_label = getattr(opts, 'verbose_name_plural', None) or getattr(opts, 'verbose_name', None) or 'Inline'
+                formset = getattr(inline_admin_formset, 'formset', None)
+                if formset is not None:
+                    errors.extend(f'{inline_label}: {error}' for error in formset.non_form_errors())
+
+                for inline_admin_form in inline_admin_formset:
+                    form = getattr(inline_admin_form, 'form', None)
+                    if form is None:
+                        continue
+                    errors.extend(f'{inline_label}: {error}' for error in form.non_field_errors())
+                    for field_name, field_errors in form.errors.items():
+                        if field_name == '__all__':
+                            continue
+                        label = field_name
+                        try:
+                            label = form.fields[field_name].label or field_name
+                        except Exception:
+                            pass
+                        errors.extend(f'{inline_label} — {label}: {error}' for error in field_errors)
+
+            unique_errors = []
+            seen = set()
+            for error in errors:
+                normalized = str(error).strip()
+                if normalized and normalized not in seen:
+                    seen.add(normalized)
+                    unique_errors.append(normalized)
+
+            if unique_errors:
+                messages.error(request, ' | '.join(unique_errors[:8]))
+
+        return response
     
     def get_urls(self):
         urls = super().get_urls()
@@ -4384,9 +4847,9 @@ class AthleteAdmin(admin.ModelAdmin):
             dry_run = request.POST.get('dry_run') == 'true'
             
             if not excel_file:
-                messages.error(request, 'Please select an Excel file to upload.')
+                messages.error(request, 'Selectează un fișier Excel pentru încărcare.')
                 return render(request, 'admin/athlete_import_excel.html', {
-                    'title': 'Import Athletes from Excel',
+                    'title': 'Importă sportivi din Excel',
                 })
             
             try:
@@ -4394,39 +4857,39 @@ class AthleteAdmin(admin.ModelAdmin):
                 result = service.import_athletes(excel_file, dry_run=dry_run)
                 
                 if dry_run:
-                    messages.info(request, f"Validation Complete (No data saved):")
-                    messages.success(request, f"✓ {result['created']} athletes ready to create")
-                    messages.success(request, f"✓ {result['updated']} athletes ready to update")
+                    messages.info(request, 'Validare finalizată (nu au fost salvate date):')
+                    messages.success(request, f"✓ {result['created']} sportivi pregătiți pentru creare")
+                    messages.success(request, f"✓ {result['updated']} sportivi pregătiți pentru actualizare")
                     if result['errors']:
-                        messages.warning(request, f"⚠ {len(result['errors'])} errors found")
+                        messages.warning(request, f"⚠ {len(result['errors'])} erori găsite")
                         for error in result['errors'][:10]:  # Show first 10 errors
-                            messages.error(request, f"Row {error.get('row', '?')}: {error.get('error', 'Unknown error')}")
+                            messages.error(request, f"Rândul {error.get('row', '?')}: {error.get('error', 'Eroare necunoscută')}")
                 else:
-                    messages.success(request, f"Import Complete!")
-                    messages.success(request, f"✓ Created {result['created']} new athletes")
-                    messages.success(request, f"✓ Updated {result['updated']} existing athletes")
+                    messages.success(request, 'Import finalizat!')
+                    messages.success(request, f"✓ Au fost creați {result['created']} sportivi noi")
+                    messages.success(request, f"✓ Au fost actualizați {result['updated']} sportivi existenți")
                     if result['errors']:
-                        messages.warning(request, f"⚠ {len(result['errors'])} rows had errors")
+                        messages.warning(request, f"⚠ {len(result['errors'])} rânduri au avut erori")
                         for error in result['errors'][:10]:
-                            messages.error(request, f"Row {error.get('row', '?')}: {error.get('error', 'Unknown error')}")
+                            messages.error(request, f"Rândul {error.get('row', '?')}: {error.get('error', 'Eroare necunoscută')}")
                 
                 # Show detailed results
                 context = {
-                    'title': 'Import Results',
+                    'title': 'Rezultate import',
                     'result': result,
                     'dry_run': dry_run,
                 }
                 return render(request, 'admin/athlete_import_results.html', context)
                 
             except Exception as e:
-                messages.error(request, f'Import failed: {str(e)}')
+                messages.error(request, f'Importul a eșuat: {str(e)}')
                 return render(request, 'admin/athlete_import_excel.html', {
-                    'title': 'Import Athletes from Excel',
+                    'title': 'Importă sportivi din Excel',
                 })
         
         # GET request - show upload form
         return render(request, 'admin/athlete_import_excel.html', {
-            'title': 'Import Athletes from Excel',
+            'title': 'Importă sportivi din Excel',
         })
 
     def add_enrolled_event_link(self, obj):
@@ -4435,10 +4898,10 @@ class AthleteAdmin(admin.ModelAdmin):
             return ''
         try:
             url = reverse('admin:api_trainingseminarparticipation_add') + f'?athlete={obj.pk}'
-            return format_html('<a class="button" href="{}">Add enrolled event</a>', url)
+            return format_html('<a class="button" href="{}">Adaugă eveniment înscris</a>', url)
         except Exception:
             return ''
-    add_enrolled_event_link.short_description = _('Add Enrollment')
+    add_enrolled_event_link.short_description = _('Adaugă înscriere')
 
     def add_grade_history_link(self, obj):
         """Render a button that opens the GradeHistory add form with this athlete pre-filled."""
@@ -4446,10 +4909,10 @@ class AthleteAdmin(admin.ModelAdmin):
             return ''
         try:
             url = reverse('admin:api_gradehistory_add') + f'?athlete={obj.pk}'
-            return format_html('<a class="button" href="{}">Add grade history</a>', url)
+            return format_html('<a class="button" href="{}">Adaugă istoric grad</a>', url)
         except Exception:
             return ''
-    add_grade_history_link.short_description = _('Add Grade')
+    add_grade_history_link.short_description = _('Adaugă grad')
     
     def approve_profile(self, request, pk):
         from django.shortcuts import get_object_or_404, redirect
@@ -4459,17 +4922,17 @@ class AthleteAdmin(admin.ModelAdmin):
         athlete = get_object_or_404(Athlete, pk=pk)
         
         if athlete.status != 'pending':
-            messages.error(request, f'Athlete profile is not in pending status (current: {athlete.status})')
+            messages.error(request, f'Profilul sportivului nu este în starea în așteptare (curent: {athlete.status})')
             return redirect('admin:api_athlete_changelist')
         
         try:
             # Use the approve method from the consolidated model
             athlete.approve(request.user)
             
-            messages.success(request, f'Successfully approved athlete profile for {athlete.first_name} {athlete.last_name}')
+            messages.success(request, f'Profilul sportivului {athlete.first_name} {athlete.last_name} a fost aprobat cu succes')
             
         except Exception as e:
-            messages.error(request, f'Error approving athlete profile: {str(e)}')
+            messages.error(request, f'Eroare la aprobarea profilului sportivului: {str(e)}')
         
         return redirect('admin:api_athlete_changelist')
     
@@ -4481,7 +4944,7 @@ class AthleteAdmin(admin.ModelAdmin):
         athlete = get_object_or_404(Athlete, pk=pk)
         
         if athlete.status != 'pending':
-            messages.error(request, f'Athlete profile is not in pending status (current: {athlete.status})')
+            messages.error(request, f'Profilul sportivului nu este în starea în așteptare (curent: {athlete.status})')
             return redirect('admin:api_athlete_changelist')
         
         if request.method == 'POST':
@@ -4490,13 +4953,13 @@ class AthleteAdmin(admin.ModelAdmin):
             # Use the reject method from the consolidated model
             athlete.reject(request.user, rejection_reason)
             
-            messages.success(request, f'Successfully rejected athlete profile for {athlete.first_name} {athlete.last_name}')
+            messages.success(request, f'Profilul sportivului {athlete.first_name} {athlete.last_name} a fost respins cu succes')
             return redirect('admin:api_athlete_changelist')
         
         # Show rejection form
         context = {
             'profile': athlete,
-            'title': f'Reject Profile: {athlete.first_name} {athlete.last_name}',
+            'title': f'Respinge profilul: {athlete.first_name} {athlete.last_name}',
         }
         return render(request, 'admin/reject_profile.html', context)
     
@@ -4508,7 +4971,7 @@ class AthleteAdmin(admin.ModelAdmin):
         athlete = get_object_or_404(Athlete, pk=pk)
         
         if athlete.status != 'pending':
-            messages.error(request, f'Athlete profile is not in pending status (current: {athlete.status})')
+            messages.error(request, f'Profilul sportivului nu este în starea în așteptare (curent: {athlete.status})')
             return redirect('admin:api_athlete_changelist')
         
         if request.method == 'POST':
@@ -4517,13 +4980,13 @@ class AthleteAdmin(admin.ModelAdmin):
             # Use the request_revision method from the consolidated model
             athlete.request_revision(request.user, revision_notes)
             
-            messages.success(request, f'Successfully requested revision for {athlete.first_name} {athlete.last_name}')
+            messages.success(request, f'A fost solicitată revizuirea pentru {athlete.first_name} {athlete.last_name}')
             return redirect('admin:api_athlete_changelist')
         
         # Show revision request form
         context = {
             'profile': athlete,
-            'title': f'Request Revision: {athlete.first_name} {athlete.last_name}',
+            'title': f'Solicită revizuirea: {athlete.first_name} {athlete.last_name}',
         }
         return render(request, 'admin/request_revision.html', context)
 
@@ -4537,8 +5000,8 @@ class CategoryRefereeScoreInline(admin.TabularInline):
     fields = ('referee', 'score', 'notes', 'submitted_date')
     readonly_fields = ('submitted_date',)
     autocomplete_fields = ['referee']
-    verbose_name = _('Referee Score')
-    verbose_name_plural = _('Referee Scores (5 Required)')
+    verbose_name = _('Scor arbitru')
+    verbose_name_plural = _('Scoruri arbitri (5 necesare)')
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('referee')
@@ -4556,8 +5019,8 @@ class CategoryAthleteScoreAdminForm(forms.ModelForm):
     existing_team = forms.ModelChoiceField(
         queryset=None,
         required=False,
-        label='Team',
-        help_text='Select an existing team for team categories'
+        label='Echipă',
+        help_text='Selectează o echipă existentă pentru categoriile pe echipe'
     )
     
     class Meta:
@@ -4573,7 +5036,7 @@ class CategoryAthleteScoreAdminForm(forms.ModelForm):
         
         # Make athlete optional (for team scores)
         self.fields['athlete'].required = False
-        self.fields['athlete'].help_text = 'Select athlete for solo/fight categories. Leave blank for team scores.'
+        self.fields['athlete'].help_text = 'Selectează sportivul pentru categoriile solo/luptă. Lasă gol pentru scorurile pe echipe.'
         
         # Hide team_name and team_members fields (they'll be auto-populated)
         if 'team_name' in self.fields:
@@ -4590,10 +5053,10 @@ class CategoryAthleteScoreAdminForm(forms.ModelForm):
         # Validate based on type
         if score_type == 'teams':
             if not existing_team:
-                raise forms.ValidationError('For team scores, you must select a team.')
+                raise forms.ValidationError('Pentru scorurile pe echipe trebuie să selectezi o echipă.')
         elif score_type in ['solo', 'fight']:
             if not athlete:
-                raise forms.ValidationError(f'For {score_type} categories, you must select an athlete.')
+                raise forms.ValidationError(f'Pentru categoriile de tip {score_type} trebuie să selectezi un sportiv.')
         
         # If existing team is selected, populate team_members and team_name
         if existing_team:
@@ -4626,23 +5089,23 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     inlines = [CategoryRefereeScoreInline, AthletePerformanceVideoInline]
     
     fieldsets = (
-        ('Basic Information', {
+        ('Informații de bază', {
             'fields': ('category', 'type', 'group', 'submitted_by_athlete')
         }),
-        ('Select Participant', {
+        ('Selectează participantul', {
             'fields': ('athlete', 'existing_team'),
-            'description': 'For solo/fight: select athlete. For teams: select existing team (create teams via Team admin)',
+            'description': 'Pentru solo/luptă: selectează sportivul. Pentru echipe: selectează o echipă existentă (creată din administrarea echipelor).',
         }),
-        ('Referee Scoring', {
+        ('Arbitraj', {
             'fields': ('get_calculated_score_display', 'get_referee_count'),
-            'description': 'Add referee scores in the inline section below. Final score excludes highest and lowest.',
+            'description': 'Adaugă scorurile arbitrilor în secțiunea de mai jos. Scorul final exclude valoarea maximă și minimă.',
         }),
-        ('Athlete Submission Details', {
+        ('Detalii trimitere sportiv', {
             'fields': ('placement_claimed', 'notes', 'certificate_image', 'result_document'),
-            'description': 'Used when athletes submit their own results with placement claims',
+            'description': 'Folosit când sportivii își trimit propriile rezultate și clasarea revendicată',
             'classes': ('collapse',)
         }),
-        ('Approval Status', {
+        ('Status aprobare', {
             'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes')
         }),
     )
@@ -4658,7 +5121,7 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         if obj and obj.submitted_by_athlete:
             if 'score' in form.base_fields:
                 form.base_fields['score'].required = False
-                form.base_fields['score'].help_text = 'Score not required for athlete self-submissions - focus on placement_claimed instead'
+                form.base_fields['score'].help_text = 'Scorul nu este obligatoriu pentru trimiterile proprii ale sportivilor; accentul cade pe locul revendicat.'
         
         return form
     
@@ -4666,61 +5129,61 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         """Display athlete name or team name"""
         if obj.team_name and obj.team_members.exists():
             member_count = obj.team_members.count()
-            return f"Team: {obj.team_name} ({member_count} members)" if member_count > 0 else f"Team: {obj.team_name}"
+            return f"Echipă: {obj.team_name} ({member_count} membri)" if member_count > 0 else f"Echipă: {obj.team_name}"
         elif obj.athlete:
             return f"{obj.athlete.first_name} {obj.athlete.last_name}"
         return "N/A"
-    get_athlete_name.short_description = _('Athlete / Team')
+    get_athlete_name.short_description = _('Sportiv / Echipă')
     get_athlete_name.admin_order_field = 'athlete__first_name'
     
     def get_competition_name(self, obj):
         if obj.category and obj.category.event:
             return obj.category.event.title
         return "N/A"
-    get_competition_name.short_description = _('Event')
+    get_competition_name.short_description = _('Eveniment')
     # Keep admin ordering keyed to the legacy competition name for now; Event ordering could be added later
     get_competition_name.admin_order_field = 'category__competition__name'
     
     def get_category_name(self, obj):
         return obj.category.name
-    get_category_name.short_description = _('Category')
+    get_category_name.short_description = _('Categorie')
     get_category_name.admin_order_field = 'category__name'
     
     def get_submission_type(self, obj):
         if obj.submitted_by_athlete:
-            return f"ðŸ… Self-Submitted ({obj.placement_claimed or 'No placement'})"
+            return f"Trimis de sportiv ({obj.placement_claimed or 'Fără clasare'})"
         else:
-            return f"ðŸ¥‹ Referee Score ({obj.score})"
-    get_submission_type.short_description = _('Type')
+            return f"Scor arbitru ({obj.score})"
+    get_submission_type.short_description = _('Tip')
     
     def get_calculated_score(self, obj):
         """Display calculated score in list view"""
         from .models import FightCategory
         if isinstance(obj.category, FightCategory):
-            return f'⚠ {obj.referee_score_count}/5 scores'
+            return f'⚠ {obj.referee_score_count}/5 scoruri'
         score = obj.calculated_score
         if score is None:
             return 'N/A'
         return f'✓ {score:.2f}'
-    get_calculated_score.short_description = _('Final Score')
+    get_calculated_score.short_description = _('Scor final')
 
     
     def get_calculated_score_display(self, obj):
         """Display calculated score with details in change form"""
         from .models import FightCategory
         if isinstance(obj.category, FightCategory):
-            return format_html('<em>Not applicable (only for solo/team categories)</em>')
+            return format_html('<em>Nu se aplică (doar pentru categoriile solo/echipe)</em>')
         
         score = obj.calculated_score
         count = obj.referee_score_count
         
         if score is None:
             if count == 0:
-                return format_html('<strong style="color: red;">No referee scores submitted yet</strong>')
+                return format_html('<strong style="color: red;">Nu au fost trimise încă scoruri de arbitraj</strong>')
             else:
                 return format_html(
-                    '<strong style="color: orange;">Incomplete: {}/{} referee scores submitted</strong><br>'
-                    '<em>Need at least 3 scores to calculate (ideally 5)</em>',
+                    '<strong style="color: orange;">Incomplet: {}/{} scoruri de arbitraj trimise</strong><br>'
+                    '<em>Sunt necesare cel puțin 3 scoruri pentru calcul (ideal 5)</em>',
                     count, 5
                 )
         
@@ -4730,19 +5193,19 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         
         if len(scores) >= 5:
             excluded = [sorted_scores[0], sorted_scores[-1]]
-            breakdown = f'Scores: {", ".join(str(s) for s in sorted_scores)} | Excluded: {excluded[0]}, {excluded[1]}'
+            breakdown = f'Scoruri: {", ".join(str(s) for s in sorted_scores)} | Excluse: {excluded[0]}, {excluded[1]}'
         elif len(scores) == 4:
             excluded = [sorted_scores[-1]]
-            breakdown = f'Scores: {", ".join(str(s) for s in sorted_scores)} | Excluded highest: {excluded[0]}'
+            breakdown = f'Scoruri: {", ".join(str(s) for s in sorted_scores)} | Exclus maximul: {excluded[0]}'
         else:
-            breakdown = f'Scores: {", ".join(str(s) for s in sorted_scores)} | All counted (need 5 for proper calculation)'
+            breakdown = f'Scoruri: {", ".join(str(s) for s in sorted_scores)} | Toate sunt incluse (sunt necesare 5 pentru calculul complet)'
         
         return format_html(
-            '<strong style="font-size: 16px;">Final Score: {:.2f}</strong><br>'
+            '<strong style="font-size: 16px;">Scor final: {:.2f}</strong><br>'
             '<em style="color: #666;">{}</em>',
             score, breakdown
         )
-    get_calculated_score_display.short_description = _('Calculated Final Score')
+    get_calculated_score_display.short_description = _('Scor final calculat')
     
     def get_referee_count(self, obj):
         """Display referee score count with validation status"""
@@ -4752,31 +5215,31 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         
         count = obj.referee_score_count
         if count == 5:
-            return format_html('<strong style="color: green;">âœ“ Complete ({}/5)</strong>', count)
+            return format_html('<strong style="color: green;">Complet ({}/5)</strong>', count)
         elif count >= 3:
-            return format_html('<strong style="color: orange;">âš  Partial ({}/5)</strong>', count)
+            return format_html('<strong style="color: orange;">Parțial ({}/5)</strong>', count)
         else:
-            return format_html('<strong style="color: red;">âœ— Incomplete ({}/5)</strong>', count)
-    get_referee_count.short_description = _('Referee Scores')
+            return format_html('<strong style="color: red;">Incomplet ({}/5)</strong>', count)
+    get_referee_count.short_description = _('Scoruri arbitri')
     
     def get_action_buttons(self, obj):
         if obj.submitted_by_athlete and obj.status == 'pending':
             return format_html(
-                '<a class="button" href="{}/approve/">Approve</a> '
-                '<a class="button" href="{}/reject/">Reject</a> '
-                '<a class="button" href="{}/request_revision/">Request Revision</a>',
+                '<a class="button" href="{}/approve/">Aprobă</a> '
+                '<a class="button" href="{}/reject/">Respinge</a> '
+                '<a class="button" href="{}/request_revision/">Solicită revizuirea</a>',
                 obj.pk, obj.pk, obj.pk
             )
         elif obj.status == 'approved':
-            return format_html('<span style="color: green;">âœ“ Approved</span>')
+            return format_html('<span style="color: green;">Aprobat</span>')
         elif obj.status == 'rejected':
-            return format_html('<span style="color: red;">âœ— Rejected</span>')
+            return format_html('<span style="color: red;">Respins</span>')
         elif obj.status == 'revision_required':
-            return format_html('<span style="color: orange;">âš  Revision Required</span>')
+            return format_html('<span style="color: orange;">Revizuire necesară</span>')
         elif not obj.submitted_by_athlete:
-            return format_html('<span style="color: blue;">Referee Entry</span>')
+            return format_html('<span style="color: blue;">Înregistrare arbitru</span>')
         return ''
-    get_action_buttons.short_description = _('Actions')
+    get_action_buttons.short_description = _('Acțiuni')
     
     def get_urls(self):
         urls = super().get_urls()
@@ -4794,14 +5257,14 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         score = get_object_or_404(CategoryAthleteScore, pk=pk)
         
         if score.status != 'pending':
-            messages.error(request, f'Score is not in pending status (current: {score.status})')
+            messages.error(request, f'Scorul nu este în starea în așteptare (curent: {score.status})')
             return redirect('admin:api_categoryathletescore_changelist')
         
         try:
             score.approve(request.user)
-            messages.success(request, f'Successfully approved result for {score.athlete}')
+            messages.success(request, f'Rezultatul pentru {score.athlete} a fost aprobat cu succes')
         except Exception as e:
-            messages.error(request, f'Error approving result: {str(e)}')
+            messages.error(request, f'Eroare la aprobarea rezultatului: {str(e)}')
         
         return redirect('admin:api_categoryathletescore_changelist')
     
@@ -4812,19 +5275,19 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         score = get_object_or_404(CategoryAthleteScore, pk=pk)
         
         if score.status != 'pending':
-            messages.error(request, f'Score is not in pending status (current: {score.status})')
+            messages.error(request, f'Scorul nu este în starea în așteptare (curent: {score.status})')
             return redirect('admin:api_categoryathletescore_changelist')
         
         if request.method == 'POST':
             rejection_reason = request.POST.get('admin_notes', '')
             score.reject(request.user, rejection_reason)
-            messages.success(request, f'Successfully rejected result for {score.athlete}')
+            messages.success(request, f'Rezultatul pentru {score.athlete} a fost respins cu succes')
             return redirect('admin:api_categoryathletescore_changelist')
         
         # Show rejection form
         context = {
             'score': score,
-            'title': f'Reject Result: {score.category.name} - {score.athlete}',
+            'title': f'Respinge rezultatul: {score.category.name} - {score.athlete}',
         }
         return render(request, 'admin/reject_score.html', context)
     
@@ -4835,19 +5298,19 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
         score = get_object_or_404(CategoryAthleteScore, pk=pk)
         
         if score.status != 'pending':
-            messages.error(request, f'Score is not in pending status (current: {score.status})')
+            messages.error(request, f'Scorul nu este în starea în așteptare (curent: {score.status})')
             return redirect('admin:api_categoryathletescore_changelist')
         
         if request.method == 'POST':
             revision_notes = request.POST.get('admin_notes', '')
             score.request_revision(request.user, revision_notes)
-            messages.success(request, f'Successfully requested revision for {score.athlete}')
+            messages.success(request, f'A fost solicitată revizuirea pentru {score.athlete}')
             return redirect('admin:api_categoryathletescore_changelist')
         
         # Show revision request form
         context = {
             'score': score,
-            'title': f'Request Revision: {score.category.name} - {score.athlete}',
+            'title': f'Solicită revizuirea: {score.category.name} - {score.athlete}',
         }
         return render(request, 'admin/request_score_revision.html', context)
 
@@ -4910,11 +5373,11 @@ class MatchVideoRecordingAdmin(admin.ModelAdmin):
     # Inlines disabled: Point Event Timestamps and Video Segments features disabled for now
     
     fieldsets = [
-        ('VIDEO SOURCE', {
+        ('SURSĂ VIDEO', {
             'fields': ('match', 'video_file', 'video_url'),
-            'description': 'Provide either a video file OR a video URL (YouTube, Vimeo, etc.)'
+            'description': 'Furnizează fie un fișier video, fie un URL video (YouTube, Vimeo etc.)'
         }),
-        ('METADATA', {
+        ('METADATE', {
             'fields': ('recorded_at', 'duration_seconds', 'is_public'),
         }),
     ]
@@ -4922,7 +5385,7 @@ class MatchVideoRecordingAdmin(admin.ModelAdmin):
     def match_display(self, obj):
         """Display match name"""
         return obj.match.name
-    match_display.short_description = 'Match'
+    match_display.short_description = 'Meci'
     match_display.admin_order_field = 'match__name'
     
     def duration_display(self, obj):
@@ -4932,28 +5395,28 @@ class MatchVideoRecordingAdmin(admin.ModelAdmin):
             seconds = obj.duration_seconds % 60
             return f"{minutes}m {seconds}s"
         return '-'
-    duration_display.short_description = 'Duration'
+    duration_display.short_description = 'Durată'
 
     def category_display(self, obj):
         """Display category name"""
-        return obj.match.category.name if obj.match.category else 'No Category'
-    category_display.short_description = 'Category'
+        return obj.match.category.name if obj.match.category else 'Fără categorie'
+    category_display.short_description = 'Categorie'
     category_display.admin_order_field = 'match__category__name'
 
     def group_display(self, obj):
         """Display category group"""
         if obj.match.category and obj.match.category.group:
             return obj.match.category.group.name
-        return 'No Group'
-    group_display.short_description = 'Group'
+        return 'Fără grupă'
+    group_display.short_description = 'Grupă'
     group_display.admin_order_field = 'match__category__group__name'
 
     def competition_display(self, obj):
         """Display competition/event title"""
         if obj.match.category and obj.match.category.event:
             return obj.match.category.event.title
-        return 'No Competition'
-    competition_display.short_description = 'Competition'
+        return 'Fără eveniment'
+    competition_display.short_description = 'Eveniment'
     competition_display.admin_order_field = 'match__category__event__title'
 
 
@@ -4970,14 +5433,14 @@ class AthletePerformanceVideoAdmin(admin.ModelAdmin):
     # autocomplete_fields removed because CategoryAthleteScore admin is hidden
     
     fieldsets = [
-        ('SOLO CATEGORY', {
+        ('CATEGORIE SOLO', {
             'fields': ('athlete_score',),
         }),
-        ('VIDEO SOURCE', {
+        ('SURSĂ VIDEO', {
             'fields': ('video_file', 'video_url'),
-            'description': 'Provide either a video file OR a video URL (YouTube, Vimeo, etc.)'
+            'description': 'Furnizează fie un fișier video, fie un URL video (YouTube, Vimeo etc.)'
         }),
-        ('METADATA', {
+        ('METADATE', {
             'fields': ('recorded_at', 'duration_seconds', 'is_public'),
         }),
     ]
@@ -4986,26 +5449,26 @@ class AthletePerformanceVideoAdmin(admin.ModelAdmin):
         """Display athlete name"""
         athlete = obj.athlete_score.athlete
         return f"{athlete.first_name} {athlete.last_name}"
-    athlete_display.short_description = 'Athlete'
+    athlete_display.short_description = 'Sportiv'
     
     def category_display(self, obj):
         """Display category name"""
         return obj.athlete_score.category.name
-    category_display.short_description = 'Category'
+    category_display.short_description = 'Categorie'
     category_display.admin_order_field = 'athlete_score__category__name'
 
     def group_display(self, obj):
         """Display category group"""
         group = obj.athlete_score.category.group
-        return group.name if group else 'No Group'
-    group_display.short_description = 'Group'
+        return group.name if group else 'Fără grupă'
+    group_display.short_description = 'Grupă'
     group_display.admin_order_field = 'athlete_score__category__group__name'
 
     def competition_display(self, obj):
         """Display competition/event title"""
         event = obj.athlete_score.category.event
-        return event.title if event else 'No Competition'
-    competition_display.short_description = 'Competition'
+        return event.title if event else 'Fără eveniment'
+    competition_display.short_description = 'Eveniment'
     competition_display.admin_order_field = 'athlete_score__category__event__title'
 
 
@@ -5019,14 +5482,14 @@ class TeamPerformanceVideoAdmin(admin.ModelAdmin):
     # autocomplete_fields removed - CategoryTeam admin is disabled
     
     fieldsets = [
-        ('TEAM & CATEGORY', {
+        ('ECHIPĂ ȘI CATEGORIE', {
             'fields': ('category_team',),
         }),
-        ('VIDEO SOURCE', {
+        ('SURSĂ VIDEO', {
             'fields': ('video_file', 'video_url'),
-            'description': 'Provide either a video file OR a video URL (YouTube, Vimeo, etc.)'
+            'description': 'Furnizează fie un fișier video, fie un URL video (YouTube, Vimeo etc.)'
         }),
-        ('METADATA', {
+        ('METADATE', {
             'fields': ('recorded_at', 'duration_seconds', 'is_public'),
         }),
     ]
@@ -5034,26 +5497,26 @@ class TeamPerformanceVideoAdmin(admin.ModelAdmin):
     def team_display(self, obj):
         """Display team name"""
         return obj.category_team.team.name
-    team_display.short_description = 'Team'
+    team_display.short_description = 'Echipă'
     
     def category_display(self, obj):
         """Display category name"""
         return obj.category_team.category.name
-    category_display.short_description = 'Category'
+    category_display.short_description = 'Categorie'
     category_display.admin_order_field = 'category_team__category__name'
 
     def group_display(self, obj):
         """Display category group"""
         group = obj.category_team.category.group
-        return group.name if group else 'No Group'
-    group_display.short_description = 'Group'
+        return group.name if group else 'Fără grupă'
+    group_display.short_description = 'Grupă'
     group_display.admin_order_field = 'category_team__category__group__name'
 
     def competition_display(self, obj):
         """Display competition/event title"""
         event = obj.category_team.category.event
-        return event.title if event else 'No Competition'
-    competition_display.short_description = 'Competition'
+        return event.title if event else 'Fără eveniment'
+    competition_display.short_description = 'Eveniment'
     competition_display.admin_order_field = 'category_team__category__event__title'
 
 
@@ -5068,30 +5531,30 @@ class CategoryTeamAdmin(admin.ModelAdmin):
     inlines = [TeamPerformanceVideoInline]
     
     fieldsets = [
-        ('TEAM & CATEGORY', {
+        ('ECHIPĂ ȘI CATEGORIE', {
             'fields': ('team', 'category'),
         }),
-        ('RESULTS', {
+        ('REZULTATE', {
             'fields': ('place', 'disqualified'),
-            'description': 'Note: Scoring is managed in the Team Category admin page where referee assignments are visible.'
+            'description': 'Notă: punctajul este administrat în pagina categoriei pe echipe, unde sunt vizibile atribuirea arbitrilor.'
         }),
-        ('SCORES (READ-ONLY)', {
+        ('SCORURI (DOAR CITIRE)', {
             'fields': ('ref1_score', 'ref2_score', 'ref3_score', 'ref4_score', 'ref5_score', 'total_score_display'),
             'classes': ('collapse',),
-            'description': 'View-only scores. To edit scores, go to the Team Category page.'
+            'description': 'Scoruri doar pentru vizualizare. Pentru editare, mergi în pagina categoriei pe echipe.'
         }),
     ]
     
     def team_display(self, obj):
         """Display team name"""
         return obj.team.name
-    team_display.short_description = 'Team'
+    team_display.short_description = 'Echipă'
     team_display.admin_order_field = 'team__name'
     
     def category_display(self, obj):
         """Display category name"""
         return obj.category.name
-    category_display.short_description = 'Category'
+    category_display.short_description = 'Categorie'
     category_display.admin_order_field = 'category__name'
     
     def total_score_display(self, obj):
@@ -5099,4 +5562,44 @@ class CategoryTeamAdmin(admin.ModelAdmin):
         if obj.total_score is not None:
             return f"{obj.total_score:.2f}"
         return '-'
-    total_score_display.short_description = 'Total Score'
+    total_score_display.short_description = 'Scor total'
+
+
+@admin.register(LogEntry)
+class LogEntryAdmin(admin.ModelAdmin):
+    list_display = ('action_time', 'user', 'content_type', 'object_link', 'action_flag', 'change_message_summary')
+    list_filter = ('action_flag', 'content_type', 'user')
+    search_fields = ('object_repr', 'change_message', 'user__email', 'user__first_name', 'user__last_name')
+    readonly_fields = ('action_time', 'user', 'content_type', 'object_id', 'object_repr', 'action_flag', 'change_message')
+    date_hierarchy = 'action_time'
+    ordering = ('-action_time',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def object_link(self, obj):
+        if not obj.content_type_id or not obj.object_id:
+            return obj.object_repr
+        try:
+            return format_html(
+                '<a href="{}">{}</a>',
+                reverse(f'admin:{obj.content_type.app_label}_{obj.content_type.model}_change', args=[obj.object_id]),
+                obj.object_repr,
+            )
+        except Exception:
+            return obj.object_repr
+
+    object_link.short_description = 'Obiect'
+
+    def change_message_summary(self, obj):
+        if not obj.change_message:
+            return '—'
+        return obj.change_message[:160]
+
+    change_message_summary.short_description = 'Modificări'

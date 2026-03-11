@@ -77,6 +77,23 @@ export default function useCoachCentralizator(eventId) {
     return null;
   }, [eventData]);
 
+  const coachDeadline = useMemo(() => {
+    const raw = eventData?.effective_coach_registration_deadline || eventData?.coach_registration_deadline || eventData?.start_date;
+    if (!raw) return null;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }, [eventData]);
+
+  const coachDeadlineDateStr = useMemo(() => {
+    if (!coachDeadline) return null;
+    return coachDeadline.toISOString().slice(0, 10);
+  }, [coachDeadline]);
+
+  const isCoachDeadlinePassed = useMemo(() => {
+    if (!coachDeadline) return false;
+    return Date.now() > coachDeadline.getTime();
+  }, [coachDeadline]);
+
   const sortedCategories = useMemo(() => {
     const genderPriority = { male: 0, female: 1, mixt: 2 };
     return [...categories].sort((a, b) => {
@@ -171,6 +188,10 @@ export default function useCoachCentralizator(eventId) {
 
   const handleUnenroll = (enrollmentId, athleteName, catName, e, options = {}) => {
     e.stopPropagation();
+    if (isCoachDeadlinePassed && !user?.is_admin) {
+      window.alert('Deadline-ul pentru completarea centralizatorului a expirat.');
+      return;
+    }
     const enrollmentType = options.enrollmentType || 'athlete';
     setConfirmModal({
       title: enrollmentType === 'team' ? 'Scoate echipa' : 'Scoate sportivul',
@@ -196,6 +217,10 @@ export default function useCoachCentralizator(eventId) {
 
   const handleCellClick = async (clubId, catId, e) => {
     e.stopPropagation();
+    if (isCoachDeadlinePassed && !user?.is_admin) {
+      window.alert('Deadline-ul pentru completarea centralizatorului a expirat.');
+      return;
+    }
     // Only allow opening the picker for the coach's own club
     if (clubId !== myClubId) return;
 
@@ -214,6 +239,10 @@ export default function useCoachCentralizator(eventId) {
   };
 
   const handleToggleEnroll = async (athleteId, catId, weight) => {
+    if (isCoachDeadlinePassed && !user?.is_admin) {
+      window.alert('Deadline-ul pentru completarea centralizatorului a expirat.');
+      return;
+    }
     setBusy(true);
     try {
       const cat = categories.find(c => c.id === catId);
@@ -249,6 +278,10 @@ export default function useCoachCentralizator(eventId) {
   };
 
   const createTeamEnrollment = async (catId, athleteIds) => {
+    if (isCoachDeadlinePassed && !user?.is_admin) {
+      window.alert('Deadline-ul pentru completarea centralizatorului a expirat.');
+      return;
+    }
     const cat = categories.find((item) => item.id === catId);
     if (!cat || !isTeamCategoryType(cat.type) || athleteIds.length < 2) return;
 
@@ -308,6 +341,9 @@ export default function useCoachCentralizator(eventId) {
     loading, busy, setBusy,
     groups, categories, clubs,
     eventData, eventYear, eventDateStr,
+    coachDeadline,
+    coachDeadlineDateStr,
+    isCoachDeadlinePassed,
     sortedCategories, columnStructure, allCols,
     clubRows, athleteMap, countPerCat, totalAthletes,
     // UI state

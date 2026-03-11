@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { competitionAPI } from '@shared/lib/api';
 import { Spinner } from '@shared/components/ui';
+import { getSyncStatusMeta } from '@shared/lib/syncStatus';
 
 function formatDate(value) {
   if (!value) return '—';
@@ -88,6 +89,7 @@ export default function CompetitionList() {
       <div className="space-y-3 md:hidden">
         {sorted.map((ev) => {
           const status = getCompetitionStatus(ev, today);
+          const syncBadge = getSyncStatusMeta(ev);
           return (
             <button
               key={ev.id}
@@ -99,9 +101,14 @@ export default function CompetitionList() {
                 <div className="min-w-0 flex-1">
                   <h2 className="text-sm font-black uppercase tracking-wide text-gray-900">{ev.name}</h2>
                 </div>
-                <span className={`shrink-0 inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${status.className}`}>
-                  {status.label}
-                </span>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${status.className}`}>
+                    {status.label}
+                  </span>
+                  <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${syncBadge.className}`}>
+                    {syncBadge.label}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-gray-700">
@@ -116,7 +123,19 @@ export default function CompetitionList() {
               </div>
 
               <div className="mt-4 flex justify-end">
-                <span className="frvv-btn-primary px-3 py-1.5 text-xs">Deschide</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      navigate(`/competitions/${ev.id}/categories/sync`);
+                    }}
+                    className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700"
+                  >
+                    Sync
+                  </button>
+                  <span className="frvv-btn-primary px-3 py-1.5 text-xs">Deschide</span>
+                </div>
               </div>
             </button>
           );
@@ -137,10 +156,16 @@ export default function CompetitionList() {
           <tbody>
             {sorted.map((ev, index) => {
               const status = getCompetitionStatus(ev, today);
+              const syncBadge = getSyncStatusMeta(ev);
               return (
                 <tr key={ev.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="border-t border-gray-200 px-4 py-3 align-top md:min-w-[320px]">
                     <div className="font-bold text-gray-900">{ev.name}</div>
+                    <div className="mt-2">
+                      <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${syncBadge.className}`}>
+                        {syncBadge.label}
+                      </span>
+                    </div>
                   </td>
                   <td className="border-t border-gray-200 px-4 py-3 align-top text-gray-700">
                     {renderPeriod(ev)}
@@ -154,12 +179,20 @@ export default function CompetitionList() {
                     </span>
                   </td>
                   <td className="border-t border-gray-200 px-4 py-3 text-right align-top">
-                    <button
-                      onClick={() => navigate(`/competitions/${ev.id}/categories`)}
-                      className="frvv-btn-primary px-3 py-1.5 text-xs"
-                    >
-                      Deschide
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => navigate(`/competitions/${ev.id}/categories/sync`)}
+                        className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-300"
+                      >
+                        Sync
+                      </button>
+                      <button
+                        onClick={() => navigate(`/competitions/${ev.id}/categories`)}
+                        className="frvv-btn-primary px-3 py-1.5 text-xs"
+                      >
+                        Deschide
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

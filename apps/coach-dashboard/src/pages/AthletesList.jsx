@@ -62,6 +62,60 @@ function ApprovalInfoIcon() {
   );
 }
 
+function MobileAthleteCard({ athlete, annualVisa, medicalVisa, onOpen }) {
+  const profileImageUrl = imgUrl(athlete.profile_image);
+  const fullName = `${athlete.last_name || ''} ${athlete.first_name || ''}`.trim() || athlete.full_name || '—';
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full border-2 border-black bg-white p-4 text-left transition hover:bg-yellow-50"
+    >
+      <div className="flex items-start gap-3">
+        <div className="h-14 w-14 overflow-hidden rounded-full border border-gray-200 bg-gray-100 shrink-0">
+          <img
+            src={profileImageUrl || AVATAR_PLACEHOLDER}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = AVATAR_PLACEHOLDER;
+            }}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-base font-black text-gray-900">{fullName}</div>
+          <div className="mt-1 text-sm text-gray-600">Grad: {athlete.current_grade?.name || athlete.current_grade_name || '—'}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="min-w-0">
+          <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+            Status <ApprovalInfoIcon />
+          </div>
+          <div className="min-w-0 [&>span]:w-full [&>span]:justify-center [&>span]:px-1.5 [&>span]:text-[10px]">
+            <StatusBadge status={athlete.status} label={STATUS_LABELS[athlete.status] || athlete.status || '—'} />
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">Viza anuală</div>
+          <div className="min-w-0 [&>span]:w-full [&>span]:justify-center [&>span]:px-1.5 [&>span]:text-[10px]">
+            <VisaBadge visa={annualVisa} />
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">Viza medicală</div>
+          <div className="min-w-0 [&>span]:w-full [&>span]:justify-center [&>span]:px-1.5 [&>span]:text-[10px]">
+            <VisaBadge visa={medicalVisa} />
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export default function AthletesList() {
   const [athletes, setAthletes] = useState([]);
   const [annualVisas, setAnnualVisas] = useState([]);
@@ -134,7 +188,7 @@ export default function AthletesList() {
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <PageHeader title="Sportivi" subtitle="Sportivii din clubul tău">
         <button
           onClick={() => navigate('/athletes/new')}
@@ -147,7 +201,22 @@ export default function AthletesList() {
       {athletes.length === 0 ? (
         <EmptyState icon="🥋" title="Fără sportivi" message="Nu au fost găsiți sportivi în clubul tău." />
       ) : (
-        <DataTable columns={columns} rows={athletes} onRowClick={(r) => navigate(`/athletes/${r.id}`)} />
+        <>
+          <div className="hidden lg:block">
+            <DataTable columns={columns} rows={athletes} onRowClick={(r) => navigate(`/athletes/${r.id}`)} />
+          </div>
+          <div className="space-y-3 lg:hidden">
+            {athletes.map((athlete) => (
+              <MobileAthleteCard
+                key={athlete.id}
+                athlete={athlete}
+                annualVisa={latestAnnualVisaByAthlete.get(athlete.id)}
+                medicalVisa={latestMedicalVisaByAthlete.get(athlete.id)}
+                onOpen={() => navigate(`/athletes/${athlete.id}`)}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

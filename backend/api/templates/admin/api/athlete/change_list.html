@@ -1,15 +1,16 @@
 {% extends "admin/change_list.html" %}
+{% load i18n %}
 
 {% block object-tools-items %}
     {{ block.super }}
     <li>
-        <a href="{% url 'admin:api_athlete_download_template' %}" class="button" style="background-color: #17a2b8; color: white;">
-            📥 Download Excel Template
+        <a href="{% url 'admin:api_athlete_download_template' %}">
+            {% trans "Download Excel Template" %}
         </a>
     </li>
     <li>
-        <a href="{% url 'admin:api_athlete_import_excel' %}" class="button" style="background-color: #28a745; color: white;">
-            📤 Import from Excel
+        <a href="{% url 'admin:api_athlete_import_excel' %}">
+            {% trans "Import from Excel" %}
         </a>
     </li>
 {% endblock %}

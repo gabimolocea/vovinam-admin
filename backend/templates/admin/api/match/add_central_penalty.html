@@ -3,16 +3,16 @@
 {% block content %}
   <div class="app-match">
     <h1>{{ title }}</h1>
-    <p>Match: <strong>{{ match.name }}</strong></p>
-    <p>Central referee: <strong>{{ central_referee.first_name }} {{ central_referee.last_name }}</strong></p>
+    <p>Meci: <strong>{{ match.name }}</strong></p>
+    <p>Arbitru central: <strong>{{ central_referee.first_name }} {{ central_referee.last_name }}</strong></p>
     <form method="post" novalidate>
       {% csrf_token %}
       <table>
         {{ form.as_table }}
       </table>
       <div class="submit-row">
-        <input type="submit" value="Create penalty" class="default" />
-        <a href="{% url 'admin:api_match_change' match.pk %}">Cancel</a>
+        <input type="submit" value="Creează penalizarea" class="default" />
+        <a href="{% url 'admin:api_match_change' match.pk %}">Anulează</a>
       </div>
     </form>
   </div>

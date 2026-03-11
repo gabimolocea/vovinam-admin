@@ -8,6 +8,7 @@ const INITIAL_FORM = {
   address: '',
   start_date: '',
   end_date: '',
+  coach_registration_deadline: '',
   description: '',
 };
 
@@ -92,6 +93,7 @@ export default function CompetitionForm() {
         address: form.address.trim(),
         start_date: form.start_date,
         end_date: form.end_date || form.start_date,
+        coach_registration_deadline: form.coach_registration_deadline || form.start_date,
         description: form.description,
       };
       const { data } = await competitionAPI.create(payload);
@@ -140,6 +142,14 @@ export default function CompetitionForm() {
           <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Data de început *" name="start_date" type="datetime-local" value={form.start_date} onChange={setField('start_date')} required />
             <Field label="Data de sfârșit" name="end_date" type="datetime-local" value={form.end_date} onChange={setField('end_date')} />
+            <Field
+              label="Deadline antrenori"
+              name="coach_registration_deadline"
+              type="datetime-local"
+              value={form.coach_registration_deadline}
+              onChange={setField('coach_registration_deadline')}
+              placeholder="Implicit: data de început"
+            />
             <div ref={cityBoxRef} className="relative sm:col-span-1">
               <label className="mb-1 block text-xs font-medium text-gray-600">Oraș</label>
               <input

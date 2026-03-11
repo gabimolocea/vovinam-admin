@@ -1,8 +1,16 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Spinner } from '@shared/components/ui';
-import { fieldAPI, scoreAPI } from '@shared/lib/api';
+import { diplomaTemplateAPI, fieldAPI, scoreAPI } from '@shared/lib/api';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
+import {
+  formatValueWithClub,
+  formatDiplomaGroupLabel,
+  formatDiplomaGroupWithGender,
+  generateDiplomaPdf,
+  getPlaceLabel,
+  resolveDiplomaTemplate,
+} from '../lib/diplomas';
 
 const PODIUM_STYLES = {
   1: 'bg-yellow-100 text-yellow-900 border-yellow-300',
@@ -102,6 +110,7 @@ export default function ClasamenteTehnicaPage() {
   const ctx = useContext(CentralizatorContext);
   const [scores, setScores] = useState([]);
   const [fieldAssignments, setFieldAssignments] = useState([]);
+  const [diplomaTemplates, setDiplomaTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const columnStructure = ctx?.columnStructure ?? [];
   const categories = ctx?.categories ?? [];
@@ -112,19 +121,22 @@ export default function ClasamenteTehnicaPage() {
     const loadScores = async () => {
       setLoading(true);
       try {
-        const [{ data: scoreData }, { data: assignmentData }] = await Promise.all([
+        const [{ data: scoreData }, { data: assignmentData }, { data: diplomaData }] = await Promise.all([
           scoreAPI.list({ event_id: eventId }),
           fieldAPI.assignments.list({ event_id: eventId }).catch(() => ({ data: [] })),
+          diplomaTemplateAPI.list({ event: eventId }).catch(() => ({ data: [] })),
         ]);
         if (isMounted) {
           setScores(normalizeListPayload(scoreData));
           setFieldAssignments(normalizeListPayload(assignmentData));
+          setDiplomaTemplates(normalizeListPayload(diplomaData));
         }
       } catch (error) {
         console.error('Failed to load technique rankings:', error);
         if (isMounted) {
           setScores([]);
           setFieldAssignments([]);
+          setDiplomaTemplates([]);
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -194,6 +206,61 @@ export default function ClasamenteTehnicaPage() {
     });
     return map;
   }, [fieldAssignments]);
+
+  const handleGenerateDiploma = async ({ category, group, place, result }) => {
+    let template = resolveDiplomaTemplate(diplomaTemplates, { place, scope: category.type });
+    if (!template) {
+      try {
+        const { data } = await diplomaTemplateAPI.list({ event: eventId });
+        const freshTemplates = normalizeListPayload(data);
+        setDiplomaTemplates(freshTemplates);
+        template = resolveDiplomaTemplate(freshTemplates, { place, scope: category.type });
+      } catch (error) {
+        console.error('Failed to refresh diploma templates:', error);
+      }
+    }
+    if (!template) {
+      window.alert('Nu există niciun șablon de diplomă disponibil pentru acest eveniment. Configurează unul în tab-ul Diplome.');
+      return;
+    }
+
+    const participantLabel = getParticipantLabel(result);
+    const clubLabel = getResultClubLabel(result, athleteClubMap);
+    const genderLabel = GENDER_LABELS[category.gender] || category.gender || '';
+    const groupLabel = formatDiplomaGroupLabel(group);
+    const isTeamCategory = category.type === 'team';
+    const values = {
+      athlete_name: isTeamCategory ? '' : participantLabel,
+      athlete_with_club: isTeamCategory ? '' : formatValueWithClub(participantLabel, clubLabel),
+      club_name: clubLabel,
+      team_name: isTeamCategory ? participantLabel : '',
+      team_with_club: isTeamCategory ? formatValueWithClub(participantLabel, clubLabel) : '',
+      group_name: groupLabel,
+      group_with_gender: formatDiplomaGroupWithGender(group, genderLabel),
+      category_name: category.name,
+      gender: genderLabel,
+      event_name: ctx?.eventData?.name || `Competiția #${eventId}`,
+      place_label: getPlaceLabel(place),
+    };
+
+    const previewWindow = window.open('about:blank', '_blank');
+    if (previewWindow && previewWindow.document) {
+      previewWindow.document.write('<title>Generare diplomă</title><p style="font-family: sans-serif; padding: 16px;">Se generează diploma...</p>');
+      previewWindow.document.close();
+    }
+    try {
+      await generateDiplomaPdf({
+        template,
+        values,
+        fileName: `${values.place_label}-${participantLabel || category.name}`,
+        previewWindow,
+      });
+    } catch (error) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close();
+      console.error('Failed to generate diploma PDF:', error);
+      window.alert(error.message || 'Nu s-a putut genera diploma.');
+    }
+  };
 
   if (!ctx) return null;
 
@@ -271,7 +338,16 @@ export default function ClasamenteTehnicaPage() {
                           <td className="border border-black/30 px-2 py-1.5 text-sm text-gray-900">
                             <div className="font-medium">{getParticipantLabel(result)}</div>
                             {result && (
-                              <div className="text-[11px] text-gray-500 mt-0.5">{getParticipantDetail(result)}</div>
+                              <>
+                                <div className="text-[11px] text-gray-500 mt-0.5">{getParticipantDetail(result)}</div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateDiploma({ category: cat, group, place, result })}
+                                  className="mt-2 inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                                >
+                                  Generează diploma
+                                </button>
+                              </>
                             )}
                           </td>
                           <td className="border border-black/30 px-2 py-1.5 text-sm text-gray-700">

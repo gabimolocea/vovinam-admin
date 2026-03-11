@@ -1,3 +1,5 @@
+from .request_context import clear_current_request, set_current_request
+
 """
 Channels middleware to authenticate WebSocket connections using JWT access tokens.
 """
@@ -8,6 +10,18 @@ from channels.middleware import BaseMiddleware
 from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+
+
+class CurrentUserAuditMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        set_current_request(request)
+        try:
+            return self.get_response(request)
+        finally:
+            clear_current_request()
 
 
 @database_sync_to_async

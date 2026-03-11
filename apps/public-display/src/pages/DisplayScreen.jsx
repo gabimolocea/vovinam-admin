@@ -78,6 +78,7 @@ export default function DisplayScreen() {
   const [matchRefAssignment, setMatchRefAssignment] = useState(null); // MatchRefereeAssignment
   const [rounds, setRounds] = useState([]);              // MatchRound[]
   const [matchEvents, setMatchEvents] = useState([]);     // MatchEvent[]
+  const [pointEvents, setPointEvents] = useState([]);     // RefereePointEvent[]
   const [revealed, setRevealed] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const intervalRef = useRef(null);
@@ -101,6 +102,7 @@ export default function DisplayScreen() {
         setMatchRefScores([]);
         setMatchRefAssignment(null);
         setMatchEvents([]);
+        setPointEvents([]);
         setRevealed(false);
         return;
       }
@@ -137,6 +139,8 @@ export default function DisplayScreen() {
         // Fetch match events (warnings, penalties, pauses)
         const { data: mev } = await api.get('/match-events/', { params: { match_id: sess.current_match } });
         setMatchEvents(Array.isArray(mev) ? mev : mev.results ?? []);
+        const { data: pte } = await api.get(`/matches/${sess.current_match}/point_events/`);
+        setPointEvents(Array.isArray(pte) ? pte : pte.results ?? []);
         // Fetch match referee assignment (to know total referee count)
         const { data: mra } = await api.get('/match-referee-assignments/', { params: { match_id: sess.current_match } });
         const mraList = Array.isArray(mra) ? mra : mra.results ?? [];
@@ -172,6 +176,7 @@ export default function DisplayScreen() {
         setMatchRefScores([]);
         setMatchRefAssignment(null);
         setMatchEvents([]);
+        setPointEvents([]);
 
         if (sess.current_category) {
           const { data: cat } = await api.get(`/categories/${sess.current_category}/`);
@@ -269,6 +274,7 @@ export default function DisplayScreen() {
         matchRefScores={matchRefScores}
         matchRefAssignment={matchRefAssignment}
         matchEvents={matchEvents}
+        pointEvents={pointEvents}
         session={session}
       />
     );
@@ -367,7 +373,7 @@ function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScore
     if (!group?.name) return '';
     const ys = group.birth_year_start || category?.birth_year_start;
     const ye = group.birth_year_end || category?.birth_year_end;
-    if (ys && ye) return `${group.name} (${ye} - ${ys})`;
+    if (ys && ye) return `${group.name} (${ys} - ${ye})`;
     if (ys) return `${group.name} (${ys})`;
     return group.name;
   })();
@@ -485,7 +491,119 @@ function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScore
    FIGHT DISPLAY — TV-optimised, black background,
    large scaleable text, mockup-matching layout
    ═══════════════════════════════════════════════════════ */
-function FightDisplay({ event, category, group, match, rounds, matchRefScores, matchRefAssignment, matchEvents, session }) {
+const REAL_TIME_POINT_VALIDATION_WINDOW_MS = 1500;
+const REAL_TIME_REFEREE_HIGHLIGHT_MS = 1500;
+
+function getRealtimePointRoundKey(event) {
+  const metadata = event?.metadata || {};
+  return metadata.round_id || metadata.round || 'unassigned';
+}
+
+function getRealtimePointComparisonTimestamp(event) {
+  const metadata = event?.metadata || {};
+  const clientTimestamp = Number(metadata.client_timestamp_ms);
+  if (Number.isFinite(clientTimestamp)) return clientTimestamp;
+  const serverTimestamp = new Date(event?.timestamp || 0).getTime();
+  return Number.isFinite(serverTimestamp) ? serverTimestamp : 0;
+}
+
+function aggregateRealtimeValidatedPoints(pointEvents) {
+  const groupedEvents = new Map();
+
+  (pointEvents || [])
+    .filter((event) => event && event.validation_status === 'validated' && event.event_type !== 'penalty')
+    .sort((a, b) => {
+      const timeA = getRealtimePointComparisonTimestamp(a);
+      const timeB = getRealtimePointComparisonTimestamp(b);
+      if (timeA !== timeB) return timeA - timeB;
+      return (a.id || 0) - (b.id || 0);
+    })
+    .forEach((event) => {
+      const groupKey = [
+        getRealtimePointRoundKey(event),
+        event.side || 'red',
+        Number(event.points || 0),
+        event.event_type || 'score',
+      ].join('|');
+      const currentGroups = groupedEvents.get(groupKey) || [];
+      const eventTimestamp = getRealtimePointComparisonTimestamp(event);
+      const lastGroup = currentGroups[currentGroups.length - 1];
+
+      if (!lastGroup || eventTimestamp - lastGroup.anchorTimestamp >= REAL_TIME_POINT_VALIDATION_WINDOW_MS) {
+        currentGroups.push({
+          anchorTimestamp: eventTimestamp,
+          events: [event],
+          refereeIds: new Set(event.referee ? [event.referee] : []),
+        });
+      } else {
+        lastGroup.events.push(event);
+        if (event.referee) {
+          lastGroup.refereeIds.add(event.referee);
+        }
+      }
+
+      groupedEvents.set(groupKey, currentGroups);
+    });
+
+  let red = 0;
+  let blue = 0;
+
+  groupedEvents.forEach((groups) => {
+    groups.forEach((group) => {
+      if (group.refereeIds.size < 2 || !group.events.length) return;
+      const awardedEvent = group.events[0];
+      const awardedPoints = Number(awardedEvent.points || 0);
+      if (awardedEvent.side === 'blue') {
+        blue += awardedPoints;
+      } else {
+        red += awardedPoints;
+      }
+    });
+  });
+
+  return { red, blue };
+}
+
+function getRealtimeRefereeIndicators(matchRefAssignment, pointEvents) {
+  const labels = [1, 2, 3, 4].map((index) => ({
+    slot: index,
+    label: `A${index}`,
+    refereeId: matchRefAssignment?.[`referee_${index}`] || null,
+  }));
+
+  const now = Date.now();
+  const activeBySide = { red: new Set(), blue: new Set() };
+
+  (pointEvents || []).forEach((event) => {
+    if (!event || event.validation_status === 'rejected' || !event.referee) return;
+    const side = event.side === 'blue' ? 'blue' : 'red';
+    const eventTimestamp = getRealtimePointComparisonTimestamp(event);
+    if (!eventTimestamp || now - eventTimestamp > REAL_TIME_REFEREE_HIGHLIGHT_MS) return;
+    activeBySide[side].add(event.referee);
+  });
+
+  return {
+    red: labels.map((item) => ({ ...item, active: !!item.refereeId && activeBySide.red.has(item.refereeId) })),
+    blue: labels.map((item) => ({ ...item, active: !!item.refereeId && activeBySide.blue.has(item.refereeId) })),
+  };
+}
+
+function RefereeSignalColumn({ indicators = [], align = 'left' }) {
+  return (
+    <div className={`absolute top-[1.5vh] flex flex-col gap-[0.9vh] ${align === 'right' ? 'right-[1.2vw] items-end' : 'left-[1.2vw] items-start'}`}>
+      {indicators.map((indicator) => (
+        <div
+          key={indicator.label}
+          className={`flex min-h-[4.8vh] min-w-[5vw] items-center justify-center px-[0.85vw] text-[1.35vw] font-black uppercase tracking-[0.12em] ${indicator.active ? 'bg-yellow-300 text-black' : 'bg-gray-300 text-gray-700'}`}
+        >
+          {indicator.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FightDisplay({ event, category, group, match, rounds, matchRefScores, matchRefAssignment, matchEvents, pointEvents, session }) {
   // Winner flash animation
   const [flashOn, setFlashOn] = useState(true);
 
@@ -495,6 +613,8 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
   const completedRounds = sortedRounds.filter(r => r.status === 'completed').length;
   const totalRounds = sortedRounds.length || match?.total_rounds || 3;
   const allRoundsDone = completedRounds >= totalRounds && totalRounds > 0;
+  const isRealTimeMode = match?.display_mode === 'real_time';
+  const winnerRevealed = session?.status === 'winner_revealed';
 
   // Break detection
   const lastCompletedIdx = sortedRounds.reduce((acc, r, i) => r.status === 'completed' ? i : acc, -1);
@@ -520,7 +640,9 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
   // Timer label
   let timerLabel = '';
   if (allRoundsDone) {
-    timerLabel = 'ARBITRII';
+    timerLabel = isRealTimeMode
+      ? `REPRIZA ${lastCompletedRound?.round_number || totalRounds} — TERMINATĂ`
+      : 'ARBITRII';
   } else if (isInBreak && nextScheduledRound) {
     timerLabel = `REPRIZA ${nextScheduledRound.round_number} ÎNCEPE ÎN`;
   } else if (activeRound) {
@@ -562,78 +684,49 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
 
   // Total scores from all referees' round scores + adjustments
   const allRoundScores = matchRefScores.filter(s => s.round != null);
-  const grandTotalRed = allRoundScores.reduce((s, sc) => s + Number(sc.red_corner_score || 0), 0) + adjustRed;
-  const grandTotalBlue = allRoundScores.reduce((s, sc) => s + Number(sc.blue_corner_score || 0), 0) + adjustBlue;
-
-  // Build referee list from assignment (same logic as admin)
-  const assignedReferees = [];
-  if (matchRefAssignment) {
-    for (let i = 1; i <= 5; i++) {
-      const id = matchRefAssignment[`referee_${i}`];
-      const name = matchRefAssignment[`referee_${i}_name`];
-      if (id) assignedReferees.push({ pos: i, id, name: name || `A${i}` });
-    }
-  }
-  // Fallback: if no assignment, use unique refs from scores, or default 5 empty
-  const uniqueRefIds = [...new Set(matchRefScores.map(s => s.referee))];
-  const totalRefCount = assignedReferees.length || uniqueRefIds.length || 5;
-  // Build slots for all referees
-  const refereeDecisionData = Array.from({ length: totalRefCount }, (_, i) => {
-    const ref = assignedReferees[i] || null;
-    const refId = ref?.id || uniqueRefIds[i] || null;
-    if (!refId) return { slot: i + 1, refId: null, name: `A${i + 1}`, choice: null, totalRed: 0, totalBlue: 0 };
-    const decision = matchRefScores.find(s => s.referee === refId && s.round == null && s.winner_choice);
-    const refRoundScores = allRoundScores.filter(s => s.referee === refId);
-    const totalRed = refRoundScores.reduce((s, sc) => s + Number(sc.red_corner_score || 0), 0);
-    const totalBlue = refRoundScores.reduce((s, sc) => s + Number(sc.blue_corner_score || 0), 0);
-    const refName = ref?.name || decision?.referee_name || matchRefScores.find(s => s.referee === refId)?.referee_name || `A${i + 1}`;
-    return { slot: i + 1, refId, name: refName, choice: decision?.winner_choice || null, totalRed, totalBlue };
-  });
-
-  // Admin controls reveal via monitor session status
-  const winnerRevealed = session?.status === 'winner_revealed';
+  const realtimeConsensusTotals = aggregateRealtimeValidatedPoints(pointEvents || []);
+  const refereeIndicators = getRealtimeRefereeIndicators(matchRefAssignment, pointEvents || []);
+  const grandTotalRed = (isRealTimeMode
+    ? realtimeConsensusTotals.red
+    : allRoundScores.reduce((s, sc) => s + Number(sc.red_corner_score || 0), 0)) + adjustRed;
+  const grandTotalBlue = (isRealTimeMode
+    ? realtimeConsensusTotals.blue
+    : allRoundScores.reduce((s, sc) => s + Number(sc.blue_corner_score || 0), 0)) + adjustBlue;
 
   // Winner — computed from disqualification or referee decisions
   const winner =
     disqualifiedRed ? { name: match.blue_corner_full_name || 'Sportiv 2', corner: 'blue', club: match.blue_corner_club_name || '', reason: 'DESCALIFICARE' }
     : disqualifiedBlue ? { name: match.red_corner_full_name || 'Sportiv 1', corner: 'red', club: match.red_corner_club_name || '', reason: 'DESCALIFICARE' }
+    : isRealTimeMode && allRoundsDone && grandTotalRed > grandTotalBlue ? { name: match.red_corner_full_name || 'Sportiv 1', corner: 'red', club: match.red_corner_club_name || '', reason: null }
+    : isRealTimeMode && allRoundsDone && grandTotalBlue > grandTotalRed ? { name: match.blue_corner_full_name || 'Sportiv 2', corner: 'blue', club: match.blue_corner_club_name || '', reason: null }
     : decisions.length > 0 && redVotes > blueVotes ? { name: match.red_corner_full_name || 'Sportiv 1', corner: 'red', club: match.red_corner_club_name || '', reason: null }
     : decisions.length > 0 && blueVotes > redVotes ? { name: match.blue_corner_full_name || 'Sportiv 2', corner: 'blue', club: match.blue_corner_club_name || '', reason: null }
     : null;
 
+  // Display states:
+  const showWinnerView = isRealTimeMode
+    ? allRoundsDone && winnerRevealed && !!winner
+    : allRoundsDone && !!winner;
+  const showAthletesView = !showWinnerView;
+
   // Flash effect for winner card
   useEffect(() => {
-    if (!winner || !winnerRevealed) return;
+    if (!winner || !showWinnerView) return;
     const id = setInterval(() => setFlashOn(f => !f), 600);
     return () => clearInterval(id);
-  }, [winner, winnerRevealed]);
-
-  // 7-second delay after winner_revealed before transitioning from decisions to winner screen
-  const [showWinnerScreen, setShowWinnerScreen] = useState(false);
-  useEffect(() => {
-    if (!winnerRevealed) {
-      setShowWinnerScreen(false);
-      return;
-    }
-    const timer = setTimeout(() => setShowWinnerScreen(true), 7000);
-    return () => clearTimeout(timer);
-  }, [winnerRevealed]);
-
-  // Display states:
-  // 1. Athletes view: during rounds and breaks
-  // 2. Referee boxes view: all rounds done — gray placeholders until winner revealed,
-  //    then colored boxes with scores for 7s before winner screen
-  // 3. Winner view: 7s after admin pressed "Afișează câștigătorul"
-  const showWinnerView = allRoundsDone && winnerRevealed && showWinnerScreen && winner;
-  const showRefBoxesView = allRoundsDone && !showWinnerView;
-  const showAthletesView = !allRoundsDone;
+  }, [winner, showWinnerView]);
+  const validatedPointEvents = (pointEvents || []).filter(event => event.validation_status !== 'rejected');
+  const latestPointEvent = validatedPointEvents.length ? validatedPointEvents[validatedPointEvents.length - 1] : null;
+  const liveTickerLabel = latestPointEvent
+    ? `${latestPointEvent.referee_name || 'Arbitru'} · ${latestPointEvent.side === 'red' ? 'ROȘU' : 'ALBASTRU'} ${Number(latestPointEvent.points) > 0 ? '+' : ''}${latestPointEvent.points}`
+    : 'Se așteaptă puncte validate';
 
   // Group display with years
   const groupDisplay = (() => {
     if (!group?.name) return '';
     const ys = group.birth_year_start || category?.birth_year_start;
     const ye = group.birth_year_end || category?.birth_year_end;
-    if (ys && ye) return `${group.name} (${ye} - ${ys})`;
+    if (ys && ye) return `${group.name} (${ys} - ${ye})`;
     if (ys) return `${group.name} (${ys})`;
     return group.name;
   })();
@@ -669,8 +762,10 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
         <div className={`${timerBg} px-[3vw] py-[1vh] text-center`} style={{ minWidth: '35vw' }}>
           <p className="text-[1.5vw] font-black text-gray-900 uppercase tracking-wider leading-tight">{timerLabel}</p>
           <div className="text-[8vw] font-black text-gray-900 tabular-nums leading-none py-[0.5vh]">
-            {allRoundsDone ? (
-              'DECIZIA'
+            {allRoundsDone && !showWinnerView ? (
+              isRealTimeMode ? '00:00' : 'DECIZIA'
+            ) : showWinnerView ? (
+              isRealTimeMode ? 'FINAL' : 'DECIZIA'
             ) : isInBreak ? (
               <BreakCountdown endedAt={lastCompletedRound?.ended_at} session={session} />
             ) : (
@@ -692,69 +787,41 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
         {showAthletesView && (
           <div className="flex gap-[1.5vw] flex-1 min-h-0">
             {/* RED corner */}
-            <div className={`flex-1 flex flex-col justify-center px-[3vw] py-[2vh] border-4 ${disqualifiedRed ? 'bg-gray-700 border-gray-600' : 'bg-red-600 border-red-500'}`}>
-              <h2 className="text-[4.5vw] font-black text-white leading-tight">
-                {match?.red_corner_full_name || 'TBD'}
-              </h2>
-              <p className="text-[2.5vw] font-black text-white/80 uppercase mt-[0.5vh]">
-                {match?.red_corner_club_name || ''}
-              </p>
+            <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedRed ? 'bg-gray-700' : 'bg-red-600'}`}>
+              {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.red} align="left" />}
+              {isRealTimeMode && (
+                <p className="absolute left-1/2 top-[43%] -translate-x-1/2 -translate-y-1/2 text-[10vw] font-black text-white tabular-nums leading-none">
+                  {grandTotalRed}
+                </p>
+              )}
+              <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
+                <h2 className={`${isRealTimeMode ? 'text-[2.6vw]' : 'text-[4.5vw]'} font-black text-white leading-tight`}>
+                  {match?.red_corner_full_name || 'TBD'}
+                </h2>
+                <p className={`${isRealTimeMode ? 'text-[1.45vw]' : 'text-[2.5vw]'} font-black text-white/80 uppercase mt-[0.7vh]`}>
+                  {match?.red_corner_club_name || ''}
+                </p>
+              </div>
               {disqualifiedRed && <p className="text-[2vw] font-black text-red-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
             </div>
 
             {/* BLUE corner */}
-            <div className={`flex-1 flex flex-col justify-center px-[3vw] py-[2vh] border-4 ${disqualifiedBlue ? 'bg-gray-700 border-gray-600' : 'bg-blue-600 border-blue-500'}`}>
-              <h2 className="text-[4.5vw] font-black text-white leading-tight">
-                {match?.blue_corner_full_name || 'TBD'}
-              </h2>
-              <p className="text-[2.5vw] font-black text-white/80 uppercase mt-[0.5vh]">
-                {match?.blue_corner_club_name || ''}
-              </p>
-              {disqualifiedBlue && <p className="text-[2vw] font-black text-blue-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
-            </div>
-          </div>
-        )}
-
-        {/* ── REFEREE BOXES VIEW: all rounds done — boxes color as referees submit decisions ── */}
-        {showRefBoxesView && (
-          <div className="flex flex-col items-center justify-center flex-1">
-            {/* Disqualification / KO banner */}
-            {(disqualifiedRed || disqualifiedBlue) && (
-              <div className="mb-[2vh] text-center">
-                <p className="text-[3vw] font-black text-red-500 uppercase tracking-wider">
-                  {disqualifiedRed ? `${match?.red_corner_full_name || 'Roșu'} — DESCALIFICAT` : `${match?.blue_corner_full_name || 'Albastru'} — DESCALIFICAT`}
+            <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedBlue ? 'bg-gray-700' : 'bg-blue-600'}`}>
+              {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.blue} align="right" />}
+              {isRealTimeMode && (
+                <p className="absolute left-1/2 top-[43%] -translate-x-1/2 -translate-y-1/2 text-[10vw] font-black text-white tabular-nums leading-none">
+                  {grandTotalBlue}
+                </p>
+              )}
+              <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
+                <h2 className={`${isRealTimeMode ? 'text-[2.6vw]' : 'text-[4.5vw]'} font-black text-white leading-tight`}>
+                  {match?.blue_corner_full_name || 'TBD'}
+                </h2>
+                <p className={`${isRealTimeMode ? 'text-[1.45vw]' : 'text-[2.5vw]'} font-black text-white/80 uppercase mt-[0.7vh]`}>
+                  {match?.blue_corner_club_name || ''}
                 </p>
               </div>
-            )}
-            <div className="flex gap-[1.5vw] mb-[2vh]">
-              {refereeDecisionData.map((ref) => {
-                // Show colored box if decision is submitted AND admin pressed winner reveal
-                const showChoice = winnerRevealed && ref.choice;
-                return (
-                  <div key={ref.slot} className="flex flex-col items-center gap-[1vh]">
-                    <div className={`w-[16vw] h-[30vh] flex items-center justify-center text-[6vw] font-black ${
-                      showChoice && ref.choice === 'red' ? 'bg-red-600 text-white'
-                      : showChoice && ref.choice === 'blue' ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-500'
-                    }`} style={!showChoice ? { animationDelay: `${ref.slot * 0.3}s` } : undefined}>
-                      A{ref.slot}
-                    </div>
-                    {/* Total scores per referee: red | blue (including admin adjustments) — shown only after decisions revealed */}
-                    {showChoice ? (
-                      <div className="flex gap-[1.5vw] items-center">
-                        <span className="text-[1.4vw] font-black text-red-500 tabular-nums">{ref.totalRed + adjustRed}</span>
-                        <span className="text-[1vw] text-gray-600">—</span>
-                        <span className="text-[1.4vw] font-black text-blue-500 tabular-nums">{ref.totalBlue + adjustBlue}</span>
-                      </div>
-                    ) : (
-                      <div className="flex gap-[1vw]">
-                        <div className="w-[3vw] h-[0.6vh] bg-gray-600" />
-                        <div className="w-[3vw] h-[0.6vh] bg-gray-600" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {disqualifiedBlue && <p className="text-[2vw] font-black text-blue-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
             </div>
           </div>
         )}
@@ -763,51 +830,69 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
         {showWinnerView && winner && (
           <div className="flex gap-[1.5vw] flex-1 min-h-0">
             {/* RED corner */}
-            <div className={`flex-1 flex flex-col justify-center px-[3vw] py-[2vh] border-4 transition-colors duration-300 ${
+            <div className={`relative flex-1 px-[3vw] py-[2vh] transition-colors duration-300 ${
               winner.corner === 'red'
-                ? (flashOn ? 'bg-white border-white' : 'bg-red-600 border-red-500')
-                : 'bg-red-600 border-red-500'
+                ? (flashOn ? 'bg-white' : 'bg-red-600')
+                : 'bg-red-600'
             }`}>
-              <h2 className={`text-[4.5vw] font-black leading-tight ${
-                winner.corner === 'red' && flashOn ? 'text-red-600' : 'text-white'
-              }`}>
-                {match?.red_corner_full_name || 'TBD'}
-              </h2>
-              <p className={`text-[2.5vw] font-black uppercase mt-[0.5vh] ${
-                winner.corner === 'red' && flashOn ? 'text-red-600/70' : 'text-white/80'
-              }`}>
-                {match?.red_corner_club_name || ''}
-              </p>
+              {isRealTimeMode && (
+                <p className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[10vw] font-black tabular-nums leading-none ${
+                  winner.corner === 'red' && flashOn ? 'text-red-600' : 'text-white'
+                }`}>
+                  {grandTotalRed}
+                </p>
+              )}
+              <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
+                <h2 className={`${isRealTimeMode ? 'text-[2.8vw]' : 'text-[4.5vw]'} font-black leading-tight ${
+                  winner.corner === 'red' && flashOn ? 'text-red-600' : 'text-white'
+                }`}>
+                  {match?.red_corner_full_name || 'TBD'}
+                </h2>
+                <p className={`${isRealTimeMode ? 'text-[1.55vw]' : 'text-[2.5vw]'} font-black uppercase mt-[0.7vh] ${
+                  winner.corner === 'red' && flashOn ? 'text-red-600/70' : 'text-white/80'
+                }`}>
+                  {match?.red_corner_club_name || ''}
+                </p>
+              </div>
             </div>
 
             {/* BLUE corner */}
-            <div className={`flex-1 flex flex-col justify-center px-[3vw] py-[2vh] border-4 transition-colors duration-300 ${
+            <div className={`relative flex-1 px-[3vw] py-[2vh] transition-colors duration-300 ${
               winner.corner === 'blue'
-                ? (flashOn ? 'bg-white border-white' : 'bg-blue-600 border-blue-500')
-                : 'bg-blue-600 border-blue-500'
+                ? (flashOn ? 'bg-white' : 'bg-blue-600')
+                : 'bg-blue-600'
             }`}>
-              <h2 className={`text-[4.5vw] font-black leading-tight ${
-                winner.corner === 'blue' && flashOn ? 'text-blue-600' : 'text-white'
-              }`}>
-                {match?.blue_corner_full_name || 'TBD'}
-              </h2>
-              <p className={`text-[2.5vw] font-black uppercase mt-[0.5vh] ${
-                winner.corner === 'blue' && flashOn ? 'text-blue-600/70' : 'text-white/80'
-              }`}>
-                {match?.blue_corner_club_name || ''}
-              </p>
+              {isRealTimeMode && (
+                <p className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[10vw] font-black tabular-nums leading-none ${
+                  winner.corner === 'blue' && flashOn ? 'text-blue-600' : 'text-white'
+                }`}>
+                  {grandTotalBlue}
+                </p>
+              )}
+              <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
+                <h2 className={`${isRealTimeMode ? 'text-[2.8vw]' : 'text-[4.5vw]'} font-black leading-tight ${
+                  winner.corner === 'blue' && flashOn ? 'text-blue-600' : 'text-white'
+                }`}>
+                  {match?.blue_corner_full_name || 'TBD'}
+                </h2>
+                <p className={`${isRealTimeMode ? 'text-[1.55vw]' : 'text-[2.5vw]'} font-black uppercase mt-[0.7vh] ${
+                  winner.corner === 'blue' && flashOn ? 'text-blue-600/70' : 'text-white/80'
+                }`}>
+                  {match?.blue_corner_club_name || ''}
+                </p>
+              </div>
             </div>
           </div>
         )}
       </div>
 
       {/* ═══ PERSISTENT BOTTOM BAR ═══ */}
-      {(showAthletesView || showRefBoxesView) && (
+      {showAthletesView && (
         <div className="flex items-center justify-between px-[3vw] py-[0.8vh] shrink-0">
           {/* Red side stats */}
           <div className="flex items-center gap-[2vw]">
             {/* Infraction boxes — hidden during referee decision phase */}
-            {!showRefBoxesView && (
+            <>
               <div className="flex gap-[0.5vw]">
                 {[0, 1, 2].map(i => (
                   <div key={i} className={`w-[2.5vw] h-[2.5vw] ${
@@ -815,25 +900,19 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
                   }`} />
                 ))}
               </div>
-            )}
+            </>
             <div>
               <p className="text-[1.6vw] text-orange-400 font-bold">
                 Avertismente: {warningsRed}
-                {showRefBoxesView && adjustRed !== 0 && (
-                  <span className="text-red-500 ml-[1vw]">({adjustRed >= 0 ? '+' : ''}{adjustRed} pct)</span>
-                )}
               </p>
-              {/* Abateri — hidden during referee decision phase */}
-              {!showRefBoxesView && (
-                <p className="text-[1.6vw] text-yellow-400 font-bold">Abateri: {currentInfractionsRed}</p>
-              )}
+              <p className="text-[1.6vw] text-yellow-400 font-bold">Abateri: {currentInfractionsRed}</p>
             </div>
           </div>
 
           {/* Blue side stats */}
           <div className="flex items-center gap-[2vw]">
             {/* Infraction boxes — hidden during referee decision phase */}
-            {!showRefBoxesView && (
+            <>
               <div className="flex gap-[0.5vw]">
                 {[0, 1, 2].map(i => (
                   <div key={i} className={`w-[2.5vw] h-[2.5vw] ${
@@ -841,18 +920,12 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
                   }`} />
                 ))}
               </div>
-            )}
+            </>
             <div>
               <p className="text-[1.6vw] text-orange-400 font-bold">
                 Avertismente: {warningsBlue}
-                {showRefBoxesView && adjustBlue !== 0 && (
-                  <span className="text-blue-500 ml-[1vw]">({adjustBlue >= 0 ? '+' : ''}{adjustBlue} pct)</span>
-                )}
               </p>
-              {/* Abateri — hidden during referee decision phase */}
-              {!showRefBoxesView && (
-                <p className="text-[1.6vw] text-yellow-400 font-bold">Abateri: {currentInfractionsBlue}</p>
-              )}
+              <p className="text-[1.6vw] text-yellow-400 font-bold">Abateri: {currentInfractionsBlue}</p>
             </div>
           </div>
         </div>

@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { matchAPI, roundAPI, matchRefereeScoreAPI, matchEventAPI } from '@shared/lib/api';
+import { matchAPI, roundAPI, matchRefereeScoreAPI, matchEventAPI, refereeAPI } from '@shared/lib/api';
 import { useAuth } from '@shared';
-import { Spinner } from '@shared/components/ui';
+import { Spinner, formatGroupBadgeLabel } from '@shared/components/ui';
 
 const POLL_INTERVAL = 2000;
 
 const SCORE_BUTTON_BASE = 'flex w-full items-center justify-center border-2 border-black text-white font-black uppercase tracking-[0.18em] transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed';
 const MODAL_ACTION_BASE = 'flex-1 border-2 border-black px-4 py-3 text-sm font-black uppercase tracking-[0.18em] transition active:scale-[0.98] disabled:opacity-40';
+const REALTIME_BUTTON_BASE = 'flex min-h-[20dvh] w-full flex-col items-center justify-center border-2 border-black font-black text-white transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed';
 
 export default function MatchScoring() {
   const { matchId } = useParams();
@@ -17,6 +18,7 @@ export default function MatchScoring() {
   const [rounds, setRounds] = useState([]);
   const [events, setEvents] = useState([]);
   const [refScores, setRefScores] = useState([]);
+  const [pointEvents, setPointEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmWinner, setConfirmWinner] = useState(null);
@@ -25,17 +27,19 @@ export default function MatchScoring() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [mR, rR, eR, sR] = await Promise.all([
+      const [mR, rR, eR, sR, pR] = await Promise.all([
         matchAPI.get(matchId),
         roundAPI.list({ match_id: matchId }),
         matchEventAPI.list({ match_id: matchId }),
         matchRefereeScoreAPI.list({ match_id: matchId }),
+        refereeAPI.pointEvents.list(matchId),
       ]);
       setMatch(mR.data);
       const rArr = Array.isArray(rR.data) ? rR.data : rR.data?.results || [];
       setRounds(rArr.sort((a, b) => a.round_number - b.round_number));
       setEvents(Array.isArray(eR.data) ? eR.data : eR.data?.results || []);
       setRefScores(Array.isArray(sR.data) ? sR.data : sR.data?.results || []);
+      setPointEvents(Array.isArray(pR.data) ? pR.data : pR.data?.results || []);
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -79,8 +83,30 @@ export default function MatchScoring() {
     }
   };
 
-  const addPoint = (corner, amount) => {
+  const addPoint = async (corner, amount) => {
     if (!activeRoundData) return;
+    if (match?.display_mode === 'real_time') {
+      setBusy(true);
+      try {
+        await refereeAPI.pointEvents.create(matchId, {
+          side: corner,
+          points: amount,
+          event_type: amount < 0 ? 'deduction' : 'score',
+          metadata: {
+            round: activeRoundData.round_number,
+            round_id: activeRoundData.id,
+            client_timestamp_ms: Date.now(),
+            origin: 'referee_scoring_app',
+          },
+        });
+        fetchAll();
+      } catch (err) {
+        console.error('Point event error:', err);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     const roundId = activeRoundData.id;
     setDraftScores(prev => {
       const myScore = getMyScoreForRound(roundId);
@@ -158,6 +184,88 @@ export default function MatchScoring() {
   // Active round draft scores for bottom buttons display
   const activeDraftRed = activeRoundData ? (draftScores[activeRoundData.id]?.red ?? (getMyScoreForRound(activeRoundData.id) ? Number(getMyScoreForRound(activeRoundData.id).red_corner_score) : 0)) : 0;
   const activeDraftBlue = activeRoundData ? (draftScores[activeRoundData.id]?.blue ?? (getMyScoreForRound(activeRoundData.id) ? Number(getMyScoreForRound(activeRoundData.id).blue_corner_score) : 0)) : 0;
+  const isRealTimeMode = match.display_mode === 'real_time';
+  const recentPointEvents = pointEvents.filter(event => event.referee === myAthleteId).slice(-6).reverse();
+
+  if (isRealTimeMode) {
+    const isInBreak = !activeRoundData && rounds.some(r => r.status === 'completed') && rounds.some(r => r.status === 'scheduled');
+    const isPaused = activeRoundData?.is_paused;
+    const buttonsDisabled = busy || isPaused || isInBreak || !activeRoundData;
+
+    return (
+      <div className="flex min-h-screen flex-col bg-black text-white">
+        <header className="flex items-center justify-between border-b-2 border-yellow-400 bg-black px-4 py-3">
+          <button onClick={() => navigate('/')} className="text-sm font-bold uppercase tracking-[0.14em] text-yellow-100 hover:text-yellow-300">&larr; Înapoi</button>
+          <div className="text-center">
+            <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-yellow-200">Scor timp real</p>
+            <h1 className="text-base font-black uppercase tracking-[0.18em]">Meci #{matchId}</h1>
+          </div>
+          <div className="text-right text-[11px] font-bold uppercase tracking-[0.18em] text-yellow-200">
+            {activeRoundData ? `R${activeRoundData.round_number}` : 'Pauză'}
+          </div>
+        </header>
+
+        <div className="border-b border-white/15 bg-zinc-950 px-4 py-3 text-center">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <div>
+              <h2 className="truncate text-xl font-black text-red-400">{match.red_corner_full_name || 'TBD'}</h2>
+              <p className="text-xs text-red-200/80">{activeDraftRed}</p>
+            </div>
+            <div className="text-xs font-black uppercase tracking-[0.28em] text-yellow-200">VS</div>
+            <div>
+              <h2 className="truncate text-xl font-black text-blue-400">{match.blue_corner_full_name || 'TBD'}</h2>
+              <p className="text-xs text-blue-200/80">{activeDraftBlue}</p>
+            </div>
+          </div>
+          <p className={`mt-3 text-sm font-bold uppercase tracking-[0.16em] ${isPaused ? 'text-amber-300' : isInBreak ? 'text-orange-300' : activeRoundData ? 'text-green-300' : 'text-zinc-400'}`}>
+            {isPaused ? 'Pauză de repriză' : isInBreak ? 'Pauză între reprize' : activeRoundData ? `Repriza ${activeRoundData.round_number} activă` : 'Aștept startul reprizei'}
+          </p>
+        </div>
+
+        <div className="grid flex-1 grid-cols-2">
+          <div className="grid grid-rows-2 border-r-2 border-black bg-red-950">
+            <button onClick={() => addPoint('red', 1)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-red-500 hover:bg-red-400`}>
+              <span className="text-6xl leading-none">+1</span>
+              <span className="mt-3 text-sm tracking-[0.22em]">ROȘU</span>
+            </button>
+            <button onClick={() => addPoint('red', 2)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-red-600 hover:bg-red-500`}>
+              <span className="text-6xl leading-none">+2</span>
+              <span className="mt-3 text-sm tracking-[0.22em]">ROȘU</span>
+            </button>
+          </div>
+
+          <div className="grid grid-rows-2 bg-blue-950">
+            <button onClick={() => addPoint('blue', 1)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-blue-500 hover:bg-blue-400`}>
+              <span className="text-6xl leading-none">+1</span>
+              <span className="mt-3 text-sm tracking-[0.22em]">ALBASTRU</span>
+            </button>
+            <button onClick={() => addPoint('blue', 2)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-blue-600 hover:bg-blue-500`}>
+              <span className="text-6xl leading-none">+2</span>
+              <span className="mt-3 text-sm tracking-[0.22em]">ALBASTRU</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="border-t border-white/15 bg-zinc-950 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-300">Ultimele acțiuni</p>
+            <p className="text-xs text-zinc-400">{recentPointEvents.length ? `${recentPointEvents.length} evenimente recente` : 'Fără evenimente încă'}</p>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            {recentPointEvents.map((event) => (
+              <div key={event.id} className="border border-white/10 bg-black/30 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <span className={`font-black ${event.side === 'red' ? 'text-red-300' : 'text-blue-300'}`}>{event.side === 'red' ? 'ROȘU' : 'ALBASTRU'}</span>
+                  <span className="font-black text-yellow-200">{event.points > 0 ? `+${event.points}` : event.points}</span>
+                </div>
+                <p className="mt-1 text-zinc-400">{event.validation_status_label || 'Validat'}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Winner names for confirmation
   const winnerName = confirmWinner === 'red' ? match.red_corner_full_name : match.blue_corner_full_name;
@@ -176,7 +284,7 @@ export default function MatchScoring() {
       {(match.category_name || match.group_name || match.round) && (
         <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-yellow-100 border-b-2 border-black shrink-0 flex-wrap">
           {match.category_name && <span className="frvv-chip">{match.category_name}</span>}
-          {match.group_name && <span className="frvv-chip">{match.group_name}</span>}
+          {match.group_name && <span className="frvv-chip">{formatGroupBadgeLabel(match.group_name, match)}</span>}
           {match.round && <span className="frvv-chip capitalize">{match.round}</span>}
         </div>
       )}
@@ -391,16 +499,20 @@ export default function MatchScoring() {
       {/* ── CONFIRM WINNER MODAL ── */}
       {confirmWinner && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setConfirmWinner(null)}>
-          <div className="w-full max-w-sm border-2 border-black bg-white p-6 text-center space-y-5" onClick={e => e.stopPropagation()}>
-            <p className="text-sm font-bold text-gray-500 uppercase tracking-wider">Confirmă decizia</p>
-            <p className="text-base text-gray-700">
+          <div className="w-full max-w-sm overflow-hidden border-2 border-black bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="border-b-2 border-black bg-yellow-300 px-5 py-4 text-center">
+              <h3 className="text-lg font-black text-gray-900">Confirmă câștigătorul</h3>
+            </div>
+            <div className="px-5 py-4 text-center">
+              <p className="text-base text-gray-700">
               Câștigător:{' '}
               <span className={`font-black ${confirmWinner === 'red' ? 'text-red-600' : 'text-blue-600'}`}>
                 {winnerName || (confirmWinner === 'red' ? 'Rosu' : 'Albastru')}
               </span>
               {' '}({winnerPoints} puncte)
-            </p>
-            <div className="flex gap-3">
+              </p>
+            </div>
+            <div className="flex flex-col-reverse gap-2 border-t-2 border-black bg-gray-50 px-5 py-4 sm:flex-row">
               <button onClick={() => setConfirmWinner(null)} className={`${MODAL_ACTION_BASE} bg-white text-gray-700 hover:bg-yellow-100`}>
                 Anulează
               </button>
@@ -408,7 +520,7 @@ export default function MatchScoring() {
                 className={`${MODAL_ACTION_BASE} text-white ${
                   confirmWinner === 'red' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
                 }`}>
-                ✓ Confirmă
+                Confirmă
               </button>
             </div>
           </div>

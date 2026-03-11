@@ -10,6 +10,7 @@ import TehnicaPage from './pages/TehnicaPage';
 import ClasamentLayout from './pages/ClasamentLayout';
 import ClasamenteTehnicaPage from './pages/ClasamenteTehnicaPage';
 import ClasamentCluburiPage from './pages/ClasamentCluburiPage';
+import ClasamentSportiviInscrisiPage from './pages/ClasamentSportiviInscrisiPage';
 import LuptaPage from './pages/LuptaPage';
 import ClasamenteLuptaPage from './pages/ClasamenteLuptaPage';
 import ProgramarePage from './pages/ProgramarePage';
@@ -18,6 +19,12 @@ import BracketPage from './pages/BracketPage';
 import ResultsPage from './pages/ResultsPage';
 import LivePage from './pages/LivePage';
 import LiveFullscreenPage from './pages/LiveFullscreenPage';
+import SyncCenterPage from './pages/SyncCenterPage';
+import DiplomaConfiguratorPage from './pages/DiplomaConfiguratorPage';
+
+function LegacySyncRedirect() {
+  return <Navigate to="../categories/sync" replace relative="path" />;
+}
 
 export default function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -44,6 +51,7 @@ export default function App() {
         <Route index element={<CompetitionList />} />
         <Route path="competitions/new" element={<CompetitionForm />} />
         <Route path="competitions/:id/results" element={<ResultsPage />} />
+        <Route path="competitions/:id/sync" element={<LegacySyncRedirect />} />
       </Route>
 
       {/* Categories pages render full-screen without top bar, with bottom tab navigation */}
@@ -62,12 +70,15 @@ export default function App() {
         <Route path="programare" element={<ProgramarePage />} />
         <Route path="arbitri" element={<ArbitriPage />} />
         <Route path="live" element={<LivePage />} />
+        <Route path="sync" element={<SyncCenterPage />} />
         <Route path="clasament" element={<ClasamentLayout />}>
           <Route index element={<Navigate to="tehnica" replace />} />
           <Route path="tehnica" element={<ClasamenteTehnicaPage />} />
           <Route path="lupta" element={<ClasamenteLuptaPage />} />
           <Route path="cluburi" element={<ClasamentCluburiPage />} />
+          <Route path="sportivi-inscrisi" element={<ClasamentSportiviInscrisiPage />} />
         </Route>
+        <Route path="diplome" element={<DiplomaConfiguratorPage />} />
       </Route>
 
       {/* Fullscreen live view — outside CategoriesLayout, no bottom tabs */}

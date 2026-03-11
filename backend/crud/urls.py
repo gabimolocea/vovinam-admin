@@ -3,10 +3,13 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView
+from django.views.generic.base import RedirectView
+from django.templatetags.static import static as static_url
 from api.views import health
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
+    path('favicon.ico', RedirectView.as_view(url=static_url('favicon.svg'), permanent=False)),
     path('admin/', admin.site.urls),
     path('i18n/', include('django.conf.urls.i18n')),
     path('api/', include('api.urls')),  # API endpoints will be at /api/

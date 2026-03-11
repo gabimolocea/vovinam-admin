@@ -119,6 +119,43 @@ except Exception:
     # may not be fully importable; silently skip proxy creation in that case.
     pass
 
+
+class DiplomaTemplate(models.Model):
+    TEMPLATE_KIND_CHOICES = [
+        ('first_place', 'Locul 1'),
+        ('second_place', 'Locul 2'),
+        ('third_place', 'Locul 3'),
+        ('participation', 'Participare'),
+    ]
+    CATEGORY_SCOPE_CHOICES = [
+        ('all', 'Toate categoriile'),
+        ('solo', 'Solo'),
+        ('team', 'Echipă'),
+        ('fight', 'Luptă'),
+    ]
+    PREVIEW_ORIENTATION_CHOICES = [
+        ('landscape', 'Landscape'),
+        ('portrait', 'Portrait'),
+    ]
+
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='diploma_templates')
+    title = models.CharField(max_length=120)
+    template_kind = models.CharField(max_length=20, choices=TEMPLATE_KIND_CHOICES)
+    category_scope = models.CharField(max_length=12, choices=CATEGORY_SCOPE_CHOICES, default='all')
+    pdf_file = models.FileField(upload_to='diploma_templates/')
+    preview_orientation = models.CharField(max_length=12, choices=PREVIEW_ORIENTATION_CHOICES, default='landscape')
+    placements = models.JSONField(default=list, blank=True, help_text='Listă de câmpuri poziționate pe diploma PDF.')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['event_id', 'category_scope', 'template_kind', 'id']
+        unique_together = ('event', 'template_kind', 'category_scope')
+
+    def __str__(self):
+        return f"{self.event.title} - {self.get_template_kind_display()} - {self.get_category_scope_display()}"
+
 class City(models.Model):
     name = models.CharField(max_length=100, unique=True)
     created = models.DateTimeField(auto_now_add=True)
@@ -1246,6 +1283,11 @@ class Match(models.Model):
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
     ]
+
+    DISPLAY_MODE_CHOICES = [
+        ('reveal_final', 'Reveal Final'),
+        ('real_time', 'Real Time Scoring'),
+    ]
     
     match_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this match (e.g., M1, M2, F-C1-Q1)')
     status = models.CharField(max_length=20, choices=MATCH_STATUS_CHOICES, default='scheduled', help_text='Current status of the match')
@@ -1262,6 +1304,7 @@ class Match(models.Model):
     central_referee = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='central_for_matches', limit_choices_to={'is_referee': True})
     # Winner is now computed from scoring system - no longer stored
     name = models.CharField(max_length=255, blank=True)  # Automatically generated match name
+    display_mode = models.CharField(max_length=20, choices=DISPLAY_MODE_CHOICES, default='reveal_final')
 
     class Meta:
         verbose_name_plural = 'Matches'
@@ -1455,6 +1498,11 @@ class RefereePointEvent(models.Model):
         ('deduction', 'Deduction'),
         ('other', 'Other'),
     ]
+    VALIDATION_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('validated', 'Validated'),
+        ('rejected', 'Rejected'),
+    ]
 
     match = models.ForeignKey('Match', on_delete=models.CASCADE, related_name='point_events')
     referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True})
@@ -1474,6 +1522,16 @@ class RefereePointEvent(models.Model):
         )
     )
     created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    validation_status = models.CharField(max_length=20, choices=VALIDATION_STATUS_CHOICES, default='validated')
+    validated_at = models.DateTimeField(null=True, blank=True)
+    recording_session = models.ForeignKey(
+        'FieldRecordingSession',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='referee_point_events'
+    )
+    video_offset_ms = models.IntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ['timestamp']
@@ -1816,6 +1874,63 @@ class CategoryRefereeScore(models.Model):
             raise ValidationError(
                 f"Referee scoring is only applicable to solo and team categories, not {self.athlete_score.type}"
             )
+
+
+class CategoryRefereeScoreEvent(models.Model):
+    ACTION_CHOICES = [
+        ('create', 'Create'),
+        ('update', 'Update'),
+        ('delete', 'Delete'),
+        ('reveal', 'Reveal'),
+    ]
+
+    SOURCE_CHOICES = [
+        ('referee_app', 'Referee App'),
+        ('competition_admin', 'Competition Admin'),
+        ('system', 'System'),
+    ]
+
+    athlete_score = models.ForeignKey(
+        'CategoryAthleteScore',
+        on_delete=models.CASCADE,
+        related_name='score_events',
+        help_text='The athlete/team score affected by this event'
+    )
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        limit_choices_to={'is_referee': True},
+        related_name='category_score_events',
+        help_text='The referee that produced this event'
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='update')
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='competition_admin')
+    score_value = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    previous_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    recording_session = models.ForeignKey(
+        'FieldRecordingSession',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='category_score_events'
+    )
+    video_offset_ms = models.IntegerField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['timestamp', 'id']
+        indexes = [
+            models.Index(fields=['athlete_score', 'timestamp']),
+            models.Index(fields=['referee', 'timestamp']),
+        ]
+        verbose_name = 'Category Referee Score Event'
+        verbose_name_plural = 'Category Referee Score Events'
+
+    def __str__(self):
+        return f"Category score event #{self.pk} ({self.action})"
 
 
 class CategoryAthleteScore(models.Model):
@@ -2551,6 +2666,41 @@ def create_notification_settings(sender, instance, created, **kwargs):
     """Create notification settings when a new user is created"""
     if created:
         NotificationSettings.objects.create(user=instance)
+
+
+class FieldRecordingSession(models.Model):
+    STATUS_CHOICES = [
+        ('recording', 'Recording'),
+        ('stopped', 'Stopped'),
+        ('failed', 'Failed'),
+    ]
+
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='field_recording_sessions')
+    field = models.ForeignKey('CompetitionField', on_delete=models.CASCADE, related_name='recording_sessions')
+    title = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recording')
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    obs_scene_name = models.CharField(max_length=255, blank=True)
+    obs_source_name = models.CharField(max_length=255, blank=True)
+    recording_file_name = models.CharField(max_length=255, blank=True)
+    recording_file_path = models.CharField(max_length=500, blank=True)
+    recording_url = models.URLField(blank=True, max_length=500)
+    notes = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-started_at', '-id']
+        indexes = [
+            models.Index(fields=['event', 'field', 'status']),
+            models.Index(fields=['started_at']),
+        ]
+
+    def __str__(self):
+        label = self.title or f"{self.field} recording"
+        return f"{label} ({self.started_at:%Y-%m-%d %H:%M})"
 
 
 class MatchVideoRecording(models.Model):

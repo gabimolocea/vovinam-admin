@@ -55,6 +55,15 @@ export default function ArbitriPage() {
 
   if (!ctx) return null;
 
+  const formatGradeLabel = (value) => {
+    if (!value) return '—';
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    if (typeof value === 'object') {
+      return value.name || value.label || value.title || '—';
+    }
+    return '—';
+  };
+
   const rosterAthleteIds = new Set(rosterRefs.map(r => r.athlete));
 
   const availableRefs = useMemo(() => (
@@ -240,7 +249,7 @@ export default function ArbitriPage() {
                       <td className="border border-black/20 bg-gray-50 px-2 py-1.5 text-center text-xs text-gray-500">{index + 1}</td>
                       <td className="border border-black/20 px-2 py-1.5 text-sm font-medium text-gray-900">{entry.athlete_name || `Arbitru #${entry.athlete}`}</td>
                       <td className="border border-black/20 px-2 py-1.5 text-sm text-gray-600">{entry.club_name || '—'}</td>
-                      <td className="border border-black/20 px-2 py-1.5 text-sm text-gray-600">{entry.grade || '—'}</td>
+                      <td className="border border-black/20 px-2 py-1.5 text-sm text-gray-600">{formatGradeLabel(entry.grade || entry.current_grade)}</td>
                       <td className="border border-black/20 px-2 py-1.5 text-center text-sm">
                         {entry.conflicts.length > 0 ? (
                           <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
@@ -311,7 +320,7 @@ export default function ArbitriPage() {
                                   {`${ref.last_name || ''} ${ref.first_name || ''}`.trim() || ref.athlete_name || `Arbitru #${ref.id}`}
                                 </p>
                                 <p className="truncate text-[11px] text-gray-500">
-                                  {(ref.club_name || 'fără club')} · {(ref.current_grade || ref.grade || '—')}
+                                  {(ref.club_name || 'fără club')} · {formatGradeLabel(ref.current_grade || ref.grade)}
                                 </p>
                               </div>
                               <span className="shrink-0 text-xs font-semibold text-blue-600">Adaugă</span>

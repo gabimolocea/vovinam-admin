@@ -8,6 +8,15 @@ class MetadataValidatorTests(TestCase):
         # should not raise
         validate_referee_point_event_metadata(valid)
 
+    def test_synced_metadata_ids_pass(self):
+        valid = {
+            'origin': 'match_event_sync',
+            'match_event_id': 12,
+            'match_referee_score_id': 34,
+            'round': 1,
+        }
+        validate_referee_point_event_metadata(valid)
+
     def test_invalid_round_fails(self):
         invalid = {'round': 0, 'central': True}
         with self.assertRaises(ValidationError):

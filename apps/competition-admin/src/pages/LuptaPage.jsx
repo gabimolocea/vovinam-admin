@@ -1,6 +1,7 @@
 import React, { useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import { fightWeightAPI, athleteAPI } from '@shared/lib/api';
+import { formatGroupBadgeLabel } from '@shared/components/ui';
 
 /* ═══════════════════════════════════════════════════════════════════
    LUPTA PAGE  –  Fight category weigh-in workflow
@@ -403,6 +404,7 @@ export default function LuptaPage() {
         const cat = categories.find(c => c.id === pickerCatId);
         const catName = cat?.name || '—';
         const group = groups.find(g => g.id === cat?.group);
+        const groupLabel = formatGroupBadgeLabel(group, cat);
         const dateStart = group?.birth_date_start || (group?.birth_year_start ? `${group.birth_year_start}-01-01` : null);
         const dateEnd = group?.birth_date_end || (group?.birth_year_end ? `${group.birth_year_end}-12-31` : null);
         const hasDateRange = dateStart && dateEnd;
@@ -465,6 +467,7 @@ export default function LuptaPage() {
                 Adaugă sportivi
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                {groupLabel && <span className="frvv-chip">{groupLabel}</span>}
                 <span className="frvv-chip">{catName}</span>
               </div>
               {hasDateRange && (

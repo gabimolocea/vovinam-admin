@@ -376,6 +376,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'match_number',
             'name',
             'status',
+            'display_mode',
             'category',
             'category_name',
             'category_group_name',
@@ -594,9 +595,17 @@ class MatchSerializer(serializers.ModelSerializer):
 
 class RefereePointEventSerializer(serializers.ModelSerializer):
     """Serializer for append-only referee point events (async mode)."""
+    referee_name = serializers.SerializerMethodField(read_only=True)
+    validation_status_label = serializers.CharField(source='get_validation_status_display', read_only=True)
+
     class Meta:
         model = None
-        fields = ['id', 'match', 'referee', 'timestamp', 'side', 'points', 'event_type', 'processed', 'external_id', 'metadata', 'created_by']
+        fields = [
+            'id', 'match', 'referee', 'referee_name', 'timestamp', 'side', 'points', 'event_type',
+            'processed', 'external_id', 'metadata', 'created_by', 'validation_status',
+            'validation_status_label', 'validated_at', 'recording_session', 'video_offset_ms'
+        ]
+        read_only_fields = ['timestamp', 'created_by', 'validated_at', 'video_offset_ms']
 
     def __init__(self, *args, **kwargs):
         # late-bind the model to avoid circular imports at module load time
@@ -606,6 +615,18 @@ class RefereePointEventSerializer(serializers.ModelSerializer):
         except Exception:
             self.Meta.model = None
         super().__init__(*args, **kwargs)
+
+    def get_referee_name(self, obj):
+        if obj.referee:
+            return f"{obj.referee.first_name} {obj.referee.last_name}".strip()
+        return None
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        validation_status = attrs.get('validation_status')
+        if validation_status == 'rejected' and not attrs.get('metadata'):
+            attrs['metadata'] = {'reason': 'rejected'}
+        return attrs
     
 
 class AnnualVisaSerializer(serializers.ModelSerializer):
@@ -1345,6 +1366,58 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
         return data
 
 
+class CategoryRefereeScoreEventSerializer(serializers.ModelSerializer):
+    referee_name = serializers.SerializerMethodField(read_only=True)
+    athlete_name = serializers.SerializerMethodField(read_only=True)
+    category_id = serializers.IntegerField(source='athlete_score.category_id', read_only=True)
+    event_id = serializers.IntegerField(source='athlete_score.category.event_id', read_only=True)
+
+    class Meta:
+        model = CategoryRefereeScoreEvent
+        fields = [
+            'id', 'athlete_score', 'category_id', 'event_id', 'referee', 'referee_name', 'athlete_name',
+            'action', 'source', 'score_value', 'previous_score', 'notes', 'timestamp', 'created_by',
+            'recording_session', 'video_offset_ms', 'metadata'
+        ]
+        read_only_fields = ['timestamp', 'created_by', 'video_offset_ms']
+
+    def get_referee_name(self, obj):
+        if obj.referee:
+            return f"{obj.referee.first_name} {obj.referee.last_name}".strip()
+        return None
+
+    def get_athlete_name(self, obj):
+        athlete_score = obj.athlete_score
+        if athlete_score.type == 'teams' and athlete_score.team_name:
+            return athlete_score.team_name
+        athlete = athlete_score.athlete
+        if athlete:
+            return f"{athlete.first_name} {athlete.last_name}".strip()
+        return None
+
+
+class FieldRecordingSessionSerializer(serializers.ModelSerializer):
+    field_name = serializers.CharField(source='field.name', read_only=True)
+    field_number = serializers.IntegerField(source='field.field_number', read_only=True)
+    event_title = serializers.CharField(source='event.title', read_only=True)
+    computed_duration_seconds = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = FieldRecordingSession
+        fields = [
+            'id', 'event', 'event_title', 'field', 'field_name', 'field_number', 'title', 'status',
+            'started_at', 'ended_at', 'obs_scene_name', 'obs_source_name', 'recording_file_name',
+            'recording_file_path', 'recording_url', 'notes', 'metadata', 'created_at', 'updated_at',
+            'computed_duration_seconds'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'computed_duration_seconds']
+
+    def get_computed_duration_seconds(self, obj):
+        if obj.started_at and obj.ended_at:
+            return max(int((obj.ended_at - obj.started_at).total_seconds()), 0)
+        return None
+
+
 class MatchRefereeScoreSerializer(serializers.ModelSerializer):
     """Serializer for individual referee scores in fighting matches"""
     referee_name = serializers.SerializerMethodField(read_only=True)
@@ -1546,7 +1619,7 @@ class OfflineMatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Match
-        fields = ['id', 'category_id', 'match_type', 'red_corner', 'blue_corner', 'name']
+        fields = ['id', 'category_id', 'match_type', 'red_corner', 'blue_corner', 'name', 'display_mode']
 
 
 class CategoryScoreApprovalSerializer(serializers.Serializer):
@@ -1639,6 +1712,74 @@ class CompetitionFieldSerializer(serializers.ModelSerializer):
             'start_time', 'category_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+
+class DiplomaTemplateSerializer(serializers.ModelSerializer):
+    pdf_url = serializers.SerializerMethodField()
+    event_name = serializers.CharField(source='event.title', read_only=True)
+
+    class Meta:
+        model = DiplomaTemplate
+        fields = [
+            'id', 'event', 'event_name', 'title', 'template_kind', 'category_scope', 'pdf_file', 'pdf_url',
+            'preview_orientation', 'placements', 'is_active', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_pdf_url(self, obj):
+        if not obj.pdf_file:
+            return None
+        request = self.context.get('request')
+        url = obj.pdf_file.url
+        return request.build_absolute_uri(url) if request else url
+
+    def validate_placements(self, value):
+        if value in [None, '']:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError('placements must be a list.')
+
+        allowed_align = {'left', 'center', 'right'}
+        allowed_field_keys = {
+            'athlete_name',
+            'athlete_with_club',
+            'club_name',
+            'team_name',
+            'team_with_club',
+            'group_name',
+            'group_with_gender',
+            'category_name',
+            'gender',
+            'event_name',
+            'place_label',
+        }
+        for item in value:
+            if not isinstance(item, dict):
+                raise serializers.ValidationError('Each placement must be an object.')
+            if not item.get('field_key'):
+                raise serializers.ValidationError('Each placement must include field_key.')
+            if item.get('field_key') not in allowed_field_keys:
+                raise serializers.ValidationError('Placement field_key is not supported.')
+            if 'x' not in item or 'y' not in item:
+                raise serializers.ValidationError('Each placement must include x and y coordinates.')
+            try:
+                x = float(item.get('x'))
+                y = float(item.get('y'))
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError('Placement coordinates must be numeric.') from exc
+            if x < 0 or x > 100 or y < 0 or y > 100:
+                raise serializers.ValidationError('Placement coordinates must be between 0 and 100.')
+            max_length = item.get('max_length', 0)
+            try:
+                max_length = int(max_length or 0)
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError('Placement max_length must be numeric.') from exc
+            if max_length < 0 or max_length > 500:
+                raise serializers.ValidationError('Placement max_length must be between 0 and 500.')
+            align = item.get('align', 'center')
+            if align not in allowed_align:
+                raise serializers.ValidationError('Placement align must be left, center, or right.')
+        return value
 
 
 class FieldBreakSerializer(serializers.ModelSerializer):

@@ -3,6 +3,64 @@ import { useNavigate } from 'react-router-dom';
 import { competitionAPI } from '@shared/lib/api';
 import { Spinner } from '@shared/components/ui';
 
+const formatDate = (value) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return String(value).slice(0, 10);
+};
+
+function InfoChip({ children, tone = 'default' }) {
+  const toneClass = tone === 'muted'
+    ? 'border-gray-300 bg-gray-100 text-gray-600'
+    : 'border-black bg-yellow-100 text-black';
+
+  return (
+    <span className={`inline-flex items-center border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${toneClass}`}>
+      {children}
+    </span>
+  );
+}
+
+function CompetitionCard({ event, disabled = false, onOpen }) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onOpen}
+      disabled={disabled}
+      title={disabled ? 'Competiția s-a încheiat — nu mai poți modifica înscrierile' : undefined}
+      className={`w-full border-2 p-4 text-left transition sm:p-5 ${
+        disabled
+          ? 'cursor-not-allowed border-gray-300 bg-gray-100 text-gray-500 opacity-70'
+          : 'border-black bg-white hover:bg-yellow-50'
+      }`}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <h3 className={`truncate text-base font-black ${disabled ? 'text-gray-500' : 'text-gray-900'}`}>
+            {event.name}
+          </h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {event.start_date ? <InfoChip tone={disabled ? 'muted' : 'default'}>{formatDate(event.start_date)}</InfoChip> : null}
+            {event.place ? <InfoChip tone={disabled ? 'muted' : 'default'}>{event.place}</InfoChip> : null}
+          </div>
+        </div>
+        <div className="shrink-0">
+          <span className={`inline-flex items-center border px-3 py-2 text-[11px] font-black uppercase tracking-wide ${
+            disabled
+              ? 'border-gray-300 bg-white text-gray-500'
+              : 'border-black bg-yellow-300 text-black'
+          }`}>
+            {disabled ? 'Încheiat' : 'Deschide centralizator'}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export default function CompetitionsList() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,68 +104,51 @@ export default function CompetitionsList() {
   const past = sorted.filter(ev => (ev.end_date || ev.start_date || '') < today);
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-lg font-black uppercase tracking-wide text-black">Competiții</h1>
-        <p className="text-sm text-gray-500">Selectează o competiție viitoare pentru a înscrie sportivi</p>
+    <div className="p-4 sm:p-6">
+      <div className="mb-6 border-b-2 border-black pb-4">
+        <h1 className="text-xl font-black uppercase tracking-wide text-black sm:text-2xl">Competiții</h1>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <InfoChip>{upcoming.length} viitoare</InfoChip>
+          <InfoChip tone="muted">{past.length} încheiate</InfoChip>
+        </div>
       </div>
 
       {/* ── UPCOMING ── */}
       {upcoming.length > 0 && (
-        <>
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Competiții viitoare</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+        <section className="mb-8">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Competiții viitoare</h2>
+            <span className="text-xs font-semibold text-gray-400">Poți modifica înscrierile</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {upcoming.map(ev => (
-              <button
+              <CompetitionCard
                 key={ev.id}
-                onClick={() => navigate(`/competitions/${ev.id}`)}
-                className="frvv-surface text-left p-4 transition-transform group hover:-translate-y-0.5"
-              >
-                <h3 className="text-sm font-bold text-gray-900 group-hover:text-black truncate">
-                  {ev.name}
-                </h3>
-                {ev.start_date && (
-                  <p className="text-xs text-gray-500 mt-1">📅 {ev.start_date}</p>
-                )}
-                {ev.place && (
-                  <p className="text-xs text-gray-400 mt-0.5 truncate">📍 {ev.place}</p>
-                )}
-                <span className="inline-block mt-2 border border-black bg-yellow-200 px-2 py-1 text-[10px] font-bold text-black">
-                  Deschide centralizator →
-                </span>
-              </button>
+                event={ev}
+                onOpen={() => navigate(`/competitions/${ev.id}`)}
+              />
             ))}
           </div>
-        </>
+        </section>
       )}
 
       {/* ── PAST ── */}
       {past.length > 0 && (
-        <>
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Competiții încheiate</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Competiții încheiate</h2>
+            <span className="text-xs font-semibold text-gray-400">Doar vizualizare</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {past.map(ev => (
-              <div
+              <CompetitionCard
                 key={ev.id}
-                className="text-left border-2 border-gray-300 bg-gray-100 p-4 opacity-60 cursor-not-allowed"
-                title="Competiția s-a încheiat — nu mai poți modifica înscrierile"
-              >
-                <h3 className="text-sm font-medium text-gray-500 truncate">
-                  {ev.name}
-                </h3>
-                {ev.start_date && (
-                  <p className="text-[11px] text-gray-400 mt-1">📅 {ev.start_date}</p>
-                )}
-                {ev.place && (
-                  <p className="text-[11px] text-gray-400 mt-0.5 truncate">📍 {ev.place}</p>
-                )}
-                <span className="inline-block mt-2 text-[10px] text-gray-400 font-medium">
-                  Încheiat
-                </span>
-              </div>
+                event={ev}
+                disabled
+              />
             ))}
           </div>
-        </>
+        </section>
       )}
     </div>
   );

@@ -1,12 +1,14 @@
-from django.db.models.signals import m2m_changed, post_save, pre_delete, post_delete, post_migrate
+from django.apps import apps as django_apps
+from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save, post_delete, post_migrate
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
-from django.contrib.admin.models import ADDITION, CHANGE, DELETION
+from django.contrib.admin.models import LogEntry
 from django.core.management import call_command
 from .models import *
 from .competition_defaults import ensure_standard_competition_groups_and_categories
 from .grade_catalog import sync_default_grades
-from .history_utils import log_addition, log_change
+from .history_utils import log_addition, log_change, log_deletion
+from .request_context import get_current_user, is_admin_request
 from landing.models import Event as LandingEvent
 
 
@@ -136,43 +138,102 @@ def create_default_competition_groups(sender, instance, created, **kwargs):
 # No need to manually update it when TeamMember is saved
 
 
-# Change history tracking signals
-# These signals create LogEntry records for objects created/modified via API
-# so they show up in Django admin history views
+def _get_history_user(instance):
+    user = getattr(instance, '_current_user', None)
+    if user and not getattr(user, 'is_anonymous', True):
+        return user
+    return get_current_user()
 
-MODELS_TO_LOG = [
-    Athlete, Event, Category, Team, Match, 
-    GradeHistory, CategoryAthleteScore, CategoryTeamScore,
-    TrainingSeminarParticipation, Visa, FederationRole
-]
+
+def _should_log_history(instance):
+    user = _get_history_user(instance)
+    if not user:
+        return False
+    if is_admin_request():
+        return False
+    return True
+
+
+def _serialize_history_value(value):
+    if value is None:
+        return ''
+    if hasattr(value, 'isoformat'):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    return str(value)
+
+
+def _get_changed_fields(instance):
+    original = getattr(instance, '_history_original_values', None) or {}
+    changed_fields = {}
+
+    for field in instance._meta.concrete_fields:
+        old_value = original.get(field.attname)
+        new_value = getattr(instance, field.attname, None)
+        if old_value != new_value:
+            changed_fields[field.name] = [
+                _serialize_history_value(old_value),
+                _serialize_history_value(new_value),
+            ]
+
+    return changed_fields
+
+
+def capture_original_values(sender, instance, **kwargs):
+    if not getattr(instance, 'pk', None):
+        return
+    try:
+        current = sender.objects.filter(pk=instance.pk).values().first() or {}
+    except Exception:
+        current = {}
+    instance._history_original_values = current
 
 
 def log_model_creation(sender, instance, created, **kwargs):
-    """
-    Create a LogEntry when a tracked model instance is created.
-    Only logs if the user is available from the request context.
-    """
-    if created:
-        # Try to get user from request if available
-        user = getattr(instance, '_current_user', None)
-        if user and not user.is_anonymous:
-            log_addition(instance, user, f"Added via API")
+    if not created or not _should_log_history(instance):
+        return
+    user = _get_history_user(instance)
+    log_addition(instance, user, 'Added via API')
 
 
 def log_model_change(sender, instance, created, update_fields=None, **kwargs):
-    """
-    Create a LogEntry when a tracked model instance is modified.
-    """
-    if not created:
-        user = getattr(instance, '_current_user', None)
-        if user and not user.is_anonymous:
-            log_change(instance, user, {})
+    if created or not _should_log_history(instance):
+        return
+    user = _get_history_user(instance)
+    changes = _get_changed_fields(instance)
+    log_change(instance, user, changes)
 
 
-# Register change logging for tracked models
-for model in MODELS_TO_LOG:
+def log_model_deletion(sender, instance, **kwargs):
+    if not _should_log_history(instance):
+        return
+    user = _get_history_user(instance)
+    log_deletion(instance, user, 'Deleted via API')
+
+
+def _models_to_log():
+    tracked_models = []
+    for model in django_apps.get_app_config('api').get_models():
+        opts = model._meta
+        if opts.abstract or opts.proxy or opts.auto_created:
+            continue
+        tracked_models.append(model)
+    try:
+        tracked_models.append(LandingEvent)
+    except Exception:
+        pass
+    return tracked_models
+
+
+for model in _models_to_log():
+    if model is LogEntry:
+        continue
+    pre_save.connect(capture_original_values, sender=model, dispatch_uid=f'{model.__name__}_capture_original_values')
     post_save.connect(log_model_creation, sender=model, dispatch_uid=f'{model.__name__}_log_addition')
     post_save.connect(log_model_change, sender=model, dispatch_uid=f'{model.__name__}_log_change')
+    post_delete.connect(log_model_deletion, sender=model, dispatch_uid=f'{model.__name__}_log_deletion')
 
 
 @receiver(post_migrate)

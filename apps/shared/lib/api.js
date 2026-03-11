@@ -48,6 +48,9 @@ export const competitionAPI = {
   update: (id, data) => api.patch(`/competitions/${id}/`, data),
   delete: (id) => api.delete(`/competitions/${id}/`),
   stats: (id) => api.get(`/competitions/${id}/stats/`),
+  completeLocalSync: (id) => api.post(`/competitions/${id}/complete-local-sync/`),
+  markLocalInProgress: (id) => api.post(`/competitions/${id}/mark-local-in-progress/`),
+  markResultsUploaded: (id) => api.post(`/competitions/${id}/mark-results-uploaded/`),
   generateStandardGroupsCategories: (id) => api.post(`/competitions/${id}/generate-standard-groups-categories/`),
 };
 
@@ -65,6 +68,19 @@ export const categoryAPI = {
   delete: (id) => api.delete(`/categories/${id}/`),
   bulkAdd: (eventId, categories) => api.post('/categories/bulk-add/', { event_id: eventId, categories }),
   reorder: (order) => api.post('/categories/reorder/', { order }),
+};
+
+export const diplomaTemplateAPI = {
+  list: (params) => api.get('/diploma-templates/', { params }),
+  get: (id) => api.get(`/diploma-templates/${id}/`),
+  create: (formData) => api.post('/diploma-templates/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  duplicate: (id) => api.post(`/diploma-templates/${id}/duplicate/`),
+  update: (id, data) => api.patch(`/diploma-templates/${id}/`, data, data instanceof FormData ? {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  } : undefined),
+  delete: (id) => api.delete(`/diploma-templates/${id}/`),
 };
 
 // ── Groups ────────────────────────────────────────────
@@ -196,8 +212,16 @@ export const refereeAPI = {
     delete: (id) => api.delete(`/category-referee-score/${id}/`),
   },
   pointEvents: {
-    list: (matchId) => api.get(`/clubs/${matchId}/point_events/`),
-    create: (matchId, data) => api.post(`/clubs/${matchId}/point_events/`, data),
+    list: (matchId, params) => api.get(`/matches/${matchId}/point_events/`, { params }),
+    create: (matchId, data) => api.post(`/matches/${matchId}/point_events/`, data),
+    clear: (matchId) => api.delete(`/matches/${matchId}/point_events/`),
+  },
+};
+
+export const scoreTimelineAPI = {
+  categoryRefereeEvents: {
+    list: (params) => api.get('/category-referee-score-events/', { params }),
+    create: (data) => api.post('/category-referee-score-events/', data),
   },
 };
 
@@ -219,6 +243,16 @@ export const monitorAPI = {
     get: (id) => api.get(`/monitor-sessions/${id}/`),
     update: (id, data) => api.patch(`/monitor-sessions/${id}/`, data),
     create: (data) => api.post('/monitor-sessions/', data),
+  },
+};
+
+export const recordingAPI = {
+  sessions: {
+    list: (params) => api.get('/field-recording-sessions/', { params }),
+    get: (id) => api.get(`/field-recording-sessions/${id}/`),
+    create: (data) => api.post('/field-recording-sessions/', data),
+    update: (id, data) => api.patch(`/field-recording-sessions/${id}/`, data),
+    stop: (id, data) => api.post(`/field-recording-sessions/${id}/stop/`, data),
   },
 };
 
@@ -316,4 +350,16 @@ export const refereePresenceAPI = {
   list: (params) => api.get('/referee-presence/', { params }),
   ping: (data) => api.post('/referee-presence/', data),
   clear: (data) => api.post('/referee-presence/clear/', data),
+};
+
+// ── Offline / Local Event Sync ───────────────────────
+export const offlineAPI = {
+  athletes: (params) => api.get('/offline/athletes/', { params }),
+  clubs: (params) => api.get('/offline/clubs/', { params }),
+  competitionPack: (params) => api.get('/offline/competition-pack/', { params }),
+  eventPack: (eventId) => api.get('/offline/event-pack/', { params: { event_id: eventId } }),
+  importEventPack: (payload) => api.post('/offline/event-pack/import/', payload),
+  eventResults: (eventId) => api.get('/offline/event-results/', { params: { event_id: eventId } }),
+  importEventResults: (payload) => api.post('/offline/event-results/import/', payload),
+  uploadResults: (data) => api.post('/offline/results/', data),
 };

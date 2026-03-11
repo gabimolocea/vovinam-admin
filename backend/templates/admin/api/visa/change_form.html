@@ -1,0 +1,29 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        .visa-shortcuts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+            margin: 0.75rem 0 1rem;
+        }
+        .visa-shortcuts .button,
+        .visa-shortcuts .addlink {
+            margin: 0;
+        }
+    </style>
+{% endblock %}
+
+{% block content_title %}
+    {{ block.super }}
+    {% if add and has_add_permission %}
+        <div class="visa-shortcuts">
+            <a href="{% url 'admin:api_visa_add' %}?visa_type=medical" class="button addlink medical">Adaugă viză medicală</a>
+            <a href="{% url 'admin:api_visa_add' %}?visa_type=annual" class="button addlink annual">Adaugă viză anuală</a>
+        </div>
+    {% endif %}
+{% endblock %}

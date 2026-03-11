@@ -28,7 +28,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
-# Allow admin modals (admin_interface) to load in iframes on same origin
+# Allow admin related modals to load in same-origin iframes
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
 # Admin sidebar app order (best-first for daily workflow)
@@ -38,7 +38,6 @@ ADMIN_APP_ORDER = [
     'news',
     'contact',
     'auth',
-    'admin_interface',
     'reversion',
 ]
 
@@ -53,8 +52,6 @@ ADMIN_MODEL_HIDE = {
 
 INSTALLED_APPS = [
     # 'daphne',  # ASGI server for Django Channels - disabled for development runserver
-    'admin_interface',
-    'colorfield',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -189,8 +186,10 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'api.middleware.CurrentUserAuditMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
@@ -290,7 +289,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'ro'
 
 TIME_ZONE = 'UTC'
 
@@ -329,9 +328,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'api.User'
 
 # Admin site configuration
-ADMIN_SITE_HEADER = 'FRVV Admin'
-ADMIN_SITE_TITLE = 'FRVV Admin'
-ADMIN_INDEX_TITLE = 'Romanian Vovinam Federation Administration'
+ADMIN_SITE_HEADER = 'Administrare FRVV'
+ADMIN_SITE_TITLE = 'Administrare FRVV'
+ADMIN_INDEX_TITLE = 'Administrarea Federației Române de Vovinam'
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [
