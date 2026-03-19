@@ -11,6 +11,16 @@ const STATUS_CFG = {
 const GENDER_LABELS = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
 const MATCH_TYPE_LABELS = { qualifications: 'Calificări', 'quarter-finals': 'Sferturi', 'semi-finals': 'Semi-finală', finals: 'Finală', bronze: 'Bronz' };
 
+const getFieldLabel = (item) => {
+  if (item.field_number != null) {
+    return `Teren ${item.field_number}`;
+  }
+  if (item.field_name) {
+    return item.field_name;
+  }
+  return 'Teren nealocat';
+};
+
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -94,6 +104,8 @@ export default function Dashboard() {
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       {cat.group_name && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{formatGroupBadgeLabel(cat.group_name, cat)}</span>}
                       {cat.gender && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs text-gray-700">{GENDER_LABELS[cat.gender] || cat.gender}</span>}
+                      <span className="border border-black bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800">{getFieldLabel(cat)}</span>
+                      {cat.referee_position && <span className="border border-black bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">Poziția ta: {cat.referee_position}</span>}
                     </div>
                   </div>
                   <button
@@ -132,6 +144,8 @@ export default function Dashboard() {
                       )}
                       {match.category_group_name && <span className="border border-black bg-white px-1.5 py-0.5 text-xs text-gray-500">{formatGroupBadgeLabel(match.category_group_name, match)}</span>}
                       {match.category_gender && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs text-gray-700">{GENDER_LABELS[match.category_gender] || match.category_gender}</span>}
+                      <span className="border border-black bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800">{getFieldLabel(match)}</span>
+                      {match.referee_position && <span className="border border-black bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">Poziția ta: {match.referee_position}</span>}
                     </div>
                     {match.match_type && (
                       <span className="block mt-1 text-xs text-gray-500 whitespace-normal break-words">

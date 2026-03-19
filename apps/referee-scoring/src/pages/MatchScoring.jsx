@@ -18,7 +18,6 @@ export default function MatchScoring() {
   const [rounds, setRounds] = useState([]);
   const [events, setEvents] = useState([]);
   const [refScores, setRefScores] = useState([]);
-  const [pointEvents, setPointEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmWinner, setConfirmWinner] = useState(null);
@@ -27,19 +26,17 @@ export default function MatchScoring() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [mR, rR, eR, sR, pR] = await Promise.all([
+      const [mR, rR, eR, sR] = await Promise.all([
         matchAPI.get(matchId),
         roundAPI.list({ match_id: matchId }),
         matchEventAPI.list({ match_id: matchId }),
         matchRefereeScoreAPI.list({ match_id: matchId }),
-        refereeAPI.pointEvents.list(matchId),
       ]);
       setMatch(mR.data);
       const rArr = Array.isArray(rR.data) ? rR.data : rR.data?.results || [];
       setRounds(rArr.sort((a, b) => a.round_number - b.round_number));
       setEvents(Array.isArray(eR.data) ? eR.data : eR.data?.results || []);
       setRefScores(Array.isArray(sR.data) ? sR.data : sR.data?.results || []);
-      setPointEvents(Array.isArray(pR.data) ? pR.data : pR.data?.results || []);
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -185,7 +182,6 @@ export default function MatchScoring() {
   const activeDraftRed = activeRoundData ? (draftScores[activeRoundData.id]?.red ?? (getMyScoreForRound(activeRoundData.id) ? Number(getMyScoreForRound(activeRoundData.id).red_corner_score) : 0)) : 0;
   const activeDraftBlue = activeRoundData ? (draftScores[activeRoundData.id]?.blue ?? (getMyScoreForRound(activeRoundData.id) ? Number(getMyScoreForRound(activeRoundData.id).blue_corner_score) : 0)) : 0;
   const isRealTimeMode = match.display_mode === 'real_time';
-  const recentPointEvents = pointEvents.filter(event => event.referee === myAthleteId).slice(-6).reverse();
 
   if (isRealTimeMode) {
     const isInBreak = !activeRoundData && rounds.some(r => r.status === 'completed') && rounds.some(r => r.status === 'scheduled');
@@ -243,24 +239,6 @@ export default function MatchScoring() {
               <span className="text-6xl leading-none">+2</span>
               <span className="mt-3 text-sm tracking-[0.22em]">ALBASTRU</span>
             </button>
-          </div>
-        </div>
-
-        <div className="border-t border-white/15 bg-zinc-950 px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-300">Ultimele acțiuni</p>
-            <p className="text-xs text-zinc-400">{recentPointEvents.length ? `${recentPointEvents.length} evenimente recente` : 'Fără evenimente încă'}</p>
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
-            {recentPointEvents.map((event) => (
-              <div key={event.id} className="border border-white/10 bg-black/30 px-3 py-2 text-xs">
-                <div className="flex items-center justify-between gap-3">
-                  <span className={`font-black ${event.side === 'red' ? 'text-red-300' : 'text-blue-300'}`}>{event.side === 'red' ? 'ROȘU' : 'ALBASTRU'}</span>
-                  <span className="font-black text-yellow-200">{event.points > 0 ? `+${event.points}` : event.points}</span>
-                </div>
-                <p className="mt-1 text-zinc-400">{event.validation_status_label || 'Validat'}</p>
-              </div>
-            ))}
           </div>
         </div>
       </div>

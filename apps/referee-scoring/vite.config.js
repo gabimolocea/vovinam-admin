@@ -49,6 +49,7 @@ export default defineConfig({
     include: ['react', 'react-dom', 'react-router-dom', 'axios'],
   },
   server: {
+    host: '0.0.0.0',
     proxy: {
       '/api': 'http://localhost:8000',
     },

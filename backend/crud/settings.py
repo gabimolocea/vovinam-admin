@@ -26,7 +26,9 @@ SECRET_KEY = 'django-insecure-vc)ijbblbx@-*fl+z7gl^z)qol&q9+-_1gu)ug=3vqhu+s#qu8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+LAN_HOST = '192.168.0.210'
+
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', LAN_HOST]
 
 # Allow admin related modals to load in same-origin iframes
 X_FRAME_OPTIONS = "SAMEORIGIN"
@@ -201,19 +203,29 @@ INTERNAL_IPS = [
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',   # Competition Admin
     'http://127.0.0.1:5173',
+    f'http://{LAN_HOST}:5173',
     'http://localhost:5174',   # Athlete Enrollment
+    f'http://{LAN_HOST}:5174',
     'http://localhost:5175',   # Coach Dashboard
+    f'http://{LAN_HOST}:5175',
     'http://localhost:5176',   # Referee Scoring
+    f'http://{LAN_HOST}:5176',
     'http://localhost:5177',   # Public Display
+    f'http://{LAN_HOST}:5177',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    f'http://{LAN_HOST}:5173',
     'http://localhost:5174',
+    f'http://{LAN_HOST}:5174',
     'http://localhost:5175',
+    f'http://{LAN_HOST}:5175',
     'http://localhost:5176',
+    f'http://{LAN_HOST}:5176',
     'http://localhost:5177',
+    f'http://{LAN_HOST}:5177',
 ]
 
  # Allow credentials to be sent with CORS requests

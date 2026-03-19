@@ -299,7 +299,7 @@ class RefereeAssignedCategoriesView(APIView):
             Q(referee_3=athlete) |
             Q(referee_4=athlete) |
             Q(referee_5=athlete)
-        ).select_related('category')
+        ).select_related('category', 'category__group', 'category__field_assignment__field')
 
         # Build set of category IDs currently live on a monitor
         cat_ids = [a.category_id for a in assignments]
@@ -314,6 +314,10 @@ class RefereeAssignedCategoriesView(APIView):
             cat = assignment.category
             field_assignment = getattr(cat, 'field_assignment', None)
             field = field_assignment.field if field_assignment else None
+            referee_position = next(
+                (f'A{i}' for i in range(1, 6) if getattr(assignment, f'referee_{i}_id', None) == athlete.id),
+                None,
+            )
 
             # Priority: monitor session displaying > field assignment status
             if cat.id in live_category_ids:
@@ -333,6 +337,7 @@ class RefereeAssignedCategoriesView(APIView):
                 'field_id': field.id if field else None,
                 'field_name': field.name if field else None,
                 'field_number': field.field_number if field else None,
+                'referee_position': referee_position,
             })
 
         return Response(data)
@@ -353,7 +358,22 @@ class RefereeAssignedMatchesView(APIView):
             Q(referee_3=athlete) |
             Q(referee_4=athlete) |
             Q(referee_5=athlete)
-        ).select_related('match', 'match__category')
+        ).select_related(
+            'match',
+            'match__field',
+            'match__field_assignment__field',
+            'match__category',
+            'match__category__field_assignment__field',
+        )
+
+        position_by_match_id = {
+            assignment.match_id: next(
+                (f'A{i}' for i in range(1, 6) if getattr(assignment, f'referee_{i}_id', None) == athlete.id),
+                None,
+            )
+            for assignment in assignments
+        }
+        match_by_id = {assignment.match_id: assignment.match for assignment in assignments}
 
         match_ids = assignments.values_list('match_id', flat=True)
         matches = Match.objects.filter(pk__in=match_ids).select_related('category')
@@ -372,22 +392,36 @@ class RefereeAssignedMatchesView(APIView):
         # and CategoryFieldAssignment (in priority order)
         for item in result:
             mid = item.get('id')
+            match_obj = match_by_id.get(mid)
+            match_field_assignment = getattr(match_obj, 'field_assignment', None) if match_obj else None
+            category_obj = getattr(match_obj, 'category', None) if match_obj else None
+            category_field_assignment = getattr(category_obj, 'field_assignment', None) if category_obj else None
+
+            resolved_field = None
+            if match_field_assignment and match_field_assignment.field:
+                resolved_field = match_field_assignment.field
+            elif getattr(match_obj, 'field', None):
+                resolved_field = match_obj.field
+            elif category_field_assignment and category_field_assignment.field:
+                resolved_field = category_field_assignment.field
+
             # 1. If the match is currently displayed on a monitor → in_progress
             if mid in live_match_ids:
                 item['field_status'] = 'in_progress'
-                continue
-            # 2. Check the match's own MatchFieldAssignment
-            match_field_ass = MatchFieldAssignment.objects.filter(match_id=mid).first()
-            if match_field_ass and match_field_ass.status:
-                item['field_status'] = match_field_ass.status
-                continue
-            # 3. Fallback: check CategoryFieldAssignment
-            cat_id = item.get('category')
-            if cat_id:
-                cat_field_ass = CategoryFieldAssignment.objects.filter(category_id=cat_id).first()
-                item['field_status'] = cat_field_ass.status if cat_field_ass else None
             else:
-                item['field_status'] = None
+                # 2. Check the match's own MatchFieldAssignment
+                if match_field_assignment and match_field_assignment.status:
+                    item['field_status'] = match_field_assignment.status
+                # 3. Fallback: check CategoryFieldAssignment
+                elif category_field_assignment:
+                    item['field_status'] = category_field_assignment.status
+                else:
+                    item['field_status'] = None
+
+            item['field_id'] = resolved_field.id if resolved_field else item.get('field_id')
+            item['field_name'] = resolved_field.name if resolved_field else item.get('field_name')
+            item['field_number'] = resolved_field.field_number if resolved_field else item.get('field_number')
+            item['referee_position'] = position_by_match_id.get(mid)
 
         return Response(result)
 
