@@ -56,11 +56,17 @@ class CityMinimalSerializer(serializers.ModelSerializer):
 
 class ClubMinimalSerializer(serializers.ModelSerializer):
     """Minimal club data (no athletes list to prevent recursion)"""
-    city = CityMinimalSerializer(read_only=True)
+    city = serializers.SerializerMethodField()
     
     class Meta:
         model = Club
         fields = ['id', 'name', 'city']
+
+    def get_city(self, obj):
+        try:
+            return CityMinimalSerializer(obj.city).data if obj.city else None
+        except Exception:
+            return None
 
 
 class GradeMinimalSerializer(serializers.ModelSerializer):
@@ -72,8 +78,8 @@ class GradeMinimalSerializer(serializers.ModelSerializer):
 
 class AthleteMinimalSerializer(serializers.ModelSerializer):
     """Minimal athlete data for lists and relationships"""
-    club = ClubMinimalSerializer(read_only=True)
-    current_grade = GradeMinimalSerializer(read_only=True)
+    club = serializers.SerializerMethodField()
+    current_grade = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
     
     class Meta:
@@ -87,6 +93,18 @@ class AthleteMinimalSerializer(serializers.ModelSerializer):
     
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
+
+    def get_club(self, obj):
+        try:
+            return ClubMinimalSerializer(obj.club).data if obj.club else None
+        except Exception:
+            return None
+
+    def get_current_grade(self, obj):
+        try:
+            return GradeMinimalSerializer(obj.current_grade).data if obj.current_grade else None
+        except Exception:
+            return None
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -287,16 +305,13 @@ class AthleteSerializer(serializers.ModelSerializer):
             representation['current_grade_details'] = {
                 'id': instance.current_grade.id,
                 'name': instance.current_grade.name,
-                'image': instance.current_grade.image.url if instance.current_grade.image else None,
+                'image': _safe_file_url(getattr(instance.current_grade, 'image', None)),
             }
         else:
             representation['current_grade_details'] = None
         
         # Ensure profile_image returns full URL
-        if instance.profile_image:
-            representation['profile_image'] = instance.profile_image.url
-        else:
-            representation['profile_image'] = None
+        representation['profile_image'] = _safe_file_url(getattr(instance, 'profile_image', None))
         
         # Add computed properties
         representation['can_edit_profile'] = instance.can_edit_profile
