@@ -2,11 +2,16 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+import os
 from django.views.generic import TemplateView
 from django.views.generic.base import RedirectView
 from django.templatetags.static import static as static_url
 from api.views import health
 from rest_framework_simplejwt.views import TokenRefreshView
+
+
+FRONTEND_INDEX_TEMPLATE = os.path.join(settings.BASE_DIR, 'templates', 'index.html')
+HAS_FRONTEND_INDEX = os.path.exists(FRONTEND_INDEX_TEMPLATE)
 
 urlpatterns = [
     path('favicon.ico', RedirectView.as_view(url=static_url('favicon.svg'), permanent=False)),
@@ -36,12 +41,16 @@ else:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
-# Catch-all route for React (must be last)
-# Serve index.html for all non-API routes (React Router)
-# Only enable in production - in development, Vite serves the frontend separately
 if not settings.DEBUG:
-    urlpatterns += [
-        re_path(r'^(?!api/|admin/|media/|static/|health/|ckeditor5/).*$', 
-                TemplateView.as_view(template_name='index.html'), 
-                name='frontend'),
-    ]
+    if HAS_FRONTEND_INDEX:
+        # Catch-all route for React (must be last)
+        # Serve index.html for all non-API routes (React Router)
+        urlpatterns += [
+            re_path(r'^(?!api/|admin/|media/|static/|health/|ckeditor5/).*$', 
+                    TemplateView.as_view(template_name='index.html'), 
+                    name='frontend'),
+        ]
+    else:
+        urlpatterns += [
+            path('', RedirectView.as_view(url='/admin/', permanent=False), name='root-admin-redirect'),
+        ]
