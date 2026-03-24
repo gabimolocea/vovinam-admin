@@ -14,6 +14,8 @@ const INITIAL = {
   first_name: '',
   last_name: '',
   gender: '',
+  license_series: '',
+  cnp: '',
   date_of_birth: '',
   address: '',
   mobile_number: '',
@@ -187,6 +189,8 @@ export default function CreateAthlete() {
             <Field label="Prenume *" name="first_name" value={form.first_name} onChange={handleChange} required />
             <Field label="Nume *" name="last_name" value={form.last_name} onChange={handleChange} required />
             <SelectField label="Gen *" name="gender" value={form.gender} onChange={handleChange} options={GENDER_OPTIONS} required />
+            <Field label="Serie legitimație" name="license_series" value={form.license_series} onChange={handleChange} />
+            <Field label="CNP" name="cnp" value={form.cnp} onChange={handleChange} maxLength={13} />
             <Field label="Data nașterii *" name="date_of_birth" type="date" value={form.date_of_birth} onChange={handleChange} required />
             <Field label="Telefon" name="mobile_number" value={form.mobile_number} onChange={handleChange} />
             <div className="sm:col-span-2">
@@ -331,7 +335,7 @@ export default function CreateAthlete() {
 }
 
 /* ── Reusable field ── */
-function Field({ label, name, value, onChange, type = 'text', required, multiline }) {
+function Field({ label, name, value, onChange, type = 'text', required, multiline, maxLength }) {
   const cls = 'frvv-input w-full';
   return (
     <div>
@@ -339,7 +343,7 @@ function Field({ label, name, value, onChange, type = 'text', required, multilin
       {multiline ? (
         <textarea name={name} value={value} onChange={onChange} rows={3} className={cls + ' resize-none min-h-[96px]'} />
       ) : (
-        <input type={type} name={name} value={value} onChange={onChange} required={required} className={cls} />
+        <input type={type} name={name} value={value} onChange={onChange} required={required} maxLength={maxLength} className={cls} />
       )}
     </div>
   );

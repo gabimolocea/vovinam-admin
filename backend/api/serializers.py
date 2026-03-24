@@ -143,7 +143,7 @@ class AthleteDetailSerializer(serializers.ModelSerializer):
         model = Athlete
         fields = [
             'id', 'user', 'first_name', 'last_name', 'full_name',
-            'date_of_birth', 'address', 'mobile_number',
+            'license_series', 'cnp', 'date_of_birth', 'address', 'mobile_number',
             'emergency_contact_name', 'emergency_contact_phone',
             'previous_experience',
             'club', 'city', 'current_grade',
@@ -1185,7 +1185,7 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Athlete
         fields = [
-            'id', 'user', 'first_name', 'last_name', 'date_of_birth',
+            'id', 'user', 'first_name', 'last_name', 'license_series', 'cnp', 'date_of_birth',
             'address', 'mobile_number', 'club', 'city', 'previous_experience',
             'emergency_contact_name', 'emergency_contact_phone', 'status',
             'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes',

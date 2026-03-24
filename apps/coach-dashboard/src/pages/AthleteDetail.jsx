@@ -180,6 +180,8 @@ export default function AthleteDetail() {
                   <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-1">
                     <DetailTile label="Club" value={clubName} />
                     <DetailTile label="Oraș" value={cityName} />
+                    <DetailTile label="Serie legitimație" value={athlete.license_series} />
+                    <DetailTile label="CNP" value={athlete.cnp} />
                     <DetailTile label="Data nașterii" value={fmtDate(athlete.date_of_birth)} />
                     <DetailTile label="Telefon" value={athlete.mobile_number} />
                   </div>
@@ -197,6 +199,8 @@ export default function AthleteDetail() {
             <div className="grid gap-6 lg:grid-cols-2">
               <InfoCard title="Date personale">
                 <InfoRow label="Nume" value={fullName} />
+                <InfoRow label="Serie legitimație" value={athlete.license_series} />
+                <InfoRow label="CNP" value={athlete.cnp} />
                 <InfoRow label="Adresă" value={athlete.address} />
                 <InfoRow label="Oraș" value={cityName} />
                 <InfoRow label="Telefon" value={athlete.mobile_number} />

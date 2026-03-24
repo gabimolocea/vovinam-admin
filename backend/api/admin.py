@@ -4574,6 +4574,8 @@ class AthleteAdminForm(forms.ModelForm):
         'first_name': _('Prenume'),
         'last_name': _('Nume'),
         'gender': _('Gen'),
+        'license_series': _('Serie legitimație'),
+        'cnp': _('CNP'),
         'date_of_birth': _('Data nașterii'),
         'address': _('Adresă'),
         'mobile_number': _('Telefon mobil'),
@@ -4614,7 +4616,7 @@ class AthleteAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
-    search_fields = ['first_name', 'last_name', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
+    search_fields = ['first_name', 'last_name', 'license_series', 'cnp', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
     readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'team_results_summary']
     ordering = ['-submitted_date']
     inlines = [
@@ -4629,7 +4631,7 @@ class AthleteAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Informații personale', {
-            'fields': ('user', 'first_name', 'last_name', 'gender', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
+            'fields': ('user', 'first_name', 'last_name', 'gender', 'license_series', 'cnp', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
         }),
         ('Informații sportive și club', {
             'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_referee')
