@@ -27,10 +27,16 @@ services:
         value: REPLACE_WITH_A_LONG_RANDOM_SECRET
       - key: ALLOWED_HOSTS
         scope: RUN_AND_BUILD_TIME
-        value: YOUR-APP-NAME.ondigitalocean.app
+        value: YOUR-APP-NAME.ondigitalocean.app,admin.vovinam.ro,api.vovinam.ro
+      - key: ADMIN_ROOT_HOSTS
+        scope: RUN_AND_BUILD_TIME
+        value: admin.vovinam.ro
+      - key: API_ROOT_HOSTS
+        scope: RUN_AND_BUILD_TIME
+        value: api.vovinam.ro
       - key: CORS_ALLOWED_ORIGINS
         scope: RUN_AND_BUILD_TIME
-        value: https://YOUR-FRONTEND.web.app,https://YOUR-FRONTEND.firebaseapp.com
+        value: https://admin.vovinam.ro,https://YOUR-FRONTEND.web.app,https://YOUR-FRONTEND.firebaseapp.com
       - key: DATABASE_URL
         scope: RUN_AND_BUILD_TIME
         type: SECRET

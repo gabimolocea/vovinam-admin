@@ -49,6 +49,9 @@ ADMIN_MODEL_HIDE = {
     'api': ['Grade'],
 }
 
+ADMIN_ROOT_HOSTS = []
+API_ROOT_HOSTS = []
+
 
 
 # Application definition
@@ -190,6 +193,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'crud.host_routing.HostBasedURLConfMiddleware',
     'django.middleware.locale.LocaleMiddleware',
     'crud.middleware.ForceRomanianLanguageMiddleware',
     'django.middleware.common.CommonMiddleware',

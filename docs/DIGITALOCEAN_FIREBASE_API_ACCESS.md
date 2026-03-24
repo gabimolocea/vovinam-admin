@@ -14,6 +14,8 @@ Setări importante:
   - `DEBUG=False`
   - `DJANGO_SECRET_KEY=<cheie puternică>`
   - `ALLOWED_HOSTS=<domeniul-app-platform>,<domeniul-tău>`
+  - `ADMIN_ROOT_HOSTS=admin.vovinam.ro`
+  - `API_ROOT_HOSTS=api.vovinam.ro`
   - `DATABASE_URL=<postgres-url>`
   - `CORS_ALLOWED_ORIGINS=https://admin-ul-tău.example.com`
 
@@ -57,7 +59,7 @@ Trimite cheia în antet:
 Exemplu `fetch`:
 
 ```js
-const response = await fetch('https://backendul-tau.ondigitalocean.app/api/athletes/', {
+const response = await fetch('https://api.vovinam.ro/athletes/', {
   method: 'GET',
   headers: {
     'Content-Type': 'application/json',
@@ -69,7 +71,7 @@ const response = await fetch('https://backendul-tau.ondigitalocean.app/api/athle
 Exemplu `POST`:
 
 ```js
-const response = await fetch('https://backendul-tau.ondigitalocean.app/api/notifications/', {
+const response = await fetch('https://api.vovinam.ro/notifications/', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -104,7 +106,7 @@ Astfel:
 ## 7. Checklist după deploy
 
 - backend public disponibil prin HTTPS
-- `/api/` răspunde din DigitalOcean
+- `https://api.vovinam.ro/` răspunde din DigitalOcean
 - migrarea `ExternalAPIClient` aplicată
 - clientul extern creat în admin
 - origin-urile Firebase adăugate corect

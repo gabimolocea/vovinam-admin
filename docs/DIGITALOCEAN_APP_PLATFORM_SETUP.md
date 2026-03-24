@@ -62,12 +62,26 @@ Setează în App Platform aceste variabile:
 - `ALLOWED_HOSTS=<numele-aplicației>.ondigitalocean.app`
 - `DATABASE_URL=<injectat din DB component>`
 
+### Pentru subdomenii curate
+- `ADMIN_ROOT_HOSTS=admin.vovinam.ro`
+- `API_ROOT_HOSTS=api.vovinam.ro`
+
+Cu aceste variabile:
+- [admin.vovinam.ro](admin.vovinam.ro) va servi admin-ul direct la rădăcină
+- [api.vovinam.ro](api.vovinam.ro) va servi API-ul direct la rădăcină
+
 ### Pentru Firebase / frontends
 - `CORS_ALLOWED_ORIGINS=https://app1.web.app,https://app1.firebaseapp.com,https://app2.web.app,https://app2.firebaseapp.com`
 
 Dacă ai și domeniu custom:
 - adaugă și acel domeniu în `ALLOWED_HOSTS`
 - adaugă și acel origin în `CORS_ALLOWED_ORIGINS`
+
+Exemplu complet:
+- `ALLOWED_HOSTS=my-app.ondigitalocean.app,admin.vovinam.ro,api.vovinam.ro`
+- `ADMIN_ROOT_HOSTS=admin.vovinam.ro`
+- `API_ROOT_HOSTS=api.vovinam.ro`
+- `CORS_ALLOWED_ORIGINS=https://admin.vovinam.ro,https://app1.web.app,https://app1.firebaseapp.com`
 
 ## Pasul 6: import din YAML
 
@@ -84,8 +98,8 @@ Dacă preferi import din fișier, folosește:
 
 După primul deploy:
 1. deschide URL-ul aplicației
-2. verifică `/admin/`
-3. verifică `/api/`
+2. verifică [admin.vovinam.ro](admin.vovinam.ro) sau `/admin/`
+3. verifică [api.vovinam.ro](api.vovinam.ro) sau `/api/`
 4. loghează-te în admin
 
 ## Pasul 8: creează cheia pentru Firebase din admin
@@ -109,7 +123,7 @@ După primul deploy:
 Exemplu:
 
 ```js
-await fetch('https://APP_NAME.ondigitalocean.app/api/athletes/', {
+await fetch('https://api.vovinam.ro/athletes/', {
   headers: {
     'Content-Type': 'application/json',
     'X-API-Key': API_KEY,

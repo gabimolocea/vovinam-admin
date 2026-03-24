@@ -14,6 +14,8 @@ def _csv_env(name):
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', SECRET_KEY)
 ALLOWED_HOSTS = _csv_env('ALLOWED_HOSTS')
+ADMIN_ROOT_HOSTS = _csv_env('ADMIN_ROOT_HOSTS')
+API_ROOT_HOSTS = _csv_env('API_ROOT_HOSTS')
 
 # Database - use DATABASE_URL from DigitalOcean
 DATABASES['default'] = dj_database_url.config(
