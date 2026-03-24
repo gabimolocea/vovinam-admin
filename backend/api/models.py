@@ -14,6 +14,7 @@ from django.core.exceptions import ValidationError
 from django.db.models.signals import post_delete
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
+from django.utils.text import slugify
 from .mixins import TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin
 from .managers import AthleteManager
 
@@ -113,12 +114,117 @@ try:
     # Import here to avoid circular import issues during migrations
     from landing.models import Event as LandingEvent
 
+    class _LegacyEventManager(models.Manager):
+        event_type = None
+
+        def get_queryset(self):
+            qs = super().get_queryset()
+            if self.event_type:
+                qs = qs.filter(event_type=self.event_type)
+            return qs
+
+        def create(self, **kwargs):
+            kwargs = kwargs.copy()
+            if 'name' in kwargs and 'title' not in kwargs:
+                kwargs['title'] = kwargs.pop('name')
+            if 'place' in kwargs and 'address' not in kwargs:
+                kwargs['address'] = kwargs.pop('place')
+
+            title = kwargs.get('title') or 'event'
+            kwargs.setdefault('slug', slugify(title) or f'event-{secrets.token_hex(4)}')
+
+            if 'start_date' not in kwargs:
+                kwargs['start_date'] = timezone.now()
+            if 'end_date' not in kwargs:
+                kwargs['end_date'] = kwargs['start_date'] + timedelta(days=1)
+
+            kwargs.setdefault('event_type', self.event_type)
+            return super().create(**kwargs)
+
     class Event(LandingEvent):
         class Meta:
             proxy = True
             app_label = 'api'
             verbose_name = _('Event')
             verbose_name_plural = _('Events')
+
+
+    class Competition(Event):
+        objects = _LegacyEventManager()
+        objects.event_type = 'competition'
+
+        class Meta:
+            proxy = True
+            app_label = 'api'
+            verbose_name = _('Competition')
+            verbose_name_plural = _('Competitions')
+
+        @property
+        def name(self):
+            return self.title
+
+        @name.setter
+        def name(self, value):
+            self.title = value
+
+
+    class _TrainingSeminarAthletesRelation:
+        def __init__(self, seminar):
+            self.seminar = seminar
+
+        def add(self, *athletes):
+            for athlete in athletes:
+                participation, created = TrainingSeminarParticipation.objects.get_or_create(
+                    athlete=athlete,
+                    event=self.seminar,
+                    defaults={
+                        'seminar': self.seminar,
+                        'submitted_by_athlete': False,
+                    },
+                )
+                update_fields = []
+                if participation.seminar_id != self.seminar.id:
+                    participation.seminar = self.seminar
+                    update_fields.append('seminar')
+                if created is False and participation.event_id != self.seminar.id:
+                    participation.event = self.seminar
+                    update_fields.append('event')
+                if update_fields:
+                    participation.save(update_fields=update_fields)
+
+        def all(self):
+            return Athlete.objects.filter(seminar_participations__event=self.seminar).distinct()
+
+
+    class TrainingSeminar(Event):
+        objects = _LegacyEventManager()
+        objects.event_type = 'training_seminar'
+
+        class Meta:
+            proxy = True
+            app_label = 'api'
+            verbose_name = _('Training seminar')
+            verbose_name_plural = _('Training seminars')
+
+        @property
+        def name(self):
+            return self.title
+
+        @name.setter
+        def name(self, value):
+            self.title = value
+
+        @property
+        def place(self):
+            return self.address
+
+        @place.setter
+        def place(self, value):
+            self.address = value
+
+        @property
+        def athletes(self):
+            return _TrainingSeminarAthletesRelation(self)
 except Exception:
     # During some migration or import-time operations the landing app
     # may not be fully importable; silently skip proxy creation in that case.
@@ -1042,6 +1148,12 @@ class TeamMember(models.Model):
 
 
 class Category(models.Model):
+    def __init__(self, *args, **kwargs):
+        competition = kwargs.pop('competition', None)
+        super().__init__(*args, **kwargs)
+        if competition is not None and getattr(self, 'event_id', None) is None:
+            self.event = competition
+
     @property
     def type(self):
         """Return the type of category as a string: 'solo', 'team', or 'fight' based on subclass."""
@@ -1108,6 +1220,14 @@ class Category(models.Model):
         if getattr(self, 'event', None):
             return self.event
         return getattr(self, 'competition', None)
+
+    @property
+    def competition(self):
+        return self.event
+
+    @competition.setter
+    def competition(self, value):
+        self.event = value
     
     def _generate_category_number(self):
         """Auto-generate category number based on type and gender"""
