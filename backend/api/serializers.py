@@ -15,6 +15,25 @@ def _safe_file_url(file_field):
         return None
 
 
+def _safe_related(instance, attr_name):
+    try:
+        return getattr(instance, attr_name, None)
+    except Exception:
+        return None
+
+
+def _safe_scalar(value):
+    if value is None:
+        return None
+    try:
+        return value.isoformat() if hasattr(value, 'isoformat') else value
+    except Exception:
+        try:
+            return str(value)
+        except Exception:
+            return None
+
+
 def _get_team_members(team):
     prefetched_members = _get_prefetched_relation(team, 'members')
     if prefetched_members is not None:
@@ -107,7 +126,21 @@ class AthleteMinimalSerializer(serializers.ModelSerializer):
             return None
 
     def to_representation(self, instance):
-        representation = super().to_representation(instance)
+        try:
+            representation = super().to_representation(instance)
+        except Exception:
+            representation = {
+                'id': getattr(instance, 'id', None),
+                'first_name': getattr(instance, 'first_name', ''),
+                'last_name': getattr(instance, 'last_name', ''),
+                'full_name': f"{getattr(instance, 'first_name', '')} {getattr(instance, 'last_name', '')}".strip(),
+                'date_of_birth': _safe_scalar(getattr(instance, 'date_of_birth', None)),
+                'club': self.get_club(instance),
+                'current_grade': self.get_current_grade(instance),
+                'is_coach': getattr(instance, 'is_coach', False),
+                'is_referee': getattr(instance, 'is_referee', False),
+                'status': getattr(instance, 'status', None),
+            }
         representation['profile_image'] = _safe_file_url(getattr(instance, 'profile_image', None))
         return representation
 
@@ -281,31 +314,78 @@ class AthleteSerializer(serializers.ModelSerializer):
     
     def to_representation(self, instance):
         """Customize output to include additional info"""
-        representation = super().to_representation(instance)
+        try:
+            representation = super().to_representation(instance)
+        except Exception:
+            club = _safe_related(instance, 'club')
+            city = _safe_related(instance, 'city')
+            grade = _safe_related(instance, 'current_grade')
+            user = _safe_related(instance, 'user')
+            federation_role = _safe_related(instance, 'federation_role')
+            title = _safe_related(instance, 'title')
+            representation = {
+                'id': getattr(instance, 'id', None),
+                'user': {
+                    'id': getattr(user, 'id', None),
+                    'email': getattr(user, 'email', None),
+                    'username': getattr(user, 'username', None),
+                } if user else None,
+                'first_name': getattr(instance, 'first_name', ''),
+                'last_name': getattr(instance, 'last_name', ''),
+                'gender': getattr(instance, 'gender', None),
+                'license_series': getattr(instance, 'license_series', None),
+                'cnp': getattr(instance, 'cnp', None),
+                'date_of_birth': _safe_scalar(getattr(instance, 'date_of_birth', None)),
+                'team_place': getattr(instance, 'team_place', None),
+                'address': getattr(instance, 'address', None),
+                'mobile_number': getattr(instance, 'mobile_number', None),
+                'emergency_contact_name': getattr(instance, 'emergency_contact_name', None),
+                'emergency_contact_phone': getattr(instance, 'emergency_contact_phone', None),
+                'previous_experience': getattr(instance, 'previous_experience', None),
+                'club': {'id': getattr(club, 'id', None), 'name': getattr(club, 'name', None)} if club else None,
+                'city': getattr(city, 'id', None),
+                'current_grade': getattr(grade, 'id', None),
+                'federation_role': getattr(federation_role, 'id', None),
+                'title': getattr(title, 'id', None),
+                'registered_date': _safe_scalar(getattr(instance, 'registered_date', None)),
+                'expiration_date': _safe_scalar(getattr(instance, 'expiration_date', None)),
+                'is_coach': getattr(instance, 'is_coach', False),
+                'is_referee': getattr(instance, 'is_referee', False),
+                'status': getattr(instance, 'status', None),
+                'submitted_date': _safe_scalar(getattr(instance, 'submitted_date', None)),
+                'reviewed_date': _safe_scalar(getattr(instance, 'reviewed_date', None)),
+                'reviewed_by': getattr(getattr(instance, 'reviewed_by', None), 'id', None),
+                'admin_notes': getattr(instance, 'admin_notes', None),
+                'approved_date': _safe_scalar(getattr(instance, 'approved_date', None)),
+                'approved_by': str(getattr(instance, 'approved_by', '')) if getattr(instance, 'approved_by', None) else None,
+            }
         
         # Add user details if available
-        if instance.user:
+        user = _safe_related(instance, 'user')
+        if user:
             representation['user'] = {
-                'id': instance.user.id,
-                'email': instance.user.email,
-                'username': instance.user.username
+                'id': user.id,
+                'email': user.email,
+                'username': user.username
             }
         
         # Add club details if available
-        if instance.club:
+        club = _safe_related(instance, 'club')
+        if club:
             representation['club'] = {
-                'id': instance.club.id,
-                'name': instance.club.name
+                'id': club.id,
+                'name': club.name
             }
         else:
             representation['club'] = None
         
         # Add current grade details if available
-        if instance.current_grade:
+        current_grade = _safe_related(instance, 'current_grade')
+        if current_grade:
             representation['current_grade_details'] = {
-                'id': instance.current_grade.id,
-                'name': instance.current_grade.name,
-                'image': _safe_file_url(getattr(instance.current_grade, 'image', None)),
+                'id': current_grade.id,
+                'name': current_grade.name,
+                'image': _safe_file_url(getattr(current_grade, 'image', None)),
             }
         else:
             representation['current_grade_details'] = None
