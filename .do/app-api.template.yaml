@@ -1,0 +1,42 @@
+# DigitalOcean App Platform template for the Django API only.
+# Replace the placeholder values before importing this spec.
+name: vovinam-api
+region: fra
+services:
+  - name: django-api
+    github:
+      repo: YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME
+      branch: dev
+      deploy_on_push: true
+    source_dir: backend
+    environment_slug: python
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    run_command: gunicorn crud.wsgi:application --worker-tmp-dir /dev/shm --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    http_port: 8080
+    envs:
+      - key: DJANGO_SETTINGS_MODULE
+        scope: RUN_AND_BUILD_TIME
+        value: crud.settings_production
+      - key: DEBUG
+        scope: RUN_AND_BUILD_TIME
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: REPLACE_WITH_A_LONG_RANDOM_SECRET
+      - key: ALLOWED_HOSTS
+        scope: RUN_AND_BUILD_TIME
+        value: YOUR-APP-NAME.ondigitalocean.app
+      - key: CORS_ALLOWED_ORIGINS
+        scope: RUN_AND_BUILD_TIME
+        value: https://YOUR-FRONTEND.web.app,https://YOUR-FRONTEND.firebaseapp.com
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: ${db.DATABASE_URL}
+databases:
+  - name: db
+    engine: PG
+    version: "15"
+    production: false

@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +27,7 @@ SECRET_KEY = 'django-insecure-vc)ijbblbx@-*fl+z7gl^z)qol&q9+-_1gu)ug=3vqhu+s#qu8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-LAN_HOST = '192.168.0.210'
+LAN_HOST = '172.20.10.14'
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', LAN_HOST]
 
@@ -79,6 +80,7 @@ INSTALLED_APPS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'api.authentication.ExternalAPIClientAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -189,6 +191,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',
+    'crud.middleware.ForceRomanianLanguageMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'api.middleware.CurrentUserAuditMiddleware',
@@ -212,6 +215,10 @@ CORS_ALLOWED_ORIGINS = [
     f'http://{LAN_HOST}:5176',
     'http://localhost:5177',   # Public Display
     f'http://{LAN_HOST}:5177',
+]
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'x-api-key',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -310,10 +317,9 @@ USE_I18N = True
 USE_TZ = True
 
 # Supported languages for the site. Add Romanian (ro) so the admin and project
-# can be translated. Use short language names; full translations will be
-# created under the project's `locale/` directory by running makemessages.
+# can be translated. Keep only Romanian enabled so the entire Django interface
+# consistently renders in Romanian regardless of browser language.
 LANGUAGES = [
-    ('en', 'English'),
     ('ro', 'Română'),
 ]
 

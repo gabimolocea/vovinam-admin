@@ -60,7 +60,70 @@ from .models import (
     MatchRound,
     CompetitionReferee,
     DisplayMonitorSession,
+    ExternalAPIClient,
+    Visa,
+    Event,
+    EventParticipation,
+    UserProxy,
 )
+
+
+admin.site.enable_nav_sidebar = False
+
+
+def _apply_admin_model_labels():
+    labels = {
+        City: ('oraș', 'orașe'),
+        Club: ('club', 'cluburi'),
+        Athlete: ('sportiv', 'sportivi'),
+        SupporterAthleteRelation: ('relație susținător-sportiv', 'relații susținător-sportiv'),
+        TrainingSeminarParticipation: ('participare la seminar', 'participări la seminare'),
+        EventParticipation: ('participare la eveniment', 'participări la evenimente'),
+        Grade: ('grad', 'grade'),
+        GradeHistory: ('istoric grad', 'istoric grade'),
+        Title: ('titlu', 'titluri'),
+        FederationRole: ('rol în federație', 'roluri în federație'),
+        Visa: ('viză', 'vize'),
+        Event: ('eveniment', 'evenimente'),
+        Category: ('categorie', 'categorii'),
+        SoloCategory: ('categorie individuală', 'categorii individuale'),
+        TeamCategory: ('categorie pe echipe', 'categorii pe echipe'),
+        FightCategory: ('categorie de luptă', 'categorii de luptă'),
+        FightAthleteWeight: ('greutate sportiv luptă', 'greutăți sportivi luptă'),
+        Team: ('echipă', 'echipe'),
+        CategoryTeam: ('echipă în categorie', 'echipe în categorie'),
+        CategoryAthlete: ('sportiv în categorie', 'sportivi în categorii'),
+        Match: ('meci', 'meciuri'),
+        MatchEvent: ('eveniment meci', 'evenimente meci'),
+        MatchRefereeScore: ('scor arbitru meci', 'scoruri arbitri meci'),
+        RefereeScore: ('scor arbitru', 'scoruri arbitri'),
+        RefereePointEvent: ('eveniment punctaj arbitru', 'evenimente punctaj arbitru'),
+        CategoryAthleteScore: ('rezultat sportiv', 'rezultate sportivi'),
+        CategoryRefereeScore: ('scor arbitru categorie', 'scoruri arbitri categorie'),
+        CategoryRefereeAssignment: ('alocare arbitri categorie', 'alocări arbitri categorie'),
+        MatchRefereeAssignment: ('alocare arbitri meci', 'alocări arbitri meci'),
+        CategoryTeamScore: ('rezultat echipă', 'rezultate echipe'),
+        TeamMember: ('membru echipă', 'membri echipă'),
+        Group: ('grup', 'grupuri'),
+        MatchVideoRecording: ('înregistrare video meci', 'înregistrări video meci'),
+        AthletePerformanceVideo: ('video probă individuală', 'video-uri probe individuale'),
+        TeamPerformanceVideo: ('video probă pe echipe', 'video-uri probe pe echipe'),
+        CompetitionField: ('teren de concurs', 'terenuri de concurs'),
+        CategoryFieldAssignment: ('alocare teren categorie', 'alocări teren categorie'),
+        MatchFieldAssignment: ('alocare teren meci', 'alocări teren meci'),
+        MatchRound: ('rundă meci', 'runde meci'),
+        CompetitionReferee: ('arbitru competiție', 'arbitri competiție'),
+        DisplayMonitorSession: ('sesiune monitor afișaj', 'sesiuni monitor afișaj'),
+        ExternalAPIClient: ('client API extern', 'clienți API externi'),
+        UserProxy: ('utilizator', 'utilizatori'),
+    }
+
+    for model, (singular, plural) in labels.items():
+        model._meta.verbose_name = singular
+        model._meta.verbose_name_plural = plural
+
+
+_apply_admin_model_labels()
 
 
 def get_event_referee_queryset_for_match(match=None, event_id=None):
@@ -98,6 +161,7 @@ ADMIN_MODEL_GROUPS = {
         'City',
         'User',
         'UserProxy',
+        'ExternalAPIClient',
     ],
     'ADMINISTRARE COMPETIȚII': [
         'Event',
@@ -4410,6 +4474,70 @@ class GroupAdmin(admin.ModelAdmin):
 # User Admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import User, UserProxy
+
+
+class ExternalAPIClientAdminForm(forms.ModelForm):
+    raw_api_key = forms.CharField(
+        required=False,
+        label='Cheie API nouă',
+        help_text='Lasă gol la editare pentru a păstra cheia curentă. La creare, dacă lași gol, cheia va fi generată automat.',
+        widget=forms.TextInput(attrs={'autocomplete': 'off'})
+    )
+
+    class Meta:
+        model = ExternalAPIClient
+        fields = '__all__'
+
+
+@admin.register(ExternalAPIClient)
+class ExternalAPIClientAdmin(admin.ModelAdmin):
+    form = ExternalAPIClientAdminForm
+    list_display = ('name', 'service_user', 'api_key_preview', 'allow_write', 'is_active', 'last_used_at')
+    list_filter = ('allow_write', 'is_active')
+    search_fields = ('name', 'service_user__email', 'service_user__first_name', 'service_user__last_name', 'api_key_prefix')
+    readonly_fields = ('api_key_preview', 'api_key_prefix', 'last_used_at', 'last_used_ip', 'created_at', 'updated_at')
+    fieldsets = (
+        ('Identificare', {
+            'fields': ('name', 'service_user', 'is_active', 'allow_write')
+        }),
+        ('Securitate', {
+            'fields': ('raw_api_key', 'api_key_preview', 'api_key_prefix', 'allowed_origins'),
+            'description': 'Introdu manual cheia API sau las-o goală la creare pentru generare automată. Origin-urile trebuie trecute câte unul pe linie.'
+        }),
+        ('Audit', {
+            'fields': ('last_used_at', 'last_used_ip', 'created_at', 'updated_at', 'notes')
+        }),
+    )
+
+    def api_key_preview(self, obj):
+        if not obj or not obj.pk or not obj.api_key_prefix:
+            return '—'
+        return f'{obj.api_key_prefix}…'
+    api_key_preview.short_description = 'Prefix cheie API'
+
+    def save_model(self, request, obj, form, change):
+        raw_api_key = (form.cleaned_data.get('raw_api_key') or '').strip()
+        generated_api_key = None
+
+        if raw_api_key:
+            obj.set_api_key(raw_api_key)
+            generated_api_key = raw_api_key
+        elif not change or not obj.api_key_hash:
+            generated_api_key = ExternalAPIClient.generate_api_key()
+            obj.set_api_key(generated_api_key)
+
+        super().save_model(request, obj, form, change)
+
+        if generated_api_key:
+            self.message_user(
+                request,
+                format_html(
+                    'Cheia API pentru <strong>{}</strong> este: <code>{}</code>. Copiaz-o acum; ulterior va rămâne vizibil doar prefixul.',
+                    obj.name,
+                    generated_api_key,
+                ),
+                level=messages.WARNING,
+            )
 
 @admin.register(UserProxy)
 class UserAdmin(BaseUserAdmin):

@@ -6,10 +6,14 @@ Use this by setting: DJANGO_SETTINGS_MODULE=crud.settings_production
 from .settings import *
 import dj_database_url
 
+
+def _csv_env(name):
+    return [item.strip() for item in os.getenv(name, '').split(',') if item.strip()]
+
 # Security
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', SECRET_KEY)
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
+ALLOWED_HOSTS = _csv_env('ALLOWED_HOSTS')
 
 # Database - use DATABASE_URL from DigitalOcean
 DATABASES['default'] = dj_database_url.config(
@@ -73,7 +77,7 @@ else:
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # CORS - allow frontend domain
-cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
+cors_origins = _csv_env('CORS_ALLOWED_ORIGINS')
 if cors_origins:
     CORS_ALLOWED_ORIGINS = cors_origins
 
@@ -82,9 +86,8 @@ CSRF_TRUSTED_ORIGINS = [
     'https://*.ondigitalocean.app',
 ]
 if os.getenv('ALLOWED_HOSTS'):
-    for host in os.getenv('ALLOWED_HOSTS', '').split(','):
-        if host.strip():
-            CSRF_TRUSTED_ORIGINS.append(f'https://{host.strip()}')
+    for host in ALLOWED_HOSTS:
+        CSRF_TRUSTED_ORIGINS.append(f'https://{host}')
 
 # Security settings for production
 # Note: SECURE_SSL_REDIRECT is disabled because DigitalOcean App Platform

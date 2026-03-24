@@ -66,7 +66,8 @@ def app_groups(app):
 
     leftovers = [m for m in models if m.get('object_name') not in used]
     if leftovers:
-        groups.append({'group_name': 'Other', 'models': leftovers})
+        fallback_title = 'Altele' if lang.startswith('ro') else 'Other'
+        groups.append({'group_name': fallback_title, 'models': leftovers})
 
     return groups
 
