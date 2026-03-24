@@ -4609,10 +4609,8 @@ class AthleteAdminForm(forms.ModelForm):
 class AthleteAdmin(admin.ModelAdmin):
     form = AthleteAdminForm
     change_form_template = 'admin/api/athlete/change_form.html'
-    # Merge photo and name into a single narrow column (no header label).
-    # Also show referee/coach flags, compact grade name, club, and action buttons on the far right.
     list_display = [
-        'photo_and_name', 'status', 'is_referee', 'is_coach', 'grade_display', 'club', 'get_action_buttons'
+        'full_name_link', 'status', 'is_referee', 'is_coach', 'grade_display', 'club_display'
     ]
     list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
@@ -4647,6 +4645,34 @@ class AthleteAdmin(admin.ModelAdmin):
             'fields': ('status', 'submitted_date_display', 'reviewed_date_display', 'reviewed_by', 'add_enrolled_event_link', 'add_grade_history_link')
         }),
     )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'club',
+            'city',
+            'current_grade',
+            'user',
+            'reviewed_by',
+            'approved_by',
+        )
+
+    def full_name_link(self, obj):
+        try:
+            url = reverse('admin:api_athlete_change', args=(obj.pk,))
+            name = f"{getattr(obj, 'first_name', '')} {getattr(obj, 'last_name', '')}".strip() or f"Sportiv #{obj.pk}"
+            return format_html('<a href="{}">{}</a>', url, name)
+        except Exception:
+            return f"{getattr(obj, 'first_name', '')} {getattr(obj, 'last_name', '')}".strip() or '—'
+    full_name_link.short_description = _('Nume')
+    full_name_link.admin_order_field = 'first_name'
+
+    def club_display(self, obj):
+        try:
+            return obj.club.name if getattr(obj, 'club', None) else '—'
+        except Exception:
+            return '—'
+    club_display.short_description = _('Club')
+    club_display.admin_order_field = 'club__name'
 
     def current_grade_display_readonly(self, obj):
         if not obj or not obj.current_grade:
