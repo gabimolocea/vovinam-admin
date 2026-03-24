@@ -9,11 +9,11 @@ from api.views import health
 
 
 urlpatterns = [
-    path('', admin.site.urls),
     path('favicon.ico', RedirectView.as_view(url=static_url('favicon.svg'), permanent=False)),
     path('i18n/', include('django.conf.urls.i18n')),
     path('ckeditor5/', include('django_ckeditor_5.urls')),
     path('health/', health),
+    path('', admin.site.urls),
 ]
 
 if settings.DEBUG:

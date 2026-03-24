@@ -4610,9 +4610,9 @@ class AthleteAdmin(admin.ModelAdmin):
     form = AthleteAdminForm
     change_form_template = 'admin/api/athlete/change_form.html'
     list_display = [
-        'full_name_link', 'status', 'is_referee', 'is_coach', 'grade_display', 'club_display'
+        'full_name_link', 'status', 'is_referee', 'is_coach'
     ]
-    list_filter = ['status', 'current_grade', 'club', 'city', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
+    list_filter = ['status', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
     search_fields = ['first_name', 'last_name', 'license_series', 'cnp', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
     readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'team_results_summary']
