@@ -8,6 +8,13 @@ def _get_prefetched_relation(instance, relation_name):
     return getattr(instance, '_prefetched_objects_cache', {}).get(relation_name)
 
 
+def _safe_file_url(file_field):
+    try:
+        return file_field.url if file_field else None
+    except Exception:
+        return None
+
+
 def _get_team_members(team):
     prefetched_members = _get_prefetched_relation(team, 'members')
     if prefetched_members is not None:
@@ -83,7 +90,7 @@ class AthleteMinimalSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['profile_image'] = instance.profile_image.url if instance.profile_image else None
+        representation['profile_image'] = _safe_file_url(getattr(instance, 'profile_image', None))
         return representation
 
 
@@ -164,27 +171,36 @@ class CitySerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
 class ClubSerializer(serializers.ModelSerializer):
-    city = CityMinimalSerializer(read_only=True)
+    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), allow_null=True, required=False)
+    logo = serializers.ImageField(required=False, allow_null=True)
+    coach_ids = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all(), many=True, required=False, write_only=True, source='coaches')
     coaches = serializers.SerializerMethodField()
     athletes = serializers.SerializerMethodField()
 
     class Meta:
         model = Club
-        fields = ['id', 'name', 'address', 'mobile_number', 'website', 'coaches', 'city', 'logo', 'athletes', 'display_order']
+        fields = ['id', 'name', 'address', 'mobile_number', 'website', 'coaches', 'coach_ids', 'city', 'logo', 'athletes', 'display_order']
 
     def get_athletes(self, obj):
         """Return limited summary of athletes"""
-        athletes = obj.athletes.select_related('club', 'current_grade').all()[:10]  # Limit to 10
-        return AthleteMinimalSerializer(athletes, many=True).data
+        try:
+            athletes = obj.athletes.select_related('club', 'current_grade').all()[:10]  # Limit to 10
+            return AthleteMinimalSerializer(athletes, many=True).data
+        except Exception:
+            return []
 
     def get_coaches(self, obj):
         """Return coaches using minimal serializer"""
-        coaches = obj.coaches.all()
-        return AthleteMinimalSerializer(coaches, many=True).data
+        try:
+            coaches = obj.coaches.select_related('club', 'current_grade').all()
+            return AthleteMinimalSerializer(coaches, many=True).data
+        except Exception:
+            return []
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        # City already handled by serializer field
+        representation['city'] = CityMinimalSerializer(instance.city).data if instance.city else None
+        representation['logo'] = _safe_file_url(getattr(instance, 'logo', None))
         return representation
 
 
