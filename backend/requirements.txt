@@ -1,4 +1,4 @@
-Django==5.2.1
+Django==5.2.12
 # Use a DRF patch release to satisfy other packages that require >=3.15.1
 djangorestframework==3.15.1
 djangorestframework-simplejwt==5.5.1
@@ -6,10 +6,17 @@ django-filter==24.3
 django-ckeditor-5==0.1.1
 django-cors-headers==4.0.0
 django-debug-toolbar==5.2
+django-reversion
+django-autocomplete-light
+channels
+channels-redis
 # Pillow bumped to satisfy pillow-heif and to avoid building older wheels
 Pillow==11.3.0
 requests==2.32.5
 jsonschema==4.19.1
+
+# Excel and sync dependencies
+openpyxl==3.1.2
 
 # Production dependencies
 gunicorn==21.2.0

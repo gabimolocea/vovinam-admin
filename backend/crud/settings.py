@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,13 +27,37 @@ SECRET_KEY = 'django-insecure-vc)ijbblbx@-*fl+z7gl^z)qol&q9+-_1gu)ug=3vqhu+s#qu8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+LAN_HOST = '172.20.10.14'
+
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', LAN_HOST]
+
+# Allow admin related modals to load in same-origin iframes
+X_FRAME_OPTIONS = "SAMEORIGIN"
+
+# Admin sidebar app order (best-first for daily workflow)
+ADMIN_APP_ORDER = [
+    'api',
+    'landing',
+    'news',
+    'contact',
+    'auth',
+    'reversion',
+]
+
+# Hide specific models from the admin sidebar (per app label)
+ADMIN_MODEL_HIDE = {
+    'api': ['Grade'],
+}
+
+ADMIN_ROOT_HOSTS = []
+API_ROOT_HOSTS = []
 
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    # 'daphne',  # ASGI server for Django Channels - disabled for development runserver
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -42,6 +67,10 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_ckeditor_5',  # WYSIWYG editor
     'storages',  # For S3-compatible storage (DigitalOcean Spaces)
+    'dal',  # django-autocomplete-light
+    'dal_select2',  # django-autocomplete-light select2 widget
+    'reversion',  # django-reversion for version control
+    'channels',  # Django Channels for WebSocket support
     'api',
     'django_filters',
     'rest_framework',
@@ -54,8 +83,8 @@ INSTALLED_APPS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'api.authentication.ExternalAPIClientAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
@@ -161,26 +190,60 @@ CKEDITOR_5_UPLOAD_PATH = "uploads/"
 CKEDITOR_5_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'crud.host_routing.HostBasedURLConfMiddleware',
     'django.middleware.locale.LocaleMiddleware',
-    "corsheaders.middleware.CorsMiddleware",
+    'crud.middleware.ForceRomanianLanguageMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'api.middleware.CurrentUserAuditMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175'
+INTERNAL_IPS = [
+    '127.0.0.1',
 ]
 
-# Allow credentials to be sent with CORS requests
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:5173',   # Competition Admin
+    'http://127.0.0.1:5173',
+    f'http://{LAN_HOST}:5173',
+    'http://localhost:5174',   # Athlete Enrollment
+    f'http://{LAN_HOST}:5174',
+    'http://localhost:5175',   # Coach Dashboard
+    f'http://{LAN_HOST}:5175',
+    'http://localhost:5176',   # Referee Scoring
+    f'http://{LAN_HOST}:5176',
+    'http://localhost:5177',   # Public Display
+    f'http://{LAN_HOST}:5177',
+]
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'x-api-key',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    f'http://{LAN_HOST}:5173',
+    'http://localhost:5174',
+    f'http://{LAN_HOST}:5174',
+    'http://localhost:5175',
+    f'http://{LAN_HOST}:5175',
+    'http://localhost:5176',
+    f'http://{LAN_HOST}:5176',
+    'http://localhost:5177',
+    f'http://{LAN_HOST}:5177',
+]
+
+ # Allow credentials to be sent with CORS requests
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow all origins for local development (fixes CORS errors instantly)
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Allow specific headers for authentication
 CORS_ALLOW_HEADERS = [
@@ -249,7 +312,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'ro'
 
 TIME_ZONE = 'UTC'
 
@@ -258,10 +321,9 @@ USE_I18N = True
 USE_TZ = True
 
 # Supported languages for the site. Add Romanian (ro) so the admin and project
-# can be translated. Use short language names; full translations will be
-# created under the project's `locale/` directory by running makemessages.
+# can be translated. Keep only Romanian enabled so the entire Django interface
+# consistently renders in Romanian regardless of browser language.
 LANGUAGES = [
-    ('en', 'English'),
     ('ro', 'Română'),
 ]
 
@@ -274,7 +336,7 @@ LOCALE_PATHS = [
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
@@ -288,9 +350,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'api.User'
 
 # Admin site configuration
-ADMIN_SITE_HEADER = 'FRVV Admin'
-ADMIN_SITE_TITLE = 'FRVV Admin'
-ADMIN_INDEX_TITLE = 'Romanian Vovinam Federation Administration'
+ADMIN_SITE_HEADER = 'Administrare FRVV'
+ADMIN_SITE_TITLE = 'Administrare FRVV'
+ADMIN_INDEX_TITLE = 'Administrarea Federației Române de Vovinam'
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [
@@ -333,4 +395,22 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+}
+
+# ============================================================================
+# DJANGO CHANNELS CONFIGURATION
+# ============================================================================
+
+ASGI_APPLICATION = 'crud.asgi.application'
+
+# Channel Layers - In-memory for development, Redis for production
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6379)],
+        },
+    } if not DEBUG else {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer'
+    }
 }

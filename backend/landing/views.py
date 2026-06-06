@@ -102,18 +102,44 @@ class EventViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return EventListSerializer
         return EventSerializer
+    
+    def get_queryset(self):
+        """Filter events by status query parameter (upcoming, ongoing, past)"""
+        queryset = super().get_queryset()
+        # Get status from query params - handle both DRF Request and Django Request
+        status = self.request.query_params.get('status') if hasattr(self.request, 'query_params') else self.request.GET.get('status')
+        
+        print(f"DEBUG: get_queryset called with status={status}")
+        
+        if status == 'upcoming':
+            # Events that haven't started yet
+            queryset = queryset.filter(start_date__gt=timezone.now())
+            print(f"DEBUG: Filtered to upcoming, count={queryset.count()}")
+        elif status == 'ongoing':
+            # Events that are currently happening
+            now = timezone.now()
+            queryset = queryset.filter(start_date__lte=now, end_date__gte=now)
+            print(f"DEBUG: Filtered to ongoing, count={queryset.count()}")
+        elif status == 'past':
+            # Events that have ended
+            queryset = queryset.filter(end_date__lt=timezone.now())
+            print(f"DEBUG: Filtered to past, count={queryset.count()}")
+        else:
+            print(f"DEBUG: No status filter applied, count={queryset.count()}")
+        
+        return queryset
 
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
         """Get upcoming events"""
-        upcoming_events = self.get_queryset().filter(start_date__gt=timezone.now())
+        upcoming_events = Event.objects.filter(start_date__gt=timezone.now())
         serializer = EventListSerializer(upcoming_events, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def past(self, request):
         """Get past events"""
-        past_events = self.get_queryset().filter(start_date__lt=timezone.now())
+        past_events = Event.objects.filter(end_date__lt=timezone.now())
         serializer = EventListSerializer(past_events, many=True)
         return Response(serializer.data)
 

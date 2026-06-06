@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
-from api.models import Athlete, Match, Category, RefereePointEvent, Competition
+from api.models import Athlete, Match, FightCategory, RefereePointEvent
 from api.scoring import compute_match_results
 
 
@@ -16,8 +16,7 @@ class ScoringHelperTests(TestCase):
         for i in range(5):
             r = Athlete.objects.create(first_name=f'Ref{i}', last_name='Ref', is_referee=True, date_of_birth=dob)
             self.refs.append(r)
-        comp = Competition.objects.create(name='TestComp')
-        cat = Category.objects.create(name='TestCat', competition=comp)
+        cat = FightCategory.objects.create(name='TestCat')
         self.match = Match(category=cat, match_type='qualifications', red_corner=self.athlete1, blue_corner=self.athlete2)
         self.match.save()
         for r in self.refs:
@@ -50,6 +49,7 @@ class ScoringHelperTests(TestCase):
         res = compute_match_results(self.match)
         # central penalty should be subtracted from each referee's red totals when computing adjusted totals
         self.assertIn('central_penalties', res)
-        self.assertEqual(res['central_penalties']['red'], 2)
+        self.assertEqual(res['central_penalties']['red'], -2)
+        self.assertEqual(res['per_ref'][self.refs[1].id]['adj_red'], 1)
         # result should be valid
         self.assertIn(res['match_winner'], [self.match.red_corner, self.match.blue_corner, None])

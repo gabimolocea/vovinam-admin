@@ -60,7 +60,7 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             'id', 'title', 'slug', 'description', 'start_date', 'end_date',
-            'city', 'city_name', 'event_type', 'address', 'featured_image', 'featured_image_alt',
+            'city', 'city_name', 'event_type', 'status', 'address', 'featured_image', 'featured_image_alt',
             'is_featured', 'price', 'tags', 'created_at', 'is_upcoming',
             'is_past', 'meta_title', 'meta_description', 'meta_keywords',
             'canonical_url', 'robots_index', 'robots_follow'
@@ -70,6 +70,7 @@ class EventSerializer(serializers.ModelSerializer):
 class EventListSerializer(serializers.ModelSerializer):
     """Lighter serializer for list views"""
     is_upcoming = serializers.ReadOnlyField()
+    is_ongoing = serializers.ReadOnlyField()
     is_past = serializers.ReadOnlyField()
     city_name = serializers.CharField(source='city.name', read_only=True)
     
@@ -78,7 +79,7 @@ class EventListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'slug', 'start_date', 'end_date',
             'featured_image', 'featured_image_alt', 'is_featured',
-            'city', 'city_name', 'event_type', 'price', 'tags', 'is_upcoming', 'is_past'
+            'city', 'city_name', 'event_type', 'status', 'price', 'tags', 'is_upcoming', 'is_ongoing', 'is_past'
         ]
 
 class AboutSectionSerializer(serializers.ModelSerializer):

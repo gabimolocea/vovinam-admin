@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
-from api.models import Athlete, Match, Category, RefereePointEvent, Competition
+from api.models import Athlete, Match, FightCategory, RefereePointEvent
 from api.scoring import compute_match_results
 
 
@@ -16,8 +16,7 @@ class ScoringAllocationTests(TestCase):
         for i in range(5):
             r = Athlete.objects.create(first_name=f'Ref{i}', last_name='Ref', is_referee=True, date_of_birth=dob)
             self.refs.append(r)
-        comp = Competition.objects.create(name='AllocComp')
-        cat = Category.objects.create(name='AllocCat', competition=comp)
+        cat = FightCategory.objects.create(name='AllocCat')
         self.match = Match(category=cat, match_type='qualifications', red_corner=self.athlete1, blue_corner=self.athlete2)
         self.match.save()
         for r in self.refs:
@@ -39,14 +38,14 @@ class ScoringAllocationTests(TestCase):
 
         res = compute_match_results(self.match)
         # central penalty aggregated
-        self.assertEqual(res['central_penalties']['red'], 5)
+        self.assertEqual(res['central_penalties']['red'], -5)
         per = res['per_ref']
-        # Full penalty applied to each referee: raw + penalty
-        # ref1: 3 + 5 = 8, ref2: 2 + 5 = 7
+        # Full penalty applied to each referee as a deduction.
+        # ref1: 3 - 5 = -2, ref2: 2 - 5 = -3
         r1 = self.refs[1].id
         r2 = self.refs[2].id
-        self.assertEqual(per[r1]['adj_red'], 8)
-        self.assertEqual(per[r2]['adj_red'], 7)
+        self.assertEqual(per[r1]['adj_red'], -2)
+        self.assertEqual(per[r2]['adj_red'], -3)
 
     def test_metadata_marked_central_penalty(self):
         """If a penalty event has metadata['central']=True it should be treated as central even when created by non-central referee."""
@@ -58,11 +57,11 @@ class ScoringAllocationTests(TestCase):
 
         res = compute_match_results(self.match)
         # central penalties aggregated should include the blue=4
-        self.assertEqual(res['central_penalties']['blue'], 4)
+        self.assertEqual(res['central_penalties']['blue'], -4)
         per = res['per_ref']
         r1 = self.refs[1].id
         r2 = self.refs[2].id
-        # Full penalty applied to each referee: raw + penalty
-        # ref1: 2 + 4 = 6, ref2: 3 + 4 = 7
-        self.assertEqual(per[r1]['adj_blue'], 6)
-        self.assertEqual(per[r2]['adj_blue'], 7)
+        # Full penalty applied to each referee as a deduction.
+        # ref1: 2 - 4 = -2, ref2: 3 - 4 = -1
+        self.assertEqual(per[r1]['adj_blue'], -2)
+        self.assertEqual(per[r2]['adj_blue'], -1)

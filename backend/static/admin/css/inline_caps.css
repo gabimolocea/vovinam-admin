@@ -1,0 +1,27 @@
+/* Capitalize inline section titles */
+.inline-group h2,
+.inline-group h3,
+.inline-related h2,
+.inline-related h3 {
+    text-transform: capitalize;
+}
+
+/* Keep fieldset headings in normal case (e.g., Category Details) */
+/* Fieldset headings: Title Case (Category Details) */
+.admin-interface fieldset.module > h2,
+.admin-interface fieldset.module > h3,
+.admin-interface .module > h2,
+.admin-interface .module > h3,
+.admin-interface fieldset.module h2,
+.admin-interface fieldset.module h3 {
+    text-transform: capitalize !important;
+}
+
+/* Change form tabs: Title Case (override uppercase) */
+.admin-interface .changeform-tabs a,
+.admin-interface .tabbed-changeform a,
+.admin-interface ul.tabs a,
+.admin-interface .tabs a,
+.admin-interface .tabs .tab a {
+    text-transform: capitalize !important;
+}

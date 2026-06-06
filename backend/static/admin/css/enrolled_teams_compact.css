@@ -1,0 +1,138 @@
+/* Compact EnrolledTeamsInline & CategoryAthleteInline */
+
+#categoryteam_set-group,
+#categoryathlete_set-group,
+.inline-group[id*="categoryteam"],
+.inline-group[id*="categoryathlete"] {
+    overflow-x: auto;
+}
+
+#categoryteam_set-group table,
+#categoryathlete_set-group table,
+.inline-group[id*="categoryteam"] table,
+.inline-group[id*="categoryathlete"] table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 4px 0;
+    table-layout: fixed;
+}
+
+#categoryteam_set-group th,
+#categoryathlete_set-group th,
+.inline-group[id*="categoryteam"] th,
+.inline-group[id*="categoryathlete"] th {
+    padding: 4px 2px;
+    text-align: center;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+#categoryteam_set-group td,
+#categoryathlete_set-group td,
+.inline-group[id*="categoryteam"] td,
+.inline-group[id*="categoryathlete"] td {
+    padding: 4px 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 200px;
+    max-width: 200px;
+}
+
+#categoryteam_set-group td:nth-child(2),
+#categoryteam_set-group td:nth-child(3),
+#categoryteam_set-group td:nth-child(4),
+#categoryteam_set-group td:nth-child(5),
+#categoryteam_set-group td:nth-child(6),
+#categoryathlete_set-group td:nth-child(2),
+#categoryathlete_set-group td:nth-child(3),
+#categoryathlete_set-group td:nth-child(4),
+#categoryathlete_set-group td:nth-child(5),
+#categoryathlete_set-group td:nth-child(6),
+.inline-group[id*="categoryteam"] td:nth-child(2),
+.inline-group[id*="categoryteam"] td:nth-child(3),
+.inline-group[id*="categoryteam"] td:nth-child(4),
+.inline-group[id*="categoryteam"] td:nth-child(5),
+.inline-group[id*="categoryteam"] td:nth-child(6),
+.inline-group[id*="categoryathlete"] td:nth-child(2),
+.inline-group[id*="categoryathlete"] td:nth-child(3),
+.inline-group[id*="categoryathlete"] td:nth-child(4),
+.inline-group[id*="categoryathlete"] td:nth-child(5),
+.inline-group[id*="categoryathlete"] td:nth-child(6) {
+    width: 60px;
+    max-width: 60px;
+}
+
+#categoryteam_set-group input[id*="team"],
+#categoryteam_set-group select[id*="team"],
+#categoryathlete_set-group input[id*="athlete"],
+#categoryathlete_set-group select[id*="athlete"],
+.inline-group[id*="categoryteam"] input[id*="team"],
+.inline-group[id*="categoryteam"] select[id*="team"],
+.inline-group[id*="categoryathlete"] input[id*="athlete"],
+.inline-group[id*="categoryathlete"] select[id*="athlete"] {
+    width: 100%;
+    min-width: 180px;
+    box-sizing: border-box;
+}
+
+#categoryathlete_set-group td:first-child,
+.inline-group[id*="categoryathlete"] td:first-child {
+    padding-right: 4px;
+}
+
+#categoryathlete_set-group .related-widget-wrapper,
+.inline-group[id*="categoryathlete"] .related-widget-wrapper,
+#categoryathlete_set-group .select2-container,
+.inline-group[id*="categoryathlete"] .select2-container {
+    width: 100%;
+    max-width: 100%;
+}
+
+/* Override select2 selection width for enrolled athletes */
+#enrolled_athletes-0 > td.field-athlete > div > span > span.selection > span,
+[id^="enrolled_athletes-"] > td.field-athlete > div > span > span.selection > span {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Hide original object label in teams enrolled inline */
+#enrolled_teams-0 > td.original > p,
+[id^="enrolled_teams-"] > td.original > p {
+    display: none !important;
+}
+
+#categoryteam_set-group input[id*="ref"],
+#categoryathlete_set-group input[id*="ref"],
+.inline-group[id*="categoryteam"] input[id*="ref"],
+.inline-group[id*="categoryathlete"] input[id*="ref"] {
+    width: 60px;
+    box-sizing: border-box;
+    padding: 2px 3px;
+}
+
+#categoryteam_set-group .select2-container,
+#categoryathlete_set-group .select2-container,
+.inline-group[id*="categoryteam"] .select2-container,
+.inline-group[id*="categoryathlete"] .select2-container {
+    width: 100%;
+    min-width: 180px;
+}
+
+#categoryteam_set-group .related-widget-wrapper-link,
+#categoryathlete_set-group .related-widget-wrapper-link,
+.inline-group[id*="categoryteam"] .related-widget-wrapper-link,
+.inline-group[id*="categoryathlete"] .related-widget-wrapper-link,
+#categoryteam_set-group .related-widget-wrapper > a,
+#categoryathlete_set-group .related-widget-wrapper > a,
+.inline-group[id*="categoryteam"] .related-widget-wrapper > a,
+.inline-group[id*="categoryathlete"] .related-widget-wrapper > a {
+    display: none;
+}
+
+
+
+
+
+
+

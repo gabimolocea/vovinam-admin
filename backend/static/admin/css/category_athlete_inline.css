@@ -1,0 +1,31 @@
+/* CategoryAthleteInline styling for solo/fight categories */
+
+/* Make athlete field input 200px wide */
+.category-athlete-inline .field-athlete input[type="text"],
+.category-athlete-inline .field-athlete .select2-container,
+#categoryathlete_set table input[id*="athlete"],
+#categoryathlete_set .field-athlete input {
+    width: 200px !important;
+    min-width: 200px;
+}
+
+/* Also handle the select2 autocomplete wrapper */
+.category-athlete-inline .select2-container--admin-autocomplete {
+    width: 200px !important;
+}
+
+/* Style the inline table columns */
+#categoryathlete_set table thead th {
+    text-align: left;
+    padding: 8px;
+}
+
+/* Ensure athlete column header is clear */
+#categoryathlete_set table th:first-child {
+    width: auto;
+}
+
+/* Adjust cell padding for better spacing */
+#categoryathlete_set table td {
+    padding: 8px;
+}

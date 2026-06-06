@@ -1,0 +1,70 @@
+/* Compact referee scores inline to prevent horizontal scroll */
+
+/* Make the referee scores inline table narrower */
+#refereescore_set-group table {
+    width: auto !important;
+    max-width: 100%;
+}
+
+/* Narrower input fields for round scores */
+#refereescore_set-group input[type="number"],
+#refereescore_set-group input[id*="round"] {
+    width: 50px !important;
+    padding: 2px 4px !important;
+}
+
+/* Narrower referee select field */
+#refereescore_set-group select[id*="referee"] {
+    width: 150px !important;
+    max-width: 150px !important;
+}
+
+/* Compact table cells */
+#refereescore_set-group td,
+#refereescore_set-group th {
+    padding: 4px 6px !important;
+    white-space: nowrap;
+}
+
+/* Narrower total columns */
+#refereescore_set-group .field-red_total,
+#refereescore_set-group .field-blue_total,
+#refereescore_set-group .field-winner_combined {
+    width: 60px !important;
+}
+
+/* Round columns even narrower */
+#refereescore_set-group .field-red_round_1,
+#refereescore_set-group .field-blue_round_1,
+#refereescore_set-group .field-red_round_2,
+#refereescore_set-group .field-blue_round_2,
+#refereescore_set-group .field-red_round_3,
+#refereescore_set-group .field-blue_round_3 {
+    width: 50px !important;
+}
+
+/* Referee column */
+#refereescore_set-group .field-referee {
+    width: 150px !important;
+    max-width: 150px !important;
+}
+
+/* Remove excess padding from autocomplete widget */
+#refereescore_set-group .select2-container {
+    width: 150px !important;
+}
+
+/* Hide delete checkbox column - already disabled via can_delete=False but hide it completely */
+#refereescore_set-group td.delete,
+#refereescore_set-group th.delete {
+    display: none !important;
+}
+
+/* Hide the autocomplete add/edit/view buttons on referee field */
+#refereescore_set-group .field-referee .related-widget-wrapper-link {
+    display: none !important;
+}
+
+#refereescore_set-group .field-referee a.related-widget-wrapper-link {
+    display: none !important;
+}

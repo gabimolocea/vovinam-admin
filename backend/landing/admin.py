@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from .models import (
     NewsPost,
@@ -31,32 +32,32 @@ class NewsPostAdmin(admin.ModelAdmin):
     inlines = [NewsPostGalleryInline]
     
     fieldsets = (
-        (_('Basic Information'), {
+        (_('Informații de bază'), {
             'fields': ('title', 'slug', 'author', 'excerpt', 'tags')
         }),
-        (_('Content'), {
+        (_('Conținut'), {
             'fields': ('content', 'featured_image', 'featured_image_alt')
         }),
-        (_('Publication Settings'), {
+        (_('Setări publicare'), {
             'fields': ('published', 'featured')
         }),
-        ('SEO Settings', {
+        ('Setări SEO', {
             'fields': ('meta_title', 'meta_description', 'meta_keywords', 'canonical_url', 'robots_index', 'robots_follow'),
             'classes': ('collapse',),
-            'description': _('Search Engine Optimization settings')
+            'description': _('Setări pentru optimizarea în motoarele de căutare')
         }),
     )
     
     def author_name(self, obj):
-        return obj.author.get_full_name() if obj.author else _('No Author')
-    author_name.short_description = _('Author')
+        return obj.author.get_full_name() if obj.author else _('Fără autor')
+    author_name.short_description = _('Autor')
     
     def gallery_count(self, obj):
         count = obj.gallery_images.count()
         if count > 0:
-            return format_html('<span style="color: green;">{} images</span>', count)
-        return format_html('<span style="color: gray;">No images</span>')
-    gallery_count.short_description = _('Gallery')
+            return format_html('<span style="color: green;">{} imagini</span>', count)
+        return format_html('<span style="color: gray;">Fără imagini</span>')
+    gallery_count.short_description = _('Galerie')
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('author').prefetch_related('gallery_images')
@@ -68,39 +69,94 @@ class NewsPostAdmin(admin.ModelAdmin):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class EventAdmin(admin.ModelAdmin):
-    list_display = ['title', 'start_date', 'city', 'event_type', 'is_featured', 'event_status']
-    list_filter = ['is_featured', 'start_date']
+    list_display = ['title', 'start_date', 'city', 'event_type', 'event_status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured']
+    list_filter = ['status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'start_date']
     search_fields = ['title', 'description', 'city__name', 'tags']
-    autocomplete_fields = ('city',)
+    autocomplete_fields = ['city']
     prepopulated_fields = {'slug': ('title',)}
+    readonly_fields = ['status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at']
+    actions = ['lock_for_local_event', 'mark_local_in_progress', 'mark_local_results_uploaded', 'complete_local_sync', 'unlock_local_event']
     # Removed inline editing for `is_featured` to avoid the changelist-wide
     # "Save" button. Use the object change form or admin actions to toggle
     # featured status instead.
     ordering = ['start_date']
     
     fieldsets = (
-        (_('Event Details'), {
+        (_('Detalii eveniment'), {
             'fields': ('title', 'slug', 'description', 'featured_image', 'featured_image_alt', 'tags')
         }),
-        (_('Date & Location'), {
-            'fields': ('start_date', 'end_date', 'city', 'address', 'price', 'event_type')
+        (_('Dată și locație'), {
+            'fields': ('start_date', 'end_date', 'coach_registration_deadline', 'city', 'address', 'price', 'event_type', 'status')
         }),
-        (_('Display Settings'), {
+        (_('Setări afișare'), {
             'fields': ('is_featured',)
         }),
-        (_('SEO Settings'), {
+        (_('Sincronizare eveniment local'), {
+            'fields': ('sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at'),
+            'description': _('Controlează blocarea datelor operaționale după exportul către serverul local al competiției.')
+        }),
+        (_('Setări SEO'), {
             'fields': ('meta_title', 'meta_description', 'meta_keywords', 'canonical_url', 'robots_index', 'robots_follow'),
             'classes': ('collapse',),
-            'description': _('Search Engine Optimization settings')
+            'description': _('Setări pentru optimizarea în motoarele de căutare')
         }),
     )
     
     def event_status(self, obj):
+        if obj.is_past:
+            return format_html('<span style="color: red;">Trecut</span>')
+        if obj.is_ongoing:
+            return format_html('<span style="color: #0d6efd;">În desfășurare</span>')
         if obj.is_upcoming:
-            return format_html('<span style="color: green;">Upcoming</span>')
-        else:
-            return format_html('<span style="color: red;">Past</span>')
+            return format_html('<span style="color: green;">Următor</span>')
+        return format_html('<span style="color: gray;">Necunoscut</span>')
     event_status.short_description = _('Status')
+
+    def lock_for_local_event(self, request, queryset):
+        updated = 0
+        now = timezone.now()
+        for event in queryset:
+            event.mark_exported_to_local(exported_at=now)
+            event.save(update_fields=['sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at'])
+            updated += 1
+        self.message_user(request, f'{updated} eveniment(e) au fost blocate pentru operare locală.')
+    lock_for_local_event.short_description = _('Blochează pentru eveniment local')
+
+    def unlock_local_event(self, request, queryset):
+        updated = 0
+        for event in queryset:
+            event.clear_local_lock()
+            event.save(update_fields=['sync_mode', 'sync_locked', 'local_sync_status'])
+            updated += 1
+        self.message_user(request, f'{updated} eveniment(e) au fost deblocate pentru editare în cloud.')
+    unlock_local_event.short_description = _('Deblochează editarea în cloud')
+
+    def mark_local_results_uploaded(self, request, queryset):
+        updated = 0
+        for event in queryset:
+            event.mark_results_uploaded()
+            event.save(update_fields=['local_sync_status', 'results_uploaded_at'])
+            updated += 1
+        self.message_user(request, f'{updated} eveniment(e) au fost marcate cu rezultate încărcate din local.')
+    mark_local_results_uploaded.short_description = _('Marchează rezultate încărcate')
+
+    def mark_local_in_progress(self, request, queryset):
+        updated = 0
+        for event in queryset:
+            event.mark_local_in_progress()
+            event.save(update_fields=['local_sync_status'])
+            updated += 1
+        self.message_user(request, f'{updated} eveniment(e) au fost marcate ca în desfășurare locală.')
+    mark_local_in_progress.short_description = _('Marchează în desfășurare locală')
+
+    def complete_local_sync(self, request, queryset):
+        updated = 0
+        for event in queryset:
+            event.complete_local_sync()
+            event.save(update_fields=['sync_mode', 'sync_locked', 'local_sync_status', 'sync_completed_at'])
+            updated += 1
+        self.message_user(request, f'{updated} eveniment(e) au fost finalizate și deblocate pentru cloud.')
+    complete_local_sync.short_description = _('Finalizează sincronizarea locală')
 
 class AboutSectionAdmin(admin.ModelAdmin):
     list_display = ['section_title', 'order', 'is_active', 'created_at']
@@ -110,10 +166,10 @@ class AboutSectionAdmin(admin.ModelAdmin):
     ordering = ['order']
     
     fieldsets = (
-        (_('Section Information'), {
+        (_('Informații secțiune'), {
             'fields': ('section_title', 'content', 'image', 'image_alt')
         }),
-        (_('Display Settings'), {
+        (_('Setări afișare'), {
             'fields': ('order', 'is_active')
         }),
     )
@@ -128,13 +184,13 @@ class ContactMessageAdmin(admin.ModelAdmin):
     readonly_fields = ['created_at']
     
     fieldsets = (
-        (_('Message Details'), {
+        (_('Detalii mesaj'), {
             'fields': ('name', 'email', 'phone', 'subject', 'message', 'created_at')
         }),
         (_('Status'), {
             'fields': ('priority', 'is_read', 'is_replied')
         }),
-        (_('Admin Notes'), {
+        (_('Notițe administrator'), {
             'fields': ('admin_notes',),
             'classes': ('collapse',)
         }),
@@ -145,13 +201,13 @@ class ContactInfoAdmin(admin.ModelAdmin):
     list_editable = ['is_active']
     
     fieldsets = (
-        (_('Organization Details'), {
+        (_('Detalii organizație'), {
             'fields': ('organization_name', 'address', 'phone', 'email', 'website')
         }),
-        (_('Social Media'), {
+        (_('Rețele sociale'), {
             'fields': ('social_media_facebook', 'social_media_instagram', 'social_media_twitter')
         }),
-        (_('Additional Info'), {
+        (_('Informații suplimentare'), {
             'fields': ('business_hours', 'is_active')
         }),
     )
@@ -184,8 +240,8 @@ class NewsPostGalleryAdmin(admin.ModelAdmin):
     def image_preview(self, obj):
         if obj.image:
             return format_html('<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />', obj.image.url)
-        return _('No image')
-    image_preview.short_description = _('Preview')
+        return _('Fără imagine')
+    image_preview.short_description = _('Previzualizare')
 
 
 class NewsCommentAdmin(admin.ModelAdmin):
@@ -200,22 +256,22 @@ class NewsCommentAdmin(admin.ModelAdmin):
     actions = ['approve_comments', 'disapprove_comments']
     
     fieldsets = (
-        ('Comment Information', {
+        ('Informații comentariu', {
             'fields': ('news_post', 'author', 'content', 'parent')
         }),
-        ('Moderation', {
+        ('Moderare', {
             'fields': ('is_approved',)
         }),
     )
     
     def content_preview(self, obj):
         return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
-    content_preview.short_description = _('Content')
+    content_preview.short_description = _('Conținut')
     
     def is_reply(self, obj):
         return obj.is_reply
     is_reply.boolean = True
-    is_reply.short_description = _('Reply')
+    is_reply.short_description = _('Răspuns')
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('author', 'news_post', 'parent')
@@ -223,11 +279,11 @@ class NewsCommentAdmin(admin.ModelAdmin):
     def approve_comments(self, request, queryset):
         """Mark selected comments as approved."""
         updated = queryset.update(is_approved=True)
-        self.message_user(request, f"{updated} comment(s) approved.")
-    approve_comments.short_description = _('Approve selected comments')
+        self.message_user(request, f"{updated} comentariu(e) aprobate.")
+    approve_comments.short_description = _('Aprobă comentariile selectate')
 
     def disapprove_comments(self, request, queryset):
         """Mark selected comments as not approved."""
         updated = queryset.update(is_approved=False)
-        self.message_user(request, f"{updated} comment(s) disapproved.")
-    disapprove_comments.short_description = _('Disapprove selected comments')
+        self.message_user(request, f"{updated} comentariu(e) respinse.")
+    disapprove_comments.short_description = _('Respinge comentariile selectate')

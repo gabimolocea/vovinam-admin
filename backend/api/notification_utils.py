@@ -21,6 +21,9 @@ def create_notification(recipient, notification_type, title, message, related_re
     Returns:
         Notification object if created, None if user has disabled this notification type
     """
+    if not recipient:
+        return None
+
     if isinstance(recipient, int):
         try:
             recipient = User.objects.get(id=recipient)

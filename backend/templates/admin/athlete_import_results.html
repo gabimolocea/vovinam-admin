@@ -1,0 +1,40 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Administrare FRVV') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:api_athlete_changelist' %}">Sportivi</a>
+&rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="module aligned">
+    <h2>Rezumat</h2>
+    <div class="form-row"><strong>Mod:</strong> {% if dry_run %}Validare fără salvare{% else %}Import final{% endif %}</div>
+    <div class="form-row"><strong>Sportivi creați:</strong> {{ result.created|default:0 }}</div>
+    <div class="form-row"><strong>Sportivi actualizați:</strong> {{ result.updated|default:0 }}</div>
+    <div class="form-row"><strong>Erori:</strong> {{ result.errors|length }}</div>
+</div>
+
+{% if result.errors %}
+<div class="module aligned">
+    <h2>Lista erorilor</h2>
+    <ul>
+        {% for error in result.errors %}
+            <li>Rândul {{ error.row|default:"?" }}: {{ error.error|default:"Eroare necunoscută" }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="submit-row">
+    <a href="{% url 'admin:api_athlete_import_excel' %}" class="button">Înapoi la import</a>
+    <a href="{% url 'admin:api_athlete_changelist' %}" class="button">Înapoi la sportivi</a>
+</div>
+{% endblock %}

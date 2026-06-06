@@ -1,0 +1,113 @@
+/* Hide delete checkboxes from inline forms */
+.inline-related .delete input[type="checkbox"],
+.inline-related .delete label,
+#refereescore_set-group .delete {
+    display: none !important;
+}
+
+/* Hide the delete column header and cells */
+#refereescore_set-group thead th.delete {
+    display: none !important;
+}
+
+#refereescore_set-group tbody td.delete {
+    display: none !important;
+}
+
+/* Set max width for referee score columns */
+#refereescore_set-group .field-red_round_1,
+#refereescore_set-group .field-blue_round_1,
+#refereescore_set-group .field-red_round_2,
+#refereescore_set-group .field-blue_round_2,
+#refereescore_set-group .field-red_round_3,
+#refereescore_set-group .field-blue_round_3 {
+    max-width: 100px !important;
+    width: 100px !important;
+}
+
+#refereescore_set-group td.field-red_round_1,
+#refereescore_set-group td.field-blue_round_1,
+#refereescore_set-group td.field-red_round_2,
+#refereescore_set-group td.field-blue_round_2,
+#refereescore_set-group td.field-red_round_3,
+#refereescore_set-group td.field-blue_round_3 {
+    max-width: 100px !important;
+    width: 100px !important;
+    padding: 2px !important;
+}
+
+#refereescore_set-group .field-red_round_1 input,
+#refereescore_set-group .field-blue_round_1 input,
+#refereescore_set-group .field-red_round_2 input,
+#refereescore_set-group .field-blue_round_2 input,
+#refereescore_set-group .field-red_round_3 input,
+#refereescore_set-group .field-blue_round_3 input {
+    max-width: 100px !important;
+    width: 100px !important;
+}
+
+/* Column headers for rounds and colors */
+#refereescore_set-group thead th.field-red_round_1::before {
+    content: "ROUND 1\ARED";
+    display: block;
+    white-space: pre-wrap;
+}
+
+#refereescore_set-group thead th.field-red_round_1 {
+    font-size: 0;
+}
+
+#refereescore_set-group thead th.field-blue_round_1::before {
+    content: "ROUND 1\ABLUE";
+    display: block;
+    white-space: pre-wrap;
+    font-size: 13px;
+}
+
+#refereescore_set-group thead th.field-blue_round_1 {
+    font-size: 0;
+}
+
+#refereescore_set-group thead th.field-red_round_2::before {
+    content: "ROUND 2\ARED";
+    display: block;
+    white-space: pre-wrap;
+    font-size: 13px;
+}
+
+#refereescore_set-group thead th.field-red_round_2 {
+    font-size: 0;
+}
+
+#refereescore_set-group thead th.field-blue_round_2::before {
+    content: "ROUND 2\ABLUE";
+    display: block;
+    white-space: pre-wrap;
+    font-size: 13px;
+}
+
+#refereescore_set-group thead th.field-blue_round_2 {
+    font-size: 0;
+}
+
+#refereescore_set-group thead th.field-red_round_3::before {
+    content: "ROUND 3\ARED";
+    display: block;
+    white-space: pre-wrap;
+    font-size: 13px;
+}
+
+#refereescore_set-group thead th.field-red_round_3 {
+    font-size: 0;
+}
+
+#refereescore_set-group thead th.field-blue_round_3::before {
+    content: "ROUND 3\ABLUE";
+    display: block;
+    white-space: pre-wrap;
+    font-size: 13px;
+}
+
+#refereescore_set-group thead th.field-blue_round_3 {
+    font-size: 0;
+}

@@ -1,7 +1,26 @@
-from django.db.models.signals import m2m_changed, post_save, pre_delete
+from django.apps import apps as django_apps
+from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save, post_delete, post_migrate
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
+from django.contrib.admin.models import LogEntry
+from django.core.management import call_command
 from .models import *
+from .competition_defaults import ensure_standard_competition_groups_and_categories
+from .grade_catalog import sync_default_grades
+from .history_utils import log_addition, log_change, log_deletion
+from .request_context import get_current_user, is_admin_request
+from landing.models import Event as LandingEvent
+
+
+@receiver(post_migrate)
+def ensure_default_grades(sender, **kwargs):
+    if getattr(sender, 'name', None) != 'api':
+        return
+    try:
+        sync_default_grades(prune_unused=True)
+    except Exception:
+        # Keep migrations resilient if tables are not fully ready yet.
+        pass
 
 @receiver(m2m_changed, sender=Club.coaches.through)
 def update_is_coach(sender, instance, action, pk_set, **kwargs):
@@ -51,38 +70,14 @@ def auto_generate_team_name(sender, instance, action, **kwargs):
     if action in ['post_add', 'post_remove', 'post_clear'] and instance.type == 'teams':
         # Auto-generate team name based on current team members
         if instance.team_members.exists():
-            member_names = [f"{m.first_name} {m.last_name}" for m in instance.team_members.all()[:3]]
-            auto_generated_name = f"{', '.join(member_names)}"
-            if instance.team_members.count() > 3:
-                auto_generated_name += f" (+{instance.team_members.count() - 3} more)"
+            auto_generated_name = build_team_display_name(
+                instance.team_members.select_related('club').all()
+            )
             
             # Update team name if it's different
             if instance.team_name != auto_generated_name:
                 instance.team_name = auto_generated_name
                 instance.save(update_fields=['team_name'])
-
-@receiver(m2m_changed, sender=Category.teams.through)
-def sync_category_and_team(sender, instance, action, reverse, pk_set, **kwargs):
-    """
-    Synchronize the relationship between Category and Team.
-    """
-    if action in ['post_add', 'post_remove']:
-        if reverse:
-            # If the change is made from the Team side
-            teams = Team.objects.filter(pk__in=pk_set)
-            for team in teams:
-                if action == 'post_add':
-                    team.categories.add(instance)
-                elif action == 'post_remove':
-                    team.categories.remove(instance)
-        else:
-            # If the change is made from the Category side
-            categories = Category.objects.filter(pk__in=pk_set)
-            for category in categories:
-                if action == 'post_add':
-                    category.teams.add(instance)
-                elif action == 'post_remove':
-                    category.teams.remove(instance)
 
 @receiver(post_save, sender=Team)
 def validate_and_assign_places(sender, instance, **kwargs):
@@ -100,15 +95,250 @@ def validate_and_assign_places(sender, instance, **kwargs):
     # Team placement is now handled through the CategoryAthleteScore system
     # with team_members relationships, so no additional processing needed here
 
+
+@receiver(post_save, sender=LandingEvent)
+@receiver(post_save, sender=Event)
+def create_default_competition_fields(sender, instance, created, **kwargs):
+    """Create 2 default terenuri for competition events when created."""
+    if not created:
+        return
+    if getattr(instance, 'event_type', None) != 'competition':
+        return
+    if CompetitionField.objects.filter(event=instance).exists():
+        return
+
+    CompetitionField.objects.bulk_create([
+        CompetitionField(event=instance, name='Teren 1', field_number=1, is_active=True),
+        CompetitionField(event=instance, name='Teren 2', field_number=2, is_active=True),
+    ])
+
+
+@receiver(post_save, sender=LandingEvent)
+@receiver(post_save, sender=Event)
+def create_default_competition_groups(sender, instance, created, **kwargs):
+    """
+    Auto-create default age groups for competition events when created.
+    Groups follow the Romanian Vovinam federation standard:
+      Grupa 0  – ages 7-8   (2-year span)
+      Grupa 1  – ages 9-12  (4-year span)
+      Grupa 2  – ages 13-14 (2-year span)
+      Grupa 3  – ages 15-17 (3-year span)
+      Sen. Gr. Mici – 18+
+      Sen. Gr. Mari – 18+
+    Birth year ranges are computed from the competition start_date year.
+    """
+    if not created:
+        return
+    if getattr(instance, 'event_type', None) != 'competition':
+        return
+    ensure_standard_competition_groups_and_categories(instance)
+
+
+# Signal removed - team.name is now a computed property that auto-generates from members
+# No need to manually update it when TeamMember is saved
+
+
+def _get_history_user(instance):
+    user = getattr(instance, '_current_user', None)
+    if user and not getattr(user, 'is_anonymous', True):
+        return user
+    return get_current_user()
+
+
+def _should_log_history(instance):
+    user = _get_history_user(instance)
+    if not user:
+        return False
+    if is_admin_request():
+        return False
+    return True
+
+
+def _serialize_history_value(value):
+    if value is None:
+        return ''
+    if hasattr(value, 'isoformat'):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    return str(value)
+
+
+def _get_changed_fields(instance):
+    original = getattr(instance, '_history_original_values', None) or {}
+    changed_fields = {}
+
+    for field in instance._meta.concrete_fields:
+        old_value = original.get(field.attname)
+        new_value = getattr(instance, field.attname, None)
+        if old_value != new_value:
+            changed_fields[field.name] = [
+                _serialize_history_value(old_value),
+                _serialize_history_value(new_value),
+            ]
+
+    return changed_fields
+
+
+def capture_original_values(sender, instance, **kwargs):
+    if not getattr(instance, 'pk', None):
+        return
+    try:
+        current = sender.objects.filter(pk=instance.pk).values().first() or {}
+    except Exception:
+        current = {}
+    instance._history_original_values = current
+
+
+def log_model_creation(sender, instance, created, **kwargs):
+    if not created or not _should_log_history(instance):
+        return
+    user = _get_history_user(instance)
+    log_addition(instance, user, 'Added via API')
+
+
+def log_model_change(sender, instance, created, update_fields=None, **kwargs):
+    if created or not _should_log_history(instance):
+        return
+    user = _get_history_user(instance)
+    changes = _get_changed_fields(instance)
+    log_change(instance, user, changes)
+
+
+def log_model_deletion(sender, instance, **kwargs):
+    if not _should_log_history(instance):
+        return
+    user = _get_history_user(instance)
+    log_deletion(instance, user, 'Deleted via API')
+
+
+def _models_to_log():
+    tracked_models = []
+    for model in django_apps.get_app_config('api').get_models():
+        opts = model._meta
+        if opts.abstract or opts.proxy or opts.auto_created:
+            continue
+        tracked_models.append(model)
+    try:
+        tracked_models.append(LandingEvent)
+    except Exception:
+        pass
+    return tracked_models
+
+
+for model in _models_to_log():
+    if model is LogEntry:
+        continue
+    pre_save.connect(capture_original_values, sender=model, dispatch_uid=f'{model.__name__}_capture_original_values')
+    post_save.connect(log_model_creation, sender=model, dispatch_uid=f'{model.__name__}_log_addition')
+    post_save.connect(log_model_change, sender=model, dispatch_uid=f'{model.__name__}_log_change')
+    post_delete.connect(log_model_deletion, sender=model, dispatch_uid=f'{model.__name__}_log_deletion')
+
+
+@receiver(post_migrate)
+def seed_default_cities(sender, **kwargs):
+    if getattr(sender, "name", None) != "api":
+        return
+    if City.objects.exists():
+        return
+    try:
+        call_command("import_ro_cities")
+    except Exception:
+        call_command("loaddata", "ro_cities_fallback")
+
+
+@receiver(post_migrate)
+def seed_default_competition_fields(sender, **kwargs):
+    if getattr(sender, "name", None) != "api":
+        return
+
+    try:
+        from landing.models import Event
+        competitions = Event.objects.filter(event_type='competition')
+        for ev in competitions:
+            if CompetitionField.objects.filter(event=ev).exists():
+                continue
+            CompetitionField.objects.bulk_create([
+                CompetitionField(event=ev, name='Teren 1', field_number=1, is_active=True),
+                CompetitionField(event=ev, name='Teren 2', field_number=2, is_active=True),
+            ])
+    except Exception:
+        pass
+
+
 @receiver(post_save, sender=TeamMember)
-def update_team_name(sender, instance, **kwargs):
+def update_team_name_on_member_add(sender, instance, created, **kwargs):
     """
-    Update the team name based on its members after a TeamMember is saved.
+    Team name is computed dynamically from members.
+    No database write is needed when members change.
     """
-    team = instance.team
-    member_names = [f"{member.athlete.first_name} {member.athlete.last_name}" for member in team.members.all()]
-    team.name = " + ".join(member_names)
-    team.save(update_fields=['name'])  # Save only the updated name field
-    
+    return
 
 
+# ═══════════════════════════════════════════════════════════════════
+# SYNC CategoryAthlete ↔ FightAthleteWeight for fight categories
+# ═══════════════════════════════════════════════════════════════════
+
+@receiver(post_save, sender=CategoryAthlete)
+def sync_category_athlete_to_fight_weight(sender, instance, created, **kwargs):
+    """
+    When a CategoryAthlete is created/updated for a fight category,
+    auto-create or update the corresponding FightAthleteWeight record.
+    Copies enrollment weight → pre_weight_kg so it appears in the admin.
+    """
+    try:
+        # Check if this category is a FightCategory
+        fight_cat = FightCategory.objects.get(pk=instance.category_id)
+    except FightCategory.DoesNotExist:
+        return
+    # Create or update FightAthleteWeight
+    fw, fw_created = FightAthleteWeight.objects.get_or_create(
+        category=fight_cat,
+        athlete=instance.athlete,
+    )
+    # Sync enrollment weight → pre_weight_kg (only if enrollment has a weight)
+    if instance.weight and (fw_created or not fw.pre_weight_kg):
+        fw.pre_weight_kg = instance.weight
+        fw.save(update_fields=['pre_weight_kg'])
+
+
+@receiver(post_save, sender=FightAthleteWeight)
+def sync_fight_weight_to_category_athlete(sender, instance, created, **kwargs):
+    """
+    When a FightAthleteWeight is created (e.g. from admin inline),
+    auto-create the corresponding CategoryAthlete enrollment record.
+    """
+    if not created:
+        return
+    # category FK points to FightCategory which inherits from Category
+    CategoryAthlete.objects.get_or_create(
+        category_id=instance.category_id,
+        athlete=instance.athlete,
+    )
+
+
+@receiver(post_delete, sender=CategoryAthlete)
+def delete_fight_weight_on_unenroll(sender, instance, **kwargs):
+    """
+    When a CategoryAthlete is deleted (unenrolled) from a fight category,
+    also remove the FightAthleteWeight record.
+    """
+    if getattr(instance, '_syncing', False):
+        return
+    for fw in FightAthleteWeight.objects.filter(category_id=instance.category_id, athlete=instance.athlete):
+        fw._syncing = True
+        fw.delete()
+
+
+@receiver(post_delete, sender=FightAthleteWeight)
+def delete_category_athlete_on_fight_weight_remove(sender, instance, **kwargs):
+    """
+    When a FightAthleteWeight is removed from admin,
+    also remove the CategoryAthlete enrollment.
+    """
+    if getattr(instance, '_syncing', False):
+        return
+    for ca in CategoryAthlete.objects.filter(category_id=instance.category_id, athlete=instance.athlete):
+        ca._syncing = True
+        ca.delete()

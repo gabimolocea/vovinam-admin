@@ -1,9 +1,9 @@
 name: CI
 
-# Backend-only CI workflow - frontend tests pass with no tests (--passWithNoTests)
+# Backend-only CI workflow
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, dev ]
   pull_request:
     branches: [ main ]
 
@@ -35,30 +35,6 @@ jobs:
 
     - name: Run tests
       run: python manage.py test api.tests
-
-  frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '20'
-    
-    - name: Install dependencies
-      run: npm ci --legacy-peer-deps
-    
-    # Skip tests temporarily - Jest + Vite import.meta not compatible without babel-plugin-transform-vite
-    # - name: Run tests
-    #   run: npm run test
-    
-    - name: Build
-      run: npm run build
 
   # integration:
   #   needs: backend

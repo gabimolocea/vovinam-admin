@@ -1,105 +1,20 @@
 {% extends "admin/base.html" %}
-{% load i18n admin_urls admin_groups %}
 
-{% block title %}{{ title }} | FRVV Admin{% endblock %}
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_("Administrare site Django") }}{% endblock %}
+
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+{% endblock %}
 
 {% block branding %}
-<h1 id="site-name"><a href="{% url 'admin:index' %}">FRVV Admin</a></h1>
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_("Administrare Django") }}</a></div>
+{% if user.is_anonymous %}
+	{% include "admin/color_theme_toggle.html" %}
+{% endif %}
 {% endblock %}
 
-{# Override the sidebar block to provide a sticky, reordered navigation that
-   uses ADMIN_APP_ORDER and the app grouping tag. We guard against missing
-   `app_list` in contexts where the admin does not provide it.
-#}
+{% block nav-global %}{% endblock %}
 
-{% block sidebar %}
-  <style>
-    /* Minimal styling to make the sidebar sticky and scrollable */
-    #custom-admin-sidebar {
-      position: sticky;
-      top: 1rem;
-      max-height: calc(100vh - 2rem);
-      overflow: auto;
-      padding-right: 0.5rem;
-    }
-    #custom-admin-sidebar .app-heading {
-      font-weight: 600;
-      margin-top: 0.5rem;
-    }
-    #custom-admin-sidebar ul.model-list { list-style: none; padding-left: 0.5rem; }
-    #custom-admin-sidebar ul.model-list li { margin: 0.2rem 0; }
-  </style>
-
-  <div id="custom-admin-sidebar">
-    {% if app_list %}
-      {% reorder_app_list app_list as ordered_apps %}
-      {% for app in ordered_apps %}
-        <div class="app-{{ app.app_label }}">
-          <div class="app-heading">{{ app.name }}</div>
-          {% app_groups app as groups %}
-          {% if groups %}
-            {% for group in groups %}
-              <div class="module-group">
-                <div class="group-heading">{{ group.group_name }}</div>
-                <ul class="model-list">
-                  {% for model in group.models %}
-                    <li>
-                      {% if model.admin_url %}<a href="{{ model.admin_url }}">{{ model.name }}</a>{% else %}{{ model.name }}{% endif %}
-                    </li>
-                  {% endfor %}
-                </ul>
-              </div>
-            {% endfor %}
-          {% else %}
-            <ul class="model-list">
-              {% for model in app.models %}
-                <li>{% if model.admin_url %}<a href="{{ model.admin_url }}">{{ model.name }}</a>{% else %}{{ model.name }}{% endif %}</li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-        </div>
-      {% endfor %}
-    {% else %}
-      {# Fallback: nothing to render if app_list isn't available in context #}
-    {% endif %}
-  </div>
-{% endblock %}
-
-{# Inject a small language selector into the admin header user links area. #}
-{# Place language selector before the welcome message so it appears near the top-left
-   user tools area and visually before the "Welcome, <user>" text. The links use
-   the same inline-link style as other user links (no large button chrome). #}
-{% block welcome-msg %}
-  {% get_current_language as LANGUAGE_CODE %}
-  <span style="margin-right:0.5rem;">
-    <a href="#" class="lang-switch lang-en{% if LANGUAGE_CODE|slice:":2" == 'en' %} active{% endif %}" data-lang="en" title="English" aria-label="English" style="text-decoration:none; padding:2px 6px; border-radius:4px;{% if LANGUAGE_CODE|slice:":2" == 'en' %}; {% endif %}">EN</a>
-    <a href="#" class="lang-switch lang-ro{% if LANGUAGE_CODE|slice:":2" == 'ro' %} active{% endif %}" data-lang="ro" title="Română" aria-label="Română" style="text-decoration:none;margin-left:6px; padding:2px 6px; border-radius:4px;{% if LANGUAGE_CODE|slice:":2" == 'ro' %}; {% endif %}">RO</a>
-  </span>
-  {{ block.super }}
-
-  <script>
-    (function(){
-      function getCookie(name) {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-      }
-      const csrftoken = getCookie('csrftoken');
-      document.querySelectorAll('.lang-switch').forEach(function(el){
-        el.addEventListener('click', function(e){
-          e.preventDefault();
-          const lang = el.getAttribute('data-lang');
-          const next = window.location.pathname + window.location.search + window.location.hash;
-          fetch('{% url "set_language" %}', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-              'X-CSRFToken': csrftoken,
-            },
-            body: new URLSearchParams({language: lang, next: next})
-          }).then(function(){ window.location = next; });
-        });
-      });
-    })();
-  </script>
-{% endblock %}

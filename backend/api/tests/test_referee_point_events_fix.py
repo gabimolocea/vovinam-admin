@@ -2,6 +2,7 @@ from datetime import timedelta
 from django.test import TestCase
 from django.core.management import call_command
 from api.models import Athlete, Match, Category, RefereePointEvent, RefereeScore
+from api.views import _auto_validate_real_time_point_event, REAL_TIME_POINT_VALIDATION_WINDOW_MS
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -64,3 +65,155 @@ class RefereePointEventTests(TestCase):
         self.match.refresh_from_db()
         # winner can be determined by algorithm; ensure no crash and match.winner is either corner or None
         self.assertIn(self.match.winner, [self.match.red_corner, self.match.blue_corner, None])
+
+    def test_real_time_validation_accepts_events_within_1500ms(self):
+        self.match.display_mode = 'real_time'
+        self.match.save(update_fields=['display_mode'])
+
+        base_time = timezone.now()
+        first = RefereePointEvent.objects.create(
+            match=self.match,
+            referee=self.refs[0],
+            side='red',
+            points=2,
+            event_type='score',
+            validation_status='pending',
+            metadata={'round': 1},
+        )
+        second = RefereePointEvent.objects.create(
+            match=self.match,
+            referee=self.refs[1],
+            side='red',
+            points=2,
+            event_type='score',
+            validation_status='pending',
+            metadata={'round': 1},
+        )
+        RefereePointEvent.objects.filter(pk=first.pk).update(timestamp=base_time)
+        RefereePointEvent.objects.filter(pk=second.pk).update(
+            timestamp=base_time + timedelta(milliseconds=REAL_TIME_POINT_VALIDATION_WINDOW_MS - 300)
+        )
+        first.refresh_from_db()
+        second.refresh_from_db()
+
+        validated = _auto_validate_real_time_point_event(second)
+
+        self.assertEqual(len(validated), 2)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.validation_status, 'validated')
+        self.assertEqual(second.validation_status, 'validated')
+
+    def test_real_time_validation_rejects_events_outside_1500ms(self):
+        self.match.display_mode = 'real_time'
+        self.match.save(update_fields=['display_mode'])
+
+        base_time = timezone.now()
+        first = RefereePointEvent.objects.create(
+            match=self.match,
+            referee=self.refs[0],
+            side='red',
+            points=1,
+            event_type='score',
+            validation_status='pending',
+            metadata={'round': 1},
+        )
+        second = RefereePointEvent.objects.create(
+            match=self.match,
+            referee=self.refs[1],
+            side='red',
+            points=1,
+            event_type='score',
+            validation_status='pending',
+            metadata={'round': 1},
+        )
+        RefereePointEvent.objects.filter(pk=first.pk).update(timestamp=base_time)
+        RefereePointEvent.objects.filter(pk=second.pk).update(
+            timestamp=base_time + timedelta(milliseconds=REAL_TIME_POINT_VALIDATION_WINDOW_MS + 100)
+        )
+        first.refresh_from_db()
+        second.refresh_from_db()
+
+        validated = _auto_validate_real_time_point_event(second)
+
+        self.assertEqual(validated, [])
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.validation_status, 'pending')
+        self.assertEqual(second.validation_status, 'pending')
+
+    def test_real_time_validation_rejects_events_at_exactly_1500ms(self):
+        self.match.display_mode = 'real_time'
+        self.match.save(update_fields=['display_mode'])
+
+        base_time = timezone.now()
+        first = RefereePointEvent.objects.create(
+            match=self.match,
+            referee=self.refs[0],
+            side='red',
+            points=1,
+            event_type='score',
+            validation_status='pending',
+            metadata={'round': 1},
+        )
+        second = RefereePointEvent.objects.create(
+            match=self.match,
+            referee=self.refs[1],
+            side='red',
+            points=1,
+            event_type='score',
+            validation_status='pending',
+            metadata={'round': 1},
+        )
+        RefereePointEvent.objects.filter(pk=first.pk).update(timestamp=base_time)
+        RefereePointEvent.objects.filter(pk=second.pk).update(
+            timestamp=base_time + timedelta(milliseconds=REAL_TIME_POINT_VALIDATION_WINDOW_MS)
+        )
+        first.refresh_from_db()
+        second.refresh_from_db()
+
+        validated = _auto_validate_real_time_point_event(second)
+
+        self.assertEqual(validated, [])
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.validation_status, 'pending')
+        self.assertEqual(second.validation_status, 'pending')
+
+    def test_real_time_validation_uses_client_timestamp_when_server_times_drift(self):
+        self.match.display_mode = 'real_time'
+        self.match.save(update_fields=['display_mode'])
+
+        base_time = timezone.now()
+        first = RefereePointEvent.objects.create(
+            match=self.match,
+            referee=self.refs[0],
+            side='red',
+            points=1,
+            event_type='score',
+            validation_status='pending',
+            metadata={'round': 1, 'client_timestamp_ms': 1_000_000},
+        )
+        second = RefereePointEvent.objects.create(
+            match=self.match,
+            referee=self.refs[1],
+            side='red',
+            points=1,
+            event_type='score',
+            validation_status='pending',
+            metadata={'round': 1, 'client_timestamp_ms': 1_001_200},
+        )
+        RefereePointEvent.objects.filter(pk=first.pk).update(timestamp=base_time)
+        RefereePointEvent.objects.filter(pk=second.pk).update(
+            timestamp=base_time + timedelta(milliseconds=REAL_TIME_POINT_VALIDATION_WINDOW_MS + 700)
+        )
+        first.refresh_from_db()
+        second.refresh_from_db()
+
+        validated = _auto_validate_real_time_point_event(second)
+
+        self.assertEqual(len(validated), 2)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.validation_status, 'validated')
+        self.assertEqual(second.validation_status, 'validated')

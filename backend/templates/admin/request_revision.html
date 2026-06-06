@@ -1,12 +1,12 @@
 {% extends "admin/base_site.html" %}
 {% load i18n admin_urls static admin_modify %}
 
-{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+{% block title %}{{ title }} | {{ site_title|default:_('Administrare site Django') }}{% endblock %}
 
 {% block breadcrumbs %}
 <div class="breadcrumbs">
 <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
-&rsaquo; <a href="{% url 'admin:api_athleteprofile_changelist' %}">Athlete Profiles</a>
+&rsaquo; <a href="{% url 'admin:api_athlete_changelist' %}">Sportivi</a>
 &rsaquo; {{ title }}
 </div>
 {% endblock %}
@@ -15,36 +15,36 @@
 <h1>{{ title }}</h1>
 
 <div class="module aligned">
-    <h2>Profile Information</h2>
+    <h2>Informații profil</h2>
     <div class="form-row">
-        <div><strong>Name:</strong> {{ profile.first_name }} {{ profile.last_name }}</div>
+        <div><strong>Nume:</strong> {{ profile.first_name }} {{ profile.last_name }}</div>
         <div><strong>Email:</strong> {{ profile.user.email }}</div>
-        <div><strong>Date of Birth:</strong> {{ profile.date_of_birth }}</div>
-        <div><strong>Mobile:</strong> {{ profile.mobile_number }}</div>
-        <div><strong>Address:</strong> {{ profile.address }}</div>
-        <div><strong>Club:</strong> {{ profile.club|default:"Not specified" }}</div>
-        <div><strong>Previous Experience:</strong> {{ profile.previous_experience|default:"None specified" }}</div>
-        <div><strong>Emergency Contact:</strong> {{ profile.emergency_contact_name }} ({{ profile.emergency_contact_phone }})</div>
-        <div><strong>Submitted:</strong> {{ profile.submitted_date }}</div>
+        <div><strong>Data nașterii:</strong> {{ profile.date_of_birth }}</div>
+        <div><strong>Telefon:</strong> {{ profile.mobile_number }}</div>
+        <div><strong>Adresă:</strong> {{ profile.address }}</div>
+        <div><strong>Club:</strong> {{ profile.club|default:"Nespecificat" }}</div>
+        <div><strong>Experiență anterioară:</strong> {{ profile.previous_experience|default:"Nespecificată" }}</div>
+        <div><strong>Contact de urgență:</strong> {{ profile.emergency_contact_name }} ({{ profile.emergency_contact_phone }})</div>
+        <div><strong>Data trimiterii:</strong> {{ profile.submitted_date }}</div>
     </div>
 </div>
 
 <form method="post">
     {% csrf_token %}
     <div class="module aligned">
-        <h2>Revision Request</h2>
+        <h2>Cerere de revizuire</h2>
         <div class="form-row">
             <div>
-                <label for="admin_notes"><strong>Please specify what needs to be revised:</strong></label>
+                <label for="admin_notes"><strong>Precizează ce trebuie revizuit:</strong></label>
                 <textarea name="admin_notes" id="admin_notes" rows="6" cols="80" required 
-                          placeholder="Explain what information needs to be corrected or added. This will be visible to the applicant."></textarea>
+                          placeholder="Explică ce informații trebuie corectate sau adăugate. Acest mesaj va fi vizibil solicitantului."></textarea>
             </div>
         </div>
     </div>
     
     <div class="submit-row">
-        <input type="submit" value="Request Revision" class="default" style="background-color: #ffc107; color: #212529;">
-        <a href="{% url 'admin:api_athleteprofile_changelist' %}" class="button cancel-link">Cancel</a>
+        <input type="submit" value="Solicită revizuirea" class="default" style="background-color: #ffc107; color: #212529;">
+        <a href="{% url 'admin:api_athlete_changelist' %}" class="button cancel-link">Anulează</a>
     </div>
 </form>
 

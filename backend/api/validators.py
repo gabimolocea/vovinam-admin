@@ -34,6 +34,14 @@ def validate_referee_point_event_metadata(data):
         reason = data.get('reason')
         if reason is not None and not isinstance(reason, str):
             raise ValidationError("'reason' must be a string")
+        match_event_id = data.get('match_event_id')
+        if match_event_id is not None:
+            if not isinstance(match_event_id, int) or match_event_id < 1:
+                raise ValidationError("'match_event_id' must be an integer >= 1")
+        match_referee_score_id = data.get('match_referee_score_id')
+        if match_referee_score_id is not None:
+            if not isinstance(match_referee_score_id, int) or match_referee_score_id < 1:
+                raise ValidationError("'match_referee_score_id' must be an integer >= 1")
         return
 
     try:

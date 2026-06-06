@@ -2,65 +2,23 @@ from django.db import models
 from django.db.models import F
 from django.core.exceptions import ValidationError
 from django.contrib import admin
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from datetime import date, timedelta
+import hashlib
+import secrets
+from urllib.parse import urlparse
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
 from django.db.models.signals import post_delete
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+from django.utils.text import slugify
+from .mixins import TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin
+from .managers import AthleteManager
 
 # Create your models here.
-
-# Base Mixin for Approval Workflow
-class ApprovalWorkflowMixin(models.Model):
-    """Mixin for approval workflow functionality - reduces code duplication"""
-    STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('revision_required', 'Revision Required'),
-    ]
-    
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    submitted_date = models.DateTimeField(auto_now_add=True)
-    reviewed_date = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_%(class)s')
-    admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
-    
-    class Meta:
-        abstract = True
-    
-    def approve(self, admin_user, notes=''):
-        """Approve the submission"""
-        from django.utils import timezone
-        self.status = 'approved'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        if notes:
-            self.admin_notes = notes
-        self.save()
-        
-    def reject(self, admin_user, notes=''):
-        """Reject the submission"""
-        from django.utils import timezone
-        self.status = 'rejected'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        if notes:
-            self.admin_notes = notes
-        self.save()
-    
-    def request_revision(self, admin_user, notes=''):
-        """Request revision of the submission"""
-        from django.utils import timezone
-        self.status = 'revision_required'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        if notes:
-            self.admin_notes = notes
-        self.save()
-
 
 class User(AbstractUser):
     ROLE_CHOICES = [
@@ -78,7 +36,7 @@ class User(AbstractUser):
     # New fields for enhanced user management
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
-    city = models.ForeignKey('City', on_delete=models.SET_NULL, blank=True, null=True)
+    # City removed - use athlete.city instead
     profile_completed = models.BooleanField(default=False)
     
     USERNAME_FIELD = 'email'
@@ -100,6 +58,18 @@ class User(AbstractUser):
     @property
     def is_athlete(self):
         return self.role == 'athlete'
+    
+    @property
+    def is_referee(self):
+        """User is referee if they're admin OR if they're an athlete with is_referee=True"""
+        if self.is_admin:
+            return True
+        if self.is_athlete:
+            try:
+                return hasattr(self, 'athlete') and self.athlete and self.athlete.is_referee
+            except:
+                return False
+        return False
     
     @property
     def is_supporter(self):
@@ -144,16 +114,158 @@ try:
     # Import here to avoid circular import issues during migrations
     from landing.models import Event as LandingEvent
 
+    class _LegacyEventManager(models.Manager):
+        event_type = None
+
+        def get_queryset(self):
+            qs = super().get_queryset()
+            if self.event_type:
+                qs = qs.filter(event_type=self.event_type)
+            return qs
+
+        def create(self, **kwargs):
+            kwargs = kwargs.copy()
+            if 'name' in kwargs and 'title' not in kwargs:
+                kwargs['title'] = kwargs.pop('name')
+            if 'place' in kwargs and 'address' not in kwargs:
+                kwargs['address'] = kwargs.pop('place')
+
+            title = kwargs.get('title') or 'event'
+            kwargs.setdefault('slug', slugify(title) or f'event-{secrets.token_hex(4)}')
+
+            if 'start_date' not in kwargs:
+                kwargs['start_date'] = timezone.now()
+            if 'end_date' not in kwargs:
+                kwargs['end_date'] = kwargs['start_date'] + timedelta(days=1)
+
+            kwargs.setdefault('event_type', self.event_type)
+            return super().create(**kwargs)
+
     class Event(LandingEvent):
         class Meta:
             proxy = True
             app_label = 'api'
             verbose_name = _('Event')
             verbose_name_plural = _('Events')
+
+
+    class Competition(Event):
+        objects = _LegacyEventManager()
+        objects.event_type = 'competition'
+
+        class Meta:
+            proxy = True
+            app_label = 'api'
+            verbose_name = _('Competition')
+            verbose_name_plural = _('Competitions')
+
+        @property
+        def name(self):
+            return self.title
+
+        @name.setter
+        def name(self, value):
+            self.title = value
+
+
+    class _TrainingSeminarAthletesRelation:
+        def __init__(self, seminar):
+            self.seminar = seminar
+
+        def add(self, *athletes):
+            for athlete in athletes:
+                participation, created = TrainingSeminarParticipation.objects.get_or_create(
+                    athlete=athlete,
+                    event=self.seminar,
+                    defaults={
+                        'seminar': self.seminar,
+                        'submitted_by_athlete': False,
+                    },
+                )
+                update_fields = []
+                if participation.seminar_id != self.seminar.id:
+                    participation.seminar = self.seminar
+                    update_fields.append('seminar')
+                if created is False and participation.event_id != self.seminar.id:
+                    participation.event = self.seminar
+                    update_fields.append('event')
+                if update_fields:
+                    participation.save(update_fields=update_fields)
+
+        def all(self):
+            return Athlete.objects.filter(seminar_participations__event=self.seminar).distinct()
+
+
+    class TrainingSeminar(Event):
+        objects = _LegacyEventManager()
+        objects.event_type = 'training_seminar'
+
+        class Meta:
+            proxy = True
+            app_label = 'api'
+            verbose_name = _('Training seminar')
+            verbose_name_plural = _('Training seminars')
+
+        @property
+        def name(self):
+            return self.title
+
+        @name.setter
+        def name(self, value):
+            self.title = value
+
+        @property
+        def place(self):
+            return self.address
+
+        @place.setter
+        def place(self, value):
+            self.address = value
+
+        @property
+        def athletes(self):
+            return _TrainingSeminarAthletesRelation(self)
 except Exception:
     # During some migration or import-time operations the landing app
     # may not be fully importable; silently skip proxy creation in that case.
     pass
+
+
+class DiplomaTemplate(models.Model):
+    TEMPLATE_KIND_CHOICES = [
+        ('first_place', 'Locul 1'),
+        ('second_place', 'Locul 2'),
+        ('third_place', 'Locul 3'),
+        ('participation', 'Participare'),
+    ]
+    CATEGORY_SCOPE_CHOICES = [
+        ('all', 'Toate categoriile'),
+        ('solo', 'Solo'),
+        ('team', 'Echipă'),
+        ('fight', 'Luptă'),
+    ]
+    PREVIEW_ORIENTATION_CHOICES = [
+        ('landscape', 'Landscape'),
+        ('portrait', 'Portrait'),
+    ]
+
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='diploma_templates')
+    title = models.CharField(max_length=120)
+    template_kind = models.CharField(max_length=20, choices=TEMPLATE_KIND_CHOICES)
+    category_scope = models.CharField(max_length=12, choices=CATEGORY_SCOPE_CHOICES, default='all')
+    pdf_file = models.FileField(upload_to='diploma_templates/')
+    preview_orientation = models.CharField(max_length=12, choices=PREVIEW_ORIENTATION_CHOICES, default='landscape')
+    placements = models.JSONField(default=list, blank=True, help_text='Listă de câmpuri poziționate pe diploma PDF.')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['event_id', 'category_scope', 'template_kind', 'id']
+        unique_together = ('event', 'template_kind', 'category_scope')
+
+    def __str__(self):
+        return f"{self.event.title} - {self.get_template_kind_display()} - {self.get_category_scope_display()}"
 
 class City(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -163,31 +275,12 @@ class City(models.Model):
     def __str__(self):
         return self.name
     
-class Competition(models.Model):
-    name = models.CharField(max_length=100)
-    place = models.CharField(max_length=100, blank=True, null=True)  # Place of the competition
-    
-    start_date = models.DateField(blank=True, null=True)  # Start date of the competition
-    end_date = models.DateField(blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.name} ({self.start_date} - {self.end_date})"
-    
-    class Meta:
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(end_date__gte=models.F('start_date')) | models.Q(end_date__isnull=True),
-                name='competition_end_after_start'
-            ),
-        ]
-
-
 class Club(models.Model):
     name = models.CharField(max_length=100, unique=True)
     logo = models.ImageField(upload_to='club_logos/', blank=True, null=True)  # Optional logo field
     city = models.ForeignKey(
         City, 
-        on_delete=models.CASCADE, 
+        on_delete=models.SET_NULL,  # Changed from CASCADE to SET_NULL for data safety
         related_name='clubs',
         blank=True,
         null=True
@@ -200,8 +293,12 @@ class Club(models.Model):
         related_name='coached_clubs', 
         blank=True
     )  # Replace coach field with ManyToManyField to Athlete
+    display_order = models.IntegerField(default=0, help_text='Order for display in centralizator')
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
 
     def __str__(self):
         return self.name
@@ -237,10 +334,11 @@ class FederationRole(models.Model):
         return self.name
 
 
-class Athlete(models.Model):
+class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Model):
     """
     Unified Athlete model that handles both pending and approved athletes.
     Replaces the separate AthleteProfile system for simplified workflow.
+    Enhanced with: timestamps, sync tracking, soft delete, and audit trail.
     """
     STATUS_CHOICES = [
         ('pending', 'Pending Approval'),
@@ -248,21 +346,25 @@ class Athlete(models.Model):
         ('rejected', 'Rejected'),
         ('revision_required', 'Revision Required'),
     ]
+
+    GENDER_CHOICES = [
+        ('male', 'Male'),
+        ('female', 'Female'),
+    ]
     
-    # Link to User account
+    # Custom manager for optimized queries
+    objects = AthleteManager()
+    
+    # Link to User account - required for new athletes
     user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='athlete', blank=True, null=True)
     
     # Personal Data
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
+    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, blank=True, null=True)
+    license_series = models.CharField(max_length=50, blank=True, null=True)
+    cnp = models.CharField(max_length=13, blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
-    
-    GENDER_CHOICES = [
-        ('male', 'Male'),
-        ('female', 'Female'),
-    ]
-    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, null=True, help_text="Athlete's gender for category enrollment")
-    
     team_place = models.CharField(max_length=50, blank=True, null=True)  # Place awarded to the athlete in a team competition
     address = models.TextField(blank=True, null=True)
     mobile_number = models.CharField(max_length=15, blank=True, null=True)
@@ -332,6 +434,27 @@ class Athlete(models.Model):
     approved_date = models.DateTimeField(blank=True, null=True)
     approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name='approved_athletes')
 
+    class Meta:
+        indexes = [
+            # Existing indexes (keep these)
+            models.Index(fields=['club', 'status']),
+            models.Index(fields=['current_grade']),
+            models.Index(fields=['is_coach']),
+            models.Index(fields=['is_referee']),
+            models.Index(fields=['status', 'submitted_date']),
+            
+            # ADD THESE NEW INDEXES:
+            models.Index(fields=['user']),  # For reverse user lookup
+            models.Index(fields=['city']),  # For city filtering
+            models.Index(fields=['registered_date']),  # For date range queries
+            models.Index(fields=['created_at']),  # For ordering by creation date
+            
+            # Compound indexes for common filter combinations
+            models.Index(fields=['club', 'is_coach']),  # Club coaches
+            models.Index(fields=['club', 'status', 'is_referee']),  # Club referees
+            models.Index(fields=['status', 'approved_date']),  # Status filtering
+        ]
+
     def update_current_grade(self):
         """
         Automatically set the current_grade to the grade with the highest rank_order from GradeHistory.
@@ -370,14 +493,6 @@ class Athlete(models.Model):
         self.approved_date = timezone.now()  # Legacy field
         self.approved_by = admin_user  # Legacy field
         self.save()
-        
-        # Log the activity
-        AthleteActivity.objects.create(
-            athlete=self,
-            action='approved',
-            performed_by=admin_user,
-            notes=f"Profile approved by {admin_user.get_full_name() or admin_user.username}"
-        )
     
     def reject(self, admin_user, reason=None):
         """Reject the athlete profile"""
@@ -389,14 +504,6 @@ class Athlete(models.Model):
         if reason:
             self.admin_notes = reason
         self.save()
-        
-        # Log the activity
-        AthleteActivity.objects.create(
-            athlete=self,
-            action='rejected',
-            performed_by=admin_user,
-            notes=reason or f"Profile rejected by {admin_user.get_full_name() or admin_user.username}"
-        )
     
     def request_revision(self, admin_user, reason=None):
         """Request revision of the athlete profile"""
@@ -408,14 +515,6 @@ class Athlete(models.Model):
         if reason:
             self.admin_notes = reason
         self.save()
-        
-        # Log the activity
-        AthleteActivity.objects.create(
-            athlete=self,
-            action='revision_requested',
-            performed_by=admin_user,
-            notes=reason or f"Revision requested by {admin_user.get_full_name() or admin_user.username}"
-        )
     
     def resubmit(self):
         """Resubmit profile after revision"""
@@ -426,14 +525,6 @@ class Athlete(models.Model):
         self.reviewed_date = None
         self.reviewed_by = None
         self.save()
-        
-        # Log the activity
-        AthleteActivity.objects.create(
-            athlete=self,
-            action='resubmitted',
-            performed_by=self.user,
-            notes=f"Profile resubmitted by {self.user.get_full_name() or self.user.username}"
-        )
 
     def enrolled_competitions_and_categories(self):
         """
@@ -464,50 +555,8 @@ class Athlete(models.Model):
         return self.user is not None and self.approved_date is not None
     
     def __str__(self):
-        return f"{self.first_name} {self.last_name}"
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['status', '-submitted_date']),
-            models.Index(fields=['club', 'status']),
-            models.Index(fields=['current_grade']),
-            models.Index(fields=['is_coach']),
-            models.Index(fields=['is_referee']),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(expiration_date__gt=models.F('registered_date')) | models.Q(expiration_date__isnull=True),
-                name='athlete_expiration_after_registration'
-            ),
-        ]
-
-
-class AthleteActivity(models.Model):
-    """
-    Track all activities on athlete profiles (approvals, rejections, edits)
-    """
-    ACTION_CHOICES = [
-        ('submitted', 'Profile Submitted'),
-        ('approved', 'Profile Approved'),
-        ('rejected', 'Profile Rejected'),
-        ('revision_requested', 'Revision Requested'),
-        ('updated', 'Profile Updated'),
-        ('resubmitted', 'Profile Resubmitted'),
-    ]
-    
-    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='activity_log')
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
-    performed_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    notes = models.TextField(blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-timestamp']
-        verbose_name = _('Athlete Activity')
-        verbose_name_plural = _('Athlete Activities')
-    
-    def __str__(self):
-        return f"{self.get_action_display()} - {self.athlete} by {self.performed_by}"
+        club_name = f", {self.club.name}" if self.club else ""
+        return f"{self.first_name} {self.last_name}{club_name}"
 
 
 class GradeHistory(models.Model):
@@ -525,7 +574,7 @@ class GradeHistory(models.Model):
 
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='grade_history')
     grade = models.ForeignKey(Grade, on_delete=models.CASCADE)
-    obtained_date = models.DateField(default=date.today)  # Date when the grade was obtained - can be set manually for historical records
+    obtained_date = models.DateField(auto_now_add=True)  # Date when the grade was obtained
     level = models.CharField(max_length=10, choices=LEVEL_CHOICES, default='good')  # Dropdown for level
     # Link GradeHistory to an Event (optional). Use landing.Event model which is part of the landing app.
     event = models.ForeignKey(
@@ -567,26 +616,35 @@ class GradeHistory(models.Model):
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_grades')
     admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['athlete', 'status']),
+            models.Index(fields=['obtained_date']),
+            models.Index(fields=['status', 'submitted_date']),
+        ]
+
     def __str__(self):
         if self.submitted_by_athlete:
             return f"{self.grade.name} for {self.athlete.first_name} {self.athlete.last_name} (Self-submitted: {self.status})"
         return f"{self.grade.name} for {self.athlete.first_name} {self.athlete.last_name} on {self.obtained_date}"
     
-    class Meta:
-        indexes = [
-            models.Index(fields=['athlete', 'status']),
-            models.Index(fields=['status', '-submitted_date']),
-            models.Index(fields=['athlete', '-obtained_date']),
-        ]
-    
     def save(self, *args, **kwargs):
-        # If submitted by athlete, set status to pending
-        if self.submitted_by_athlete and not self.pk:
-            self.status = 'pending'
-        # If submitted by admin, set status to approved
-        elif not self.submitted_by_athlete:
-            self.status = 'approved'
+        # If submitted by athlete/coach, keep it pending by default on create.
+        if not self.pk:
+            if self.submitted_by_athlete:
+                self.status = 'pending'
+            elif not self.status:
+                self.status = 'approved'
         super().save(*args, **kwargs)
+
+        # Ensure the seminar M2M stays in sync: add athlete to seminar.athletes when a participation exists
+        try:
+            if self.seminar and self.athlete:
+                # Use add() which is safe if already present
+                self.seminar.athletes.add(self.athlete)
+        except Exception:
+            # Don't let auxiliary M2M sync failures block the main save
+            pass
 
     def clean(self):
         """Validate that examiners (if provided) are marked as coaches."""
@@ -610,20 +668,8 @@ class GradeHistory(models.Model):
             raise ValidationError(errors)
 
     def delete(self, *args, **kwargs):
-        """When a participation is removed, remove the athlete from the seminar M2M
-        only if there are no other participation records linking them to the seminar.
-        """
-        seminar = self.seminar
-        athlete = self.athlete
+        """Delete the grade history entry."""
         super().delete(*args, **kwargs)
-        try:
-            if seminar and athlete:
-                exists = TrainingSeminarParticipation.objects.filter(athlete=athlete, seminar=seminar).exists()
-                if not exists:
-                    seminar.athletes.remove(athlete)
-        except Exception:
-            # Ignore M2M cleanup errors
-            pass
     
     def approve(self, admin_user, notes=''):
         """Approve the athlete-submitted grade"""
@@ -710,6 +756,11 @@ class Visa(models.Model):
     class Meta:
         verbose_name = _('Visa')
         verbose_name_plural = _('Visas')
+        unique_together = ['athlete', 'visa_type', 'issued_date']
+        indexes = [
+            models.Index(fields=['athlete', 'visa_type', 'issued_date']),
+            models.Index(fields=['athlete', 'visa_type', '-issued_date']),
+        ]
 
     def is_valid(self):
         """Return whether the visa is currently valid depending on type."""
@@ -748,36 +799,13 @@ class Visa(models.Model):
     def __str__(self):
         status = 'Valid' if self.is_valid() else 'Expired'
         return f"{self.get_visa_type_display()} Visa for {self.athlete} - {status}"
-    
-    class Meta:
-        verbose_name = _('Visa')
-        verbose_name_plural = _('Visas')
-        constraints = [
-            models.CheckConstraint(
-                check=(
-                    models.Q(visa_type='medical') |
-                    models.Q(visa_type='annual')
-                ),
-                name='visa_valid_type'
-            ),
-        ]
 
 
 # Training Seminars
-class TrainingSeminar(models.Model):
-    name = models.CharField(max_length=100)
-    start_date = models.DateField(blank=True, null=True)
-    end_date = models.DateField(blank=True, null=True)
-    place = models.CharField(max_length=100)
-    athletes = models.ManyToManyField(Athlete, related_name='training_seminars', blank=True)
-
-    def __str__(self):
-        return f"{self.name} ({self.start_date} - {self.end_date}) at {self.place}"
-
-
 class TrainingSeminarParticipation(models.Model):
     """
-    Through model to track athlete participation in training seminars with approval workflow.
+    Athlete participation in events (training seminars, competitions, etc.) with approval workflow.
+    Migrated from TrainingSeminar to use Event model directly.
     """
     STATUS_CHOICES = [
         ('pending', 'Pending Approval'),
@@ -787,9 +815,17 @@ class TrainingSeminarParticipation(models.Model):
     ]
     
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='seminar_participations')
-    seminar = models.ForeignKey(TrainingSeminar, on_delete=models.CASCADE, related_name='participations')
-    
-    # Athlete self-submission fields
+    # Legacy seminar field - deprecated, use event instead
+    seminar = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='legacy_participations', null=True, blank=True)
+    # Primary event field
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='seminar_participations',
+        help_text='Event this athlete participated in'
+    )
     submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
     participation_certificate = models.ImageField(upload_to='seminar_certificates/', null=True, blank=True, help_text='Participation certificate photo')
     participation_document = models.FileField(upload_to='seminar_documents/', null=True, blank=True, help_text='Official participation document')
@@ -801,36 +837,25 @@ class TrainingSeminarParticipation(models.Model):
     reviewed_date = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_seminar_participations')
     admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
-    # New nullable FK to Landing.Event for staged migration to Events
-    event = models.ForeignKey(
-        'landing.Event',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='seminar_participations',
-        help_text='Linked Event after migration (nullable, added for staged migration)'
-    )
     
     class Meta:
-        unique_together = ('athlete', 'seminar')
+        unique_together = ('athlete', 'event')
         verbose_name = _('Event participation')
         verbose_name_plural = _('Event participations')
+        indexes = [
+            models.Index(fields=['athlete', 'status']),
+            models.Index(fields=['status', 'submitted_date']),
+        ]
     
     def __str__(self):
-        # Prefer to describe the participation by the linked Event if present;
-        # fall back to the legacy TrainingSeminar name if `event` is not set.
+        # Use event if available, fallback to legacy seminar
         target_name = None
-        try:
-            if getattr(self, 'event', None):
-                # landing.Event uses `title` for the human-readable name
-                target_name = getattr(self.event, 'title', None)
-        except Exception:
-            target_name = None
-        if not target_name:
-            try:
-                target_name = getattr(self.seminar, 'name', None)
-            except Exception:
-                target_name = 'Unknown Event'
+        if self.event:
+            target_name = self.event.title
+        elif self.seminar:
+            target_name = self.seminar.title
+        else:
+            target_name = 'Unknown Event'
 
         if self.submitted_by_athlete:
             return f"{self.athlete.first_name} {self.athlete.last_name} - {target_name} (Self-submitted: {self.status})"
@@ -900,39 +925,63 @@ class CategoryAthlete(models.Model):
     """
     Through model for the many-to-many relationship between Category and Athlete.
     """
+    PLACE_CHOICES = [
+        (1, '1st Place'),
+        (2, '2nd Place'),
+        (3, '3rd Place'),
+    ]
+    
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name="enrolled_athletes")
     athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE)
     weight = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)  # Weight in kilograms
+    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement (auto-calculated from total score)')
+    disqualified = models.BooleanField(default=False, help_text='Mark as disqualified')
+    
+    # Referee scores for solo categories
+    ref1_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF1', help_text='Referee 1 score')
+    ref2_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF2', help_text='Referee 2 score')
+    ref3_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF3', help_text='Referee 3 score')
+    ref4_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF4', help_text='Referee 4 score')
+    ref5_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF5', help_text='Referee 5 score')
+    
+    @property
+    def total_score(self):
+        """Calculate total score excluding highest and lowest referee scores"""
+        from decimal import Decimal
+        scores = [s for s in [self.ref1_score, self.ref2_score, self.ref3_score, self.ref4_score, self.ref5_score] if s is not None]
+        if len(scores) < 3:
+            return None
+        scores.sort()
+        # Remove highest and lowest, sum the rest
+        return sum(scores[1:-1])
+    
+    @property
+    def scores_with_markup(self):
+        """Return scores with highest/lowest marked for strikethrough"""
+        scores = [
+            (self.ref1_score, 'ref1'),
+            (self.ref2_score, 'ref2'),
+            (self.ref3_score, 'ref3'),
+            (self.ref4_score, 'ref4'),
+            (self.ref5_score, 'ref5')
+        ]
+        valid_scores = [(s, n) for s, n in scores if s is not None]
+        if len(valid_scores) < 3:
+            return scores
+        
+        sorted_scores = sorted(valid_scores, key=lambda x: x[0])
+        lowest = sorted_scores[0][1]
+        highest = sorted_scores[-1][1]
+        
+        return [(s, n, n == lowest or n == highest) for s, n in scores]
 
     class Meta:
         unique_together = ('category', 'athlete')  # Ensure an athlete cannot be added twice to the same category
-
-    def clean(self):
-        """
-        Validate that athlete's gender matches category gender requirement.
-        Categories with gender='mixt' accept both genders.
-        """
-        super().clean()
-        
-        if self.athlete and self.category and self.athlete.gender:
-            category_gender = self.category.gender
-            athlete_gender = self.athlete.gender
-            
-            # Allow 'mixt' categories to accept any gender
-            if category_gender == 'mixt':
-                return
-            
-            # Check gender match for male/female categories
-            if category_gender != athlete_gender:
-                raise ValidationError(
-                    f"Athlete gender ({athlete_gender}) does not match category gender requirement ({category_gender}). "
-                    f"This athlete cannot be enrolled in this category."
-                )
-    
-    def save(self, *args, **kwargs):
-        """Override save to run validation"""
-        self.full_clean()
-        super().save(*args, **kwargs)
+        indexes = [
+            models.Index(fields=['category']),
+            models.Index(fields=['athlete']),
+            models.Index(fields=['category', 'disqualified']),
+        ]
 
     def delete(self, *args, **kwargs):
         """
@@ -949,21 +998,120 @@ class CategoryTeam(models.Model):
     """
     Through model for the many-to-many relationship between Category and Team.
     """
+    PLACE_CHOICES = [
+        (1, '1st Place'),
+        (2, '2nd Place'),
+        (3, '3rd Place'),
+    ]
+    
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='enrolled_teams')
     team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='enrolled_categories')  # Rename related_name
+    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement (auto-calculated from total score)')
+    disqualified = models.BooleanField(default=False, help_text='Mark as disqualified')
+    
+    # Referee scores for team categories
+    ref1_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF1', help_text='Referee 1 score')
+    ref2_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF2', help_text='Referee 2 score')
+    ref3_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF3', help_text='Referee 3 score')
+    ref4_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF4', help_text='Referee 4 score')
+    ref5_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF5', help_text='Referee 5 score')
+    
+    @property
+    def total_score(self):
+        """Calculate total score excluding highest and lowest referee scores"""
+        from decimal import Decimal
+        scores = [s for s in [self.ref1_score, self.ref2_score, self.ref3_score, self.ref4_score, self.ref5_score] if s is not None]
+        if len(scores) < 3:
+            return None
+        scores.sort()
+        # Remove highest and lowest, sum the rest
+        return sum(scores[1:-1])
+    
+    @property
+    def scores_with_markup(self):
+        """Return scores with highest/lowest marked for strikethrough"""
+        scores = [
+            (self.ref1_score, 'ref1'),
+            (self.ref2_score, 'ref2'),
+            (self.ref3_score, 'ref3'),
+            (self.ref4_score, 'ref4'),
+            (self.ref5_score, 'ref5')
+        ]
+        valid_scores = [(s, n) for s, n in scores if s is not None]
+        if len(valid_scores) < 3:
+            return scores
+        
+        sorted_scores = sorted(valid_scores, key=lambda x: x[0])
+        lowest = sorted_scores[0][1]
+        highest = sorted_scores[-1][1]
+        
+        return [(s, n, n == lowest or n == highest) for s, n in scores]
 
     class Meta:
         unique_together = ('category', 'team')  # Ensure a team cannot be added twice to the same category
+        indexes = [
+            models.Index(fields=['category']),
+            models.Index(fields=['team']),
+        ]
 
     def __str__(self):
-        return f"{self.team.name} in {self.category.name}"
+        category = self.category
+        group = category.group if category else None
+        event = category.event if category else None
+        group_name = group.name if group else 'No Group'
+        event_title = event.title if event else 'No Competition'
+        return (
+            f"{self.team.name} - "
+            f"{category.name} - {group_name} - {event_title}"
+        )
+
+
+def _format_team_member_names(athletes, limit=3):
+    athletes = list(athletes or [])
+    if not athletes:
+        return ''
+
+    visible = athletes[:limit]
+    names = [f"{athlete.first_name} {athlete.last_name}".strip() for athlete in visible]
+    names = [name for name in names if name]
+    if not names:
+        return ''
+
+    if len(names) == 1:
+        base = names[0]
+    elif len(names) == 2:
+        base = ' & '.join(names)
+    else:
+        base = ' & '.join(names)
+
+    extra_count = max(0, len(athletes) - limit)
+    if extra_count:
+        base += f" (+{extra_count})"
+    return base
+
+
+def build_team_display_name(athletes, limit=3):
+    athletes = [athlete for athlete in list(athletes or []) if athlete is not None]
+    if not athletes:
+        return None
+
+    return _format_team_member_names(athletes, limit=limit)
+
+
+def get_team_members_with_related(team):
+    prefetched_members = getattr(team, '_prefetched_objects_cache', {}).get('members')
+    if prefetched_members is not None:
+        return [member for member in prefetched_members if getattr(member, 'athlete_id', None)]
+
+    return list(team.members.select_related('athlete', 'athlete__club').all())
 
 
 class Team(models.Model):
     """
     Represents a team of athletes.
+    Team name is stored in database but auto-generated from members for consistency.
     """
-    name = models.CharField(max_length=255, blank=True)  # Auto-generated name
+    name = models.CharField(max_length=255, default='Team')  # Will be overridden by property
     categories = models.ManyToManyField(
         'Category',
         through='CategoryTeam',  # Use the existing through model
@@ -972,8 +1120,17 @@ class Team(models.Model):
         limit_choices_to={'type': 'teams'},  # Only allow categories with type 'teams'
     )
 
+    @property
+    def name(self):
+        """Auto-generate team display name from members."""
+        members = get_team_members_with_related(self)
+        if not members:
+            return f"Team #{self.pk}"
+        athlete_members = [member.athlete for member in members if member.athlete_id]
+        return build_team_display_name(athlete_members) or f"Team #{self.pk}"
 
     def __str__(self):
+        """Display team with member names for clarity"""
         return self.name
 
 
@@ -988,121 +1145,71 @@ class TeamMember(models.Model):
         unique_together = ('team', 'athlete')  # Ensure an athlete cannot be added twice to the same team
 
     def __str__(self):
-        return f"{self.athlete.first_name} {self.athlete.last_name} in {self.team.name}"
+        club_name = f", {self.athlete.club.name}" if self.athlete.club else ""
+        return f"{self.athlete.first_name} {self.athlete.last_name}{club_name}"
 
 
 class Category(models.Model):
-    """
-    Represents a competition category.
-    """
-    CATEGORY_TYPE_CHOICES = [
-        ('solo', 'Solo'),
-        ('teams', 'Teams'),
-        ('fight', 'Fight'),
-    ]
+    def __init__(self, *args, **kwargs):
+        competition = kwargs.pop('competition', None)
+        super().__init__(*args, **kwargs)
+        if competition is not None and getattr(self, 'event_id', None) is None:
+            self.event = competition
 
+    @property
+    def type(self):
+        """Return the type of category as a string: 'solo', 'team', or 'fight' based on subclass."""
+        if hasattr(self, 'solocategory'):
+            return 'solo'
+        if hasattr(self, 'teamcategory'):
+            return 'team'
+        if hasattr(self, 'fightcategory'):
+            return 'fight'
+        return 'unknown'
+    """
+    Base category model using multi-table inheritance.
+    Specific category types (Solo, Team, Fight) extend this model.
+    """
     GENDER_CHOICES = [
         ('male', 'Male'),
         ('female', 'Female'),
         ('mixt', 'Mixt'),
     ]
-
+    
+    category_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this category (e.g., C1, C2, SOLO-M-1)')
     name = models.CharField(max_length=100)
-    competition = models.ForeignKey('Competition', on_delete=models.PROTECT, related_name='categories', null=True, blank=True)
-    # New: link category to landing.Event (migrate data from Competition -> Event)
-    event = models.ForeignKey('landing.Event', on_delete=models.PROTECT, related_name='categories', null=True, blank=True)
-    type = models.CharField(max_length=20, choices=CATEGORY_TYPE_CHOICES, default='solo')
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixt')
+    
+    # M2M relationships shared across all types - defined here but used by child classes
     athletes = models.ManyToManyField('Athlete', through='CategoryAthlete', related_name='categories', blank=True)
     teams = models.ManyToManyField('Team', through='CategoryTeam', related_name='category_teams', blank=True)
-
-    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='first_place_categories')
-    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='second_place_categories')
-    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='third_place_categories')
-
-    first_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='first_place_team_categories')
-    second_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='second_place_team_categories')
-    third_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='third_place_team_categories')
-
+    
     group = models.ForeignKey(
         'Group',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='categories'
-    )  # Each category can be assigned to one group
+    )
+    birth_year_start = models.IntegerField(
+        null=True, blank=True,
+        help_text="Optional sub-range start (oldest birth year). Used for fight categories within a group."
+    )
+    birth_year_end = models.IntegerField(
+        null=True, blank=True,
+        help_text="Optional sub-range end (newest birth year). Used for fight categories within a group."
+    )
+    display_order = models.IntegerField(default=0, help_text="Order within the group for display purposes")
 
-
-    def clean(self):
-        """
-        Validate that the awarded individual or team is enrolled in the category and not awarded multiple times.
-        Also validate that category has either competition or event, but not both.
-        """
-        super().clean()
-        
-        # Validate competition/event exclusivity
-        if self.competition and self.event:
-            raise ValidationError(
-                "Category cannot have both competition and event. Use event for new records."
-            )
-        if not self.competition and not self.event:
-            raise ValidationError(
-                "Category must have either competition or event."
-            )
-        
-        if self.type == 'teams':
-            # Validate teams
-            awarded_teams = [self.first_place_team, self.second_place_team, self.third_place_team]
-            # Ensure no duplicate awards for teams
-            awarded_teams = list(filter(None, awarded_teams))  # Convert filter result to a list
-            if len(set(awarded_teams)) != len(awarded_teams):
-                raise ValidationError("The same team cannot be awarded multiple times within the same category.")
-
-            # Ensure teams are enrolled before being awarded
-            for team in awarded_teams:
-                if team and not self.teams.filter(pk=team.pk).exists():
-                    raise ValidationError(f"Team '{team}' must be enrolled in the category to be awarded.")
-        elif self.type in ['solo', 'fight']:
-            # Validate individuals
-            awarded_athletes = [self.first_place, self.second_place, self.third_place]
-            # Ensure no duplicate awards for athletes
-            awarded_athletes = list(filter(None, awarded_athletes))  # Convert filter result to a list
-            if len(set(awarded_athletes)) != len(awarded_athletes):
-                raise ValidationError("The same athlete cannot be awarded multiple times within the same category.")
-
-            # Ensure athletes are enrolled before being awarded
-            for athlete in awarded_athletes:
-                if athlete and not CategoryAthlete.objects.filter(category=self, athlete=athlete).exists():
-                    raise ValidationError(f"Athlete '{athlete}' must be enrolled in the category to be awarded.")
-
-
-    def calculate_athlete_scores(self):
-        """
-        Calculate total scores for each athlete in the category.
-        """
-        athlete_scores = {}
-        for score in self.athlete_scores.all():
-            athlete_scores[score.athlete] = athlete_scores.get(score.athlete, 0) + score.score
-        return athlete_scores
-
-    
-    
-
-    def save(self, *args, **kwargs):
-        # Check if the type has changed
-        if self.pk:  # Ensure this is not a new instance
-            old_instance = Category.objects.get(pk=self.pk)
-            if old_instance.type != self.type:
-                # If the type has changed, clear athletes and teams
-                self.athletes.clear()
-                self.teams.clear()
-
-        # Save the instance
-        super().save(*args, **kwargs)
-
+    class Meta:
+        indexes = [
+            models.Index(fields=['event']),
+        ]
+        ordering = ['display_order', 'id']
+        verbose_name_plural = 'Categories'
 
     def __str__(self):
-        # Prefer an associated Event (new model) if present; fall back to legacy Competition
         associated = getattr(self, 'event', None) or getattr(self, 'competition', None)
         assoc_name = None
         if associated is not None:
@@ -1111,88 +1218,405 @@ class Category(models.Model):
 
     @property
     def event_or_competition(self):
-        """
-        Compatibility helper: return the linked Event if present, otherwise the legacy Competition.
-        Callers should use this to avoid repeatedly checking both fields while we migrate data.
-        """
-        return self.event if getattr(self, 'event', None) else self.competition
+        """Return linked Event or fallback to legacy Competition"""
+        if getattr(self, 'event', None):
+            return self.event
+        return getattr(self, 'competition', None)
+
+    @property
+    def competition(self):
+        return self.event
+
+    @competition.setter
+    def competition(self, value):
+        self.event = value
+    
+    def _generate_category_number(self):
+        """Auto-generate category number based on type and gender"""
+        # Determine category type by checking class name
+        class_name = self.__class__.__name__.lower()
+        
+        if 'solo' in class_name:
+            prefix = 'S' if self.gender == 'male' else ('SF' if self.gender == 'female' else 'SM')
+        elif 'team' in class_name:
+            prefix = 'T' if self.gender == 'male' else ('TF' if self.gender == 'female' else 'TM')
+        elif 'fight' in class_name:
+            prefix = 'F' if self.gender == 'male' else ('FF' if self.gender == 'female' else 'FM')
+        else:
+            prefix = 'C'
+        
+        # Find the highest existing number with this prefix
+        import re
+        existing = Category.objects.filter(
+            category_number__startswith=prefix
+        ).exclude(id=self.id if self.id else None).values_list('category_number', flat=True)
+        
+        max_num = 0
+        for num_str in existing:
+            match = re.search(r'\d+$', num_str)
+            if match:
+                max_num = max(max_num, int(match.group()))
+        
+        return f"{prefix}{max_num + 1}"
+    
+    def save(self, *args, **kwargs):
+        """Auto-generate category_number if not provided"""
+        if not self.category_number:
+            self.category_number = self._generate_category_number()
+        super().save(*args, **kwargs)
+
+
+class SoloCategory(Category):
+    """
+    Solo competition category - individual athletes compete.
+    Athletes enrolled via CategoryAthlete M2M (inherited from Category).
+    """
+    # Individual awards
+    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_first_place_categories')
+    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_second_place_categories')
+    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_third_place_categories')
+
+    class Meta:
+        verbose_name = 'Solo Category'
+        verbose_name_plural = 'Solo Categories'
+
+    def clean(self):
+        """Validate awards are enrolled athletes"""
+        awarded = [self.first_place, self.second_place, self.third_place]
+        awarded = list(filter(None, awarded))
+        
+        if len(set(awarded)) != len(awarded):
+            raise ValidationError("The same athlete cannot be awarded multiple times.")
+        
+        for athlete in awarded:
+            if athlete and not self.athletes.filter(pk=athlete.pk).exists():
+                raise ValidationError(f"Athlete '{athlete}' must be enrolled to be awarded.")
+
+    def calculate_athlete_scores(self):
+        """Calculate total scores for each athlete"""
+        athlete_scores = {}
+        for score in self.athlete_scores.all():
+            athlete_scores[score.athlete] = athlete_scores.get(score.athlete, 0) + score.score
+        return athlete_scores
+
+
+class TeamCategory(Category):
+    """
+    Team competition category - teams of athletes compete.
+    Teams enrolled via CategoryTeam M2M (inherited from Category).
+    """
+    # Team awards
+    first_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='first_place_team_categories')
+    second_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='second_place_team_categories')
+    third_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='third_place_team_categories')
+
+    class Meta:
+        verbose_name = 'Team Category'
+        verbose_name_plural = 'Team Categories'
+
+    def clean(self):
+        """Validate awards are enrolled teams"""
+        awarded = [self.first_place_team, self.second_place_team, self.third_place_team]
+        awarded = list(filter(None, awarded))
+        
+        if len(set(awarded)) != len(awarded):
+            raise ValidationError("The same team cannot be awarded multiple times.")
+        
+        for team in awarded:
+            if team and not self.teams.filter(pk=team.pk).exists():
+                raise ValidationError(f"Team '{team}' must be enrolled to be awarded.")
+
+
+class FightCategory(Category):
+    """
+    Fight competition category - bracket-style matches between individual athletes.
+    Athletes enrolled via CategoryAthlete M2M (inherited from Category).
+    Matches created for bracket generation.
+    """
+    # Fight-specific awards
+    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_first_place_categories')
+    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_second_place_categories')
+    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_third_place_categories')
+
+    class Meta:
+        verbose_name = 'Fight Category'
+        verbose_name_plural = 'Fight Categories'
+
+    def clean(self):
+        """Validate awards are enrolled athletes"""
+        awarded = [self.first_place, self.second_place, self.third_place]
+        awarded = list(filter(None, awarded))
+        
+        if len(set(awarded)) != len(awarded):
+            raise ValidationError("The same athlete cannot be awarded multiple times.")
+        
+        for athlete in awarded:
+            if athlete and not self.athletes.filter(pk=athlete.pk).exists():
+                raise ValidationError(f"Athlete '{athlete}' must be enrolled to be awarded.")
+
+
+class FightAthleteWeight(models.Model):
+    """
+    Track weight-in data for athletes in fight categories.
+    Registered weight: submitted ~1 week before competition
+    Match day weight: measured on competition day
+    Used to detect disqualifications due to excessive weight loss
+    """
+    PLACE_CHOICES = [
+        (1, '1st Place'),
+        (2, '2nd Place'),
+        (3, '3rd Place'),
+    ]
+    
+    category = models.ForeignKey('FightCategory', on_delete=models.CASCADE, related_name='athlete_weights')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='fight_weights')
+    pre_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='Registered Weight (kg)', help_text='Weight submitted ~1 week before competition')
+    current_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='Match Day Weight (kg)', help_text='Weight measured on competition day')
+    weight_loss_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, editable=False, help_text='Calculated percentage weight loss')
+    is_disqualified = models.BooleanField(default=False, help_text='Mark as disqualified if weight exceeds limits')
+    disqualification_reason = models.CharField(max_length=255, blank=True, help_text='Reason for disqualification')
+    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement')
+    recorded_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('category', 'athlete')
+        verbose_name = 'Fight Athlete Weight'
+        verbose_name_plural = 'Fight Athlete Weights'
+
+    def __str__(self):
+        return f"{self.athlete} - {self.category.name}"
+
+    def save(self, *args, **kwargs):
+        """Calculate weight loss percentage before saving"""
+        if self.pre_weight_kg and self.current_weight_kg:
+            loss = self.pre_weight_kg - self.current_weight_kg
+            self.weight_loss_percentage = (loss / self.pre_weight_kg) * 100
+        super().save(*args, **kwargs)
+
+    def get_weight_loss_display(self):
+        """Display weight loss in kg and percentage"""
+        if self.pre_weight_kg and self.current_weight_kg:
+            loss_kg = self.pre_weight_kg - self.current_weight_kg
+            return f"{loss_kg:.2f}kg ({self.weight_loss_percentage:.1f}%)" if self.weight_loss_percentage else f"{loss_kg:.2f}kg"
+        return "Incomplete"
 
 
 class Match(models.Model):
     MATCH_TYPE_CHOICES = [
         ('qualifications', 'Qualifications'),
+        ('quarter-finals', 'Quarter-Finals'),
         ('semi-finals', 'Semi-Finals'),
         ('finals', 'Finals'),
+        ('bronze', 'Bronze Match'),
     ]
 
+    MATCH_STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    DISPLAY_MODE_CHOICES = [
+        ('reveal_final', 'Reveal Final'),
+        ('real_time', 'Real Time Scoring'),
+    ]
+    
+    match_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this match (e.g., M1, M2, F-C1-Q1)')
+    status = models.CharField(max_length=20, choices=MATCH_STATUS_CHOICES, default='scheduled', help_text='Current status of the match')
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='matches')
+    field = models.ForeignKey('CompetitionField', on_delete=models.SET_NULL, null=True, blank=True, related_name='matches')
     match_type = models.CharField(max_length=20, choices=MATCH_TYPE_CHOICES, default='qualifications')
-    red_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='red_corner_matches')
-    blue_corner = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='blue_corner_matches')
+    round_number = models.PositiveIntegerField(default=1, help_text='Round number within the bracket (1=first round, 2=second, etc.)')
+    bracket_position = models.PositiveIntegerField(default=0, help_text='Position within the round (0-based, for visual layout)')
+    next_match = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='previous_matches', help_text='Winner advances to this match')
+    loser_next_match = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='previous_loser_matches', help_text='Loser advances to this match (consolation/bronze)')
+    red_corner = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='red_corner_matches')
+    blue_corner = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='blue_corner_matches')
     referees = models.ManyToManyField('Athlete', related_name='refereed_matches', limit_choices_to={'is_referee': True})
     central_referee = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='central_for_matches', limit_choices_to={'is_referee': True})
-    winner = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='won_matches')
+    # Winner is now computed from scoring system - no longer stored
     name = models.CharField(max_length=255, blank=True)  # Automatically generated match name
+    display_mode = models.CharField(max_length=20, choices=DISPLAY_MODE_CHOICES, default='reveal_final')
 
-    def calculate_winner(self):
+    class Meta:
+        verbose_name_plural = 'Matches'
+
+    @property
+    def winner(self):
+        """Calculate winner from referee scores using scoring system"""
+        # First try simplified scoring system if it exists
+        winner = self.calculate_winner_simplified()
+        if winner:
+            return winner
+        
+        # Fall back to complex scoring system
+        try:
+            from .scoring import compute_match_results
+            results = compute_match_results(self)
+            return results.get('match_winner')
+        except Exception:
+            # Fallback to old calculation if scoring system unavailable
+            return self._calculate_winner_legacy()
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        try:
+            if self.field_id:
+                MatchFieldAssignment.objects.update_or_create(
+                    match=self,
+                    defaults={'field_id': self.field_id}
+                )
+        except Exception:
+            pass
+    
+    def calculate_winner_simplified(self):
         """
-        Determine the winner based on referee votes.
+        Calculate winner using simplified 5-referee scoring system.
+        Similar to solo/team category scoring: exclude highest and lowest scores, count middle 3.
+        Returns the corner with more votes from the middle 3 referees.
         """
+        try:
+            # Prefer final referee decisions (`round is null`) when they exist.
+            # Fall back to all simplified scores for backwards compatibility.
+            scores = list(self.simplified_referee_scores.filter(round__isnull=True))
+            if not scores:
+                scores = list(self.simplified_referee_scores.all())
+
+            if not scores:
+                return None
+
+            # With 1-2 available referee decisions, use the simple majority of the
+            # submitted choices. This matches the live admin flow, where a winner
+            # can be revealed even before all referees have submitted.
+            if len(scores) < 3:
+                red_votes = 0
+                blue_votes = 0
+                for score in scores:
+                    winner_choice = getattr(score, 'winner_choice', None)
+                    if winner_choice == 'red':
+                        red_votes += 1
+                    elif winner_choice == 'blue':
+                        blue_votes += 1
+
+                if red_votes > blue_votes:
+                    return self.red_corner
+                elif blue_votes > red_votes:
+                    return self.blue_corner
+                return None
+            
+            # Calculate score difference for each referee (red - blue)
+            score_diffs = []
+            for score in scores:
+                diff = score.red_corner_score - score.blue_corner_score
+                score_diffs.append({
+                    'diff': diff,
+                    'winner': 'red' if diff > 0 else ('blue' if diff < 0 else None),
+                    'score': score
+                })
+            
+            # Sort by absolute difference to identify extreme scores
+            sorted_diffs = sorted(score_diffs, key=lambda x: abs(x['diff']))
+            
+            # For 5 scores: remove lowest and highest difference (most extreme), keep middle 3
+            # For 4 scores: remove only the highest
+            # For 3 scores: use all 3
+            if len(sorted_diffs) == 3:
+                middle_scores = sorted_diffs
+            elif len(sorted_diffs) == 4:
+                middle_scores = sorted_diffs[:-1]
+            else:
+                middle_scores = sorted_diffs[1:-1]
+            
+            # Count votes from middle referees
+            red_votes = sum(1 for s in middle_scores if s['winner'] == 'red')
+            blue_votes = sum(1 for s in middle_scores if s['winner'] == 'blue')
+            
+            if red_votes > blue_votes:
+                return self.red_corner
+            elif blue_votes > red_votes:
+                return self.blue_corner
+            
+            return None  # Tie
+        except Exception:
+            return None
+    
+    def _calculate_winner_legacy(self):
+        """Legacy winner calculation based on referee votes"""
         red_votes = self.referee_scores.filter(winner='red').count()
         blue_votes = self.referee_scores.filter(winner='blue').count()
         if red_votes > blue_votes:
             return self.red_corner
         elif blue_votes > red_votes:
             return self.blue_corner
-        return None  # No winner if votes are tied
+        return None
 
+    def _generate_match_number(self):
+        """Auto-generate match number based on category and match type"""
+        type_prefix = {
+            'qualifications': 'Q',
+            'semi-finals': 'SF',
+            'finals': 'F',
+        }.get(self.match_type, 'M')
+        
+        # Count existing matches of this type in this category
+        if self.category_id:
+            count = Match.objects.filter(
+                category_id=self.category_id,
+                match_type=self.match_type
+            ).count() + 1
+            
+            # Include category number if available
+            if self.category and self.category.category_number:
+                return f"{self.category.category_number}-{type_prefix}{count}"
+            else:
+                return f"M{count}"
+        else:
+            # Fallback to simple incrementing
+            last = Match.objects.order_by('-id').first()
+            return f"M{last.id + 1 if last else 1}"
+    
     def save(self, *args, **kwargs):
-        """
-        Override save to calculate the winner based on referee scores or allow manual winner selection.
-        Avoid double INSERT for new objects by setting computed fields before first save.
-        """
-        # Generate match name if we have the related fields available
+        """Generate match name and number on save"""
+        # Auto-generate match_number if not provided
+        if not self.match_number:
+            self.match_number = self._generate_match_number()
+        
+        # Generate match name
         try:
             red_name = self.red_corner.first_name if self.red_corner_id else ''
             blue_name = self.blue_corner.first_name if self.blue_corner_id else ''
             category_name = self.category.name if self.category_id else ''
             self.name = f"{red_name} vs {blue_name} ({self.match_type}) - {category_name}"
         except Exception:
-            # Fall back to whatever fields are available
             pass
-
-        # If object exists, compute winner from referee_scores if present
-        if self.pk:
-            if self.referee_scores.exists():
-                self.winner = self.calculate_winner()
-            super().save(*args, **kwargs)
-            return
-
-        # New object: do initial save once
         super().save(*args, **kwargs)
 
-        # After initial save, recalc winner if referee_scores were added in the same transaction
-        try:
-            if self.referee_scores.exists():
-                self.winner = self.calculate_winner()
-                super().save(update_fields=['winner'])
-        except Exception:
-            # Best-effort: don't block creation if post-save adjustment fails
-            pass
-
     def __str__(self):
-        return self.name
+        category = self.category
+        group = category.group if category else None
+        event = category.event if category else None
+        group_name = group.name if group else 'No Group'
+        event_title = event.title if event else 'No Competition'
+        return (
+            f"{self.name} - "
+            f"{category.name} - {group_name} - {event_title}"
+        )
 
 
 class RefereeScore(models.Model):
     match = models.ForeignKey('Match', on_delete=models.CASCADE, related_name='referee_scores')
-    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True})
+    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True}, null=True, blank=True)
     red_corner_score = models.IntegerField(default=0)
     blue_corner_score = models.IntegerField(default=0)
     winner = models.CharField(max_length=10, choices=[('red', 'Red Corner'), ('blue', 'Blue Corner')], null=True, blank=True)
 
     def __str__(self):
-        return f"Referee: {self.referee.first_name} {self.referee.last_name} - Match: {self.match}"
+        if self.referee:
+            ref_name = f"{self.referee.first_name} {self.referee.last_name}"
+        else:
+            ref_name = "Unassigned"
+        return f"Referee: {ref_name} - Match: {self.match}"
 
 
 class RefereePointEvent(models.Model):
@@ -1206,6 +1630,11 @@ class RefereePointEvent(models.Model):
         ('penalty', 'Penalty'),
         ('deduction', 'Deduction'),
         ('other', 'Other'),
+    ]
+    VALIDATION_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('validated', 'Validated'),
+        ('rejected', 'Rejected'),
     ]
 
     match = models.ForeignKey('Match', on_delete=models.CASCADE, related_name='point_events')
@@ -1226,6 +1655,16 @@ class RefereePointEvent(models.Model):
         )
     )
     created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    validation_status = models.CharField(max_length=20, choices=VALIDATION_STATUS_CHOICES, default='validated')
+    validated_at = models.DateTimeField(null=True, blank=True)
+    recording_session = models.ForeignKey(
+        'FieldRecordingSession',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='referee_point_events'
+    )
+    video_offset_ms = models.IntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ['timestamp']
@@ -1245,6 +1684,386 @@ class RefereePointEvent(models.Model):
             if isinstance(e, DjangoValidationError):
                 raise
             raise DjangoValidationError(str(e))
+
+
+class MatchRefereeAssignment(models.Model):
+    """
+    Assigns 5 referees (R1-R5) to a match for simplified scoring.
+    Similar to CategoryRefereeAssignment but for fight matches.
+    """
+    match = models.OneToOneField(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='referee_assignment',
+        help_text='The match these referees are assigned to'
+    )
+    
+    referee_1 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r1_assignments',
+        limit_choices_to={'is_referee': True},
+        verbose_name='Referee 1',
+        help_text='Referee position 1 (R1)'
+    )
+    
+    referee_2 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r2_assignments',
+        limit_choices_to={'is_referee': True},
+        verbose_name='Referee 2',
+        help_text='Referee position 2 (R2)'
+    )
+    
+    referee_3 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r3_assignments',
+        limit_choices_to={'is_referee': True},
+        verbose_name='Referee 3',
+        help_text='Referee position 3 (R3)'
+    )
+    
+    referee_4 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r4_assignments',
+        limit_choices_to={'is_referee': True},
+        verbose_name='Referee 4',
+        help_text='Referee position 4 (R4)'
+    )
+    
+    referee_5 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_r5_assignments',
+        limit_choices_to={'is_referee': True},
+        verbose_name='Referee 5',
+        help_text='Referee position 5 (R5)'
+    )
+    
+    def __str__(self):
+        return f"Referee Assignment for {self.match}"
+    
+    def get_referees_list(self):
+        """Returns list of 5 referees in order [R1, R2, R3, R4, R5]"""
+        return [self.referee_1, self.referee_2, self.referee_3, self.referee_4, self.referee_5]
+    
+    def clean(self):
+        """Validate referee assignments"""
+        super().clean()
+        # Note: duplicate referees are allowed (same referee can be assigned to multiple positions)
+
+
+class MatchRefereeScore(models.Model):
+    """
+    Stores individual referee scores for fighters in matches.
+    Each referee can score per-round (round is set) or submit a final
+    winner decision (round is null). The winner is determined by which
+    corner has more referee votes.
+    """
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='simplified_referee_scores',
+        help_text='The match being scored'
+    )
+    
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        limit_choices_to={'is_referee': True},
+        related_name='given_match_scores',
+        help_text='The referee providing this score'
+    )
+    
+    round = models.ForeignKey(
+        'MatchRound',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='referee_scores',
+        help_text='The round being scored (null = final/overall decision)'
+    )
+    
+    red_corner_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        help_text='Score for red corner fighter'
+    )
+    
+    blue_corner_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        help_text='Score for blue corner fighter'
+    )
+    
+    # Metadata
+    submitted_date = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, null=True, help_text='Optional notes from referee')
+    
+    class Meta:
+        unique_together = ('match', 'referee', 'round')  # Each referee scores each round once
+        indexes = [
+            models.Index(fields=['match', 'referee']),
+        ]
+    
+    def __str__(self):
+        rnd = f" R{self.round.round_number}" if self.round else " Final"
+        return f"{self.referee} - {self.match}{rnd}: Red {self.red_corner_score} vs Blue {self.blue_corner_score}"
+    
+    @property
+    def winner_choice(self):
+        """Determine which corner won according to this referee"""
+        if self.red_corner_score > self.blue_corner_score:
+            return 'red'
+        elif self.blue_corner_score > self.red_corner_score:
+            return 'blue'
+        return None  # Tie
+
+
+class CategoryRefereeAssignment(models.Model):
+    """
+    Assigns 5 referees to a category for scoring solo/team performances.
+    All athletes/teams in the category are scored by the same 5 referees.
+    """
+    category = models.OneToOneField(
+        'Category',
+        on_delete=models.CASCADE,
+        related_name='referee_assignment',
+        help_text='The category these referees are assigned to'
+    )
+    
+    referee_1 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_1_categories',
+        help_text='Referee 1 (R1)'
+    )
+    
+    referee_2 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_2_categories',
+        help_text='Referee 2 (R2)'
+    )
+    
+    referee_3 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_3_categories',
+        help_text='Referee 3 (R3)'
+    )
+    
+    referee_4 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_4_categories',
+        help_text='Referee 4 (R4)'
+    )
+    
+    referee_5 = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'is_referee': True},
+        related_name='referee_5_categories',
+        help_text='Referee 5 (R5)'
+    )
+    
+    class Meta:
+        verbose_name = 'Category Referee Assignment'
+        verbose_name_plural = 'Category Referee Assignments'
+    
+    def __str__(self):
+        return f"Referees for {self.category.name}"
+    
+    def get_referees_list(self):
+        """Return list of (position, referee) tuples"""
+        return [
+            (1, self.referee_1),
+            (2, self.referee_2),
+            (3, self.referee_3),
+            (4, self.referee_4),
+            (5, self.referee_5),
+        ]
+    
+    def clean(self):
+        """Validate referee assignments"""
+        super().clean()
+        # Check if category is a solo or team category (not Fight)
+        from django.contrib.contenttypes.models import ContentType
+        if self.category:
+            category_type = ContentType.objects.get_for_model(self.category).model
+            if category_type not in ['solocategory', 'teamcategory']:
+                raise ValidationError(
+                    f"Referee assignments are only for solo and team categories, not {category_type}"
+                )
+        
+        # Note: duplicate referees are allowed (same referee can be assigned to multiple positions)
+
+
+class CategoryRefereeScore(models.Model):
+    """
+    Stores individual referee scores for athletes/teams in solo and team categories.
+    For solo/team categories, 5 referees score each athlete/team.
+    Referees start with base score of 100 and submit deductions.
+    Final score = 100 - sum_of_deductions.
+    The final award score excludes the highest and lowest scores and averages the middle 3.
+    """
+    CATEGORY_TYPE_CHOICES = [
+        ('solo', 'Solo'),
+        ('teams', 'Teams'),
+    ]
+    
+    # Link to the athlete's result submission
+    athlete_score = models.ForeignKey(
+        'CategoryAthleteScore',
+        on_delete=models.CASCADE,
+        related_name='referee_scores',
+        help_text='The athlete/team result being scored'
+    )
+    
+    # The referee providing the score
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        limit_choices_to={'is_referee': True},
+        related_name='given_category_scores',
+        help_text='The referee providing this score'
+    )
+    
+    # Deduction structure (JSON field for flexibility)
+    # Example: {"wrong_technique": 10, "wrong_position": 5, "not_looking_real": 0, "stamina": 3}
+    deductions = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Deductions by category: wrong_technique, wrong_position, not_looking_real, stamina'
+    )
+    
+    # Calculated total score (100 - sum_of_deductions)
+    score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=100,
+        help_text='Final score: 100 minus all deductions'
+    )
+    
+    # Metadata
+    submitted_date = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, null=True, help_text='Optional notes from referee')
+    
+    class Meta:
+        unique_together = ('athlete_score', 'referee')  # Each referee scores each athlete/team once
+        indexes = [
+            models.Index(fields=['athlete_score', 'referee']),
+            models.Index(fields=['submitted_date']),
+        ]
+        verbose_name = 'Category Referee Score'
+        verbose_name_plural = 'Category Referee Scores'
+    
+    def __str__(self):
+        athlete = self.athlete_score.athlete
+        referee = self.referee
+        team_name = self.athlete_score.team_name if self.athlete_score.type == 'teams' else None
+        
+        if team_name:
+            return f"{referee.first_name} {referee.last_name} scored Team {team_name}: {self.score}"
+        elif athlete:
+            return f"{referee.first_name} {referee.last_name} scored {athlete.first_name} {athlete.last_name}: {self.score}"
+        else:
+            return f"{referee.first_name} {referee.last_name} scored (unknown): {self.score}"
+    
+    def clean(self):
+        """Validate that this is for a solo or team category"""
+        super().clean()
+        if self.athlete_score and self.athlete_score.type not in ['solo', 'team', 'teams']:
+            raise ValidationError(
+                f"Referee scoring is only applicable to solo and team categories, not {self.athlete_score.type}"
+            )
+
+
+class CategoryRefereeScoreEvent(models.Model):
+    ACTION_CHOICES = [
+        ('create', 'Create'),
+        ('update', 'Update'),
+        ('delete', 'Delete'),
+        ('reveal', 'Reveal'),
+    ]
+
+    SOURCE_CHOICES = [
+        ('referee_app', 'Referee App'),
+        ('competition_admin', 'Competition Admin'),
+        ('system', 'System'),
+    ]
+
+    athlete_score = models.ForeignKey(
+        'CategoryAthleteScore',
+        on_delete=models.CASCADE,
+        related_name='score_events',
+        help_text='The athlete/team score affected by this event'
+    )
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        limit_choices_to={'is_referee': True},
+        related_name='category_score_events',
+        help_text='The referee that produced this event'
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='update')
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='competition_admin')
+    score_value = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    previous_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    recording_session = models.ForeignKey(
+        'FieldRecordingSession',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='category_score_events'
+    )
+    video_offset_ms = models.IntegerField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['timestamp', 'id']
+        indexes = [
+            models.Index(fields=['athlete_score', 'timestamp']),
+            models.Index(fields=['referee', 'timestamp']),
+        ]
+        verbose_name = 'Category Referee Score Event'
+        verbose_name_plural = 'Category Referee Score Events'
+
+    def __str__(self):
+        return f"Category score event #{self.pk} ({self.action})"
 
 
 class CategoryAthleteScore(models.Model):
@@ -1272,7 +2091,7 @@ class CategoryAthleteScore(models.Model):
     ]
     
     category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='athlete_scores')
-    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='category_scores')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='category_scores', null=True, blank=True, help_text='Athlete being scored (null for team scores)')
     referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True}, null=True, blank=True)
     score = models.IntegerField(default=0, blank=True, null=True, help_text='Numeric score given by referee/official (not relevant for athlete self-submissions with placement claims)')
     
@@ -1324,17 +2143,112 @@ class CategoryAthleteScore(models.Model):
         indexes = [
             models.Index(fields=['category', 'status']),
             models.Index(fields=['athlete', 'status']),
-            models.Index(fields=['status', '-submitted_date']),
-            models.Index(fields=['type', 'status']),
+            models.Index(fields=['submitted_date']),
+            models.Index(fields=['status', 'submitted_by_athlete']),
         ]
 
     def __str__(self):
-        if self.submitted_by_athlete:
-            placement_info = f"claims {self.placement_claimed}" if self.placement_claimed else "no placement claimed"
-            return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Athlete {placement_info})"
+        category = self.category
+        group = category.group if category else None
+        event = category.event if category else None
+        group_name = group.name if group else 'No Group'
+        event_title = event.title if event else 'No Competition'
+        
+        if self.athlete:
+            return (
+                f"{self.athlete.first_name} {self.athlete.last_name} - "
+                f"{category.name} - {group_name} - {event_title}"
+            )
+        elif self.type == 'teams' and self.team_name:
+            return f"Team {self.team_name} - {category.name} - {group_name} - {event_title}"
         else:
-            referee_name = f"{self.referee.first_name} {self.referee.last_name}" if self.referee else "N/A"
-            return f"{self.athlete.first_name} {self.athlete.last_name} - {self.category.name} (Referee: {referee_name}, Score: {self.score})"
+            return f"{category.name} - {group_name} - {event_title}"
+    
+    @property
+    def calculated_score(self):
+        """
+        Calculate final score for solo/team categories by:
+        1. Collecting all 5 referee scores
+        2. Removing the highest and lowest scores
+        3. Summing the middle 3 scores
+        
+        Returns None if category type is not solo/teams or if less than 3 referee scores exist.
+        """
+        # Only applicable to solo and team categories
+        if self.type not in ['solo', 'teams']:
+            return None
+        
+        # Get all referee scores for this result
+        referee_scores = list(self.referee_scores.values_list('score', flat=True))
+        
+        # Need at least 3 scores to calculate (ideally 5)
+        if len(referee_scores) < 3:
+            return None
+        
+        # Sort scores to easily identify highest and lowest
+        sorted_scores = sorted(referee_scores)
+        
+        # Remove the lowest and highest
+        # If we have exactly 3 scores, use all 3
+        # If we have 4 scores, remove only the highest
+        # If we have 5+ scores, remove both highest and lowest
+        if len(sorted_scores) == 3:
+            middle_scores = sorted_scores
+        elif len(sorted_scores) == 4:
+            middle_scores = sorted_scores[:-1]  # Remove only highest
+        else:
+            middle_scores = sorted_scores[1:-1]  # Remove both lowest and highest
+        
+        # Sum the middle scores
+        return sum(middle_scores)
+    
+    @property
+    def referee_score_count(self):
+        """Return the number of referee scores submitted for this result"""
+        return self.referee_scores.count()
+    
+    @property
+    def has_all_referee_scores(self):
+        """Check if all 5 referee scores have been submitted"""
+        return self.type in ['solo', 'teams'] and self.referee_score_count == 5
+    
+    def get_referee_score(self, referee_position):
+        """
+        Get the score from a specific referee position (1-5).
+        Returns the score value or None if not submitted.
+        """
+        if not self.category:
+            return None
+        
+        try:
+            assignment = self.category.referee_assignment
+        except:
+            return None
+        
+        # Get the referee for this position
+        referee = getattr(assignment, f'referee_{referee_position}', None)
+        if not referee:
+            return None
+        
+        # Get the score from this referee
+        try:
+            score_obj = self.referee_scores.get(referee=referee)
+            return score_obj.score
+        except CategoryRefereeScore.DoesNotExist:
+            return None
+    
+    def get_all_referee_scores(self):
+        """
+        Get all 5 referee scores in order (R1-R5).
+        Returns dict with keys 'r1' through 'r5', values are scores or None.
+        """
+        return {
+            'r1': self.get_referee_score(1),
+            'r2': self.get_referee_score(2),
+            'r3': self.get_referee_score(3),
+            'r4': self.get_referee_score(4),
+            'r5': self.get_referee_score(5),
+        }
     
     def save(self, *args, **kwargs):
         """Override save to track status changes and ensure team submitter is included"""
@@ -1357,6 +2271,10 @@ class CategoryAthleteScore(models.Model):
             
         super().save(*args, **kwargs)
         
+        # For team results, ensure the submitting athlete is included in team members
+        if self.type == 'teams' and self.athlete and not self.team_members.filter(pk=self.athlete.pk).exists():
+            self.team_members.add(self.athlete)
+        
         # Auto-populate Category awards when status changes to approved (only for admin approvals, not team creation)
         if status_changed_to_approved and self.submitted_by_athlete and self.placement_claimed:
             # Only update category text fields, don't create teams during auto-save
@@ -1375,14 +2293,6 @@ class CategoryAthleteScore(models.Model):
         # Auto-populate Category awards if placement is claimed
         if self.submitted_by_athlete and self.placement_claimed:
             self._update_category_awards()
-        
-        # Log the approval
-        CategoryScoreActivity.objects.create(
-            score=self,
-            action='approved',
-            performed_by=admin_user,
-            notes=f'Result approved and category awards updated. {notes}' if notes else 'Result approved and category awards updated.'
-        )
         
         # Create notification for result approval
         from .notification_utils import create_result_status_notification
@@ -1462,11 +2372,10 @@ class CategoryAthleteScore(models.Model):
     def auto_generate_team_name(self):
         """Auto-generate team name from team member names"""
         if self.type == 'teams' and self.team_members.exists():
-            member_names = [f"{m.first_name} {m.last_name}" for m in self.team_members.all()[:3]]
-            auto_generated_name = f"{', '.join(member_names)}"
-            if self.team_members.count() > 3:
-                auto_generated_name += f" (+{self.team_members.count() - 3} more)"
-            
+            auto_generated_name = build_team_display_name(
+                self.team_members.select_related('club').all()
+            )
+
             # Update the team name and save
             self.team_name = auto_generated_name
             self.save(update_fields=['team_name'])
@@ -1477,13 +2386,11 @@ class CategoryAthleteScore(models.Model):
         """Create or update Team object when team result is approved"""
         if not self.team_members.exists():
             return
-            
-        # Always auto-generate team name from team member names
-        member_names = [f"{m.first_name} {m.last_name}" for m in self.team_members.all()[:3]]
-        auto_generated_name = f"{', '.join(member_names)}"
-        if self.team_members.count() > 3:
-            auto_generated_name += f" (+{self.team_members.count() - 3} more)"
-        
+
+        auto_generated_name = build_team_display_name(
+            self.team_members.select_related('club').all()
+        )
+
         # Use auto-generated name (always override any manual name for consistency)
         team_name = auto_generated_name
         
@@ -1551,14 +2458,6 @@ class CategoryAthleteScore(models.Model):
         self.admin_notes = notes
         self.save()
         
-        # Log the rejection
-        CategoryScoreActivity.objects.create(
-            score=self,
-            action='rejected',
-            performed_by=admin_user,
-            notes=f'Result rejected. {notes}' if notes else 'Result rejected.'
-        )
-        
         # Create notification for result rejection
         from .notification_utils import create_result_status_notification
         create_result_status_notification(self, 'rejected', admin_user, notes)
@@ -1572,14 +2471,6 @@ class CategoryAthleteScore(models.Model):
         self.reviewed_by = admin_user
         self.admin_notes = notes
         self.save()
-        
-        # Log the revision request
-        CategoryScoreActivity.objects.create(
-            score=self,
-            action='revision_requested',
-            performed_by=admin_user,
-            notes=f'Revision requested. {notes}' if notes else 'Revision requested.'
-        )
         
         # Create notification for revision request
         from .notification_utils import create_result_status_notification
@@ -1612,57 +2503,94 @@ class CategoryTeamScore(models.Model):
 #     pass
 
 
-class CategoryScoreActivity(models.Model):
-    """
-    Activity log for category athlete score approvals and changes.
-    """
-    ACTION_CHOICES = [
-        ('submitted', 'Result Submitted'),
-        ('approved', 'Result Approved'),
-        ('rejected', 'Result Rejected'),
-        ('revision_requested', 'Revision Requested'),
-        ('updated', 'Result Updated'),
-        ('resubmitted', 'Result Resubmitted'),
-        ('deleted', 'Result Deleted'),
-    ]
-    
-    score = models.ForeignKey('CategoryAthleteScore', on_delete=models.CASCADE, related_name='activity_log')
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
-    performed_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    notes = models.TextField(blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-timestamp']
-        verbose_name = _('Score Activity')
-        verbose_name_plural = _('Score Activities')
-    
-    def __str__(self):
-        return f"{self.get_action_display()} - {self.score} by {self.performed_by}"
-
-
-
-
 class Group(models.Model):
     """
-    Represents a group within a competition.
+    Represents an age-based group within an event/competition.
+    Groups organize categories by athlete birth year ranges.
+    Example: Athletes born 2015-2018
     """
-    name = models.CharField(max_length=100, unique=True)  # Name of the group
-    competition = models.ForeignKey(
-        'Competition',
+    name = models.CharField(max_length=100, help_text="Group name (e.g., 'U12 Beginners', 'Youth 2015-2018')")
+    event = models.ForeignKey(
+        'landing.Event',
         on_delete=models.CASCADE,
-        related_name='groups'
-    )  # Link each group to a specific competition
+        related_name='groups',
+        null=True,
+        blank=True
+    )
+    birth_year_start = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Starting birth year for this age group (e.g., 2015)"
+    )
+    birth_year_end = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Ending birth year for this age group (e.g., 2018)"
+    )
+    birth_date_start = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Exact start date for age eligibility (inclusive). If set, takes priority over birth_year_start."
+    )
+    birth_date_end = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Exact end date for age eligibility (inclusive). If set, takes priority over birth_year_end."
+    )
+    allow_younger = models.BooleanField(
+        default=False,
+        help_text="Allow athletes younger than the minimum age (who want to compete in a higher age category)"
+    )
+    GRADE_TYPE_CHOICES = [
+        ('all', 'All grades'),
+        ('inferior', 'Inferior grades only'),
+        ('superior', 'Superior grades only'),
+    ]
+    allowed_grade_type = models.CharField(
+        max_length=10,
+        choices=GRADE_TYPE_CHOICES,
+        default='all',
+        help_text="Restrict participation by grade type. 'inferior' = only inferior grades, 'superior' = only superior grades."
+    )
+    display_order = models.IntegerField(default=0, help_text="Order within the event for display purposes")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['event', 'name'],
+                name='unique_group_per_event',
+                condition=models.Q(event__isnull=False)
+            ),
+        ]
+        ordering = ['event', 'display_order', 'id']
 
     def __str__(self):
-        return f"{self.name} ({self.competition.name})"
+        age_range = ""
+        if self.birth_year_start and self.birth_year_end:
+            age_range = f" [{self.birth_year_start}-{self.birth_year_end}]"
+        elif self.birth_year_start:
+            age_range = f" [{self.birth_year_start}+]"
+        elif self.birth_year_end:
+            age_range = f" [up to {self.birth_year_end}]"
+        
+        if self.event:
+            return f"{self.name}{age_range} ({self.event.title})"
+        return f"{self.name}{age_range} (No Event)"
+    
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.birth_year_start and self.birth_year_end:
+            if self.birth_year_start > self.birth_year_end:
+                raise ValidationError({
+                    'birth_year_start': 'Start year must be before or equal to end year'
+                })
 
  
 # FrontendTheme model removed — dynamic theme management has been deleted.
 # The database migration that originally created the model remains; a
 # subsequent migration will drop the table when applied.
 
-# AthleteProfile and AthleteProfileActivity models removed - functionality consolidated into Athlete and AthleteActivity models
+# AthleteActivity and CategoryScoreActivity models removed - activity tracking eliminated per business decision
 
 
 class SupporterAthleteRelation(models.Model):
@@ -1709,7 +2637,7 @@ class AthleteMatch(models.Model):
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='athlete_matches')
     opponent_name = models.CharField(max_length=200, help_text='Name of the opponent')
     match_date = models.DateField(help_text='Date of the match')
-    competition = models.ForeignKey(Competition, on_delete=models.CASCADE, related_name='athlete_matches', blank=True, null=True)
+    event = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='athlete_matches', blank=True, null=True)
     venue = models.CharField(max_length=200, blank=True, null=True, help_text='Venue where the match took place')
     result = models.CharField(max_length=10, choices=RESULT_CHOICES, help_text='Match result')
     round_ended = models.CharField(max_length=50, blank=True, null=True, help_text='Round when match ended (e.g., "Round 2", "Decision")')
@@ -1809,7 +2737,6 @@ class Notification(models.Model):
     
     # Optional link to related objects
     related_result = models.ForeignKey('CategoryAthleteScore', on_delete=models.CASCADE, null=True, blank=True)
-    related_competition = models.ForeignKey('Competition', on_delete=models.CASCADE, null=True, blank=True)
     
     # Optional action data (JSON field for flexible data storage)
     action_data = models.JSONField(null=True, blank=True, help_text="Additional data for notification actions")
@@ -1874,72 +2801,984 @@ def create_notification_settings(sender, instance, created, **kwargs):
         NotificationSettings.objects.create(user=instance)
 
 
-# Signal to ensure team submitter is included in team members
-@receiver(post_save, sender=CategoryAthleteScore)
-def ensure_team_submitter_included(sender, instance, created, **kwargs):
-    """Ensure the submitting athlete is included in team members for team results"""
-    if instance.type == 'teams' and instance.athlete:
-        if not instance.team_members.filter(pk=instance.athlete.pk).exists():
-            instance.team_members.add(instance.athlete)
+class FieldRecordingSession(models.Model):
+    STATUS_CHOICES = [
+        ('recording', 'Recording'),
+        ('stopped', 'Stopped'),
+        ('failed', 'Failed'),
+    ]
+
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='field_recording_sessions')
+    field = models.ForeignKey('CompetitionField', on_delete=models.CASCADE, related_name='recording_sessions')
+    title = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recording')
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    obs_scene_name = models.CharField(max_length=255, blank=True)
+    obs_source_name = models.CharField(max_length=255, blank=True)
+    recording_file_name = models.CharField(max_length=255, blank=True)
+    recording_file_path = models.CharField(max_length=500, blank=True)
+    recording_url = models.URLField(blank=True, max_length=500)
+    notes = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-started_at', '-id']
+        indexes = [
+            models.Index(fields=['event', 'field', 'status']),
+            models.Index(fields=['started_at']),
+        ]
+
+    def __str__(self):
+        label = self.title or f"{self.field} recording"
+        return f"{label} ({self.started_at:%Y-%m-%d %H:%M})"
 
 
-# Signal to sync match results to CategoryAthleteScore
-@receiver(post_save, sender=Match)
-def sync_match_to_category_scores(sender, instance, **kwargs):
+class MatchVideoRecording(models.Model):
     """
-    Automatically create/update CategoryAthleteScore entries when a match has a winner.
-    This syncs referee scores from matches to the category results system.
+    Video recording for individual Fight category matches.
+    Each match can have its own video recording.
+    All fields optional to allow gradual video addition.
     """
-    if not instance.winner or not instance.category:
-        return
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='video_recordings',
+        help_text='The match this video records'
+    )
     
-    # Get or create scores for both fighters (winner and loser)
-    fighters = [
-        (instance.winner, True),  # Winner
-        (instance.blue_corner if instance.winner == instance.red_corner else instance.red_corner, False)  # Loser
+    # Video storage - either file upload OR external URL
+    video_file = models.FileField(
+        upload_to='match_videos/%Y/%m/%d/',
+        blank=True,
+        null=True,
+        help_text='Uploaded video file (MP4, WebM, etc.)'
+    )
+    
+    video_url = models.URLField(
+        blank=True,
+        null=True,
+        max_length=500,
+        help_text='External video URL (YouTube, Vimeo, streaming service)'
+    )
+    
+    # Video metadata
+    duration_seconds = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text='Total video duration in seconds'
+    )
+    
+    recorded_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='When the video was recorded'
+    )
+    
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When video was uploaded to system'
+    )
+    
+    # Access control
+    is_public = models.BooleanField(
+        default=False,
+        help_text='Whether video is publicly accessible'
+    )
+    
+    class Meta:
+        verbose_name = 'Match Video Recording'
+        verbose_name_plural = 'Match Video Recordings'
+        ordering = ['-recorded_at', '-uploaded_at']
+    
+    def __str__(self):
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
+        return f"{self.match.name} ({date})"
+    
+    def clean(self):
+        """Validate that at least one video source is provided"""
+        if not self.video_file and not self.video_url:
+            raise ValidationError("Either video file or video URL must be provided")
+
+
+class AthletePerformanceVideo(models.Model):
+    """
+    Video recording of an individual athlete's performance in a Solo category.
+    Links to CategoryAthleteScore for individual athlete results.
+    """
+    athlete_score = models.OneToOneField(
+        'CategoryAthleteScore',
+        on_delete=models.CASCADE,
+        related_name='performance_video',
+        verbose_name='Solo category',
+        help_text='The athlete score entry this video documents'
+    )
+    
+    # Video storage - either file upload OR external URL
+    video_file = models.FileField(
+        upload_to='athlete_videos/%Y/%m/%d/',
+        blank=True,
+        null=True,
+        help_text='Uploaded video file (MP4, WebM, etc.)'
+    )
+    
+    video_url = models.URLField(
+        blank=True,
+        null=True,
+        max_length=500,
+        help_text='External video URL (YouTube, Vimeo, streaming service)'
+    )
+    
+    duration_seconds = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text='Total video duration in seconds'
+    )
+    
+    recorded_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='When the video was recorded'
+    )
+    
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When video was uploaded to system'
+    )
+    
+    # Access control
+    is_public = models.BooleanField(
+        default=False,
+        help_text='Whether video is publicly accessible'
+    )
+    
+    class Meta:
+        verbose_name = 'Solo Performance Video'
+        verbose_name_plural = 'Solo Performance Videos'
+        ordering = ['-recorded_at', '-uploaded_at']
+    
+    def __str__(self):
+        athlete = self.athlete_score.athlete
+        category = self.athlete_score.category
+        group = category.group
+        event = category.event
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
+        group_name = group.name if group else 'No Group'
+        event_title = event.title if event else 'No Competition'
+        return (
+            f"{athlete.first_name} {athlete.last_name} - "
+            f"{category.name} / {group_name} / {event_title} ({date})"
+        )
+    
+    def clean(self):
+        """Validate that at least one video source is provided"""
+        if not self.video_file and not self.video_url:
+            raise ValidationError("Either video file or video URL must be provided")
+
+
+class TeamPerformanceVideo(models.Model):
+    """
+    Video recording of a team's performance in a Team category.
+    Links to CategoryTeam for team results.
+    """
+    category_team = models.OneToOneField(
+        'CategoryTeam',
+        on_delete=models.CASCADE,
+        related_name='performance_video',
+        help_text='The team enrollment this video documents'
+    )
+    
+    # Video storage - either file upload OR external URL
+    video_file = models.FileField(
+        upload_to='team_videos/%Y/%m/%d/',
+        blank=True,
+        null=True,
+        help_text='Uploaded video file (MP4, WebM, etc.)'
+    )
+    
+    video_url = models.URLField(
+        blank=True,
+        null=True,
+        max_length=500,
+        help_text='External video URL (YouTube, Vimeo, streaming service)'
+    )
+    
+    duration_seconds = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text='Total video duration in seconds'
+    )
+    
+    recorded_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='When the video was recorded'
+    )
+    
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When video was uploaded to system'
+    )
+    
+    # Access control
+    is_public = models.BooleanField(
+        default=False,
+        help_text='Whether video is publicly accessible'
+    )
+    
+    class Meta:
+        verbose_name = 'Team Performance Video'
+        verbose_name_plural = 'Team Performance Videos'
+        ordering = ['-recorded_at', '-uploaded_at']
+    
+    def __str__(self):
+        team = self.category_team.team
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
+        return f"{team.name} ({date})"
+    
+    def clean(self):
+        """Validate that at least one video source is provided"""
+        if not self.video_file and not self.video_url:
+            raise ValidationError("Either video file or video URL must be provided")
+
+
+# ============================================================================
+# PWA COMPETITION MANAGEMENT MODELS
+# ============================================================================
+
+class CompetitionField(models.Model):
+    """
+    Represents a scoring field/tatami at a competition.
+    Multiple fields can run simultaneously during an event.
+    Each field displays scores on a dedicated monitor.
+    """
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.CASCADE,
+        related_name='fields',
+        help_text='The event this field belongs to'
+    )
+    
+    name = models.CharField(
+        max_length=100,
+        help_text='Field name (e.g., "Field 1", "Tatami A", "Area B")'
+    )
+    
+    field_number = models.IntegerField(
+        help_text='Numeric identifier for the field'
+    )
+    
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Whether this field is currently being used'
+    )
+
+    start_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text='Planned start time for this field (e.g., 09:00)'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('event', 'field_number')
+        ordering = ['field_number']
+        verbose_name = 'Competition Field'
+        verbose_name_plural = 'Competition Fields'
+    
+    def __str__(self):
+        return f"{self.name} (Event: {self.event.title})"
+
+
+class FieldBreak(models.Model):
+    """
+    A break/pause in a competition field schedule (e.g., lunch break).
+    Appears in the schedule timeline between categories/matches.
+    """
+    field = models.ForeignKey(
+        'CompetitionField',
+        on_delete=models.CASCADE,
+        related_name='breaks',
+        help_text='The field this break belongs to'
+    )
+    label = models.CharField(
+        max_length=100,
+        default='Pauză',
+        help_text='Label for the break (e.g., "Pauză de masă")'
+    )
+    duration = models.IntegerField(
+        default=60,
+        help_text='Duration in minutes'
+    )
+    order = models.IntegerField(
+        default=0,
+        help_text='Order position in the field schedule (mixed with category/match assignments)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = 'Field Break'
+        verbose_name_plural = 'Field Breaks'
+
+    def __str__(self):
+        return f"{self.label} ({self.duration}min) - {self.field.name}"
+
+
+class CategoryFieldAssignment(models.Model):
+    """
+    Assigns a category to a specific field for competition day.
+    Allows admin to track which categories are being held on which fields.
+    """
+    category = models.OneToOneField(
+        'Category',
+        on_delete=models.CASCADE,
+        related_name='field_assignment',
+        help_text='The category being assigned'
+    )
+    
+    field = models.ForeignKey(
+        'CompetitionField',
+        on_delete=models.CASCADE,
+        related_name='category_assignments',
+        help_text='The field this category is assigned to'
+    )
+    
+    STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='not_started',
+        help_text='Current status of this category on this field'
+    )
+
+    scheduled_start_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the category is scheduled to start'
+    )
+    
+    actual_start_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the category actually started'
+    )
+    
+    actual_end_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the category actually ended'
+    )
+    
+    order = models.IntegerField(
+        default=0,
+        help_text='Order in which categories are run on this field'
+    )
+    
+    estimated_duration = models.IntegerField(
+        default=15,
+        help_text='Estimated duration in minutes'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['order']
+        verbose_name = 'Category Field Assignment'
+        verbose_name_plural = 'Category Field Assignments'
+        indexes = [
+            models.Index(fields=['field', 'status']),
+        ]
+    
+    def __str__(self):
+        return f"{self.category.name} → {self.field.name}"
+
+
+class MatchFieldAssignment(models.Model):
+    """
+    Assigns a match to a specific field with status and scheduling info.
+    """
+    match = models.OneToOneField(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='field_assignment',
+        help_text='The match being assigned'
+    )
+
+    field = models.ForeignKey(
+        'CompetitionField',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='match_assignments',
+        help_text='The field this match is assigned to'
+    )
+
+    STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='not_started',
+        help_text='Current status of this match on this field'
+    )
+
+    scheduled_start_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the match is scheduled to start'
+    )
+
+    actual_start_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the match actually started'
+    )
+
+    actual_end_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the match actually ended'
+    )
+
+    order = models.IntegerField(
+        default=0,
+        help_text='Order in which matches are run on this field'
+    )
+
+    estimated_duration = models.IntegerField(
+        default=10,
+        help_text='Estimated duration in minutes'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = 'Match Field Assignment'
+        verbose_name_plural = 'Match Field Assignments'
+        indexes = [
+            models.Index(fields=['field', 'status'], name='api_match_field_status_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.match.name or self.match.pk} → {self.field.name if self.field else 'Unassigned'}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        try:
+            if self.match_id and self.field_id and self.match.field_id != self.field_id:
+                self.match.field_id = self.field_id
+                self.match.save(update_fields=['field'])
+        except Exception:
+            pass
+
+
+class DisplayMonitorSession(models.Model):
+    """
+    Tracks what is currently being displayed on each field's monitor.
+    Admin can switch which category/match is shown on each monitor in real-time.
+    """
+    field = models.OneToOneField(
+        'CompetitionField',
+        on_delete=models.CASCADE,
+        related_name='monitor_session',
+        help_text='Which field this monitor serves'
+    )
+    
+    current_category = models.ForeignKey(
+        'Category',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='monitor_sessions_category',
+        help_text='The category currently displayed'
+    )
+    
+    current_match = models.ForeignKey(
+        'Match',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='monitor_sessions_match',
+        help_text='The match currently displayed (for fighting categories)'
+    )
+    
+    current_athlete = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='monitor_sessions',
+        help_text='The current athlete being displayed (for solo/teams)'
+    )
+    
+    STATUS_CHOICES = [
+        ('idle', 'Idle'),
+        ('displaying', 'Displaying'),
+        ('scores_revealed', 'Scores Revealed'),
+        ('decisions_revealed', 'Decisions Revealed'),
+        ('winner_revealed', 'Winner Revealed'),
     ]
     
-    for athlete, is_winner in fighters:
-        if not athlete:
-            continue
-            
-        # Calculate average score from all referees for this athlete
-        total_score = 0
-        referee_count = 0
-        
-        for ref_score in instance.referee_scores.all():
-            if athlete == instance.red_corner:
-                total_score += ref_score.red_corner_score
-            else:
-                total_score += ref_score.blue_corner_score
-            referee_count += 1
-        
-        avg_score = total_score // referee_count if referee_count > 0 else 0
-        
-        # Get or create CategoryAthleteScore for each referee (standard pattern)
-        # Use central referee if available, otherwise create aggregate entry
-        referee = instance.central_referee if instance.central_referee else instance.referees.first()
-        
-        if referee:
-            CategoryAthleteScore.objects.update_or_create(
-                category=instance.category,
-                athlete=athlete,
-                referee=referee,
-                defaults={
-                    'score': avg_score,
-                    'type': 'fight',
-                    'status': 'approved',  # Match results are pre-approved
-                    'submitted_by_athlete': False,
-                }
-            )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='idle',
+        help_text='Current display status'
+    )
+
+    # Break timer sync fields (admin ↔ public display)
+    break_end_time = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Absolute UTC time when break should end'
+    )
+    break_paused = models.BooleanField(
+        default=False,
+        help_text='Whether the break timer is currently paused'
+    )
+    break_paused_remaining = models.IntegerField(
+        default=0,
+        help_text='Seconds remaining when break was paused'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'Display Monitor Session'
+        verbose_name_plural = 'Display Monitor Sessions'
+    
+    def __str__(self):
+        if self.current_category:
+            return f"Monitor {self.field.field_number}: {self.current_category.name}"
+        return f"Monitor {self.field.field_number}: Idle"
 
 
-@receiver(post_save, sender=RefereeScore)
-def sync_referee_score_to_category_scores(sender, instance, **kwargs):
+class MatchRound(models.Model):
     """
-    When a RefereeScore is added or updated, trigger the match sync.
-    This ensures CategoryAthleteScore is updated when referee scores change in the admin.
+    Represents a single round in a fighting match.
+    Tracks round duration, scores submitted per round, and round status.
     """
-    if instance.match:
-        # Save the match to recalculate winner and trigger the match sync signal
-        instance.match.save()
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='rounds',
+        help_text='The match this round belongs to'
+    )
+    
+    round_number = models.IntegerField(
+        help_text='Round number (1, 2, 3, etc.)'
+    )
+    
+    duration_seconds = models.IntegerField(
+        default=180,
+        help_text='Duration of this round in seconds (default 3 minutes)'
+    )
+    
+    STATUS_CHOICES = [
+        ('scheduled', 'Scheduled'),
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+    ]
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='scheduled',
+        help_text='Current status of this round'
+    )
+    
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the round started'
+    )
+    
+    ended_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the round ended'
+    )
+    
+    paused_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the round was paused (null = not paused)'
+    )
+    
+    accumulated_pause_seconds = models.IntegerField(
+        default=0,
+        help_text='Total seconds spent paused in this round'
+    )
+    
+    extra_seconds = models.IntegerField(
+        default=0,
+        help_text='Extra seconds added/removed by admin during this round'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('match', 'round_number')
+        ordering = ['round_number']
+        verbose_name = 'Match Round'
+        verbose_name_plural = 'Match Rounds'
+    
+    def __str__(self):
+        return f"{self.match.match_number or self.match.id} - Round {self.round_number}"
+    
+    @property
+    def is_paused(self):
+        return self.paused_at is not None
+    
+    @property
+    def effective_duration(self):
+        """Total round duration including time adjustments"""
+        return self.duration_seconds + self.extra_seconds
+
+
+class MatchEvent(models.Model):
+    """
+    Tracks real-time events during a fighting match:
+    warnings, penalties (-2 points from central referee), pauses, time adjustments.
+    """
+    EVENT_TYPE_CHOICES = [
+        ('warning_red', 'Warning Red Corner'),
+        ('warning_blue', 'Warning Blue Corner'),
+        ('penalty_red', 'Penalty Red Corner'),
+        ('penalty_blue', 'Penalty Blue Corner'),
+        ('bonus_red', 'Bonus Red Corner'),
+        ('bonus_blue', 'Bonus Blue Corner'),
+        ('infraction_red', 'Infraction Red Corner'),
+        ('infraction_blue', 'Infraction Blue Corner'),
+        ('disqualify_red', 'Disqualify Red Corner'),
+        ('disqualify_blue', 'Disqualify Blue Corner'),
+        ('pause', 'Pause'),
+        ('resume', 'Resume'),
+        ('time_add', 'Time Added'),
+        ('time_remove', 'Time Removed'),
+    ]
+    
+    CORNER_CHOICES = [
+        ('red', 'Red Corner'),
+        ('blue', 'Blue Corner'),
+        ('none', 'No Corner'),
+    ]
+    
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        related_name='events',
+        help_text='The match this event belongs to'
+    )
+    
+    round = models.ForeignKey(
+        'MatchRound',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='events',
+        help_text='The round this event occurred in'
+    )
+    
+    event_type = models.CharField(
+        max_length=20,
+        choices=EVENT_TYPE_CHOICES,
+        help_text='Type of event'
+    )
+    
+    corner = models.CharField(
+        max_length=10,
+        choices=CORNER_CHOICES,
+        default='none',
+        help_text='Which corner this event applies to'
+    )
+    
+    value = models.IntegerField(
+        default=0,
+        help_text='Numeric value (e.g., seconds added/removed, penalty points)'
+    )
+    
+    notes = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='Optional notes about the event'
+    )
+    
+    created_by = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_match_events',
+        help_text='Who created this event (usually central referee or admin)'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = 'Match Event'
+        verbose_name_plural = 'Match Events'
+    
+    def __str__(self):
+        return f"{self.match} - {self.get_event_type_display()} ({self.created_at})"
+
+
+class QRCodeAssignment(models.Model):
+    """
+    Generates unique QR codes for quick referee access to their assigned categories/matches.
+    When a referee scans the QR, they're automatically logged in to that specific category/match.
+    """
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        limit_choices_to={'is_referee': True},
+        related_name='qr_assignments',
+        help_text='The referee this QR code is for'
+    )
+    
+    category = models.ForeignKey(
+        'Category',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='qr_assignments',
+        help_text='The category this QR code grants access to (solo/teams only)'
+    )
+    
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='qr_assignments',
+        help_text='The match this QR code grants access to (fighting only)'
+    )
+    
+    code = models.CharField(
+        max_length=255,
+        unique=True,
+        db_index=True,
+        help_text='Unique QR code value'
+    )
+    
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Whether this QR code can be used'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Optional expiration date for this QR code'
+    )
+    
+    class Meta:
+        unique_together = ('referee', 'category', 'match')
+        verbose_name = 'QR Code Assignment'
+        verbose_name_plural = 'QR Code Assignments'
+        indexes = [
+            models.Index(fields=['code']),
+            models.Index(fields=['referee', 'category']),
+            models.Index(fields=['referee', 'match']),
+        ]
+    
+    def __str__(self):
+        target = self.category.name if self.category else self.match.match_number
+        return f"QR for {self.referee.first_name} → {target}"
+    
+    def clean(self):
+        """Validate that either category or match is specified, but not both"""
+        if not self.category and not self.match:
+            raise ValidationError("QR code must be assigned to either a category or a match")
+        if self.category and self.match:
+            raise ValidationError("QR code cannot be assigned to both a category and a match")
+
+
+class CompetitionReferee(models.Model):
+    """
+    Tracks which referees are participating in a competition.
+    Acts as the roster from which referees can be assigned to categories/matches.
+    """
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.CASCADE,
+        related_name='competition_referees',
+        help_text='The event this referee is participating in'
+    )
+    athlete = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        related_name='competition_referee_entries',
+        limit_choices_to={'is_referee': True},
+        help_text='The referee athlete'
+    )
+    notes = models.TextField(
+        blank=True,
+        default='',
+        help_text='Additional notes'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('event', 'athlete')
+        ordering = ['athlete__last_name']
+        verbose_name = 'Competition Referee'
+        verbose_name_plural = 'Competition Referees'
+
+    def __str__(self):
+        return f"{self.athlete.last_name} {self.athlete.first_name} - {self.event.title}"
+
+
+class RefereePresence(models.Model):
+    """Tracks which referees are actively connected to a category scoring page.
+    The referee scoring panel pings this endpoint every poll cycle to indicate presence.
+    """
+    category = models.ForeignKey(
+        'Category',
+        on_delete=models.CASCADE,
+        related_name='referee_presences',
+        help_text='The category the referee is scoring'
+    )
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        related_name='presence_records',
+        help_text='The referee athlete'
+    )
+    last_ping = models.DateTimeField(
+        help_text='Last time the referee pinged from the scoring page'
+    )
+
+    class Meta:
+        unique_together = ('category', 'referee')
+        verbose_name = 'Referee Presence'
+        verbose_name_plural = 'Referee Presences'
+
+    def __str__(self):
+        return f"Referee {self.referee_id} on category {self.category_id}"
+
+
+class ExternalAPIClient(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    service_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='external_api_clients',
+        help_text='Utilizatorul folosit de cererile autentificate cu această cheie API.'
+    )
+    api_key_prefix = models.CharField(max_length=16, editable=False, db_index=True)
+    api_key_hash = models.CharField(max_length=64, unique=True, editable=False)
+    allowed_origins = models.TextField(
+        blank=True,
+        help_text='Un origin per linie, de exemplu https://my-app.web.app sau https://my-app.firebaseapp.com'
+    )
+    allow_write = models.BooleanField(
+        default=True,
+        help_text='Permite cereri POST/PUT/PATCH/DELETE. Dacă este debifat, cheia rămâne doar pentru citire.'
+    )
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    last_used_ip = models.GenericIPAddressField(null=True, blank=True, unpack_ipv4=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Client API extern'
+        verbose_name_plural = 'Clienți API externi'
+        ordering = ('name',)
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def normalize_origin(origin):
+        if not origin:
+            return ''
+        value = origin.strip()
+        parsed = urlparse(value)
+        if parsed.scheme and parsed.netloc:
+            return f'{parsed.scheme}://{parsed.netloc}'.rstrip('/')
+        return value.rstrip('/')
+
+    @property
+    def allowed_origins_list(self):
+        return [
+            self.normalize_origin(origin)
+            for origin in self.allowed_origins.splitlines()
+            if origin.strip()
+        ]
+
+    def is_origin_allowed(self, origin):
+        normalized_origin = self.normalize_origin(origin)
+        if not normalized_origin:
+            return True
+        allowed = set(self.allowed_origins_list)
+        if not allowed:
+            return False
+        return normalized_origin in allowed
+
+    @staticmethod
+    def build_api_key_hash(raw_key):
+        return hashlib.sha256(raw_key.strip().encode('utf-8')).hexdigest()
+
+    @classmethod
+    def generate_api_key(cls):
+        return f'frvv_{secrets.token_urlsafe(32)}'
+
+    def set_api_key(self, raw_key):
+        if not raw_key or not raw_key.strip():
+            raise ValidationError({'api_key_hash': 'Cheia API nu poate fi goală.'})
+        normalized = raw_key.strip()
+        self.api_key_hash = self.build_api_key_hash(normalized)
+        self.api_key_prefix = normalized[:12]
+
+    @classmethod
+    def get_for_raw_key(cls, raw_key):
+        if not raw_key or not raw_key.strip():
+            return None
+        return cls.objects.select_related('service_user').filter(
+            api_key_hash=cls.build_api_key_hash(raw_key),
+            is_active=True,
+            service_user__is_active=True,
+        ).first()
+
+    def mark_used(self, ip_address=None):
+        self.last_used_at = timezone.now()
+        if ip_address:
+            self.last_used_ip = ip_address
+        self.save(update_fields=['last_used_at', 'last_used_ip', 'updated_at'])
+
+
+# DISABLED FEATURES (for future use):
+# MatchVideoSegment - Timestamp segments within a match video for specific rounds/periods
+# RefereePointEventTimestamp - Links a specific referee point event to a video timestamp
+# These models are commented out because they are not needed yet.
+# To re-enable: uncomment and create a migration.
+#
+# class MatchVideoSegment(models.Model):
+#     """Timestamp segments within a match video for specific rounds/periods."""
+#     video_recording = models.ForeignKey('MatchVideoRecording', on_delete=models.CASCADE, related_name='segments')
+#     round_number = models.IntegerField(help_text='Round number (1, 2, 3, etc.)')

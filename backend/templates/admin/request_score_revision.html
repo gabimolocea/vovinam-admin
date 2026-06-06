@@ -1,0 +1,46 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Administrare FRVV') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:api_categoryathletescore_changelist' %}">Scoruri sportivi</a>
+&rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="module aligned">
+    <h2>Detalii rezultat</h2>
+    <div class="form-row">
+        <div><strong>Categorie:</strong> {{ score.category }}</div>
+        <div><strong>Sportiv:</strong> {{ score.athlete|default:"—" }}</div>
+        <div><strong>Tip:</strong> {{ score.type }}</div>
+        <div><strong>Status:</strong> {{ score.get_status_display }}</div>
+        <div><strong>Loc revendicat:</strong> {{ score.placement_claimed|default:"—" }}</div>
+        <div><strong>Data trimiterii:</strong> {{ score.submitted_date }}</div>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="module aligned">
+        <h2>Cerere de revizuire</h2>
+        <div class="form-row">
+            <div>
+                <label for="admin_notes"><strong>Precizează ce trebuie revizuit:</strong></label>
+                <textarea name="admin_notes" id="admin_notes" rows="6" cols="80" required placeholder="Explică ce informații trebuie corectate sau completate. Acest mesaj va fi vizibil solicitantului."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="submit-row">
+        <input type="submit" value="Solicită revizuirea" class="default" style="background-color: #ffc107; color: #212529;">
+        <a href="{% url 'admin:api_categoryathletescore_changelist' %}" class="button">Anulează</a>
+    </div>
+</form>
+{% endblock %}

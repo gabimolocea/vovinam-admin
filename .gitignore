@@ -28,3 +28,10 @@ deployment-config.txt
 
 # VSCode
 .vscode/
+
+# Node / Build
+node_modules/
+dist/
+
+# OS
+.DS_Store

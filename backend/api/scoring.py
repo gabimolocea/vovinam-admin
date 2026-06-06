@@ -4,6 +4,17 @@ from collections import defaultdict
 from .models import RefereePointEvent, RefereeScore, Match
 
 
+def _normalize_penalty_adjustment(points: Any) -> int:
+    """Return the signed score adjustment for a penalty event.
+
+    Legacy admin entries often store penalty magnitudes as positive integers
+    (e.g. `2` meaning "subtract 2"). Live scoring may already store `-2`.
+    Normalize both forms to a negative score adjustment.
+    """
+    value = int(points or 0)
+    return value if value <= 0 else -value
+
+
 def compute_match_results(match: Match, events: Optional[Iterable[RefereePointEvent]] = None) -> Dict[str, Any]:
     """
     Compute per-referee raw and adjusted totals and determine per-referee winners and match winner.
@@ -57,7 +68,10 @@ def compute_match_results(match: Match, events: Optional[Iterable[RefereePointEv
                 is_central_pen = True
 
         if is_central_pen:
-            central_penalties_by_round[rd][e.side] = central_penalties_by_round[rd].get(e.side, 0) + (e.points or 0)
+            central_penalties_by_round[rd][e.side] = (
+                central_penalties_by_round[rd].get(e.side, 0)
+                + _normalize_penalty_adjustment(e.points)
+            )
 
     # If there are existing RefereeScore rows (manually entered), include their
     # raw red/blue totals for referees that have no events yet. This ensures that
@@ -103,8 +117,7 @@ def compute_match_results(match: Match, events: Optional[Iterable[RefereePointEv
             raw_blue = sums.get('blue', 0)
             pen = central_penalties_by_round.get(rd, {'red': 0, 'blue': 0})
 
-            # Apply the full central adjustment to each referee (not proportional allocation)
-            # Negative values are penalties (subtracted), positive are additions
+            # Apply the full signed central adjustment to each referee.
             allocated_red_pen = pen.get('red', 0) or 0
             allocated_blue_pen = pen.get('blue', 0) or 0
 
