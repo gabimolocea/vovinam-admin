@@ -1999,6 +1999,7 @@ class TeamMemberInline(admin.TabularInline):
     verbose_name = _('Membru echipă')
     verbose_name_plural = _('Membri echipă')
 
+
 class EnrolledTeamsInline(admin.TabularInline):
     model = CategoryTeam
     extra = 1  # Allow adding new teams

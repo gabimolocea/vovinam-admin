@@ -342,3 +342,99 @@ def delete_category_athlete_on_fight_weight_remove(sender, instance, **kwargs):
     for ca in CategoryAthlete.objects.filter(category_id=instance.category_id, athlete=instance.athlete):
         ca._syncing = True
         ca.delete()
+
+
+@receiver(post_save, sender=CategoryTeam)
+def sync_admin_scores_to_referee_scores(sender, instance, **kwargs):
+    """
+    When admin enters ref1_score...ref5_score on CategoryTeam (Echipe Inscrise inline),
+    sync them to CategoryRefereeScore so they appear on the public display screen.
+    Maps each score slot to the actual assigned referee for that slot
+    (CategoryRefereeAssignment.referee_1...referee_5).
+    If a slot has no assigned referee, creates/reuses a placeholder athlete
+    'Arbitru Admin N' and assigns it to the slot so the score appears in the correct column.
+    """
+    if getattr(instance, '_syncing_ref_scores', False):
+        return
+
+    ref_scores = [
+        instance.ref1_score,
+        instance.ref2_score,
+        instance.ref3_score,
+        instance.ref4_score,
+        instance.ref5_score,
+    ]
+
+    # Only run if at least one score is set
+    if not any(s is not None for s in ref_scores):
+        return
+
+    # Get the athletes in this team
+    team_athletes = [
+        m.athlete for m in instance.team.members.select_related('athlete').all()
+        if m.athlete_id
+    ]
+    if not team_athletes:
+        return
+
+    # Find or create a CategoryAthleteScore for this team+category
+    cas = (
+        CategoryAthleteScore.objects
+        .filter(category_id=instance.category_id, type='teams', team_members__in=team_athletes)
+        .distinct()
+        .first()
+    )
+    if not cas:
+        cas = CategoryAthleteScore.objects.create(
+            category_id=instance.category_id,
+            athlete=team_athletes[0],
+            type='teams',
+            status='approved',
+        )
+        cas.team_members.set(team_athletes)
+
+    # Get or create CategoryRefereeAssignment for this category
+    assignment, _ = CategoryRefereeAssignment.objects.get_or_create(
+        category_id=instance.category_id
+    )
+
+    # For each slot, resolve referee: use assigned one or create placeholder
+    resolved_refs = []
+    assignment_changed = False
+    for i, score in enumerate(ref_scores, start=1):
+        assigned_ref_id = getattr(assignment, f'referee_{i}_id', None)
+        if assigned_ref_id:
+            try:
+                resolved_refs.append(Athlete.objects.get(pk=assigned_ref_id))
+            except Athlete.DoesNotExist:
+                assigned_ref_id = None
+
+        if not assigned_ref_id:
+            # Create or reuse placeholder and assign to slot
+            placeholder, created = Athlete.objects.get_or_create(
+                first_name='Arbitru',
+                last_name=f'Admin {i}',
+                defaults={'is_referee': True, 'status': 'approved'},
+            )
+            if not placeholder.is_referee:
+                placeholder.is_referee = True
+                placeholder._syncing_ref_scores = True
+                placeholder.save(update_fields=['is_referee'])
+            setattr(assignment, f'referee_{i}', placeholder)
+            assignment_changed = True
+            resolved_refs.append(placeholder)
+
+    if assignment_changed:
+        assignment._syncing_ref_scores = True
+        assignment.save()
+
+    # Admin override: clear all existing referee scores for this CAS, then recreate
+    CategoryRefereeScore.objects.filter(athlete_score=cas).delete()
+
+    for ref, score in zip(resolved_refs, ref_scores):
+        if score is not None:
+            CategoryRefereeScore.objects.create(
+                athlete_score=cas,
+                referee=ref,
+                score=score,
+            )

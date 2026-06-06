@@ -71,6 +71,7 @@ export default function DisplayScreen() {
   const [match, setMatch] = useState(null);
   const [athlete, setAthlete] = useState(null);
   const [activeTeam, setActiveTeam] = useState(null);
+  const stableTeamRef = useRef(null); // keeps last valid activeTeam to prevent flicker
   const [group, setGroup] = useState(null);
   const [event, setEvent] = useState(null);
   const [refScores, setRefScores] = useState([]);       // CategoryRefereeScore[]
@@ -117,6 +118,7 @@ export default function DisplayScreen() {
           }
         : null;
       setActiveTeam(sessionTeamFallback || null);
+      if (sessionTeamFallback) stableTeamRef.current = sessionTeamFallback;
 
       // Fetch current athlete (for solo/team)
       if (sess.current_athlete) {
@@ -210,6 +212,7 @@ export default function DisplayScreen() {
           const activeAthleteName = sess.current_athlete_name || [athlete?.first_name, athlete?.last_name].filter(Boolean).join(' ');
           const activeEnrollment = (currentCategoryData?.enrolled_teams || []).find(team => teamMatchesCurrentAthlete(team, activeAthleteId, activeAthleteName));
           const currentTeam = activeEnrollment || sessionTeamFallback || null;
+          if (currentTeam) stableTeamRef.current = currentTeam;
           setActiveTeam(currentTeam);
 
           const { data: crs } = await api.get('/category-referee-score/', {
@@ -280,6 +283,24 @@ export default function DisplayScreen() {
     );
   }
 
+  // ── FIGHT CATEGORY but no match yet — black waiting screen ──
+  if (category?.type === 'fight') {
+    return (
+      <div className="h-screen w-screen bg-white flex flex-col items-center justify-center gap-[3vh]">
+        <img src="/frvv-logo.png" alt="FRVV" className="w-auto object-contain opacity-80" style={{ height: 'min(18vh, 10vw)' }} />
+        <h1 className="text-[3.5vw] font-black text-gray-900 tracking-tight text-center uppercase" style={{ hyphens: 'none' }}>
+          {event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM'}
+        </h1>
+        {category && (
+          <p className="text-[2vw] text-gray-700 font-semibold text-center">
+            {[group?.name, category?.name].filter(Boolean).join(' · ')}
+          </p>
+        )}
+        <p className="text-[1.4vw] text-gray-400 animate-pulse mt-[2vh]">Se așteaptă începerea meciului…</p>
+      </div>
+    );
+  }
+
   // ── SOLO / TEAM DISPLAY ───────────────────────────
   return (
     <SoloTeamDisplay
@@ -287,7 +308,7 @@ export default function DisplayScreen() {
       category={category}
       group={group}
       athlete={athlete}
-      activeTeam={activeTeam}
+      activeTeam={activeTeam || stableTeamRef.current}
       refScores={refScores}
       revealed={revealed}
       isSolo={!isTeamCategoryType(category?.type)}
@@ -318,22 +339,6 @@ function IdleScreen({ event }) {
    same visual language as FightDisplay
    ═══════════════════════════════════════════════════════ */
 function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScores, revealed, isSolo, session, isDisqualified }) {
-  // ── Delayed total reveal: show referee scores first, then after 7s switch to total screen ──
-  const [showTotalScreen, setShowTotalScreen] = useState(false);
-  const totalTimerRef = useRef(null);
-
-  useEffect(() => {
-    if (revealed) {
-      // Start timer to switch to total screen after 7 seconds
-      totalTimerRef.current = setTimeout(() => setShowTotalScreen(true), 7000);
-    } else {
-      // Reset when scores are hidden
-      setShowTotalScreen(false);
-      if (totalTimerRef.current) clearTimeout(totalTimerRef.current);
-    }
-    return () => { if (totalTimerRef.current) clearTimeout(totalTimerRef.current); };
-  }, [revealed]);
-
   // Calculate scores
   const allScores = refScores.map(rs => Number(rs.score)).filter(s => !isNaN(s));
   const sortedScores = [...allScores].sort((a, b) => a - b);
@@ -357,16 +362,17 @@ function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScore
   const teamMembersLabel = !isSolo && Array.isArray(activeTeam?.team_members || activeTeam?.members)
     ? joinTeamMemberNames(activeTeam.team_members || activeTeam.members)
     : '';
+  // For teams: use session fields (stable, server-computed) as primary source
   const rawTeamName = !isSolo
-    ? (activeTeam?.team_name || activeTeam?.name || teamMembersLabel || session?.current_athlete_name || '—')
+    ? (session?.current_team_name || session?.current_athlete_name || activeTeam?.team_name || activeTeam?.name || teamMembersLabel || '—')
     : '';
   const athleteName = isSolo
     ? (athlete ? `${athlete.last_name || ''} ${athlete.first_name || ''}`.trim() : '—')
-    : normalizeTeamDisplayName(rawTeamName, activeTeam?.team_club_name || activeTeam?.club_name || '');
+    : normalizeTeamDisplayName(rawTeamName, session?.current_team_club_name || activeTeam?.team_club_name || activeTeam?.club_name || '');
   const clubName = isSolo
     ? (athlete?.club?.name || '')
-    : (activeTeam?.team_club_name || activeTeam?.club_name || '');
-  const hasDisplaySubject = isSolo ? !!athlete : !!activeTeam || !!teamMembersLabel;
+    : (session?.current_team_club_name || activeTeam?.team_club_name || activeTeam?.club_name || '');
+  const hasDisplaySubject = isSolo ? !!athlete : !!(session?.current_team_name || activeTeam || teamMembersLabel);
 
   // Group display with years
   const groupDisplay = (() => {
@@ -383,106 +389,93 @@ function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScore
   const typeLabel = isTeamCategoryType(category?.type) ? 'ECHIPE' : 'SOLO';
 
   return (
-    <div className="h-screen w-screen bg-black flex flex-col overflow-hidden select-none" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+    <div className="h-screen w-screen bg-white flex flex-col overflow-hidden select-none" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
       {/* ═══ TOP BAR: logos + competition title ═══ */}
-      <div className="flex items-center justify-between px-[3vw] py-[1vh] shrink-0">
-        <img src="/frvv-logo.png" alt="FRVV" className="h-[20vh] w-auto object-contain" />
-        <h1 className="text-[3.5vw] font-normal text-yellow-400 text-center leading-tight tracking-wide uppercase" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
-          {event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM'}
-        </h1>
-        <img src="/vovinam-logo.png" alt="Vovinam" className="h-[24vh] w-auto object-contain" />
+      <div className="flex items-center justify-between px-[3vw] py-[3vh] shrink-0">
+        <img src="/frvv-logo.png" alt="FRVV" className="w-auto object-contain" style={{ height: 'min(17vh, 9vw)' }} />
+        <div className="flex flex-col items-center text-center flex-1 px-[2vw]">
+          <h1 className="text-[3.2vw] text-gray-900 font-semibold leading-tight tracking-normal uppercase" style={{ hyphens: 'none', wordBreak: 'keep-all', overflowWrap: 'normal' }}>
+            {(event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM')
+              .replace(/-/g, '\u2011')
+              .replace(/\s+(\S*\u2011\S*)/g, '\u00a0$1')}
+          </h1>
+        </div>
+        <img src="/Vovinam@2x.png" alt="Vovinam" className="w-auto object-contain" style={{ height: 'min(16vh, 8vw)' }} />
       </div>
 
-      {/* ═══ CATEGORY INFO BAR ═══ */}
-      <div className="flex items-center justify-center px-[3vw] -mt-[1vh] shrink-0 gap-[2vw]">
-        {groupDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight">{groupDisplay}</p>}
-        {groupDisplay && categoryDisplay && <span className="text-[2.2vw] text-yellow-400/50 font-light">|</span>}
-        {categoryDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight">{categoryDisplay}</p>}
-      </div>
+      {/* ═══ PROBA (group & category) — above athlete ═══ */}
+      {(groupDisplay || categoryDisplay) && (
+        <div className="text-left mt-[0.5vh] shrink-0 px-[3vw]">
+          <p className="text-[2vw] text-gray-950 font-semibold leading-tight">
+            Proba: <span className="ml-3 italic">{[groupDisplay, categoryDisplay].filter(Boolean).join(' | ')}</span>
+          </p>
+        </div>
+      )}
 
-      {/* ═══ MAIN CONTENT ═══ */}
-      <div className="flex-1 flex flex-col items-center justify-center px-[3vw] py-[2vh] min-h-0">
-        {/* Athlete / Team name */}
-        {hasDisplaySubject ? (
-          <div className="text-center mb-[3vh]">
-            <h2 className={`text-[5vw] font-black leading-tight tracking-tight ${isDisqualified ? 'text-red-400 line-through' : 'text-white'}`}>
-              {athleteName}
+      {/* ═══ ATHLETE / TEAM NAME — directly under category, compact ═══ */}
+      {hasDisplaySubject ? (
+        <div className="text-left mt-[0.5vh] shrink-0 px-[3vw]">
+          {isSolo ? (
+            <h2 className={`text-[2vw] font-semibold leading-tight tracking-tight ${isDisqualified ? 'text-red-700 line-through' : 'text-gray-950'}`}>
+              Sportiv: <span className="ml-3 italic">{athleteName}{clubName ? ` (${clubName})` : ''}</span>
             </h2>
-            {clubName && (
-              <p className="text-[2.5vw] font-black text-white/70 uppercase mt-[0.5vh]">{clubName}</p>
-            )}
-            {!isSolo && teamMembersLabel && teamMembersLabel !== athleteName && (
-              <p className="text-[1.6vw] font-medium text-white/55 mt-[0.8vh]">{teamMembersLabel}</p>
-            )}
-            {isDisqualified && (
-              <p className="text-[3vw] font-black text-red-500 uppercase mt-[1vh] animate-pulse">DESCALIFICAT</p>
-            )}
-          </div>
-        ) : (
-          <div className="text-center mb-[3vh]">
-            <p className="text-[2.5vw] text-gray-500 animate-pulse">Se așteaptă sportivul…</p>
-          </div>
-        )}
+          ) : (
+            <h2 className={`text-[2vw] font-semibold leading-tight tracking-tight ${isDisqualified ? 'text-red-700 line-through' : 'text-gray-950'}`}>
+              Sportivi: <span className="ml-3 italic">{athleteName}{clubName ? ` (${clubName})` : ''}</span>
+            </h2>
+          )}
+          {isDisqualified && (
+            <p className="text-[2vw] text-red-500 uppercase mt-[0.5vh] animate-pulse">DESCALIFICAT</p>
+          )}
+        </div>
+      ) : (
+        <div className="text-left mt-[0.5vh] shrink-0 px-[3vw]">
+          <h2 className="text-[2vw] font-semibold leading-tight tracking-tight text-gray-950">
+            Sportiv: <span className="ml-3 italic">{athleteName}</span>
+          </h2>
+        </div>
+      )}
 
-        {/* ═══ PHASE 1: Referee boxes (no total) — shown first when scores revealed ═══ */}
-        {(!revealed || !showTotalScreen) && (
-          <div className="flex gap-[1.5vw] mb-[2vh]">
-            {[0, 1, 2, 3, 4].map(i => {
-              const hasScore = revealed && i < allScores.length;
-              const score = hasScore ? allScores[i] : null;
-              const mark = hasScore ? marks[i] : null;
-              const isCancelled = mark === 'low' || mark === 'high';
+      {/* ═══ MAIN CONTENT — scores dominate the screen ═══ */}
+      <div className="flex-1 flex flex-col items-center justify-start px-[3vw] pt-[5vh] pb-[1vh] min-h-0">
+        {/* ═══ PHASE 1: Referee boxes ═══ */}
+        {true && (
+          <div className="flex flex-col items-center">
+            <div className="flex gap-[2vw]">
+              {[0, 1, 2, 3, 4].map(i => {
+                const hasScore = revealed && i < allScores.length;
+                const score = hasScore ? allScores[i] : null;
+                const mark = hasScore ? marks[i] : null;
+                const isCancelled = mark === 'low' || mark === 'high';
 
-              return (
-                <div key={i} className="flex flex-col items-center gap-[1vh]">
-                  <div className={`relative w-[16vw] h-[30vh] flex flex-col items-center justify-center transition-all duration-500 ${
-                    hasScore
-                      ? isCancelled ? 'bg-red-600/30 border-4 border-red-500' : 'bg-green-600/30 border-4 border-green-500'
-                      : 'bg-gray-700'
-                  }`}>
-                    <span className="text-[1.5vw] font-black text-gray-400 mb-[1vh]">A{i + 1}</span>
-                    <span className={`text-[5vw] font-black tabular-nums ${
-                      hasScore
-                        ? isCancelled ? 'text-red-400' : 'text-white'
-                        : 'text-gray-600'
-                    }`}>
-                      {hasScore ? Math.round(score) : '—'}
-                    </span>
-                    {/* Red diagonal slash for cancelled (min/max) scores */}
-                    {hasScore && isCancelled && (
-                      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                        <div className="absolute inset-0" style={{
-                          background: 'linear-gradient(to top right, transparent calc(50% - 3px), #ef4444 calc(50% - 3px), #ef4444 calc(50% + 3px), transparent calc(50% + 3px))'
-                        }} />
-                      </div>
-                    )}
+                return (
+                  <div key={i} className="flex flex-col items-center gap-[0.5vh]">
+                    <span className="text-[1.3vw] italic font-semibold tracking-wide" style={{ color: '#000000' }}>Arbitru {i + 1}</span>
+                    <div className={`relative w-[16vw] h-[11vw] flex flex-col items-center justify-center transition-all duration-500 border-4 ${hasScore && !isCancelled ? 'bg-yellow-100 border-black' : isCancelled ? 'bg-gray-100 border-gray-400' : 'bg-white border-black'}`}>
+                      <span className={`text-[9vw] tabular-nums leading-none ${hasScore && isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
+                        {hasScore ? Math.round(score) : '–'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* ═══ PHASE 2: Total box — same size as a referee box, green ═══ */}
-        {revealed && showTotalScreen && total != null && (
-          <div className="flex flex-col items-center justify-center animate-[fadeScaleIn_0.8s_ease-out]">
-            <div className="relative w-[16vw] h-[30vh] flex flex-col items-center justify-center bg-green-600/30 border-4 border-green-500">
-              <span className="text-[1.5vw] font-black text-green-300 mb-[1vh] uppercase tracking-wider">TOTAL</span>
-              <span className="text-[5vw] font-black text-white tabular-nums leading-none">
-                {Math.round(total)}
+        {/* ═══ TOTAL box — shown below referee boxes ═══ */}
+        {true && (
+          <div className="flex flex-col items-center mt-[1.5vh]">
+            <div className="relative w-[48vh] h-[30vh] max-w-[44vw] flex flex-col items-center justify-center bg-yellow-300 border-4 border-black">
+              <span className="text-gray-900 tabular-nums leading-none" style={{fontSize: 'min(20vh, 18vw)'}}>
+                {revealed && total != null ? Math.round(total) : '–'}
               </span>
             </div>
           </div>
         )}
+
       </div>
 
-      {/* ═══ Keyframe animation for total reveal ═══ */}
-      <style>{`
-        @keyframes fadeScaleIn {
-          0% { opacity: 0; transform: scale(0.7); }
-          100% { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
     </div>
   );
 }
@@ -565,7 +558,7 @@ function aggregateRealtimeValidatedPoints(pointEvents) {
 }
 
 function getRealtimeRefereeIndicators(matchRefAssignment, pointEvents) {
-  const labels = [1, 2, 3, 4].map((index) => ({
+  const labels = [1, 2, 3, 4, 5].map((index) => ({
     slot: index,
     label: `A${index}`,
     refereeId: matchRefAssignment?.[`referee_${index}`] || null,
@@ -746,14 +739,18 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
   const timerBg = isInBreak ? 'bg-white' : 'bg-yellow-400';
 
   return (
-    <div className="h-screen w-screen bg-black flex flex-col overflow-hidden select-none relative" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+    <div className="h-screen w-screen bg-white flex flex-col overflow-hidden select-none relative" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
       {/* ═══ TOP BAR: logos + competition title ═══ */}
-      <div className="flex items-center justify-between px-[3vw] py-[1vh] shrink-0">
-        <img src="/frvv-logo.png" alt="FRVV" className="h-[20vh] w-auto object-contain" />
-        <h1 className="text-[3.5vw] font-normal text-yellow-400 text-center leading-tight tracking-wide uppercase" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
-          {event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM'}
-        </h1>
-        <img src="/vovinam-logo.png" alt="Vovinam" className="h-[24vh] w-auto object-contain" />
+      <div className="flex items-center justify-between px-[3vw] py-[3vh] shrink-0">
+        <img src="/frvv-logo.png" alt="FRVV" className="w-auto object-contain" style={{ height: 'min(17vh, 9vw)' }} />
+        <div className="flex flex-col items-center text-center flex-1 px-[2vw]">
+          <h1 className="text-[3.2vw] text-gray-900 font-semibold leading-tight tracking-normal uppercase" style={{ hyphens: 'none', wordBreak: 'keep-all', overflowWrap: 'normal' }}>
+            {(event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM')
+              .replace(/-/g, '\u2011')
+              .replace(/\s+(\S*\u2011\S*)/g, '\u00a0$1')}
+          </h1>
+        </div>
+        <img src="/Vovinam@2x.png" alt="Vovinam" className="w-auto object-contain" style={{ height: 'min(16vh, 8vw)' }} />
       </div>
 
       {/* ═══ TIMER (centered) + CATEGORY INFO (absolute right) ═══ */}
@@ -775,9 +772,9 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
         </div>
         {/* Category info — positioned absolute to the right */}
         <div className="absolute right-[3vw] top-1/2 -translate-y-1/2 text-right">
-          {roundTypeLabel && <p className="text-[2.5vw] font-black text-yellow-400 uppercase leading-tight">{roundTypeLabel}</p>}
-          {groupDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight mt-[0.3vh]">{groupDisplay}</p>}
-          {categoryDisplay && <p className="text-[2.2vw] font-bold text-yellow-300 leading-tight mt-[0.3vh]">{categoryDisplay}</p>}
+          {roundTypeLabel && <p className="text-[2.5vw] font-black text-gray-900 uppercase leading-tight">{roundTypeLabel}</p>}
+          {groupDisplay && <p className="text-[2.2vw] font-bold text-gray-700 leading-tight mt-[0.3vh]">{groupDisplay}</p>}
+          {categoryDisplay && <p className="text-[2.2vw] font-bold text-gray-700 leading-tight mt-[0.3vh]">{categoryDisplay}</p>}
         </div>
       </div>
 
@@ -790,7 +787,7 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
             <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedRed ? 'bg-gray-700' : 'bg-red-600'}`}>
               {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.red} align="left" />}
               {isRealTimeMode && (
-                <p className="absolute left-1/2 top-[43%] -translate-x-1/2 -translate-y-1/2 text-[10vw] font-black text-white tabular-nums leading-none">
+                <p className="absolute left-1/2 top-[43%] -translate-x-1/2 -translate-y-1/2 text-[16vw] font-black text-white tabular-nums leading-none">
                   {grandTotalRed}
                 </p>
               )}
@@ -806,10 +803,10 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
             </div>
 
             {/* BLUE corner */}
-            <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedBlue ? 'bg-gray-700' : 'bg-blue-600'}`}>
+            <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedBlue ? 'bg-gray-700' : 'bg-gray-900'}`}>
               {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.blue} align="right" />}
               {isRealTimeMode && (
-                <p className="absolute left-1/2 top-[43%] -translate-x-1/2 -translate-y-1/2 text-[10vw] font-black text-white tabular-nums leading-none">
+                <p className="absolute left-1/2 top-[43%] -translate-x-1/2 -translate-y-1/2 text-[16vw] font-black text-white tabular-nums leading-none">
                   {grandTotalBlue}
                 </p>
               )}
@@ -821,7 +818,7 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
                   {match?.blue_corner_club_name || ''}
                 </p>
               </div>
-              {disqualifiedBlue && <p className="text-[2vw] font-black text-blue-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
+              {disqualifiedBlue && <p className="text-[2vw] font-black text-gray-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
             </div>
           </div>
         )}
@@ -836,7 +833,7 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
                 : 'bg-red-600'
             }`}>
               {isRealTimeMode && (
-                <p className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[10vw] font-black tabular-nums leading-none ${
+                <p className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[16vw] font-black tabular-nums leading-none ${
                   winner.corner === 'red' && flashOn ? 'text-red-600' : 'text-white'
                 }`}>
                   {grandTotalRed}
@@ -859,24 +856,24 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
             {/* BLUE corner */}
             <div className={`relative flex-1 px-[3vw] py-[2vh] transition-colors duration-300 ${
               winner.corner === 'blue'
-                ? (flashOn ? 'bg-white' : 'bg-blue-600')
-                : 'bg-blue-600'
+                ? (flashOn ? 'bg-white' : 'bg-gray-900')
+                : 'bg-gray-900'
             }`}>
               {isRealTimeMode && (
-                <p className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[10vw] font-black tabular-nums leading-none ${
-                  winner.corner === 'blue' && flashOn ? 'text-blue-600' : 'text-white'
+                <p className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[16vw] font-black tabular-nums leading-none ${
+                  winner.corner === 'blue' && flashOn ? 'text-gray-900' : 'text-white'
                 }`}>
                   {grandTotalBlue}
                 </p>
               )}
               <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
                 <h2 className={`${isRealTimeMode ? 'text-[2.8vw]' : 'text-[4.5vw]'} font-black leading-tight ${
-                  winner.corner === 'blue' && flashOn ? 'text-blue-600' : 'text-white'
+                  winner.corner === 'blue' && flashOn ? 'text-gray-900' : 'text-white'
                 }`}>
                   {match?.blue_corner_full_name || 'TBD'}
                 </h2>
                 <p className={`${isRealTimeMode ? 'text-[1.55vw]' : 'text-[2.5vw]'} font-black uppercase mt-[0.7vh] ${
-                  winner.corner === 'blue' && flashOn ? 'text-blue-600/70' : 'text-white/80'
+                  winner.corner === 'blue' && flashOn ? 'text-gray-900/70' : 'text-white/80'
                 }`}>
                   {match?.blue_corner_club_name || ''}
                 </p>
@@ -896,16 +893,16 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
               <div className="flex gap-[0.5vw]">
                 {[0, 1, 2].map(i => (
                   <div key={i} className={`w-[2.5vw] h-[2.5vw] ${
-                    i < currentInfractionsRed ? 'bg-yellow-500' : 'bg-gray-700'
+                    i < currentInfractionsRed ? 'bg-yellow-500' : 'bg-gray-300'
                   }`} />
                 ))}
               </div>
             </>
             <div>
-              <p className="text-[1.6vw] text-orange-400 font-bold">
+              <p className="text-[1.6vw] text-orange-600 font-bold">
                 Avertismente: {warningsRed}
               </p>
-              <p className="text-[1.6vw] text-yellow-400 font-bold">Abateri: {currentInfractionsRed}</p>
+              <p className="text-[1.6vw] text-yellow-600 font-bold">Abateri: {currentInfractionsRed}</p>
             </div>
           </div>
 
@@ -916,16 +913,16 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
               <div className="flex gap-[0.5vw]">
                 {[0, 1, 2].map(i => (
                   <div key={i} className={`w-[2.5vw] h-[2.5vw] ${
-                    i < currentInfractionsBlue ? 'bg-yellow-500' : 'bg-gray-700'
+                    i < currentInfractionsBlue ? 'bg-yellow-500' : 'bg-gray-300'
                   }`} />
                 ))}
               </div>
             </>
             <div>
-              <p className="text-[1.6vw] text-orange-400 font-bold">
+              <p className="text-[1.6vw] text-orange-600 font-bold">
                 Avertismente: {warningsBlue}
               </p>
-              <p className="text-[1.6vw] text-yellow-400 font-bold">Abateri: {currentInfractionsBlue}</p>
+              <p className="text-[1.6vw] text-yellow-600 font-bold">Abateri: {currentInfractionsBlue}</p>
             </div>
           </div>
         </div>
