@@ -107,6 +107,7 @@ export const athleteAPI = {
 export const clubAPI = {
   list: () => api.get('/clubs/'),
   get: (id) => api.get(`/clubs/${id}/`),
+  update: (id, data, config) => api.patch(`/clubs/${id}/`, data, config),
   reorder: (order) => api.post('/clubs/reorder/', { order }),
 };
 

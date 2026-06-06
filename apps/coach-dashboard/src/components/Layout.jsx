@@ -7,6 +7,7 @@ const navItems = [
   { to: '/', label: 'Sportivi' },
   { to: '/competitions', label: 'Competiții' },
   { to: '/exams', label: 'Examene' },
+  { to: '/profile', label: 'Club' },
 ];
 
 export default function Layout() {

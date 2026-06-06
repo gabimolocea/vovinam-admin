@@ -565,31 +565,40 @@ function getRealtimeRefereeIndicators(matchRefAssignment, pointEvents) {
   }));
 
   const now = Date.now();
-  const activeBySide = { red: new Set(), blue: new Set() };
+  const activeBySide = { red: new Map(), blue: new Map() };
 
   (pointEvents || []).forEach((event) => {
     if (!event || event.validation_status === 'rejected' || !event.referee) return;
     const side = event.side === 'blue' ? 'blue' : 'red';
     const eventTimestamp = getRealtimePointComparisonTimestamp(event);
     if (!eventTimestamp || now - eventTimestamp > REAL_TIME_REFEREE_HIGHLIGHT_MS) return;
-    activeBySide[side].add(event.referee);
+    const pts = Number(event.points || 0);
+    const prev = activeBySide[side].get(event.referee) || 0;
+    if (pts > prev) activeBySide[side].set(event.referee, pts);
   });
 
   return {
-    red: labels.map((item) => ({ ...item, active: !!item.refereeId && activeBySide.red.has(item.refereeId) })),
-    blue: labels.map((item) => ({ ...item, active: !!item.refereeId && activeBySide.blue.has(item.refereeId) })),
+    red: labels.map((item) => ({ ...item, activePoints: item.refereeId ? (activeBySide.red.get(item.refereeId) || 0) : 0 })),
+    blue: labels.map((item) => ({ ...item, activePoints: item.refereeId ? (activeBySide.blue.get(item.refereeId) || 0) : 0 })),
   };
 }
 
 function RefereeSignalColumn({ indicators = [], align = 'left' }) {
   return (
-    <div className={`absolute top-[1.5vh] flex flex-col gap-[0.9vh] ${align === 'right' ? 'right-[1.2vw] items-end' : 'left-[1.2vw] items-start'}`}>
+    <div className={`w-[13.5vw] shrink-0 flex flex-col justify-start gap-[0.9vh] py-[1.5vh] px-[0.8vw] ${align === 'right' ? 'items-end' : 'items-start'}`}>
       {indicators.map((indicator) => (
-        <div
-          key={indicator.label}
-          className={`flex min-h-[4.8vh] min-w-[5vw] items-center justify-center px-[0.85vw] text-[1.35vw] font-black uppercase tracking-[0.12em] ${indicator.active ? 'bg-yellow-300 text-black' : 'bg-gray-300 text-gray-700'}`}
-        >
-          {indicator.label}
+        <div key={indicator.label} className={`flex flex-row items-center gap-[0.3vw] ${align === 'right' ? 'flex-row-reverse' : ''}`}>
+          <span className="text-[1.35vw] font-black uppercase w-[1.5vw] text-center" style={{ color: '#000000' }}>A</span>
+          <div className={`flex h-[4.8vh] w-[5vw] items-center justify-center text-[1.35vw] font-black ${
+            indicator.activePoints >= 1 ? 'bg-yellow-300' : 'bg-gray-300'
+          }`} style={{ color: '#000000' }}>
+            {indicator.slot}
+          </div>
+          <div className={`flex h-[4.8vh] w-[5vw] items-center justify-center text-[1.35vw] font-black ${
+            indicator.activePoints >= 2 ? 'bg-yellow-300' : 'bg-gray-300'
+          }`} style={{ color: '#000000' }}>
+            {indicator.slot}
+          </div>
         </div>
       ))}
     </div>
@@ -735,30 +744,31 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
   // Category display with gender
   const categoryDisplay = [category?.name, genderLabel].filter(Boolean).join(', ');
 
-  // Timer box bg: white during break, yellow otherwise
+  const isPaused = !!activeRound?.is_paused;
+  // Timer box bg: yellow during active round, white during break
   const timerBg = isInBreak ? 'bg-white' : 'bg-yellow-400';
 
   return (
-    <div className="h-screen w-screen bg-white flex flex-col overflow-hidden select-none relative" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+    <div className="h-screen w-screen bg-white flex flex-col overflow-hidden select-none relative" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", color: '#000000' }}>
       {/* ═══ TOP BAR: logos + competition title ═══ */}
-      <div className="flex items-center justify-between px-[3vw] py-[3vh] shrink-0">
-        <img src="/frvv-logo.png" alt="FRVV" className="w-auto object-contain" style={{ height: 'min(17vh, 9vw)' }} />
+      <div className="flex items-center justify-between px-[3vw] py-[1vh] shrink-0">
+        <img src="/frvv-logo.png" alt="FRVV" className="w-auto object-contain" style={{ height: 'min(8vh, 4.5vw)' }} />
         <div className="flex flex-col items-center text-center flex-1 px-[2vw]">
-          <h1 className="text-[3.2vw] text-gray-900 font-semibold leading-tight tracking-normal uppercase" style={{ hyphens: 'none', wordBreak: 'keep-all', overflowWrap: 'normal' }}>
+          <h1 className="text-[1.8vw] font-medium leading-tight tracking-normal uppercase" style={{ hyphens: 'none', wordBreak: 'keep-all', overflowWrap: 'normal', color: '#000000' }}>
             {(event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM')
               .replace(/-/g, '\u2011')
               .replace(/\s+(\S*\u2011\S*)/g, '\u00a0$1')}
           </h1>
         </div>
-        <img src="/Vovinam@2x.png" alt="Vovinam" className="w-auto object-contain" style={{ height: 'min(16vh, 8vw)' }} />
+        <img src="/Vovinam@2x.png" alt="Vovinam" className="w-auto object-contain" style={{ height: 'min(8vh, 4vw)' }} />
       </div>
 
       {/* ═══ TIMER (centered) + CATEGORY INFO (absolute right) ═══ */}
-      <div className="relative flex items-center justify-center px-[3vw] -mt-[1vh] shrink-0">
+      <div className="relative flex items-center justify-center px-[3vw] shrink-0">
         {/* Timer box — centered on screen */}
-        <div className={`${timerBg} px-[3vw] py-[1vh] text-center`} style={{ minWidth: '35vw' }}>
-          <p className="text-[1.5vw] font-black text-gray-900 uppercase tracking-wider leading-tight">{timerLabel}</p>
-          <div className="text-[8vw] font-black text-gray-900 tabular-nums leading-none py-[0.5vh]">
+        <div className={`${timerBg} px-[2vw] py-[0.5vh] text-center`} style={{ minWidth: '28vw' }}>
+          <p className="text-[1.1vw] font-black uppercase tracking-wider leading-tight" style={{ color: '#000000' }}>{timerLabel}</p>
+          <div className="text-[8vw] font-black tabular-nums leading-none py-[0.2vh]" style={{ color: '#000000' }}>
             {allRoundsDone && !showWinnerView ? (
               isRealTimeMode ? '00:00' : 'DECIZIA'
             ) : showWinnerView ? (
@@ -770,83 +780,131 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
             )}
           </div>
         </div>
-        {/* Category info — positioned absolute to the right */}
+        {/* Group + Category — positioned absolute to the left */}
+        <div className="absolute left-[3vw] top-1/2 -translate-y-1/2 text-left">
+          {groupDisplay && <p className="text-[1.6vw] font-bold leading-tight" style={{ color: '#000000' }}>{groupDisplay}</p>}
+          {categoryDisplay && <p className="text-[1.6vw] font-bold leading-tight mt-[0.2vh]" style={{ color: '#000000' }}>{categoryDisplay}</p>}
+        </div>
+        {/* Match type (Semifinală etc.) — positioned absolute to the right */}
         <div className="absolute right-[3vw] top-1/2 -translate-y-1/2 text-right">
-          {roundTypeLabel && <p className="text-[2.5vw] font-black text-gray-900 uppercase leading-tight">{roundTypeLabel}</p>}
-          {groupDisplay && <p className="text-[2.2vw] font-bold text-gray-700 leading-tight mt-[0.3vh]">{groupDisplay}</p>}
-          {categoryDisplay && <p className="text-[2.2vw] font-bold text-gray-700 leading-tight mt-[0.3vh]">{categoryDisplay}</p>}
+          {roundTypeLabel && <p className="text-[1.8vw] font-black uppercase leading-tight" style={{ color: '#000000' }}>{roundTypeLabel}</p>}
         </div>
       </div>
 
       {/* ═══ MAIN CONTENT AREA ═══ */}
-      <div className="flex-1 flex flex-col justify-center px-[3vw] py-[2vh] min-h-0">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* ── ATHLETES VIEW: during rounds and breaks ── */}
         {showAthletesView && (
-          <div className="flex gap-[1.5vw] flex-1 min-h-0">
-            {/* RED corner */}
-            <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedRed ? 'bg-gray-700' : 'bg-red-600'}`}>
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* Corners row */}
+            <div className="flex flex-1 min-h-0">
+              {/* Red referee indicators — left side */}
               {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.red} align="left" />}
-              {isRealTimeMode && (
-                <p className="absolute left-1/2 top-[43%] -translate-x-1/2 -translate-y-1/2 text-[16vw] font-black text-white tabular-nums leading-none">
-                  {grandTotalRed}
-                </p>
-              )}
-              <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
-                <h2 className={`${isRealTimeMode ? 'text-[2.6vw]' : 'text-[4.5vw]'} font-black text-white leading-tight`}>
-                  {match?.red_corner_full_name || 'TBD'}
-                </h2>
-                <p className={`${isRealTimeMode ? 'text-[1.45vw]' : 'text-[2.5vw]'} font-black text-white/80 uppercase mt-[0.7vh]`}>
-                  {match?.red_corner_club_name || ''}
-                </p>
+              {/* RED corner */}
+              <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedRed ? 'bg-gray-700' : 'bg-[#F80200]'}`}>
+                {isPaused && (
+                  <p className="absolute top-[3vh] left-1/2 -translate-x-1/2 text-[5vw] font-black text-white/90 uppercase tracking-widest z-10">PAUZA</p>
+                )}
+                {isRealTimeMode && (
+                  <p className="absolute left-1/2 top-[40%] -translate-x-1/2 -translate-y-1/2 text-[16vw] font-semibold text-white tabular-nums leading-none">
+                    {grandTotalRed}
+                  </p>
+                )}
+                <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
+                  <h2 className={`${isRealTimeMode ? 'text-[3vw]' : 'text-[5vw]'} font-semibold text-white leading-none`}>
+                    {match?.red_corner_full_name || 'TBD'}
+                  </h2>
+                  <p className={`${isRealTimeMode ? 'text-[1.5vw]' : 'text-[2.8vw]'} font-semibold text-white/80 uppercase mt-[0.2vh]`}>
+                    {match?.red_corner_club_name || ''}
+                  </p>
+                </div>
+                {disqualifiedRed && <p className="text-[2vw] font-black text-red-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
               </div>
-              {disqualifiedRed && <p className="text-[2vw] font-black text-red-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
+
+              {/* BLUE corner */}
+              <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedBlue ? 'bg-gray-700' : 'bg-[#0000F7]'}`}>
+                {isPaused && (
+                  <p className="absolute top-[3vh] left-1/2 -translate-x-1/2 text-[5vw] font-black text-white/90 uppercase tracking-widest z-10">PAUZA</p>
+                )}
+                {isRealTimeMode && (
+                  <p className="absolute left-1/2 top-[40%] -translate-x-1/2 -translate-y-1/2 text-[16vw] font-semibold text-white tabular-nums leading-none">
+                    {grandTotalBlue}
+                  </p>
+                )}
+                <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
+                  <h2 className={`${isRealTimeMode ? 'text-[3vw]' : 'text-[5vw]'} font-semibold text-white leading-none`}>
+                    {match?.blue_corner_full_name || 'TBD'}
+                  </h2>
+                  <p className={`${isRealTimeMode ? 'text-[1.5vw]' : 'text-[2.8vw]'} font-semibold text-white/80 uppercase mt-[0.2vh]`}>
+                    {match?.blue_corner_club_name || ''}
+                  </p>
+                </div>
+                {disqualifiedBlue && <p className="text-[2vw] font-black text-gray-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
+              </div>
+              {/* Blue referee indicators — right side */}
+              {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.blue} align="right" />}
             </div>
 
-            {/* BLUE corner */}
-            <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedBlue ? 'bg-gray-700' : 'bg-gray-900'}`}>
-              {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.blue} align="right" />}
-              {isRealTimeMode && (
-                <p className="absolute left-1/2 top-[43%] -translate-x-1/2 -translate-y-1/2 text-[16vw] font-black text-white tabular-nums leading-none">
-                  {grandTotalBlue}
-                </p>
-              )}
-              <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
-                <h2 className={`${isRealTimeMode ? 'text-[2.6vw]' : 'text-[4.5vw]'} font-black text-white leading-tight`}>
-                  {match?.blue_corner_full_name || 'TBD'}
-                </h2>
-                <p className={`${isRealTimeMode ? 'text-[1.45vw]' : 'text-[2.5vw]'} font-black text-white/80 uppercase mt-[0.7vh]`}>
-                  {match?.blue_corner_club_name || ''}
-                </p>
+            {/* Stats row — below corners, white background, split per corner */}
+            {isRealTimeMode && (
+              <div className="flex shrink-0 bg-white">
+                {/* Spacer matching left referee column */}
+                <div className="w-[13.5vw] shrink-0" />
+                {/* Red stats */}
+                <div className="flex-1 flex items-center justify-between px-[3vw] py-[1vh] border-r border-gray-200">
+                  <div className="text-left">
+                    <p className="text-[1.6vw] text-orange-600 font-bold leading-tight">Avertismente: {warningsRed}</p>
+                    <p className="text-[1.6vw] text-yellow-600 font-bold leading-tight">Abateri: {currentInfractionsRed}</p>
+                  </div>
+                  <div className="flex gap-[0.4vw]">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className={`w-[2.5vw] h-[2.5vw] ${i < currentInfractionsRed ? 'bg-yellow-500' : 'bg-gray-300'}`} />
+                    ))}
+                  </div>
+                </div>
+                {/* Blue stats */}
+                <div className="flex-1 flex items-center justify-between px-[3vw] py-[1vh]">
+                  <div className="text-left">
+                    <p className="text-[1.6vw] text-orange-600 font-bold leading-tight">Avertismente: {warningsBlue}</p>
+                    <p className="text-[1.6vw] text-yellow-600 font-bold leading-tight">Abateri: {currentInfractionsBlue}</p>
+                  </div>
+                  <div className="flex gap-[0.4vw]">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className={`w-[2.5vw] h-[2.5vw] ${i < currentInfractionsBlue ? 'bg-yellow-500' : 'bg-gray-300'}`} />
+                    ))}
+                  </div>
+                </div>
+                {/* Spacer matching right referee column */}
+                <div className="w-[13.5vw] shrink-0" />
               </div>
-              {disqualifiedBlue && <p className="text-[2vw] font-black text-gray-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
-            </div>
+            )}
           </div>
         )}
 
         {/* ── WINNER VIEW: side-by-side with flashing winner ── */}
         {showWinnerView && winner && (
-          <div className="flex gap-[1.5vw] flex-1 min-h-0">
+          <div className="flex flex-1 min-h-0">
             {/* RED corner */}
             <div className={`relative flex-1 px-[3vw] py-[2vh] transition-colors duration-300 ${
               winner.corner === 'red'
-                ? (flashOn ? 'bg-white' : 'bg-red-600')
-                : 'bg-red-600'
+                ? (flashOn ? 'bg-white' : 'bg-[#F80200]')
+                : 'bg-[#F80200]'
             }`}>
               {isRealTimeMode && (
                 <p className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[16vw] font-black tabular-nums leading-none ${
-                  winner.corner === 'red' && flashOn ? 'text-red-600' : 'text-white'
+                  winner.corner === 'red' && flashOn ? 'text-[#F80200]' : 'text-white'
                 }`}>
                   {grandTotalRed}
                 </p>
               )}
               <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
                 <h2 className={`${isRealTimeMode ? 'text-[2.8vw]' : 'text-[4.5vw]'} font-black leading-tight ${
-                  winner.corner === 'red' && flashOn ? 'text-red-600' : 'text-white'
+                  winner.corner === 'red' && flashOn ? 'text-[#F80200]' : 'text-white'
                 }`}>
                   {match?.red_corner_full_name || 'TBD'}
                 </h2>
                 <p className={`${isRealTimeMode ? 'text-[1.55vw]' : 'text-[2.5vw]'} font-black uppercase mt-[0.7vh] ${
-                  winner.corner === 'red' && flashOn ? 'text-red-600/70' : 'text-white/80'
+                  winner.corner === 'red' && flashOn ? 'text-[#F80200]/70' : 'text-white/80'
                 }`}>
                   {match?.red_corner_club_name || ''}
                 </p>
@@ -856,24 +914,24 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
             {/* BLUE corner */}
             <div className={`relative flex-1 px-[3vw] py-[2vh] transition-colors duration-300 ${
               winner.corner === 'blue'
-                ? (flashOn ? 'bg-white' : 'bg-gray-900')
-                : 'bg-gray-900'
+                ? (flashOn ? 'bg-white' : 'bg-[#0000F7]')
+                : 'bg-[#0000F7]'
             }`}>
               {isRealTimeMode && (
                 <p className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[16vw] font-black tabular-nums leading-none ${
-                  winner.corner === 'blue' && flashOn ? 'text-gray-900' : 'text-white'
+                  winner.corner === 'blue' && flashOn ? 'text-[#0000F7]' : 'text-white'
                 }`}>
                   {grandTotalBlue}
                 </p>
               )}
               <div className={`${isRealTimeMode ? 'absolute bottom-[2vh] left-[3vw] text-left' : 'flex h-full flex-col justify-center'}`}>
                 <h2 className={`${isRealTimeMode ? 'text-[2.8vw]' : 'text-[4.5vw]'} font-black leading-tight ${
-                  winner.corner === 'blue' && flashOn ? 'text-gray-900' : 'text-white'
+                  winner.corner === 'blue' && flashOn ? 'text-[#0000F7]' : 'text-white'
                 }`}>
                   {match?.blue_corner_full_name || 'TBD'}
                 </h2>
                 <p className={`${isRealTimeMode ? 'text-[1.55vw]' : 'text-[2.5vw]'} font-black uppercase mt-[0.7vh] ${
-                  winner.corner === 'blue' && flashOn ? 'text-gray-900/70' : 'text-white/80'
+                  winner.corner === 'blue' && flashOn ? 'text-[#0000F7]/70' : 'text-white/80'
                 }`}>
                   {match?.blue_corner_club_name || ''}
                 </p>
@@ -883,50 +941,7 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
         )}
       </div>
 
-      {/* ═══ PERSISTENT BOTTOM BAR ═══ */}
-      {showAthletesView && (
-        <div className="flex items-center justify-between px-[3vw] py-[0.8vh] shrink-0">
-          {/* Red side stats */}
-          <div className="flex items-center gap-[2vw]">
-            {/* Infraction boxes — hidden during referee decision phase */}
-            <>
-              <div className="flex gap-[0.5vw]">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className={`w-[2.5vw] h-[2.5vw] ${
-                    i < currentInfractionsRed ? 'bg-yellow-500' : 'bg-gray-300'
-                  }`} />
-                ))}
-              </div>
-            </>
-            <div>
-              <p className="text-[1.6vw] text-orange-600 font-bold">
-                Avertismente: {warningsRed}
-              </p>
-              <p className="text-[1.6vw] text-yellow-600 font-bold">Abateri: {currentInfractionsRed}</p>
-            </div>
-          </div>
-
-          {/* Blue side stats */}
-          <div className="flex items-center gap-[2vw]">
-            {/* Infraction boxes — hidden during referee decision phase */}
-            <>
-              <div className="flex gap-[0.5vw]">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className={`w-[2.5vw] h-[2.5vw] ${
-                    i < currentInfractionsBlue ? 'bg-yellow-500' : 'bg-gray-300'
-                  }`} />
-                ))}
-              </div>
-            </>
-            <div>
-              <p className="text-[1.6vw] text-orange-600 font-bold">
-                Avertismente: {warningsBlue}
-              </p>
-              <p className="text-[1.6vw] text-yellow-600 font-bold">Abateri: {currentInfractionsBlue}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ═══ PERSISTENT BOTTOM BAR ═══ — removed, stats moved into corners */}
     </div>
   );
 }

@@ -62,6 +62,54 @@ def update_current_grade(sender, instance, **kwargs):
     athlete.current_grade = instance.grade
     athlete.save()
 
+@receiver(post_save, sender=Athlete)
+def sync_athlete_name_to_user(sender, instance, **kwargs):
+    """
+    Sync first_name/last_name from Athlete to linked User account.
+    """
+    if not instance.user_id:
+        return
+    try:
+        user = instance.user
+        changed = False
+        if user.first_name != instance.first_name:
+            user.first_name = instance.first_name
+            changed = True
+        if user.last_name != instance.last_name:
+            user.last_name = instance.last_name
+            changed = True
+        if changed:
+            User.objects.filter(pk=user.pk).update(
+                first_name=instance.first_name,
+                last_name=instance.last_name,
+            )
+    except Exception:
+        pass
+
+@receiver(post_save, sender=User)
+def sync_user_name_to_athlete(sender, instance, **kwargs):
+    """
+    Sync first_name/last_name from User to linked Athlete profile.
+    """
+    try:
+        athlete = instance.athlete
+    except Exception:
+        return
+    if not athlete:
+        return
+    changed = False
+    if athlete.first_name != instance.first_name:
+        athlete.first_name = instance.first_name
+        changed = True
+    if athlete.last_name != instance.last_name:
+        athlete.last_name = instance.last_name
+        changed = True
+    if changed:
+        Athlete.objects.filter(pk=athlete.pk).update(
+            first_name=instance.first_name,
+            last_name=instance.last_name,
+        )
+
 @receiver(m2m_changed, sender=CategoryAthleteScore.team_members.through)
 def auto_generate_team_name(sender, instance, action, **kwargs):
     """

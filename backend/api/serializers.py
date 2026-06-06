@@ -298,9 +298,9 @@ class TrainingSeminarSerializer(serializers.ModelSerializer):
 class AthleteSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), allow_null=True)  # Accept city ID only
-    current_grade = serializers.PrimaryKeyRelatedField(queryset=Grade.objects.all(), allow_null=True)  # Accept grade ID only
-    federation_role = serializers.PrimaryKeyRelatedField(queryset=FederationRole.objects.all(), allow_null=True)  # Accept role ID only
-    title = serializers.PrimaryKeyRelatedField(queryset=Title.objects.all(), allow_null=True)  # Accept title ID only
+    current_grade = serializers.PrimaryKeyRelatedField(queryset=Grade.objects.all(), allow_null=True, required=False)  # Accept grade ID only
+    federation_role = serializers.PrimaryKeyRelatedField(queryset=FederationRole.objects.all(), allow_null=True, required=False)  # Accept role ID only
+    title = serializers.PrimaryKeyRelatedField(queryset=Title.objects.all(), allow_null=True, required=False)  # Accept title ID only
     approved_by = serializers.StringRelatedField(read_only=True)
 
     class Meta:
@@ -994,6 +994,9 @@ class GradeHistorySerializer(serializers.ModelSerializer):
             'id', 'athlete', 'athlete_name', 'grade', 'grade_name', 'obtained_date',
             'level', 'event', 'event_name', 'examiner_1', 'examiner_1_name', 'examiner_2', 'examiner_2_name',
         ]
+        extra_kwargs = {
+            'obtained_date': {'required': False},
+        }
 
     # get_technical_director removed
 

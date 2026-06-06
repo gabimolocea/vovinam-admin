@@ -938,6 +938,14 @@ class ClubViewSet(viewsets.ViewSet):
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
 
+    def partial_update(self, request, pk=None):
+        instance = self.queryset.get(pk=pk)
+        serializer = self.serializer_class(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
     def destroy(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
         instance.delete()

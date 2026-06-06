@@ -8,6 +8,7 @@ import CreateAthlete from './pages/CreateAthlete';
 import CompetitionsList from './pages/CompetitionsList';
 import CompetitionCentralizator from './pages/CompetitionCentralizator';
 import GradeManagement from './pages/GradeManagement';
+import ClubEdit from './pages/ClubEdit';
 
 export default function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="competitions/:eventId" element={<CompetitionCentralizator />} />
         <Route path="exams" element={<GradeManagement />} />
         <Route path="grades" element={<Navigate to="/exams" replace />} />
+        <Route path="profile" element={<ClubEdit />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

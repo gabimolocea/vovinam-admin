@@ -574,7 +574,7 @@ class GradeHistory(models.Model):
 
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='grade_history')
     grade = models.ForeignKey(Grade, on_delete=models.CASCADE)
-    obtained_date = models.DateField(auto_now_add=True)  # Date when the grade was obtained
+    obtained_date = models.DateField(default=date.today)  # Date when the grade was obtained
     level = models.CharField(max_length=10, choices=LEVEL_CHOICES, default='good')  # Dropdown for level
     # Link GradeHistory to an Event (optional). Use landing.Event model which is part of the landing app.
     event = models.ForeignKey(
@@ -3678,98 +3678,6 @@ class RefereePresence(models.Model):
 
     def __str__(self):
         return f"Referee {self.referee_id} on category {self.category_id}"
-
-
-class ExternalAPIClient(models.Model):
-    name = models.CharField(max_length=120, unique=True)
-    service_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name='external_api_clients',
-        help_text='Utilizatorul folosit de cererile autentificate cu această cheie API.'
-    )
-    api_key_prefix = models.CharField(max_length=16, editable=False, db_index=True)
-    api_key_hash = models.CharField(max_length=64, unique=True, editable=False)
-    allowed_origins = models.TextField(
-        blank=True,
-        help_text='Un origin per linie, de exemplu https://my-app.web.app sau https://my-app.firebaseapp.com'
-    )
-    allow_write = models.BooleanField(
-        default=True,
-        help_text='Permite cereri POST/PUT/PATCH/DELETE. Dacă este debifat, cheia rămâne doar pentru citire.'
-    )
-    is_active = models.BooleanField(default=True)
-    notes = models.TextField(blank=True)
-    last_used_at = models.DateTimeField(null=True, blank=True)
-    last_used_ip = models.GenericIPAddressField(null=True, blank=True, unpack_ipv4=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = 'Client API extern'
-        verbose_name_plural = 'Clienți API externi'
-        ordering = ('name',)
-
-    def __str__(self):
-        return self.name
-
-    @staticmethod
-    def normalize_origin(origin):
-        if not origin:
-            return ''
-        value = origin.strip()
-        parsed = urlparse(value)
-        if parsed.scheme and parsed.netloc:
-            return f'{parsed.scheme}://{parsed.netloc}'.rstrip('/')
-        return value.rstrip('/')
-
-    @property
-    def allowed_origins_list(self):
-        return [
-            self.normalize_origin(origin)
-            for origin in self.allowed_origins.splitlines()
-            if origin.strip()
-        ]
-
-    def is_origin_allowed(self, origin):
-        normalized_origin = self.normalize_origin(origin)
-        if not normalized_origin:
-            return True
-        allowed = set(self.allowed_origins_list)
-        if not allowed:
-            return False
-        return normalized_origin in allowed
-
-    @staticmethod
-    def build_api_key_hash(raw_key):
-        return hashlib.sha256(raw_key.strip().encode('utf-8')).hexdigest()
-
-    @classmethod
-    def generate_api_key(cls):
-        return f'frvv_{secrets.token_urlsafe(32)}'
-
-    def set_api_key(self, raw_key):
-        if not raw_key or not raw_key.strip():
-            raise ValidationError({'api_key_hash': 'Cheia API nu poate fi goală.'})
-        normalized = raw_key.strip()
-        self.api_key_hash = self.build_api_key_hash(normalized)
-        self.api_key_prefix = normalized[:12]
-
-    @classmethod
-    def get_for_raw_key(cls, raw_key):
-        if not raw_key or not raw_key.strip():
-            return None
-        return cls.objects.select_related('service_user').filter(
-            api_key_hash=cls.build_api_key_hash(raw_key),
-            is_active=True,
-            service_user__is_active=True,
-        ).first()
-
-    def mark_used(self, ip_address=None):
-        self.last_used_at = timezone.now()
-        if ip_address:
-            self.last_used_ip = ip_address
-        self.save(update_fields=['last_used_at', 'last_used_ip', 'updated_at'])
 
 
 # DISABLED FEATURES (for future use):

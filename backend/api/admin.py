@@ -60,7 +60,6 @@ from .models import (
     MatchRound,
     CompetitionReferee,
     DisplayMonitorSession,
-    ExternalAPIClient,
     Visa,
     Event,
     EventParticipation,
@@ -114,7 +113,6 @@ def _apply_admin_model_labels():
         MatchRound: ('rundă meci', 'runde meci'),
         CompetitionReferee: ('arbitru competiție', 'arbitri competiție'),
         DisplayMonitorSession: ('sesiune monitor afișaj', 'sesiuni monitor afișaj'),
-        ExternalAPIClient: ('client API extern', 'clienți API externi'),
         UserProxy: ('utilizator', 'utilizatori'),
     }
 
@@ -161,7 +159,6 @@ ADMIN_MODEL_GROUPS = {
         'City',
         'User',
         'UserProxy',
-        'ExternalAPIClient',
     ],
     'ADMINISTRARE COMPETIȚII': [
         'Event',
@@ -4476,69 +4473,6 @@ class GroupAdmin(admin.ModelAdmin):
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import User, UserProxy
 
-
-class ExternalAPIClientAdminForm(forms.ModelForm):
-    raw_api_key = forms.CharField(
-        required=False,
-        label='Cheie API nouă',
-        help_text='Lasă gol la editare pentru a păstra cheia curentă. La creare, dacă lași gol, cheia va fi generată automat.',
-        widget=forms.TextInput(attrs={'autocomplete': 'off'})
-    )
-
-    class Meta:
-        model = ExternalAPIClient
-        fields = '__all__'
-
-
-@admin.register(ExternalAPIClient)
-class ExternalAPIClientAdmin(admin.ModelAdmin):
-    form = ExternalAPIClientAdminForm
-    list_display = ('name', 'service_user', 'api_key_preview', 'allow_write', 'is_active', 'last_used_at')
-    list_filter = ('allow_write', 'is_active')
-    search_fields = ('name', 'service_user__email', 'service_user__first_name', 'service_user__last_name', 'api_key_prefix')
-    readonly_fields = ('api_key_preview', 'api_key_prefix', 'last_used_at', 'last_used_ip', 'created_at', 'updated_at')
-    fieldsets = (
-        ('Identificare', {
-            'fields': ('name', 'service_user', 'is_active', 'allow_write')
-        }),
-        ('Securitate', {
-            'fields': ('raw_api_key', 'api_key_preview', 'api_key_prefix', 'allowed_origins'),
-            'description': 'Introdu manual cheia API sau las-o goală la creare pentru generare automată. Origin-urile trebuie trecute câte unul pe linie.'
-        }),
-        ('Audit', {
-            'fields': ('last_used_at', 'last_used_ip', 'created_at', 'updated_at', 'notes')
-        }),
-    )
-
-    def api_key_preview(self, obj):
-        if not obj or not obj.pk or not obj.api_key_prefix:
-            return '—'
-        return f'{obj.api_key_prefix}…'
-    api_key_preview.short_description = 'Prefix cheie API'
-
-    def save_model(self, request, obj, form, change):
-        raw_api_key = (form.cleaned_data.get('raw_api_key') or '').strip()
-        generated_api_key = None
-
-        if raw_api_key:
-            obj.set_api_key(raw_api_key)
-            generated_api_key = raw_api_key
-        elif not change or not obj.api_key_hash:
-            generated_api_key = ExternalAPIClient.generate_api_key()
-            obj.set_api_key(generated_api_key)
-
-        super().save_model(request, obj, form, change)
-
-        if generated_api_key:
-            self.message_user(
-                request,
-                format_html(
-                    'Cheia API pentru <strong>{}</strong> este: <code>{}</code>. Copiaz-o acum; ulterior va rămâne vizibil doar prefixul.',
-                    obj.name,
-                    generated_api_key,
-                ),
-                level=messages.WARNING,
-            )
 
 @admin.register(UserProxy)
 class UserAdmin(BaseUserAdmin):

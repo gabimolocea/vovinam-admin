@@ -72,8 +72,15 @@ export default function useCoachCentralizator(eventId) {
     return new Date().getFullYear();
   }, [eventData]);
 
+const formatDateRo = (date) => {
+  if (!date) return null;
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
+};
+
   const eventDateStr = useMemo(() => {
-    if (eventData?.start_date) return new Date(eventData.start_date).toISOString().slice(0, 10);
+    if (eventData?.start_date) return formatDateRo(new Date(eventData.start_date + 'T00:00:00'));
     return null;
   }, [eventData]);
 
@@ -86,7 +93,7 @@ export default function useCoachCentralizator(eventId) {
 
   const coachDeadlineDateStr = useMemo(() => {
     if (!coachDeadline) return null;
-    return coachDeadline.toISOString().slice(0, 10);
+    return formatDateRo(coachDeadline);
   }, [coachDeadline]);
 
   const isCoachDeadlinePassed = useMemo(() => {
