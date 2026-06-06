@@ -1,33 +1,5 @@
-from rest_framework import exceptions
-from rest_framework.authentication import BaseAuthentication, get_authorization_header
+# External API client authentication removed.
 
-from .models import ExternalAPIClient
-
-
-class ExternalAPIClientAuthentication(BaseAuthentication):
-    keyword = 'Api-Key'
-
-    def authenticate(self, request):
-        raw_api_key = self._extract_api_key(request)
-        if not raw_api_key:
-            return None
-
-        client = ExternalAPIClient.get_for_raw_key(raw_api_key)
-        if not client:
-            raise exceptions.AuthenticationFailed('Cheie API invalidă.')
-
-        origin = request.META.get('HTTP_ORIGIN') or request.META.get('HTTP_REFERER')
-        if not client.is_origin_allowed(origin):
-            raise exceptions.AuthenticationFailed('Origine neautorizată pentru această cheie API.')
-
-        if not client.allow_write and request.method not in ('GET', 'HEAD', 'OPTIONS'):
-            raise exceptions.AuthenticationFailed('Cheia API este configurată doar pentru citire.')
-
-        user = client.service_user
-        if not user or not user.is_active:
-            raise exceptions.AuthenticationFailed('Utilizatorul asociat acestei chei API nu este activ.')
-
-        request.api_client = client
         client.mark_used(ip_address=self._get_request_ip(request))
         return (user, None)
 
