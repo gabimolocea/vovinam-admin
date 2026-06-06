@@ -422,7 +422,7 @@ function FieldPanel({
                         )}
                       </div>
 
-                      <div className="flex w-full flex-wrap items-center gap-2 pt-1 sm:w-auto sm:pt-0">
+                      <div className="flex w-full flex-wrap items-center gap-2 pt-1">
                         {/* URMEAZĂ badge */}
                         {idx === nextItemIndex && !isActiveItem && item.status !== 'completed' && (
                           <span className="shrink-0 border border-black bg-yellow-300 px-2.5 py-1 text-xs font-bold uppercase text-black">Urmează</span>

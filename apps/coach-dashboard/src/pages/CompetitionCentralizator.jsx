@@ -386,34 +386,34 @@ function CentralizatorTable({ ctx, onBack }) {
             Înapoi la competiții
           </button>
           <div className="text-sm font-black uppercase tracking-wide text-gray-900">Centralizator club</div>
-          <div className="mt-1 text-xs text-gray-500">
-            {ctx.eventData?.name || 'Competiție'}{ctx.eventDateStr ? ` · ${ctx.eventDateStr}` : ''} · {ctx.groups.length} grupe · {ctx.categories.length} categorii · {ctx.totalAthletes} sportivi
-          </div>
-          <div className={`mt-2 inline-flex items-center border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${ctx.isCoachDeadlinePassed ? 'border-red-300 bg-red-50 text-red-700' : 'border-black bg-yellow-100 text-black'}`}>
-            Deadline antrenori: {ctx.coachDeadlineDateStr || ctx.eventDateStr || '—'}
-          </div>
         </div>
-        <div className="inline-flex w-full sm:w-auto overflow-hidden border-2 border-black bg-white">
+      </div>
+
+      {/* Deadline alert — full width */}
+      <div className={`mb-4 w-full border-2 px-4 py-3 text-sm font-bold uppercase tracking-wide text-center ${ctx.isCoachDeadlinePassed ? 'border-red-500 bg-red-100 text-red-700' : 'border-yellow-400 bg-yellow-100 text-yellow-900'}`}>
+        {ctx.isCoachDeadlinePassed
+          ? <>Termen limită de înscrieri: {ctx.coachDeadlineDateStr || ctx.eventDateStr || '—'} — Termenul a expirat. Înscrierile nu mai pot fi modificate.</>
+          : <>Termen limită de înscrieri: {ctx.coachDeadlineDateStr || ctx.eventDateStr || '—'}</>
+        }
+      </div>
+
+      {/* Tabs — centered */}
+      <div className="mb-4 flex justify-center">
+        <div className="inline-flex overflow-hidden border-2 border-black bg-white">
           <button
             onClick={() => setActiveTab('tehnica')}
-            className={`flex-1 px-4 py-2 text-xs font-black uppercase tracking-wide transition sm:flex-none ${activeTab === 'tehnica' ? 'bg-yellow-300 text-black' : 'bg-white text-gray-700 hover:bg-yellow-100'}`}
+            className={`px-6 py-2 text-xs font-black uppercase tracking-wide transition ${activeTab === 'tehnica' ? 'bg-yellow-300 text-black' : 'bg-white text-gray-700 hover:bg-yellow-100'}`}
           >
             Tehnica
           </button>
           <button
             onClick={() => setActiveTab('lupta')}
-            className={`border-l-2 border-black flex-1 px-4 py-2 text-xs font-black uppercase tracking-wide transition sm:flex-none ${activeTab === 'lupta' ? 'bg-yellow-300 text-black' : 'bg-white text-gray-700 hover:bg-yellow-100'}`}
+            className={`border-l-2 border-black px-6 py-2 text-xs font-black uppercase tracking-wide transition ${activeTab === 'lupta' ? 'bg-yellow-300 text-black' : 'bg-white text-gray-700 hover:bg-yellow-100'}`}
           >
             Lupta
           </button>
         </div>
       </div>
-
-      {ctx.isCoachDeadlinePassed && (
-        <div className="mb-4 border-2 border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-          Deadline-ul pentru completarea centralizatorului de către antrenori a expirat. Înscrierile nu mai pot fi modificate.
-        </div>
-      )}
 
       {activeTab === 'tehnica' ? <CoachTehnicaView ctx={ctx} /> : <CoachLuptaView ctx={ctx} />}
     </div>

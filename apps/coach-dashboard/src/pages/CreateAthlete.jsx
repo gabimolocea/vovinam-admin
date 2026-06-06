@@ -23,16 +23,22 @@ const INITIAL = {
   emergency_contact_phone: '',
   previous_experience: '',
   city: '',
-  current_grade: '',
   is_coach: false,
   is_referee: false,
   registered_date: '',
   expiration_date: '',
 };
 
+const INITIAL_GRADE = {
+  grade: '',
+  obtained_date: new Date().toISOString().split('T')[0],
+  level: 'good',
+};
+
 export default function CreateAthlete() {
   const navigate = useNavigate();
   const [form, setForm] = useState(INITIAL);
+  const [gradeForm, setGradeForm] = useState(INITIAL_GRADE);
   const [profileImage, setProfileImage] = useState(null);
   const [profilePreview, setProfilePreview] = useState(null);
   const [medicalCert, setMedicalCert] = useState(null);
@@ -149,7 +155,18 @@ export default function CreateAthlete() {
       if (profileImage) fd.append('profile_image', profileImage);
       if (medicalCert) fd.append('medical_certificate', medicalCert);
 
-      await api.post('/athletes/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const athlete = await api.post('/athletes/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+
+      // Create grade history entry if a grade was selected
+      if (gradeForm.grade) {
+        await api.post('/grade-histories/', {
+          athlete: athlete.data.id,
+          grade: gradeForm.grade,
+          obtained_date: gradeForm.obtained_date,
+          level: gradeForm.level,
+        });
+      }
+
       navigate('/');
     } catch (err) {
       const data = err.response?.data;
@@ -255,8 +272,6 @@ export default function CreateAthlete() {
                 </div>
               )}
             </div>
-            <SelectField label="Grad curent" name="current_grade" value={form.current_grade} onChange={handleChange}
-              options={grades} labelKey="name" />
             <Field label="Data înregistrării" name="registered_date" type="date" value={form.registered_date} onChange={handleChange} />
             <Field label="Data expirării" name="expiration_date" type="date" value={form.expiration_date} onChange={handleChange} />
             <div className="flex items-center gap-6 sm:col-span-2">
@@ -274,6 +289,35 @@ export default function CreateAthlete() {
             <div className="sm:col-span-2">
               <Field label="Experiență anterioară" name="previous_experience" value={form.previous_experience} onChange={handleChange} multiline />
             </div>
+          </div>
+        </fieldset>
+
+        {/* ═══ GRAD ═══ */}
+        <fieldset className="frvv-surface p-4 md:p-5">
+          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Grad (opțional)</legend>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+            <SelectField
+              label="Grad acordat"
+              name="grade"
+              value={gradeForm.grade}
+              onChange={e => setGradeForm(prev => ({ ...prev, grade: e.target.value }))}
+              options={grades}
+              labelKey="name"
+            />
+            <Field
+              label="Data obținerii"
+              name="obtained_date"
+              type="date"
+              value={gradeForm.obtained_date}
+              onChange={e => setGradeForm(prev => ({ ...prev, obtained_date: e.target.value }))}
+            />
+            <SelectField
+              label="Nivel"
+              name="level"
+              value={gradeForm.level}
+              onChange={e => setGradeForm(prev => ({ ...prev, level: e.target.value }))}
+              options={[{ id: 'good', name: 'Bun' }, { id: 'bad', name: 'Nesatisfăcător' }]}
+            />
           </div>
         </fieldset>
 

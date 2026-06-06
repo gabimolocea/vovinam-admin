@@ -162,7 +162,6 @@ export default function AthletesList() {
     },
     { key: 'name', label: 'Nume', render: (r) => `${r.last_name || ''} ${r.first_name || ''}`.trim() || r.full_name || '—' },
     { key: 'current_grade', label: 'Grad', render: (r) => r.current_grade?.name || r.current_grade_name || '—' },
-    { key: 'date_of_birth', label: 'Data nașterii', render: (r) => r.date_of_birth || '—' },
     {
       key: 'status',
       label: 'Status',

@@ -1,4 +1,5 @@
 import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import ExcelJS from 'exceljs';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   eventAPI,
@@ -1089,6 +1090,210 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   // Determine which referees are actively connected to the scoring page
   const connectedRefIds = new Set((refPresence || []).map(rp => rp.referee));
 
+  // ── Export to Excel (styled) ──
+  const exportToExcel = async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'FRVV Admin';
+    wb.created = new Date();
+
+    // ── Style helpers ──
+    const YELLOW    = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } }; // valid score
+    const YELLOW_HD = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFBBF24' } }; // header/total
+    const GRAY_CELL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } }; // excluded score
+    const DARK_HDR  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }; // table header
+    const RED_ROW   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; // DQ row
+    const EVEN_ROW  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } }; // alternating
+    const BLACK_B   = { style: 'thin', color: { argb: 'FF000000' } };
+    const GRAY_B    = { style: 'thin', color: { argb: 'FFD1D5DB' } };
+    const allB      = (b = BLACK_B) => ({ top: b, left: b, bottom: b, right: b });
+    const grayB     = () => allB(GRAY_B);
+    const boldF     = (sz = 10, hex = '000000') => ({ name: 'Calibri', size: sz, bold: true,  color: { argb: 'FF' + hex } });
+    const normF     = (sz = 10, hex = '000000') => ({ name: 'Calibri', size: sz, bold: false, color: { argb: 'FF' + hex } });
+    const CC = { horizontal: 'center', vertical: 'middle' };
+    const LC = { horizontal: 'left',   vertical: 'middle' };
+
+    // ─────────────────────────────────────────────
+    // Sheet 1 — SCORURI
+    // ─────────────────────────────────────────────
+    const ws = wb.addWorksheet('Scoruri');
+    const totalCols = 3 + refSlots.length + 3; // #, name, club, A1-A5, total, loc, DQ
+
+    // Row 1 — category title banner: "Grupă | Categorie  –  Gen"
+    const groupLabel = cat.groupName ? `${cat.groupName}  –  ` : '';
+    const genSuffix  = cat.gender === 'male' ? '  ·  Masculin' : cat.gender === 'female' ? '  ·  Feminin' : '';
+    const titleText  = groupLabel + (cat.name || 'Categorie') + genSuffix;
+    ws.addRow([titleText]);
+    const titleRow = ws.getRow(1);
+    titleRow.height = 36;
+    titleRow.getCell(1).font = boldF(16, 'FFFFFF');
+    titleRow.getCell(1).fill = DARK_HDR;
+    titleRow.getCell(1).alignment = LC;
+    titleRow.getCell(1).border = allB();
+    ws.mergeCells(1, 1, 1, totalCols);
+
+    // Row 2 — spacer
+    ws.addRow([]);
+    ws.getRow(2).height = 5;
+
+    // Row 3 — column headers (dark background)
+    const refHeaders = refSlots.map(r => r.name ? `A${r.pos}\n${r.name}` : `A${r.pos}`);
+    ws.addRow(['#', 'ECHIPĂ / SPORTIV', 'CLUB', ...refHeaders, 'TOTAL', 'LOC', 'DQ']);
+    const hdrRow = ws.getRow(3);
+    hdrRow.height = 42;
+    hdrRow.eachCell(cell => {
+      cell.font = boldF(13, 'FFFFFF');
+      cell.fill = DARK_HDR;
+      cell.alignment = { ...CC, wrapText: true };
+      cell.border = allB();
+    });
+
+    // Column widths
+    ws.getColumn(1).width = 6;
+    ws.getColumn(2).width = 38;
+    ws.getColumn(3).width = 24;
+    for (let i = 1; i <= refSlots.length; i++) ws.getColumn(3 + i).width = 15;
+    ws.getColumn(3 + refSlots.length + 1).width = 13;
+    ws.getColumn(3 + refSlots.length + 2).width = 8;
+    ws.getColumn(3 + refSlots.length + 3).width = 8;
+
+    // Data rows
+    rows.forEach((row, idx) => {
+      const rank = row.isDisqualified ? '' : (getRank(row.athleteId) ?? '');
+      ws.addRow([
+        idx + 1,
+        row.athleteName,
+        row.clubName || '',
+        ...row.vals.map(v => (v != null ? Number(v) : null)),
+        row.total != null ? Number(Number(row.total).toFixed(2)) : null,
+        rank || null,
+        row.isDisqualified ? 'DQ' : null,
+      ]);
+      const dr = ws.getRow(3 + 1 + idx);
+      dr.height = 28;
+      const baseBg = row.isDisqualified ? RED_ROW : (idx % 2 === 1 ? EVEN_ROW : null);
+
+      dr.eachCell({ includeEmpty: true }, (cell, col) => {
+        cell.border = grayB();
+        cell.font = normF(12);
+        cell.alignment = CC;
+        if (baseBg) cell.fill = baseBg;
+      });
+
+      // # — gray small
+      dr.getCell(1).font = normF(11, '9CA3AF');
+
+      // Name — bold, left-aligned; strike if DQ
+      dr.getCell(2).alignment = LC;
+      dr.getCell(2).font = row.isDisqualified
+        ? { ...boldF(12, '9CA3AF'), strike: true }
+        : boldF(12);
+
+      // Club — left, muted
+      dr.getCell(3).alignment = LC;
+      dr.getCell(3).font = normF(12, '4B5563');
+
+      // Score columns A1-A5
+      row.vals.forEach((v, vi) => {
+        const cell = dr.getCell(4 + vi);
+        if (v != null) {
+          const mark = row.marks[vi];
+          cell.value = Number(v);
+          cell.numFmt = '0.00';
+          cell.fill = mark === 'mid' ? YELLOW : GRAY_CELL;
+          cell.font = mark === 'mid' ? boldF(12) : normF(12, '9CA3AF');
+          cell.border = allB(mark === 'mid' ? BLACK_B : GRAY_B);
+        } else {
+          cell.value = '—';
+          cell.font = normF(12, 'D1D5DB');
+        }
+      });
+
+      // TOTAL — yellow bold
+      const totalCell = dr.getCell(3 + refSlots.length + 1);
+      if (row.total != null) {
+        totalCell.value = Number(Number(row.total).toFixed(2));
+        totalCell.numFmt = '0.00';
+        totalCell.fill = YELLOW_HD;
+        totalCell.font = boldF(13);
+        totalCell.border = allB();
+      }
+
+      // LOC — gold/silver/bronze
+      const locCell = dr.getCell(3 + refSlots.length + 2);
+      if (rank) {
+        locCell.font = boldF(13);
+        if (rank === 1) locCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD700' } };
+        else if (rank === 2) locCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC0C0C0' } };
+        else if (rank === 3) locCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCD7F32' } };
+      }
+
+      // DQ — red
+      const dqCell = dr.getCell(3 + refSlots.length + 3);
+      if (row.isDisqualified) {
+        dqCell.font = boldF(12, 'DC2626');
+      }
+    });
+
+    // ─────────────────────────────────────────────
+    // Sheet 2 — ARBITRI
+    // ─────────────────────────────────────────────
+    const ws2 = wb.addWorksheet('Arbitri');
+
+    ws2.addRow(['ARBITRI — ' + titleText]);
+    ws2.getRow(1).height = 36;
+    ws2.getRow(1).getCell(1).font = boldF(16, 'FFFFFF');
+    ws2.getRow(1).getCell(1).fill = DARK_HDR;
+    ws2.getRow(1).getCell(1).alignment = LC;
+    ws2.getRow(1).getCell(1).border = allB();
+    ws2.mergeCells(1, 1, 1, 2);
+
+    ws2.addRow([]);
+    ws2.getRow(2).height = 5;
+
+    ws2.addRow(['POZIȚIE', 'NUME ARBITRU']);
+    ws2.getRow(3).height = 28;
+    ws2.getRow(3).eachCell(cell => {
+      cell.font = boldF(13, 'FFFFFF');
+      cell.fill = DARK_HDR;
+      cell.alignment = CC;
+      cell.border = allB();
+    });
+    ws2.getColumn(1).width = 14;
+    ws2.getColumn(2).width = 55;
+
+    [1, 2, 3, 4, 5].forEach(i => {
+      const name = refAssignment?.[`referee_${i}_name`] || null;
+      ws2.addRow([`A${i}`, name || '—']);
+      const r = ws2.getRow(3 + i);
+      r.height = 28;
+      r.getCell(1).font = boldF(13);
+      r.getCell(1).fill = YELLOW_HD;
+      r.getCell(1).alignment = CC;
+      r.getCell(1).border = allB();
+      r.getCell(2).font = boldF(13);
+      r.getCell(2).alignment = LC;
+      r.getCell(2).border = grayB();
+    });
+
+    // ─────────────────────────────────────────────
+    // Download
+    // ─────────────────────────────────────────────
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = [cat.groupName, cat.name, cat.gender === 'male' ? 'Masculin' : cat.gender === 'female' ? 'Feminin' : '']
+      .filter(Boolean)
+      .join('_')
+      .replace(/[^a-zA-Z0-9_\-]/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 60);
+    a.download = `${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const availableReplacementRefs = (competitionReferees || []).filter(cr => {
     const athleteId = cr.athlete;
     if (!athleteId) return false;
@@ -1342,8 +1547,15 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
       {/* ── Athletes table — all participants ── */}
       <div className="overflow-hidden border-2 border-black bg-white shadow-sm">
-        <div className="border-b-2 border-black bg-gray-100 px-4 py-3">
+        <div className="flex items-center justify-between border-b-2 border-black bg-gray-100 px-4 py-3">
           <p className="text-sm font-bold uppercase tracking-wide text-gray-700">{isTeamCategory ? `Toate echipele (${enrolled.length})` : `Toți sportivii (${enrolled.length})`}</p>
+          <button
+            onClick={() => exportToExcel()}
+            className="flex items-center gap-1.5 border border-black bg-white px-3 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-yellow-100"
+            title="Exportă în Excel"
+          >
+            ⬇ Excel
+          </button>
         </div>
         <div className="space-y-3 p-3 lg:hidden">
           {rows.map((row, idx) => {
