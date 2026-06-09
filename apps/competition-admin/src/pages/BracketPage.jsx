@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import { api } from '@shared';
 import { formatGroupBadgeLabel } from '@shared/components/ui';
+import ExcelJS from 'exceljs';
 
 /* ── round label map ── */
 const ROUND_LABELS = {
@@ -320,7 +321,9 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
-  const [bracketType, setBracketType] = useState('single_elimination'); // 'single_elimination' | 'consolation'
+  const [bracketType, setBracketType] = useState('single_elimination');
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const bracketRef = useRef(null);
 
   /* drag state */
   const [draggedAthlete, setDraggedAthlete] = useState(null); // { id, name, club, weight }
@@ -413,6 +416,303 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
     } catch (err) {
       console.error(err);
     }
+  };
+
+  /* ── Export Excel ── */
+  const exportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'FRVV Admin';
+      wb.created = new Date();
+
+      const catTitle = (shortLabel || category.name) + (category.groupName ? ` — ${category.groupName}` : '');
+      const DARK_HDR  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+      const YELLOW_HD = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFBBF24' } };
+      const RED_BG    = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+      const BLUE_BG   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+      const GREEN_BG  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+      const GRAY_BG   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+      const BLACK_B   = { style: 'thin', color: { argb: 'FF000000' } };
+      const GRAY_B    = { style: 'thin', color: { argb: 'FFD1D5DB' } };
+      const allB      = (b = BLACK_B) => ({ top: b, left: b, bottom: b, right: b });
+      const boldF     = (sz = 10, hex = '000000') => ({ name: 'Calibri', size: sz, bold: true,  color: { argb: 'FF' + hex } });
+      const normF     = (sz = 10, hex = '000000') => ({ name: 'Calibri', size: sz, bold: false, color: { argb: 'FF' + hex } });
+      const CC = { horizontal: 'center', vertical: 'middle' };
+      const LC = { horizontal: 'left',   vertical: 'middle' };
+
+      const fwArr = fightWeights || [];
+      const weightMap = {};
+      for (const fw of fwArr) {
+        if (fw.category === category.id) weightMap[fw.athlete] = fw.current_weight_kg || fw.pre_weight_kg || null;
+      }
+
+      // ─── Sheet 1: Sportivi ───
+      const ws1 = wb.addWorksheet('Sportivi');
+      // Title
+      ws1.addRow([catTitle]);
+      ws1.getRow(1).height = 32;
+      ws1.getRow(1).getCell(1).font = boldF(14, 'FFFFFF');
+      ws1.getRow(1).getCell(1).fill = DARK_HDR;
+      ws1.getRow(1).getCell(1).alignment = LC;
+      ws1.mergeCells(1, 1, 1, 6);
+      ws1.addRow([]); ws1.getRow(2).height = 4;
+      // Header
+      ws1.addRow(['#', 'Nume', 'Club', 'Greutate (kg)', 'Gen', 'Plasat în bracket']);
+      ws1.getRow(3).height = 26;
+      ws1.getRow(3).eachCell(c => { c.font = boldF(11, 'FFFFFF'); c.fill = DARK_HDR; c.alignment = CC; c.border = allB(); });
+      [5, 36, 28, 16, 12, 18].forEach((w, i) => { ws1.getColumn(i + 1).width = w; });
+
+      const placedIds = new Set(matches.flatMap(m => [m.red_corner, m.blue_corner].filter(Boolean)));
+      const enrolled = category.enrolled_athletes || [];
+      const athList = enrolled.map((ea, i) => {
+        const a = ea.athlete_details;
+        const id = a?.id || ea.athlete;
+        return {
+          idx: i + 1,
+          name: a ? `${a.last_name || ''} ${a.first_name || ''}`.trim() : `Sportiv #${id}`,
+          club: a?.club?.name || '',
+          weight: weightMap[id] || '',
+          gender: GENDER_LABELS[category.gender] || '',
+          placed: placedIds.has(id),
+        };
+      }).sort((a, b) => a.name.localeCompare(b.name));
+
+      athList.forEach((ath, ri) => {
+        ws1.addRow([ri + 1, ath.name, ath.club, ath.weight || '', ath.gender, ath.placed ? 'Da' : '—']);
+        const dr = ws1.getRow(3 + 1 + ri); dr.height = 20;
+        dr.eachCell(c => { c.alignment = CC; c.border = allB(GRAY_B); c.font = normF(10); });
+        dr.getCell(2).alignment = LC; dr.getCell(2).font = boldF(10);
+        dr.getCell(3).alignment = LC; dr.getCell(3).font = normF(10, '4B5563');
+        if (ath.placed) dr.getCell(6).font = boldF(10, '059669');
+        if (ri % 2 === 1) dr.eachCell(c => { if (!c.fill?.fgColor) c.fill = GRAY_BG; });
+      });
+
+      // ─── Sheet 2: Bracket (visual tournament tree) ───
+      const ws2 = wb.addWorksheet('Bracket');
+
+      // Group matches by round, sort by bracket_position
+      const byRound = {};
+      for (const m of matches) {
+        const rnd = m.round_number || 1;
+        if (!byRound[rnd]) byRound[rnd] = [];
+        byRound[rnd].push(m);
+      }
+      const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+
+      if (rounds.length === 0) {
+        ws2.addRow([catTitle + ' — Nu există meciuri generate.']);
+      } else {
+        // ── Layout constants ──
+        // Each match occupies 2 player rows; gap between R1 matches = GAP rows
+        const H = 2;   // rows per match (top player + bottom player)
+        const GAP = 2; // gap rows between matches in round 1
+        const UNIT = H + GAP; // = 4 rows per slot in R1
+        const COL_W = 28; // match column width
+        const CON_W = 4;  // connector column width
+        const COLS_PER_ROUND = 2; // match col + connector col
+        const ROW_OFFSET = 3; // first data row (after title rows)
+
+        // Total rounds
+        const nRounds = rounds.length;
+        // R1 match count
+        const nR1 = byRound[rounds[0]].length;
+        // Total canvas rows
+        const totalRows = ROW_OFFSET + nR1 * UNIT - GAP + 4;
+        // Total columns
+        const totalCols = nRounds * COLS_PER_ROUND + 1;
+
+        // ── Helper: get row position of match top player ──
+        // round: 1-indexed (using rounds array index)
+        // pos: 0-indexed position in that round
+        const getTopRow = (roundIdx, pos) => {
+          // spacing doubles each round
+          const spacing = UNIT * Math.pow(2, roundIdx);
+          // offset centers this round between R1 pairs
+          const offset = (spacing - UNIT) / 2;
+          return ROW_OFFSET + Math.round(offset) + pos * spacing;
+        };
+
+        // ── Helper: get column of match cell ──
+        const getMatchCol = (roundIdx) => 1 + roundIdx * COLS_PER_ROUND;
+        const getConnCol  = (roundIdx) => 2 + roundIdx * COLS_PER_ROUND;
+
+        // ── Border helpers ──
+        const thin  = { style: 'thin',  color: { argb: 'FF374151' } };
+        const thick = { style: 'medium', color: { argb: 'FF111827' } };
+        const none  = { style: 'none' };
+        const winnerBorder = { style: 'medium', color: { argb: 'FF059669' } };
+
+        // ── Title row ──
+        ws2.addRow([catTitle + ' — Bracket']);
+        ws2.getRow(1).height = 28;
+        ws2.getRow(1).getCell(1).font = boldF(14, 'FFFFFF');
+        ws2.getRow(1).getCell(1).fill = DARK_HDR;
+        ws2.getRow(1).getCell(1).alignment = LC;
+        ws2.mergeCells(1, 1, 1, Math.max(totalCols, 6));
+        ws2.addRow([]); ws2.getRow(2).height = 6;
+
+        // ── Round header labels (row 2, above each match column) ──
+        rounds.forEach((rnd, ri) => {
+          const matchCol = getMatchCol(ri);
+          const roundLabel = ROUND_LABELS[byRound[rnd][0]?.match_type] || `Runda ${rnd}`;
+          const cell = ws2.getCell(ROW_OFFSET - 1, matchCol);
+          cell.value = roundLabel;
+          cell.font = boldF(10, 'FFFFFF');
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.border = allB();
+          ws2.getRow(ROW_OFFSET - 1).height = 20;
+          // merge over 2 cols (match + connector)
+          if (ri < nRounds - 1) {
+            try { ws2.mergeCells(ROW_OFFSET - 1, matchCol, ROW_OFFSET - 1, matchCol + 1); } catch (e) {}
+          }
+        });
+
+        // ── Place each match ──
+        rounds.forEach((rnd, ri) => {
+          const matchCol = getMatchCol(ri);
+          const connCol  = getConnCol(ri);
+          const rndMatches = byRound[rnd].sort((a, b) => (a.bracket_position || 0) - (b.bracket_position || 0));
+
+          rndMatches.forEach((m, mi) => {
+            const topRow = getTopRow(ri, mi);
+            const botRow = topRow + 1;
+            const redWon  = m.winner && m.winner === m.red_corner;
+            const blueWon = m.winner && m.winner === m.blue_corner;
+            const redName  = m.red_corner_full_name  || 'TBD';
+            const blueName = m.blue_corner_full_name || 'TBD';
+
+            // ── Top player (red corner) ──
+            const topCell = ws2.getCell(topRow, matchCol);
+            topCell.value = redName;
+            topCell.font = boldF(10, redWon ? '059669' : m.red_corner ? '111827' : '9CA3AF');
+            topCell.fill = redWon ? GREEN_BG : m.red_corner ? RED_BG : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+            topCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+            topCell.border = {
+              top:    redWon ? winnerBorder : thick,
+              left:   redWon ? winnerBorder : thick,
+              bottom: { style: 'hair', color: { argb: 'FFD1D5DB' } },
+              right:  none,
+            };
+            ws2.getRow(topRow).height = 18;
+
+            // ── Bottom player (blue corner) ──
+            const botCell = ws2.getCell(botRow, matchCol);
+            botCell.value = blueName;
+            botCell.font = boldF(10, blueWon ? '059669' : m.blue_corner ? '111827' : '9CA3AF');
+            botCell.fill = blueWon ? GREEN_BG : m.blue_corner ? BLUE_BG : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+            botCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+            botCell.border = {
+              top:    { style: 'hair', color: { argb: 'FFD1D5DB' } },
+              left:   blueWon ? winnerBorder : thick,
+              bottom: blueWon ? winnerBorder : thick,
+              right:  none,
+            };
+            ws2.getRow(botRow).height = 18;
+
+            // ── Right arm (connector from match → right) ──
+            // Top arm: ─┐
+            const topArm = ws2.getCell(topRow, connCol);
+            topArm.border = { top: thin, right: thin, bottom: none, left: none };
+
+            // Bottom arm: ─┘
+            const botArm = ws2.getCell(botRow, connCol);
+            botArm.border = { bottom: thin, right: thin, top: none, left: none };
+
+            // Vertical line: fill right border for rows between top and bottom arm
+            // This connects the two arms going to the next round
+            if (ri < nRounds - 1) {
+              // The next round match for this pair feeds at midpoint
+              const nextRi = ri + 1;
+              const nextMi = Math.floor(mi / 2);
+              const nextTopRow = getTopRow(nextRi, nextMi);
+              const nextBotRow = nextTopRow + 1;
+              const midRowStart = topRow;
+              const midRowEnd = topRow + (UNIT * Math.pow(2, ri)) - GAP - 1;
+
+              // Draw right border line down the connector column from top arm to bottom arm of sibling
+              for (let vr = topRow; vr <= Math.round(midRowEnd); vr++) {
+                const vc = ws2.getCell(vr, connCol);
+                if (vr === topRow) {
+                  vc.border = { top: thin, right: thin, bottom: none, left: none };
+                } else if (vr === Math.round(midRowEnd)) {
+                  vc.border = { bottom: thin, right: thin, top: none, left: none };
+                } else {
+                  const existing = vc.border || {};
+                  vc.border = { ...existing, right: thin };
+                }
+              }
+
+              // Horizontal connector going into next round match
+              // The midpoint row is between nextTopRow and nextBotRow
+              const midRow = Math.round((topRow + midRowEnd) / 2);
+              // Already handled by the right-border cells above; next match starts at nextTopRow
+            }
+          });
+        });
+
+        // ── Column widths ──
+        rounds.forEach((_, ri) => {
+          ws2.getColumn(getMatchCol(ri)).width = COL_W;
+          ws2.getColumn(getConnCol(ri)).width  = CON_W;
+        });
+        // Extra winner column after last round
+        ws2.getColumn(getMatchCol(nRounds)).width = COL_W;
+      }
+
+      // Download
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Bracket_${(shortLabel || category.name).replace(/[\\/:*?"<>|]/g, '_').substring(0, 50)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export Excel failed', err);
+      window.alert('Export Excel a eșuat: ' + err.message);
+    }
+    setExportingExcel(false);
+  };
+
+  /* ── Print/PDF bracket ── */
+  const printBracket = () => {
+    const catTitle = (shortLabel || category.name) + (category.groupName ? ` — ${category.groupName}` : '');
+    const genLabel = GENDER_LABELS[category.gender] || '';
+    const bracketEl = bracketRef.current;
+    if (!bracketEl) return;
+
+    const printContent = bracketEl.innerHTML;
+    const win = window.open('', '_blank', 'width=1200,height=900');
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Bracket — ${catTitle}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+          body { background: white; color: #111; padding: 20px; }
+          h1 { font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+          .subtitle { font-size: 12px; color: #555; margin-bottom: 16px; }
+          .bracket-wrap { overflow: visible; }
+          @media print {
+            body { padding: 10px; }
+            @page { size: A3 landscape; margin: 10mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>${catTitle}</h1>
+        <div class="subtitle">${genLabel ? `Gen: ${genLabel} · ` : ''}Export: ${new Date().toLocaleDateString('ro-RO')}</div>
+        <div class="bracket-wrap">${printContent}</div>
+        <script>setTimeout(() => { window.print(); window.close(); }, 400);<\/script>
+      </body>
+      </html>
+    `);
+    win.document.close();
   };
 
   /* ── Drag & drop: assign athlete to match corner ── */
@@ -531,6 +831,23 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
           >
             {generating ? 'Generare...' : matches.length > 0 ? 'Regenerează' : 'Generează bracket'}
           </button>
+          {/* Export buttons */}
+          <button
+            onClick={exportExcel}
+            disabled={exportingExcel || matches.length === 0}
+            className="border border-black bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-green-50 hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Exportă bracket în Excel (2 tab-uri: Sportivi și Bracket)"
+          >
+            {exportingExcel ? '⏳...' : '⬇ Excel'}
+          </button>
+          <button
+            onClick={printBracket}
+            disabled={matches.length === 0}
+            className="border border-black bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Printează / Salvează ca PDF"
+          >
+            🖨 PDF
+          </button>
         </div>
       </div>
 
@@ -611,7 +928,7 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
               </div>
 
               {/* ── RIGHT: Bracket Tree ── */}
-              <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto bg-white p-4 sm:p-5">
+              <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto bg-white p-4 sm:p-5" ref={bracketRef}>
                 {matches.length === 0 ? (
                   <div className="flex min-h-[420px] items-center justify-center border-2 border-dashed border-black bg-yellow-50/30 px-6 text-center text-base text-gray-500">
                     <div>
@@ -669,7 +986,7 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
   /* layout constants */
   const CARD_W = 290;
   const CARD_H = 214;
-  const COL_GAP = 84;   // horizontal gap between rounds (for connectors)
+  const COL_GAP = 160;  // horizontal gap between rounds (for connectors)
   const BASE_GAP = 24;  // vertical gap in round 1
 
   /* compute vertical positions for each round */

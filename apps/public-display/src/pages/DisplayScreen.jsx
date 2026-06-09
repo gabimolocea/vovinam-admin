@@ -649,7 +649,6 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
     timerLabel = `REPRIZA ${nextScheduledRound.round_number} ÎNCEPE ÎN`;
   } else if (activeRound) {
     timerLabel = `REPRIZA ${activeRound.round_number}`;
-    if (activeRound.is_paused) timerLabel += ' — PAUZĂ';
   } else if (displayRound) {
     timerLabel = `REPRIZA ${displayRound.round_number}`;
   } else if (totalRounds > 0) {
@@ -706,9 +705,7 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
     : null;
 
   // Display states:
-  const showWinnerView = isRealTimeMode
-    ? allRoundsDone && winnerRevealed && !!winner
-    : allRoundsDone && !!winner;
+  const showWinnerView = allRoundsDone && winnerRevealed && !!winner;
   const showAthletesView = !showWinnerView;
 
   // Flash effect for winner card
@@ -746,7 +743,7 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
 
   const isPaused = !!activeRound?.is_paused;
   // Timer box bg: yellow during active round, white during break
-  const timerBg = isInBreak ? 'bg-white' : 'bg-yellow-400';
+  const timerBg = 'bg-yellow-400';
 
   return (
     <div className="h-screen w-screen bg-white flex flex-col overflow-hidden select-none relative" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", color: '#000000' }}>
@@ -768,7 +765,7 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
         {/* Timer box — centered on screen */}
         <div className={`${timerBg} px-[2vw] py-[0.5vh] text-center`} style={{ minWidth: '28vw' }}>
           <p className="text-[1.1vw] font-black uppercase tracking-wider leading-tight" style={{ color: '#000000' }}>{timerLabel}</p>
-          <div className="text-[8vw] font-black tabular-nums leading-none py-[0.2vh]" style={{ color: '#000000' }}>
+          <div className={`text-[8vw] font-black tabular-nums leading-none py-[0.2vh] ${isPaused ? 'animate-pulse' : ''}`} style={{ color: '#000000' }}>
             {allRoundsDone && !showWinnerView ? (
               isRealTimeMode ? '00:00' : 'DECIZIA'
             ) : showWinnerView ? (
@@ -797,14 +794,11 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
         {showAthletesView && (
           <div className="flex flex-col flex-1 min-h-0">
             {/* Corners row */}
-            <div className="flex flex-1 min-h-0">
+            <div className="relative flex flex-1 min-h-0">
               {/* Red referee indicators — left side */}
               {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.red} align="left" />}
               {/* RED corner */}
               <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedRed ? 'bg-gray-700' : 'bg-[#F80200]'}`}>
-                {isPaused && (
-                  <p className="absolute top-[3vh] left-1/2 -translate-x-1/2 text-[5vw] font-black text-white/90 uppercase tracking-widest z-10">PAUZA</p>
-                )}
                 {isRealTimeMode && (
                   <p className="absolute left-1/2 top-[40%] -translate-x-1/2 -translate-y-1/2 text-[16vw] font-semibold text-white tabular-nums leading-none">
                     {grandTotalRed}
@@ -823,9 +817,6 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
 
               {/* BLUE corner */}
               <div className={`relative flex-1 px-[3vw] py-[2vh] ${disqualifiedBlue ? 'bg-gray-700' : 'bg-[#0000F7]'}`}>
-                {isPaused && (
-                  <p className="absolute top-[3vh] left-1/2 -translate-x-1/2 text-[5vw] font-black text-white/90 uppercase tracking-widest z-10">PAUZA</p>
-                )}
                 {isRealTimeMode && (
                   <p className="absolute left-1/2 top-[40%] -translate-x-1/2 -translate-y-1/2 text-[16vw] font-semibold text-white tabular-nums leading-none">
                     {grandTotalBlue}
@@ -841,6 +832,12 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
                 </div>
                 {disqualifiedBlue && <p className="text-[2vw] font-black text-gray-400 uppercase mt-[0.5vh]">DESCALIFICAT</p>}
               </div>
+              {/* PAUZA overlay — centered between scores */}
+              {isPaused && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20" style={{ paddingBottom: '20%' }}>
+                  <p className="text-[3vw] font-black uppercase tracking-widest px-[2vw] py-[0.8vh]" style={{ color: '#FFD700', backgroundColor: 'rgba(0,0,0,0.85)' }}>PAUZĂ</p>
+                </div>
+              )}
               {/* Blue referee indicators — right side */}
               {isRealTimeMode && <RefereeSignalColumn indicators={refereeIndicators.blue} align="right" />}
             </div>
@@ -1047,7 +1044,7 @@ function BreakCountdown({ endedAt, duration = 60, session }) {
   }
 
   return (
-    <span className={secondsLeft <= 5 ? 'animate-pulse' : ''}>
+    <span className={secondsLeft <= 10 ? 'animate-pulse' : ''}>
       {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
     </span>
   );

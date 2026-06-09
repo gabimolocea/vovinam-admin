@@ -26,7 +26,8 @@ const CATEGORY_TYPE_BADGES = {
   teams: { label: 'Echipă', bg: 'border border-black bg-yellow-300 text-black' },
   fight: { label: 'Luptă', bg: 'border border-black bg-yellow-300 text-black' },
 };
-const TOPNAV_SECONDARY_BUTTON = 'text-sm border border-black bg-white px-4 py-2 font-medium text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
+const TOPNAV_SECONDARY_BUTTON = 'text-xs border border-black bg-white px-2.5 py-1 font-medium text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
+const TOPNAV_GREEN_BUTTON = 'text-xs border border-green-700 bg-green-600 hover:bg-green-700 px-2.5 py-1 font-bold text-white transition disabled:opacity-40';
 const MODAL_SECONDARY_BUTTON = 'border border-black bg-white px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
 const MODAL_DANGER_BUTTON = 'border border-black bg-red-600 px-4 py-2.5 font-bold text-white transition hover:bg-red-700 disabled:opacity-40';
 const MODAL_SUCCESS_BUTTON = 'border border-black bg-green-600 px-4 py-2.5 font-bold text-white transition hover:bg-green-700 disabled:opacity-40';
@@ -36,7 +37,7 @@ const PANEL_BUTTON_NEUTRAL = `${PANEL_BUTTON_BASE} bg-white text-gray-700 hover:
 const PANEL_BUTTON_DANGER = `${PANEL_BUTTON_BASE} bg-white text-red-700 hover:bg-red-100`;
 const PANEL_BUTTON_SUCCESS = `${PANEL_BUTTON_BASE} bg-white text-green-700 hover:bg-green-100`;
 const PANEL_BUTTON_WARNING = `${PANEL_BUTTON_BASE} bg-yellow-300 text-black hover:bg-yellow-200`;
-const TOPNAV_REC_BUTTON = 'flex items-center gap-2 border bg-white px-4 py-2 text-sm font-bold uppercase tracking-[0.14em] transition disabled:opacity-40';
+const TOPNAV_REC_BUTTON = 'flex items-center gap-1.5 border bg-white px-2.5 py-1 text-xs font-bold uppercase tracking-[0.14em] transition disabled:opacity-40';
 const ROUND_CARD_SHELL = 'flex flex-col gap-4 border-2 border-black bg-white px-4 py-4';
 const ROUND_BODY_PANEL = 'bg-white px-4 py-4';
 const ROUND_SECONDARY_BUTTON = 'border border-black px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
@@ -254,6 +255,7 @@ export default function LiveFullscreenPage() {
 
   useEffect(() => {
     fetchData();
+    fetchMatchState();
     if (eventId) preview.loadFields(eventId);
     pollRef.current = setInterval(fetchMatchState, 2000);
     return () => clearInterval(pollRef.current);
@@ -593,11 +595,11 @@ export default function LiveFullscreenPage() {
   return (
     <div className="frvv-live-fullscreen h-screen w-screen flex flex-col overflow-hidden bg-white">
       {/* ── Top bar ── */}
-      <div className="shrink-0 border-b-2 border-yellow-400 bg-black px-3 py-3 text-white sm:px-4 lg:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-          <button onClick={goBack} className={TOPNAV_SECONDARY_BUTTON}><span className="inline-block mr-1">&larr;</span> Inapoi</button>
-          <span className="text-xl font-black uppercase tracking-wide text-yellow-200">{formatFieldLabel(field.name)}</span>
+      <div className="shrink-0 border-b-2 border-yellow-400 bg-black px-3 py-1.5 text-white sm:px-4 lg:px-5">
+        <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={goBack} className={TOPNAV_SECONDARY_BUTTON} title="Înapoi">&#8592;</button>
+          <span className="text-base font-black uppercase tracking-wide text-yellow-200">{formatFieldLabel(field.name)}</span>
           {/* Live indicator in top nav */}
           {isSessionActive && (
             <span className="flex items-center gap-2">
@@ -605,44 +607,41 @@ export default function LiveFullscreenPage() {
                 <span className="animate-ping absolute inline-flex h-full w-full  bg-green-400 opacity-75"></span>
                 <span className="relative inline-flex  h-3 w-3 bg-green-500"></span>
               </span>
-              <span className="text-sm font-semibold text-green-400 uppercase">Live</span>
+              <span className="text-xs font-semibold text-green-400 uppercase">Live</span>
             </span>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+        <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
           {/* Match control buttons in top nav */}
           {panelType === 'match' && currentMatch && (
             <button onClick={() => setShowResetConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Reset</button>
           )}
           {panelType === 'match' && currentMatch && isSessionActive && (
             <>
-              <button onClick={() => setShowStopConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Opreste</button>
+              <button onClick={() => setShowStopConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Nu afișa pe TV</button>
             </>
           )}
           {/* START / ÎNCHEIE for matches */}
           {panelType === 'match' && currentMatch && !isSessionActive && (
-            <div className="flex flex-col items-end gap-1">
-              <button
-                onClick={async () => {
-                  await startRecordingSession({ auto: true });
-                  await switchDisplay(currentMatch.category, currentMatch.id, null);
-                  if (currentAssignment) {
-                    setBusy(true);
-                    try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
-                    setBusy(false);
-                  }
-                }}
-                disabled={busy || isCurrentMatchFinalized}
-                title="Butonul pornește proba doar dacă atât statusul logic al meciului, cât și statusul din programarea terenului nu sunt finalizate."
-                className={`text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition ${isCurrentMatchFinalized ? '' : 'ring-4 ring-green-300 animate-pulse'}`}
-              >START PROBA</button>
-            </div>
+            <button
+              onClick={async () => {
+                await startRecordingSession({ auto: true });
+                await switchDisplay(currentMatch.category, currentMatch.id, null);
+                if (currentAssignment) {
+                  setBusy(true);
+                  try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                  setBusy(false);
+                }
+              }}
+              disabled={busy || isCurrentMatchFinalized}
+              className={`${TOPNAV_GREEN_BUTTON} ${isCurrentMatchFinalized ? '' : 'ring-2 ring-green-400 animate-pulse'}`}
+            >AFIȘEAZĂ PE TV</button>
           )}
           {panelType === 'match' && currentMatch && isSessionActive && (
             <button
               onClick={() => setShowFinishConfirm(true)}
               disabled={busy}
-              className={`text-sm border border-black bg-green-600 px-5 py-2 font-bold text-white disabled:opacity-40 transition hover:bg-green-700 ${session?.current_match === currentMatch.id && session?.status === 'winner_revealed' ? 'ring-4 ring-green-300 animate-pulse' : ''}`}
+              className={`${TOPNAV_GREEN_BUTTON} ${session?.current_match === currentMatch.id && session?.status === 'winner_revealed' ? 'ring-2 ring-green-400 animate-pulse' : ''}`}
             >ÎNCHEIE PROBA</button>
           )}
           {/* Category control buttons in top nav */}
@@ -651,50 +650,36 @@ export default function LiveFullscreenPage() {
           )}
           {/* START / ÎNCHEIE for categories */}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
-            <div className="flex flex-col items-end gap-1">
-              <button
-                onClick={async () => {
-                  await startRecordingSession({ auto: true });
-                  await switchDisplay(currentCat.id, null, null);
-                  if (currentAssignment) {
-                    setBusy(true);
-                    try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
-                    setBusy(false);
-                  }
-                }}
-                disabled={busy || isCurrentCategoryFinalized}
-                title="Pentru probele tehnice, startul este controlat de statusul din programarea terenului."
-                className="text-sm bg-green-600 hover:bg-green-700 text-white px-5 py-2 font-bold disabled:opacity-40 transition"
-              >START PROBA</button>
-            </div>
+            <button
+              onClick={async () => {
+                await startRecordingSession({ auto: true });
+                await switchDisplay(currentCat.id, null, null);
+                if (currentAssignment) {
+                  setBusy(true);
+                  try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                  setBusy(false);
+                }
+              }}
+              disabled={busy || isCurrentCategoryFinalized}
+              className={`${TOPNAV_GREEN_BUTTON}`}
+            >AFIȘEAZĂ PE TV</button>
           )}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && isSessionActive && (
             <button
               onClick={() => setShowFinishConfirm(true)}
               disabled={busy}
-              className={`text-sm border border-black bg-green-600 px-5 py-2 font-bold text-white disabled:opacity-40 transition hover:bg-green-700 ${isCurrentCategoryCompleted ? 'ring-4 ring-green-300 animate-pulse' : ''}`}
+              className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted ? 'ring-2 ring-green-400 animate-pulse' : ''}`}
             >ÎNCHEIE PROBA</button>
           )}
           <a href={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
             className={`${TOPNAV_SECONDARY_BUTTON} text-center`}>
-            Public Display
+            TV PUBLIC
           </a>
           <button
-            onClick={() => (isRecordingActive ? stopRecordingSession() : startRecordingSession())}
-            disabled={busy}
-            className={`${TOPNAV_REC_BUTTON} ${isRecordingActive ? 'border-red-500 text-black shadow-[0_0_0_2px_rgba(239,68,68,0.35)]' : 'border-black text-black hover:bg-red-50'}`}
-            title={isRecordingActive ? 'Oprește înregistrarea' : 'Pornește înregistrarea'}
-          >
-            <span className={`relative inline-flex h-3 w-3 rounded-full ${isRecordingActive ? 'bg-red-500' : 'bg-red-500'}`}>
-              {isRecordingActive ? <span className="absolute inset-0 animate-ping rounded-full bg-red-500 opacity-75" /> : null}
-            </span>
-            <span>{recordingTimerLabel}</span>
-          </button>
-          <button
             onClick={() => preview.togglePreview(fieldId)}
-            className={`text-sm px-4 py-2 font-medium transition border border-black ${preview.isOpen(fieldId) ? 'bg-yellow-300 hover:bg-yellow-200 text-black' : 'bg-white hover:bg-yellow-100 text-gray-700'}`}
+            className={`${TOPNAV_SECONDARY_BUTTON} ${preview.isOpen(fieldId) ? 'bg-yellow-300 hover:bg-yellow-200 text-black border-yellow-500' : ''}`}
           >
-            {preview.isOpen(fieldId) ? 'Ascunde preview' : 'Preview'}
+            {preview.isOpen(fieldId) ? 'Ascunde Preview TV' : 'Preview TV'}
           </button>
         </div>
         </div>
@@ -1727,11 +1712,14 @@ function FullscreenMatchPanel({
   const [showRoundResetConfirm, setShowRoundResetConfirm] = useState(null); // round id
   const [showStopRoundConfirm, setShowStopRoundConfirm] = useState(null); // round id for stop confirm
   const [showWinnerConfirm, setShowWinnerConfirm] = useState(false);
+  const [showExtraRoundModal, setShowExtraRoundModal] = useState(false);
+  const [extraRoundDuration, setExtraRoundDuration] = useState(60);
   const [breakTimers, setBreakTimers] = useState({});
   const [refModalData, setRefModalData] = useState(null); // { ref, matchId }
   const [replaceMatchRefData, setReplaceMatchRefData] = useState(null); // { pos, id, name }
   const [replacementMatchRefId, setReplacementMatchRefId] = useState('');
   const [matchDisplayMode, setMatchDisplayMode] = useState(match.display_mode || 'reveal_final');
+  const [exportingExcel, setExportingExcel] = useState(false);
   const prevRoundStatusRef = useRef({});
 
   // Build referee list from match referee assignment
@@ -1889,6 +1877,218 @@ function FullscreenMatchPanel({
     setBreakTimers(prev => { const n = { ...prev }; delete n[idx]; return n; });
   };
 
+  // ── Export meci Excel ──
+  const exportMatchToExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'FRVV Admin';
+      wb.created = new Date();
+
+      const DARK_HDR  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+      const YELLOW_HD = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFBBF24' } };
+      const RED_BG    = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+      const BLUE_BG   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+      const GREEN_BG  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+      const GRAY_BG   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+      const BLACK_B   = { style: 'thin', color: { argb: 'FF000000' } };
+      const GRAY_B    = { style: 'thin', color: { argb: 'FFD1D5DB' } };
+      const allB      = (b = BLACK_B) => ({ top: b, left: b, bottom: b, right: b });
+      const boldF     = (sz = 10, hex = '000000') => ({ name: 'Calibri', size: sz, bold: true,  color: { argb: 'FF' + hex } });
+      const normF     = (sz = 10, hex = '000000') => ({ name: 'Calibri', size: sz, bold: false, color: { argb: 'FF' + hex } });
+      const CC = { horizontal: 'center', vertical: 'middle' };
+      const LC = { horizontal: 'left',   vertical: 'middle' };
+
+      const matchTitle = `${match.red_corner_full_name || 'Roșu'} vs ${match.blue_corner_full_name || 'Albastru'}`;
+      const safeFile = matchTitle.replace(/[\\/:*?"<>|]/g, '_').substring(0, 50);
+      const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+      const roundNumMap = {};
+      matchRounds.forEach(r => { roundNumMap[r.id] = r.round_number; });
+      const refNameMap = {};
+      matchRefSlots.forEach(r => { if (r.id) refNameMap[r.id] = r.name || `A${r.pos}`; });
+
+      // Adjustments
+      const warnRed  = matchEvents.filter(e => e.event_type === 'warning_red').length;
+      const warnBlue = matchEvents.filter(e => e.event_type === 'warning_blue').length;
+      const bonusRed  = matchEvents.filter(e => e.event_type === 'bonus_red').reduce((s, e) => s + (e.value || 0), 0);
+      const bonusBlue = matchEvents.filter(e => e.event_type === 'bonus_blue').reduce((s, e) => s + (e.value || 0), 0);
+      const adjRed  = bonusRed  + warnRed  * -2;
+      const adjBlue = bonusBlue + warnBlue * -2;
+
+      // ── Sheet 1: Scoruri Arbitri ──
+      const ws1 = wb.addWorksheet('Scoruri Arbitri');
+      const nRounds = matchRounds.length;
+      const totalCols = 2 + nRounds * 2 + 3; // pos+name, rounds*2, totalRed, totalBlue, decizie
+
+      // Title
+      ws1.addRow([matchTitle]);
+      ws1.getRow(1).height = 32;
+      ws1.getRow(1).getCell(1).font = boldF(15, 'FFFFFF');
+      ws1.getRow(1).getCell(1).fill = DARK_HDR;
+      ws1.getRow(1).getCell(1).alignment = LC;
+      ws1.mergeCells(1, 1, 1, totalCols);
+
+      ws1.addRow([]);
+      ws1.getRow(2).height = 4;
+
+      // Header
+      const roundHdrs = matchRounds.flatMap(r => [`R${r.round_number} Roșu`, `R${r.round_number} Albastru`]);
+      ws1.addRow(['Pos', 'Arbitru', ...roundHdrs, 'Total Roșu', 'Total Albastru', 'Decizie']);
+      ws1.getRow(3).height = 30;
+      ws1.getRow(3).eachCell(cell => {
+        cell.font = boldF(11, 'FFFFFF');
+        cell.fill = DARK_HDR;
+        cell.alignment = CC;
+        cell.border = allB();
+      });
+      ws1.getColumn(1).width = 6;
+      ws1.getColumn(2).width = 30;
+      matchRounds.forEach((_, i) => { ws1.getColumn(3 + i * 2).width = 12; ws1.getColumn(4 + i * 2).width = 12; });
+      ws1.getColumn(3 + nRounds * 2).width = 14;
+      ws1.getColumn(4 + nRounds * 2).width = 14;
+      ws1.getColumn(5 + nRounds * 2).width = 32;
+
+      const refTotRed = {}; const refTotBlue = {};
+      matchRefSlots.forEach((ref, ri) => {
+        const scores = matchRefScores.filter(s => s.referee === ref.id && s.round != null);
+        const decision = matchRefScores.find(s => s.referee === ref.id && s.round == null && s.winner_choice)?.winner_choice;
+        const roundCells = matchRounds.flatMap(r => {
+          const rs = scores.find(s => s.round === r.id);
+          return [rs?.red_corner_score != null ? Number(rs.red_corner_score) : null, rs?.blue_corner_score != null ? Number(rs.blue_corner_score) : null];
+        });
+        const tRed  = scores.reduce((s, rs) => s + Number(rs.red_corner_score  || 0), 0);
+        const tBlue = scores.reduce((s, rs) => s + Number(rs.blue_corner_score || 0), 0);
+        refTotRed[ref.id] = tRed; refTotBlue[ref.id] = tBlue;
+        const decText = decision === 'red' ? `Roșu (${match.red_corner_full_name || ''})` : decision === 'blue' ? `Albastru (${match.blue_corner_full_name || ''})` : '—';
+        ws1.addRow([`A${ref.pos}`, ref.name || `Arbitru ${ref.pos}`, ...roundCells, tRed, tBlue, decText]);
+        const dr = ws1.getRow(3 + 1 + ri);
+        dr.height = 22;
+        dr.getCell(1).font = boldF(10); dr.getCell(1).alignment = CC; dr.getCell(1).border = allB();
+        dr.getCell(2).font = normF(11); dr.getCell(2).alignment = LC; dr.getCell(2).border = allB();
+        roundCells.forEach((v, ci) => {
+          const cell = dr.getCell(3 + ci);
+          cell.value = v; cell.alignment = CC; cell.border = allB({ style: 'thin', color: { argb: 'FFD1D5DB' } });
+          if (ci % 2 === 0) { cell.fill = RED_BG; } else { cell.fill = BLUE_BG; }
+          cell.font = boldF(11);
+        });
+        const tcRed = dr.getCell(3 + nRounds * 2); tcRed.value = tRed; tcRed.font = boldF(12, 'B91C1C'); tcRed.fill = RED_BG; tcRed.alignment = CC; tcRed.border = allB();
+        const tcBlue = dr.getCell(4 + nRounds * 2); tcBlue.value = tBlue; tcBlue.font = boldF(12, '1D4ED8'); tcBlue.fill = BLUE_BG; tcBlue.alignment = CC; tcBlue.border = allB();
+        const tcDec = dr.getCell(5 + nRounds * 2); tcDec.value = decText; tcDec.font = normF(11); tcDec.alignment = LC; tcDec.border = allB();
+      });
+
+      // Totals rows
+      const grandRed  = Object.values(refTotRed).reduce((s, v) => s + v, 0);
+      const grandBlue = Object.values(refTotBlue).reduce((s, v) => s + v, 0);
+      [[' ', 'TOTAL ARBITRI', ...matchRounds.flatMap(() => ['', '']), grandRed, grandBlue, ''],
+       [' ', 'Ajustări (bonus/avert.)', ...matchRounds.flatMap(() => ['', '']), adjRed, adjBlue, ''],
+       [' ', 'SCOR FINAL', ...matchRounds.flatMap(() => ['', '']), grandRed + adjRed, grandBlue + adjBlue, ''],
+      ].forEach((row, ri) => {
+        ws1.addRow(row);
+        const dr = ws1.getRow(3 + 1 + matchRefSlots.length + 1 + ri);
+        dr.height = 24;
+        dr.eachCell(cell => { cell.font = boldF(11); cell.fill = YELLOW_HD; cell.alignment = CC; cell.border = allB(); });
+        dr.getCell(2).alignment = LC;
+        dr.getCell(3 + nRounds * 2).font = boldF(12, 'B91C1C');
+        dr.getCell(4 + nRounds * 2).font = boldF(12, '1D4ED8');
+      });
+
+      // ── Sheet 2: Evenimente ──
+      const ws2 = wb.addWorksheet('Evenimente');
+      ws2.addRow([`${matchTitle} — Evenimente`]);
+      ws2.getRow(1).height = 28; ws2.getRow(1).getCell(1).font = boldF(13, 'FFFFFF'); ws2.getRow(1).getCell(1).fill = DARK_HDR; ws2.getRow(1).getCell(1).alignment = LC; ws2.mergeCells(1, 1, 1, 5);
+      ws2.addRow([]); ws2.getRow(2).height = 4;
+      ws2.addRow(['Ora', 'Repriza', 'Tip eveniment', 'Valoare', 'Colț']);
+      ws2.getRow(3).height = 26; ws2.getRow(3).eachCell(c => { c.font = boldF(11, 'FFFFFF'); c.fill = DARK_HDR; c.alignment = CC; c.border = allB(); });
+      [12, 14, 32, 10, 10].forEach((w, i) => { ws2.getColumn(i + 1).width = w; });
+
+      const typeLabels = {
+        warning_red: 'Avertisment Roșu', warning_blue: 'Avertisment Albastru',
+        penalty_red: 'Penalizare Roșu', penalty_blue: 'Penalizare Albastru',
+        bonus_red: 'Bonus Roșu', bonus_blue: 'Bonus Albastru',
+        infraction_red: 'Abatere Roșu', infraction_blue: 'Abatere Albastru',
+        disqualify_red: 'DESCALIFICARE Roșu', disqualify_blue: 'DESCALIFICARE Albastru',
+        pause: 'Pauză', resume: 'Reluare', time_add: 'Timp adăugat', time_remove: 'Timp scăzut',
+      };
+      [...(matchEvents || [])].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)).forEach((ev, ri) => {
+        const roundNum = ev.round ? roundNumMap[ev.round] : null;
+        const isRed = ev.event_type.includes('red'); const isBlue = ev.event_type.includes('blue');
+        const valStr = ev.value != null ? (ev.event_type.startsWith('time') ? `${ev.value > 0 ? '+' : ''}${ev.value}s` : `${ev.value > 0 ? '+' : ''}${ev.value}p`) : '—';
+        ws2.addRow([fmtTime(ev.created_at), roundNum ? `Repriza ${roundNum}` : '—', typeLabels[ev.event_type] || ev.event_type, valStr, isRed ? 'Roșu' : isBlue ? 'Albastru' : '—']);
+        const dr = ws2.getRow(3 + 1 + ri); dr.height = 20;
+        dr.eachCell(c => { c.alignment = CC; c.border = allB(GRAY_B); c.font = normF(10); });
+        if (isRed) { dr.getCell(5).fill = RED_BG; dr.getCell(5).font = boldF(10, 'B91C1C'); }
+        else if (isBlue) { dr.getCell(5).fill = BLUE_BG; dr.getCell(5).font = boldF(10, '1D4ED8'); }
+        if (ri % 2 === 1) dr.eachCell(c => { if (!c.fill?.fgColor) c.fill = GRAY_BG; });
+      });
+
+      // ── Sheet 3: Timeline Puncte ──
+      const ws3 = wb.addWorksheet('Timeline Puncte');
+      ws3.addRow([`${matchTitle} — Timeline Puncte Arbitri`]);
+      ws3.getRow(1).height = 28; ws3.getRow(1).getCell(1).font = boldF(13, 'FFFFFF'); ws3.getRow(1).getCell(1).fill = DARK_HDR; ws3.getRow(1).getCell(1).alignment = LC; ws3.mergeCells(1, 1, 1, 7);
+      ws3.addRow([]); ws3.getRow(2).height = 4;
+      ws3.addRow(['Ora', 'Repriza', 'Arbitru', 'Colț', 'Puncte', 'Status', 'Video offset']);
+      ws3.getRow(3).height = 26; ws3.getRow(3).eachCell(c => { c.font = boldF(11, 'FFFFFF'); c.fill = DARK_HDR; c.alignment = CC; c.border = allB(); });
+      [12, 14, 28, 10, 8, 16, 14].forEach((w, i) => { ws3.getColumn(i + 1).width = w; });
+
+      const statusMap = { pending: 'În așteptare', validated: 'Validat', rejected: 'Respins' };
+      const sortedPts = [...(pointEvents || [])].sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+      sortedPts.forEach((ev, ri) => {
+        const roundId = ev.metadata?.round_id || ((ev.metadata?.round != null) ? matchRounds.find(r => r.round_number === ev.metadata.round)?.id : null);
+        const roundNum = roundId ? roundNumMap[roundId] : null;
+        const isRed = ev.side === 'red';
+        ws3.addRow([fmtTime(ev.timestamp), roundNum ? `Repriza ${roundNum}` : '—', ev.referee_name || refNameMap[ev.referee] || `#${ev.referee}`, isRed ? 'Roșu' : 'Albastru', ev.points, statusMap[ev.validation_status] || ev.validation_status || '—', ev.video_offset_ms != null ? ev.video_offset_ms : '—']);
+        const dr = ws3.getRow(3 + 1 + ri); dr.height = 20;
+        dr.eachCell(c => { c.alignment = CC; c.border = allB(GRAY_B); c.font = normF(10); });
+        dr.getCell(4).fill = isRed ? RED_BG : BLUE_BG;
+        dr.getCell(4).font = boldF(10, isRed ? 'B91C1C' : '1D4ED8');
+        const status = ev.validation_status;
+        dr.getCell(6).font = boldF(10, status === 'validated' ? '059669' : status === 'rejected' ? 'DC2626' : '92400E');
+        if (ri % 2 === 1) dr.eachCell(c => { if (!c.fill?.fgColor) c.fill = GRAY_BG; });
+      });
+
+      // Rezumat per arbitru per repriza
+      if (sortedPts.length > 0) {
+        ws3.addRow([]);
+        ws3.addRow(['— REZUMAT PER ARBITRU PER REPRIZĂ —']);
+        ws3.getRow(ws3.rowCount).height = 24;
+        ws3.getRow(ws3.rowCount).getCell(1).font = boldF(12, 'FFFFFF');
+        ws3.getRow(ws3.rowCount).getCell(1).fill = DARK_HDR;
+        ws3.mergeCells(ws3.rowCount, 1, ws3.rowCount, 7);
+        ws3.addRow(['Arbitru', 'Repriza', 'Roșu trimis', 'Roșu validat', 'Albastru trimis', 'Albastru validat', 'Total puncte']);
+        ws3.getRow(ws3.rowCount).height = 24;
+        ws3.getRow(ws3.rowCount).eachCell(c => { c.font = boldF(10, 'FFFFFF'); c.fill = DARK_HDR; c.alignment = CC; c.border = allB(); });
+        const summary = {};
+        sortedPts.forEach(ev => {
+          const roundId = ev.metadata?.round_id || ((ev.metadata?.round != null) ? matchRounds.find(r => r.round_number === ev.metadata.round)?.id : null);
+          const rNum = roundId ? roundNumMap[roundId] : 0;
+          const key = `${ev.referee}_${rNum}`;
+          if (!summary[key]) summary[key] = { name: ev.referee_name || refNameMap[ev.referee] || `#${ev.referee}`, round: rNum ? `Repriza ${rNum}` : '—', sRed: 0, vRed: 0, sBlue: 0, vBlue: 0 };
+          const s = summary[key];
+          if (ev.side === 'red') { s.sRed += ev.points; if (ev.validation_status === 'validated') s.vRed += ev.points; }
+          else { s.sBlue += ev.points; if (ev.validation_status === 'validated') s.vBlue += ev.points; }
+        });
+        Object.values(summary).forEach((s, ri) => {
+          ws3.addRow([s.name, s.round, s.sRed, s.vRed, s.sBlue, s.vBlue, s.sRed + s.sBlue]);
+          const dr = ws3.getRow(ws3.rowCount); dr.height = 20;
+          dr.eachCell(c => { c.alignment = CC; c.border = allB(GRAY_B); c.font = normF(10); });
+          dr.getCell(1).alignment = LC; dr.getCell(1).font = boldF(10);
+          if (ri % 2 === 1) dr.eachCell(c => { if (!c.fill?.fgColor) c.fill = GRAY_BG; });
+        });
+      }
+
+      // ── Download ──
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `Meci_${safeFile}.xlsx`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export Excel failed', err);
+      window.alert('Export Excel a eșuat: ' + err.message);
+    }
+    setExportingExcel(false);
+  };
+
   const updateMatchDisplayMode = async (mode) => {
     if (!mode || mode === matchDisplayMode || operationalSettingsLocked) return;
     if (!ensureOperationalWrite()) return;
@@ -2041,6 +2241,54 @@ function FullscreenMatchPanel({
 
   return (
     <div className="w-full space-y-4 relative">
+      {/* Extra Round Modal */}
+      {showExtraRoundModal && (
+        <FullscreenModal
+          onClose={() => setShowExtraRoundModal(false)}
+          title="Adaugă Repriză Extra"
+          description={`Va fi adăugată repriza ${totalRounds + 1} la meci.`}
+          actions={[
+            <button key="cancel" onClick={() => setShowExtraRoundModal(false)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
+            <button key="confirm" onClick={async () => {
+              if (!ensureOperationalWrite()) return;
+              setBusy(true);
+              try {
+                await roundAPI.create({ match: match.id, round_number: totalRounds + 1, duration_seconds: extraRoundDuration });
+                await onRefresh();
+              } catch (e) {
+                console.error(e);
+                window.alert(e?.response?.data?.detail || 'Nu s-a putut adăuga repriza extra.');
+              }
+              setBusy(false);
+              setShowExtraRoundModal(false);
+            }} disabled={busy} className={MODAL_SUCCESS_BUTTON}>Adaugă repriza</button>,
+          ]}
+        >
+          <div className="space-y-3">
+            <label className="block text-sm font-bold text-gray-700">Durată repriză extra (secunde)</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={10}
+                max={600}
+                value={extraRoundDuration}
+                onChange={e => setExtraRoundDuration(Math.max(10, Math.min(600, Number(e.target.value))))}
+                className="w-28 border-2 border-black bg-white px-3 py-2 text-lg font-bold outline-none focus:border-yellow-400 tabular-nums"
+              />
+              <span className="text-sm text-gray-500">sec ({Math.floor(extraRoundDuration / 60)}:{String(extraRoundDuration % 60).padStart(2, '0')} min)</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[30, 60, 90, 120].map(s => (
+                <button key={s} onClick={() => setExtraRoundDuration(s)}
+                  className={`border px-3 py-1 text-sm font-bold transition ${extraRoundDuration === s ? 'border-black bg-yellow-300 text-black' : 'border-black bg-white text-gray-600 hover:bg-gray-50'}`}>
+                  {s}s
+                </button>
+              ))}
+            </div>
+          </div>
+        </FullscreenModal>
+      )}
+
       {/* Reset round confirm dialog */}
       {showStopRoundConfirm && (
         <FullscreenModal
@@ -2164,6 +2412,8 @@ function FullscreenMatchPanel({
       {(() => {
         const matchCat = allCats?.find(c => c.id === match.category);
         const matchTypeLabels = { 'qualifications': 'Calificări', 'quarter-finals': 'Sferturi', 'semi-finals': 'Semi-finală', 'finals': 'Finală', 'bronze': 'Bronz' };
+        const totalValidatedRed = Object.values(pointStatsByRef).reduce((sum, ref) => sum + (ref.totals?.validated?.red || 0), 0) + totalBonusRed + warningPenaltyRed;
+        const totalValidatedBlue = Object.values(pointStatsByRef).reduce((sum, ref) => sum + (ref.totals?.validated?.blue || 0), 0) + totalBonusBlue + warningPenaltyBlue;
         return matchCat ? (
           <div className="w-full overflow-hidden bg-white shadow-sm">
             <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
@@ -2212,11 +2462,45 @@ function FullscreenMatchPanel({
                   </div>
                 ) : null}
               </div>
+              <div className="w-full xl:hidden">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">Arbitri</p>
+                <div className="flex flex-wrap gap-1">
+                  {matchRefSlots.map(r => {
+                    const isEmpty = !r.id;
+                    return (
+                      <button
+                        key={r.pos}
+                        type="button"
+                        onClick={() => {
+                          setReplaceMatchRefData(r);
+                          setReplacementMatchRefId(r.id ? String(r.id) : '');
+                        }}
+                        className={`flex items-center gap-1.5 border px-2 py-1 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-black bg-white text-gray-400 hover:bg-gray-50' : 'border-black bg-white text-gray-700 hover:bg-yellow-100'}`}
+                        title={isEmpty ? 'Adaugă arbitru' : 'Înlocuiește arbitrul'}
+                      >
+                        <span className={`inline-block h-2 w-2 shrink-0 ${isEmpty ? 'bg-gray-200' : 'bg-gray-400'}`}></span>
+                        <span className="font-black text-black">A{r.pos}</span>
+                        {r.name && <span className="min-w-0 truncate">{r.name}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="min-w-0 xl:col-start-2">
                 <div className="flex flex-col items-center gap-4 text-center">
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 mb-1 text-xs font-medium text-gray-600">
+                    <span className="border border-black bg-white px-2 py-0.5">{matchCat.name}</span>
+                    {matchCat.groupName && <span className="border border-black bg-white px-2 py-0.5">{matchCat.groupName}</span>}
+                    <span className={`border border-black px-2 py-0.5 ${GENDER_BG[matchCat.gender] || 'bg-gray-100'}`}>{GENDER_LABELS[matchCat.gender] || matchCat.gender}</span>
+                    <span className="border border-black bg-yellow-300 px-2 py-0.5 font-bold text-black">{matchTypeLabels[match.match_type] || match.match_type}</span>
+                  </div>
                   <div className="grid w-full grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-5">
                     <div className={`min-w-0 text-center px-3 py-1.5 sm:justify-self-end ${isMatchFinalized && matchWinner === 'red' ? 'border-4 border-green-500 bg-green-50 shadow-lg' : ''}`}>
                       {isMatchFinalized && matchWinner === 'red' && <span className="mb-1 block text-xs font-bold text-green-600">CÂȘTIGĂTOR</span>}
+                      {matchDisplayMode === 'real_time'
+                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedRed > 0 ? 'text-green-600' : totalValidatedRed < 0 ? 'text-red-700' : 'text-gray-400'}`}>{totalValidatedRed > 0 ? '+' : ''}{totalValidatedRed}</span>
+                        : <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${isMatchFinalized && matchWinner === 'red' ? 'text-green-600' : 'text-gray-300'}`}>–</span>
+                      }
                       <span className="break-words text-2xl font-black text-red-600 sm:text-3xl">{match.red_corner_full_name || 'TBD'}</span>
                       {match.red_corner_club_name && <p className="text-sm font-medium text-gray-500">({match.red_corner_club_name})</p>}
                     </div>
@@ -2229,20 +2513,18 @@ function FullscreenMatchPanel({
                     </div>
                     <div className={`min-w-0 text-center px-3 py-1.5 sm:justify-self-start ${isMatchFinalized && matchWinner === 'blue' ? 'border-4 border-green-500 bg-green-50 shadow-lg' : ''}`}>
                       {isMatchFinalized && matchWinner === 'blue' && <span className="mb-1 block text-xs font-bold text-green-600">CÂȘTIGĂTOR</span>}
+                      {matchDisplayMode === 'real_time'
+                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedBlue > 0 ? 'text-green-600' : totalValidatedBlue < 0 ? 'text-blue-700' : 'text-gray-400'}`}>{totalValidatedBlue > 0 ? '+' : ''}{totalValidatedBlue}</span>
+                        : <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${isMatchFinalized && matchWinner === 'blue' ? 'text-green-600' : 'text-gray-300'}`}>–</span>
+                      }
                       <span className="break-words text-2xl font-black text-blue-600 sm:text-3xl">{match.blue_corner_full_name || 'TBD'}</span>
                       {match.blue_corner_club_name && <p className="text-sm font-medium text-gray-500">({match.blue_corner_club_name})</p>}
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-medium text-gray-600">
-                    <span className="border border-black bg-white px-2 py-0.5">{matchCat.name}</span>
-                    {matchCat.groupName && <span className="border border-black bg-white px-2 py-0.5">{matchCat.groupName}</span>}
-                    <span className={`border border-black px-2 py-0.5 ${GENDER_BG[matchCat.gender] || 'bg-gray-100'}`}>{GENDER_LABELS[matchCat.gender] || matchCat.gender}</span>
-                    <span className="border border-black bg-yellow-300 px-2 py-0.5 font-bold text-black">{matchTypeLabels[match.match_type] || match.match_type}</span>
-                  </div>
                 </div>
               </div>
 
-              <div className="w-full xl:col-start-3 xl:justify-self-end xl:max-w-[240px]">
+              <div className="hidden w-full xl:block xl:col-start-3 xl:justify-self-end xl:max-w-[240px]">
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">Arbitri</p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
                   {matchRefSlots.map(r => {
@@ -2300,97 +2582,103 @@ function FullscreenMatchPanel({
       )}
 
       {/* ── SCOREBOARD — no dot, no ROSU/ALBASTRU label ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* Undo last action */}
+      {(() => {
+        const undoableTypes = ['disqualify_red','disqualify_blue','penalty_red','penalty_blue','bonus_red','bonus_blue','warning_red','warning_blue','infraction_red','infraction_blue'];
+        const lastEvent = [...matchEvents].reverse().find(e => undoableTypes.includes(e.event_type));
+        const typeLabels = { disqualify_red: 'Descalif. Roșu', disqualify_blue: 'Descalif. Albastru', penalty_red: '-pt Roșu', penalty_blue: '-pt Albastru', bonus_red: '+pt Roșu', bonus_blue: '+pt Albastru', warning_red: 'Avertism. Roșu', warning_blue: 'Avertism. Albastru', infraction_red: 'Abatere Roșu', infraction_blue: 'Abatere Albastru' };
+        return lastEvent ? (
+          <div className="flex items-center gap-2 justify-end">
+            <span className="text-[10px] text-gray-400">Ultima acțiune: <span className="font-semibold text-gray-600">{typeLabels[lastEvent.event_type] || lastEvent.event_type}{lastEvent.value != null ? ` (${lastEvent.value > 0 ? '+' : ''}${lastEvent.value})` : ''}</span></span>
+            <button onClick={() => removeLastEvent(match.id, lastEvent.event_type)} disabled={busy} className="border border-black bg-yellow-100 px-2 py-0.5 text-xs font-bold text-gray-700 transition hover:bg-yellow-200 disabled:opacity-40">↩ Undo</button>
+          </div>
+        ) : null;
+      })()}
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         {/* RED corner */}
-        <div className={`space-y-3 border-2 p-4 shadow-sm ${disqualifiedRed ? 'border-gray-400 bg-gray-100 opacity-60' : 'border-red-500 bg-red-200/80'}`}>
-          {disqualifiedRed && <span className="inline-flex border border-red-700 bg-red-600 px-3 py-1 text-sm font-bold text-white">DESCALIFICAT</span>}
+        <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${disqualifiedRed ? 'border-gray-400 bg-gray-100 opacity-60' : 'border-red-500 bg-red-200/80'}`}>
+          {disqualifiedRed && <span className="inline-flex border border-red-700 bg-red-600 px-2 py-0.5 text-xs font-bold text-white">DESCALIFICAT</span>}
           {/* Indicators: Abateri, Avertismente, Puncte */}
-          <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-gray-600">Abateri:</span>
-              <div className="flex gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-600">Abateri:</span>
+              <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <button key={i} disabled={busy || i >= currentInfractionsRed} onClick={() => removeLastEvent(match.id, 'infraction_red')}
-                    className={`flex h-7 w-7 cursor-pointer items-center justify-center border-2 text-[10px] font-bold transition disabled:cursor-default ${
+                    className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
                       i < currentInfractionsRed ? 'border-yellow-600 bg-yellow-400 text-yellow-950 hover:bg-yellow-300' : 'border-gray-300 bg-white text-gray-300'
                     }`}>{i + 1}</button>
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-gray-600">Avertismente:</span>
-              <div className="flex gap-1">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-600">Avertismente:</span>
+              <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <button key={i} disabled={busy || i >= warningsRed} onClick={() => removeLastEvent(match.id, 'warning_red')}
-                    className={`flex h-7 w-7 cursor-pointer items-center justify-center border-2 text-[10px] font-bold transition disabled:cursor-default ${
+                    className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
                       i < warningsRed ? 'border-orange-600 bg-orange-500 text-white hover:bg-orange-400' : 'border-gray-300 bg-white text-gray-300'
                     }`}>{i + 1}</button>
                 ))}
               </div>
-              {warningsRed > 0 && <span className="text-xs text-red-500 font-medium">({warningPenaltyRed})</span>}
+              {warningsRed > 0 && <span className="text-[10px] text-red-500 font-medium">({warningPenaltyRed})</span>}
             </div>
-            <div className="flex items-center gap-1.5 sm:ml-auto">
-              <span className="text-sm text-gray-600">Puncte:</span>
-              <span className={`border border-black px-2 py-0.5 text-xl font-black tabular-nums ${adjustRed > 0 ? 'bg-green-200 text-green-700' : adjustRed < 0 ? 'bg-red-200 text-red-700' : 'bg-white text-gray-500'}`}>{adjustRed > 0 ? '+' : ''}{adjustRed}</span>
+            <div className="flex items-center gap-1 ml-auto">
+              <span className="text-xs text-gray-600">Puncte:</span>
+              <span className={`border border-black px-1.5 py-0 text-sm font-black tabular-nums ${adjustRed > 0 ? 'bg-green-200 text-green-700' : adjustRed < 0 ? 'bg-red-200 text-red-700' : 'bg-white text-gray-500'}`}>{adjustRed > 0 ? '+' : ''}{adjustRed}</span>
             </div>
           </div>
-          {/* Point buttons: -2 -1 +1 +2 */}
-          <div className="grid grid-cols-4 gap-2">
-            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -2)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_DANGER} text-base font-black`}>-2</button>
-            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -1)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_DANGER} text-base font-black`}>-1</button>
-            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 1)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_SUCCESS} text-base font-black`}>+1</button>
-            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 2)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_SUCCESS} text-base font-black`}>+2</button>
-          </div>
-          {/* Action buttons: +1 Abatere, +1 Avertisment */}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button onClick={() => handleInfraction('red')} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-sm`}>+1 Abatere</button>
-            <button onClick={() => { addWarning(match.id, 'red', activeRound?.id); if (warningsRed + 1 >= 3 && !disqualifiedRed) addDisqualification(match.id, 'red'); }} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-sm`}>+1 Avertisment</button>
+          {/* Point buttons + action buttons in one row */}
+          <div className="grid grid-cols-6 gap-1">
+            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -2)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_DANGER} text-sm font-black py-1`}>-2</button>
+            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -1)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_DANGER} flex flex-col items-center py-0.5 leading-none`}><span className="text-sm font-black">-1</span><span className="text-[7px] opacity-75">Căd/Ieș</span></button>
+            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 1)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_SUCCESS} text-sm font-black py-1`}>+1</button>
+            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 2)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_SUCCESS} text-sm font-black py-1`}>+2</button>
+            <button onClick={() => handleInfraction('red')} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-xs py-1`}>+Abatere</button>
+            <button onClick={() => { addWarning(match.id, 'red', activeRound?.id); if (warningsRed + 1 >= 3 && !disqualifiedRed) addDisqualification(match.id, 'red'); }} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-xs py-1`}>+Avertism.</button>
           </div>
         </div>
         {/* BLUE corner */}
-        <div className={`space-y-3 border-2 p-4 shadow-sm ${disqualifiedBlue ? 'border-gray-400 bg-gray-100 opacity-60' : 'border-blue-500 bg-blue-200/80'}`}>
-          {disqualifiedBlue && <span className="inline-flex border border-red-700 bg-red-600 px-3 py-1 text-sm font-bold text-white">DESCALIFICAT</span>}
+        <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${disqualifiedBlue ? 'border-gray-400 bg-gray-100 opacity-60' : 'border-blue-500 bg-blue-200/80'}`}>
+          {disqualifiedBlue && <span className="inline-flex border border-red-700 bg-red-600 px-2 py-0.5 text-xs font-bold text-white">DESCALIFICAT</span>}
           {/* Indicators: Abateri, Avertismente, Puncte */}
-          <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-gray-600">Abateri:</span>
-              <div className="flex gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-600">Abateri:</span>
+              <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <button key={i} disabled={busy || i >= currentInfractionsBlue} onClick={() => removeLastEvent(match.id, 'infraction_blue')}
-                    className={`flex h-7 w-7 cursor-pointer items-center justify-center border-2 text-[10px] font-bold transition disabled:cursor-default ${
+                    className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
                       i < currentInfractionsBlue ? 'border-yellow-600 bg-yellow-400 text-yellow-950 hover:bg-yellow-300' : 'border-gray-300 bg-white text-gray-300'
                     }`}>{i + 1}</button>
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-gray-600">Avertismente:</span>
-              <div className="flex gap-1">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-600">Avertismente:</span>
+              <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <button key={i} disabled={busy || i >= warningsBlue} onClick={() => removeLastEvent(match.id, 'warning_blue')}
-                    className={`flex h-7 w-7 cursor-pointer items-center justify-center border-2 text-[10px] font-bold transition disabled:cursor-default ${
+                    className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
                       i < warningsBlue ? 'border-orange-600 bg-orange-500 text-white hover:bg-orange-400' : 'border-gray-300 bg-white text-gray-300'
                     }`}>{i + 1}</button>
                 ))}
               </div>
-              {warningsBlue > 0 && <span className="text-xs text-red-500 font-medium">({warningPenaltyBlue})</span>}
+              {warningsBlue > 0 && <span className="text-[10px] text-red-500 font-medium">({warningPenaltyBlue})</span>}
             </div>
-            <div className="flex items-center gap-1.5 sm:ml-auto">
-              <span className="text-sm text-gray-600">Puncte:</span>
-              <span className={`border border-black px-2 py-0.5 text-xl font-black tabular-nums ${adjustBlue > 0 ? 'bg-green-200 text-green-700' : adjustBlue < 0 ? 'bg-red-200 text-red-700' : 'bg-white text-gray-500'}`}>{adjustBlue > 0 ? '+' : ''}{adjustBlue}</span>
+            <div className="flex items-center gap-1 ml-auto">
+              <span className="text-xs text-gray-600">Puncte:</span>
+              <span className={`border border-black px-1.5 py-0 text-sm font-black tabular-nums ${adjustBlue > 0 ? 'bg-green-200 text-green-700' : adjustBlue < 0 ? 'bg-red-200 text-red-700' : 'bg-white text-gray-500'}`}>{adjustBlue > 0 ? '+' : ''}{adjustBlue}</span>
             </div>
           </div>
-          {/* Point buttons: -2 -1 +1 +2 */}
-          <div className="grid grid-cols-4 gap-2">
-            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -2)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_DANGER} text-base font-black`}>-2</button>
-            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -1)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_DANGER} text-base font-black`}>-1</button>
-            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 1)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_SUCCESS} text-base font-black`}>+1</button>
-            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 2)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_SUCCESS} text-base font-black`}>+2</button>
-          </div>
-          {/* Action buttons: +1 Abatere, +1 Avertisment */}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button onClick={() => handleInfraction('blue')} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-sm`}>+1 Abatere</button>
-            <button onClick={() => { addWarning(match.id, 'blue', activeRound?.id); if (warningsBlue + 1 >= 3 && !disqualifiedBlue) addDisqualification(match.id, 'blue'); }} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-sm`}>+1 Avertisment</button>
+          {/* Point buttons + action buttons in one row */}
+          <div className="grid grid-cols-6 gap-1">
+            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -2)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_DANGER} text-sm font-black py-1`}>-2</button>
+            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -1)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_DANGER} flex flex-col items-center py-0.5 leading-none`}><span className="text-sm font-black">-1</span><span className="text-[7px] opacity-75">Căd/Ieș</span></button>
+            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 1)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_SUCCESS} text-sm font-black py-1`}>+1</button>
+            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 2)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_SUCCESS} text-sm font-black py-1`}>+2</button>
+            <button onClick={() => handleInfraction('blue')} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-xs py-1`}>+Abatere</button>
+            <button onClick={() => { addWarning(match.id, 'blue', activeRound?.id); if (warningsBlue + 1 >= 3 && !disqualifiedBlue) addDisqualification(match.id, 'blue'); }} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-xs py-1`}>+Avertism.</button>
           </div>
         </div>
       </div>
@@ -2592,8 +2880,8 @@ function FullscreenMatchPanel({
                     );
                   })}
                 </div>
-                {/* Afișează / Ascunde câștigătorul */}
-                <div className="flex justify-center">
+                {/* Afișează / Ascunde câștigătorul + Adaugă Repriză Extra */}
+                <div className="flex flex-wrap justify-center gap-2">
                   {allRoundsCompleted && session?.status !== 'winner_revealed' && (
                     <button onClick={() => {
                       if (!ensureOperationalWrite()) return;
@@ -2620,6 +2908,12 @@ function FullscreenMatchPanel({
                       Ascunde câștigător
                     </button>
                   )}
+                  <button
+                    onClick={() => { setExtraRoundDuration(60); setShowExtraRoundModal(true); }}
+                    disabled={busy}
+                    className="text-sm border border-black bg-white px-4 py-2 font-bold text-orange-700 transition hover:bg-orange-50 disabled:opacity-40 whitespace-nowrap">
+                    + Repriză Extra
+                  </button>
                 </div>
               </div>
             </div>
@@ -2632,8 +2926,16 @@ function FullscreenMatchPanel({
       {/* ── REFEREE LIVE SCORES TABLE — full width, centralizator style ── */}
       {matchRounds.length > 0 && (
         <div className="w-full overflow-hidden border-2 border-black bg-white shadow-sm">
-          <div className="border-b-2 border-black bg-gray-100 px-4 py-3">
+          <div className="border-b-2 border-black bg-gray-100 px-4 py-3 flex items-center justify-between gap-3">
             <p className="text-sm font-bold uppercase tracking-wide text-gray-700">Scoruri arbitri</p>
+            <button
+              onClick={exportMatchToExcel}
+              disabled={exportingExcel}
+              className="flex items-center gap-1.5 border border-black bg-white px-3 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-green-50 hover:text-green-700 disabled:opacity-40"
+              title="Exportă meci în Excel (3 sheet-uri: scoruri, evenimente, timeline puncte)"
+            >
+              {exportingExcel ? '⏳ Export...' : '⬇ Export Excel'}
+            </button>
           </div>
           <div className="w-full overflow-x-auto">
           <table className="w-full border-collapse border-0">
@@ -2850,7 +3152,9 @@ function BreakTimer({ onDone, busy, duration = 60, autoStart = false, endedAt, s
     return Math.max(0, Math.ceil(duration - elapsed));
   }, [endedAt, duration]);
 
-  const [secondsLeft, setSecondsLeft] = useState(() => endedAt ? computeFromEndedAt() : duration);
+  // If break already expired (endedAt is old), start fresh from full duration
+  const initialSeconds = endedAt ? (computeFromEndedAt() > 0 ? computeFromEndedAt() : duration) : duration;
+  const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
   const [running, setRunning] = useState(autoStart);
   const syncedRef = useRef(false);
 
@@ -2858,19 +3162,27 @@ function BreakTimer({ onDone, busy, duration = 60, autoStart = false, endedAt, s
   useEffect(() => {
     if (autoStart && endedAt && sessionId && !syncedRef.current) {
       syncedRef.current = true;
-      const breakEnd = new Date(new Date(endedAt).getTime() + duration * 1000).toISOString();
+      const elapsed = (Date.now() - new Date(endedAt).getTime()) / 1000;
+      const remaining = duration - elapsed;
+      // If break already expired, start a fresh break from now
+      const breakEnd = remaining > 0
+        ? new Date(new Date(endedAt).getTime() + duration * 1000).toISOString()
+        : new Date(Date.now() + duration * 1000).toISOString();
       monitorAPI.sessions.update(sessionId, { break_end_time: breakEnd, break_paused: false, break_paused_remaining: 0 }).catch(() => {});
     }
   }, [autoStart, endedAt, sessionId, duration]);
 
-  // Re-sync when endedAt changes
+  // Re-sync when endedAt changes — only if break hasn't expired
   useEffect(() => {
-    if (endedAt) setSecondsLeft(computeFromEndedAt());
+    if (endedAt) {
+      const remaining = computeFromEndedAt();
+      if (remaining > 0) setSecondsLeft(remaining);
+    }
   }, [endedAt, computeFromEndedAt]);
 
   useEffect(() => {
     if (!running || secondsLeft <= 0) return;
-    if (endedAt) {
+    if (endedAt && computeFromEndedAt() > 0) {
       const id = setInterval(() => setSecondsLeft(computeFromEndedAt()), 1000);
       return () => clearInterval(id);
     }
