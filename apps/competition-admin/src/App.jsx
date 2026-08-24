@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, ProtectedRoute } from '@shared';
 import LoginPage from '@shared/components/LoginPage';
 import Layout from './components/Layout';
+import PortalPage from './pages/PortalPage';
 import CompetitionList from './pages/CompetitionList';
 import CompetitionForm from './pages/CompetitionForm';
 import CreateAthlete from './pages/CreateAthlete';
@@ -49,7 +50,8 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<CompetitionList />} />
+        <Route index element={<PortalPage />} />
+        <Route path="competitions" element={<CompetitionList />} />
         <Route path="competitions/new" element={<CompetitionForm />} />
         <Route path="athletes/new" element={<CreateAthlete />} />
         <Route path="competitions/:id/results" element={<ResultsPage />} />

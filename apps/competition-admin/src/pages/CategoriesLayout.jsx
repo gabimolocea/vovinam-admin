@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Spinner, formatGroupBadgeLabel } from '@shared/components/ui';
 import Logo from '@shared/components/Logo';
 import { enrollmentAPI, teamAPI } from '@shared/lib/api';
@@ -27,10 +27,12 @@ export { GENDER_LABELS, GENDER_BG, TYPE_LABELS };
 export default function CategoriesLayout() {
   const ctx = useCentralizator();
   const navigate = useNavigate();
+  const location = useLocation();
   const { id: eventId } = useParams();
   const preview = useDisplayPreview();
   const [teamSelection, setTeamSelection] = useState([]);
   const [teamBuilderBusy, setTeamBuilderBusy] = useState(false);
+  const isDiplomeRoute = location.pathname.endsWith('/diplome');
 
   // Load fields for preview toggles
   useEffect(() => {
@@ -83,40 +85,42 @@ export default function CategoriesLayout() {
       <div className="flex h-screen flex-col bg-white">
 
         {/* ═══ TOP BAR — responsive ═══ */}
-        <div className="flex min-h-[52px] shrink-0 items-center justify-between gap-2 border-b-2 border-yellow-400 bg-black px-2 py-2 text-white sm:px-3">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button onClick={() => navigate('/')}
-              className="shrink-0 border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold text-gray-700 transition hover:bg-yellow-300 hover:text-black">
-              ← <span className="hidden sm:inline">Înapoi</span>
-            </button>
-            <div className="hidden h-5 w-px bg-yellow-400/30 sm:block" />
-            <Logo size={28} className="shrink-0 hidden sm:block" />
-            <h1 className="truncate text-sm font-black uppercase tracking-wide text-yellow-200 sm:text-base">
-              {ctx.eventData?.name || `Competiția #${eventId}`}
-            </h1>
+        {!isDiplomeRoute && (
+          <div className="flex min-h-[52px] shrink-0 items-center justify-between gap-2 border-b-2 border-yellow-400 bg-black px-2 py-2 text-white sm:px-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <button onClick={() => navigate('/')}
+                className="shrink-0 border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold text-gray-700 transition hover:bg-yellow-300 hover:text-black">
+                ← <span className="hidden sm:inline">Înapoi</span>
+              </button>
+              <div className="hidden h-5 w-px bg-yellow-400/30 sm:block" />
+              <Logo size={28} className="shrink-0 hidden sm:block" />
+              <h1 className="truncate text-sm font-black uppercase tracking-wide text-yellow-200 sm:text-base">
+                {ctx.eventData?.name || `Competiția #${eventId}`}
+              </h1>
+            </div>
+            <div className="hidden sm:flex items-center gap-2 text-[11px] shrink-0">
+              {/* Display Preview toggles */}
+              {preview.fields.length > 0 && (
+                <div className="flex items-center gap-1 mr-2">
+                  {preview.fields.map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => preview.togglePreview(f.id)}
+                      className={`border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold transition ${
+                        preview.isOpen(f.id)
+                          ? 'bg-yellow-300 text-black'
+                          : 'text-gray-700 hover:bg-yellow-100 hover:text-black'
+                      }`}
+                      title={`${preview.isOpen(f.id) ? 'Ascunde' : 'Afișează'} ecranul ${formatFieldLabel(f.name)}`}
+                    >
+                      {`Ecran ${formatFieldLabel(f.name)}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-[11px] shrink-0">
-            {/* Display Preview toggles */}
-            {preview.fields.length > 0 && (
-              <div className="flex items-center gap-1 mr-2">
-                {preview.fields.map(f => (
-                  <button
-                    key={f.id}
-                    onClick={() => preview.togglePreview(f.id)}
-                    className={`border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold transition ${
-                      preview.isOpen(f.id)
-                        ? 'bg-yellow-300 text-black'
-                        : 'text-gray-700 hover:bg-yellow-100 hover:text-black'
-                    }`}
-                    title={`${preview.isOpen(f.id) ? 'Ascunde' : 'Afișează'} ecranul ${formatFieldLabel(f.name)}`}
-                  >
-                    {`Ecran ${formatFieldLabel(f.name)}`}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* ═══ PAGE CONTENT — child route ═══ */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

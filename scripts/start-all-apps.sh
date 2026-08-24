@@ -13,6 +13,7 @@ echo "  Athlete Enrollment → http://localhost:5174"
 echo "  Coach Dashboard    → http://localhost:5175"
 echo "  Referee Scoring    → http://localhost:5176"
 echo "  Public Display     → http://localhost:5177"
+echo "  Public Registry    → http://localhost:5178"
 echo ""
 
 # Start all dev servers in background
@@ -21,6 +22,7 @@ echo ""
 (cd "$APPS_DIR/coach-dashboard" && npm run dev) &
 (cd "$APPS_DIR/referee-scoring" && npm run dev) &
 (cd "$APPS_DIR/public-display" && npm run dev) &
+(cd "$APPS_DIR/public-registry" && npm run dev) &
 
 echo "All apps started. Press Ctrl+C to stop all."
 wait

@@ -1355,6 +1355,33 @@ class FightCategory(Category):
                 raise ValidationError(f"Athlete '{athlete}' must be enrolled to be awarded.")
 
 
+class FightGroupEnrollment(models.Model):
+    """
+    Pre-registration pool for fight athletes per event group.
+    Athletes can be weighted first, then assigned to fight categories later.
+    """
+
+    event = models.ForeignKey('Competition', on_delete=models.CASCADE, related_name='fight_group_enrollments')
+    group = models.ForeignKey('Group', on_delete=models.CASCADE, related_name='fight_group_enrollments')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='fight_group_enrollments')
+    registered_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    notes = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('event', 'group', 'athlete')
+        indexes = [
+            models.Index(fields=['event', 'group']),
+            models.Index(fields=['athlete']),
+        ]
+        verbose_name = 'Fight Group Enrollment'
+        verbose_name_plural = 'Fight Group Enrollments'
+
+    def __str__(self):
+        return f"{self.athlete} @ {self.group} ({self.event})"
+
+
 class FightAthleteWeight(models.Model):
     """
     Track weight-in data for athletes in fight categories.

@@ -69,13 +69,12 @@ export default function ArbitriPage() {
   const availableRefs = useMemo(() => (
     allReferees
       .filter(a =>
-        !rosterAthleteIds.has(a.id) &&
-        (search === '' ||
-          `${a.last_name || ''} ${a.first_name || ''}`.toLowerCase().includes(search.toLowerCase()) ||
-          (a.club_name || '').toLowerCase().includes(search.toLowerCase()))
+        search === '' ||
+        `${a.last_name || ''} ${a.first_name || ''}`.toLowerCase().includes(search.toLowerCase()) ||
+        (a.club_name || '').toLowerCase().includes(search.toLowerCase())
       )
       .sort((a, b) => `${a.last_name || ''} ${a.first_name || ''}`.localeCompare(`${b.last_name || ''} ${b.first_name || ''}`))
-  ), [allReferees, rosterAthleteIds, search]);
+  ), [allReferees, search]);
 
   const getRefDetailedAssignments = (athleteId) => {
     const assignments = [];
@@ -197,6 +196,33 @@ export default function ArbitriPage() {
     finally { setBusy(false); }
   };
 
+  const closeAddPicker = () => {
+    setShowAddPicker(false);
+    setSearch('');
+  };
+
+  const toggleRefPresence = async (athleteId) => {
+    if (busy) return;
+
+    const isAlreadyAdded = rosterAthleteIds.has(athleteId);
+    setBusy(true);
+    try {
+      if (isAlreadyAdded) {
+        const rosterEntry = rosterRefs.find(r => r.athlete === athleteId);
+        if (rosterEntry?.id) {
+          await competitionRefereeAPI.delete(rosterEntry.id);
+        }
+      } else {
+        await competitionRefereeAPI.create({ event: eventId, athlete: athleteId });
+      }
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const rosterRows = useMemo(() => (
     rosterRefs
       .map(entry => ({
@@ -278,64 +304,93 @@ export default function ArbitriPage() {
                 <td className="border border-black/20 bg-gray-50 px-2 py-1.5 text-center text-xs text-gray-500"></td>
                 <td
                   colSpan={4}
-                  onClick={() => setShowAddPicker(prev => !prev)}
+                  onClick={() => setShowAddPicker(true)}
                   className="border border-black/20 px-2 py-1.5 text-sm text-gray-600 cursor-pointer hover:bg-green-50 transition-colors"
                 >
                   <span className="frvv-btn-add !px-3 !py-1 text-xs">
                     <span className="frvv-btn-add-icon">+</span>
-                    <span>{showAddPicker ? 'Închide lista arbitrilor' : 'Adaugă arbitru'}</span>
+                    <span>Adaugă arbitru</span>
                   </span>
                 </td>
                 <td className="border border-black/20 px-2 py-1.5 text-center"></td>
               </tr>
-              {showAddPicker && (
-                <tr>
-                  <td className="border border-black/20 bg-gray-50 px-2 py-1.5"></td>
-                  <td colSpan={5} className="border border-black/20 px-2 py-2 bg-blue-50/40">
-                    <div className="rounded-lg border border-blue-200 bg-white p-3 shadow-sm">
-                      <input
-                        type="text"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Caută arbitru..."
-                        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                      />
-
-                      <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white">
-                        {availableRefs.length === 0 ? (
-                          <div className="px-3 py-4 text-center text-sm text-gray-400">
-                            {search ? 'Niciun arbitru găsit.' : 'Toți arbitrii disponibili sunt deja adăugați.'}
-                          </div>
-                        ) : (
-                          availableRefs.map(ref => (
-                            <button
-                              key={ref.id}
-                              type="button"
-                              onClick={() => addToRoster(ref.id)}
-                              disabled={busy}
-                              className="flex w-full items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left transition hover:bg-blue-50 disabled:opacity-50 last:border-b-0"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-gray-900">
-                                  {`${ref.last_name || ''} ${ref.first_name || ''}`.trim() || ref.athlete_name || `Arbitru #${ref.id}`}
-                                </p>
-                                <p className="truncate text-[11px] text-gray-500">
-                                  {(ref.club_name || 'fără club')} · {formatGradeLabel(ref.current_grade || ref.grade)}
-                                </p>
-                              </div>
-                              <span className="shrink-0 text-xs font-semibold text-blue-600">Adaugă</span>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {showAddPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={closeAddPicker}>
+          <div className="w-full max-w-lg overflow-hidden border-2 border-black bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="relative border-b-2 border-black bg-yellow-300 px-5 py-4">
+              <div className="pr-10">
+                <h3 className="text-xl font-black text-gray-900">Adaugă arbitru</h3>
+                <p className="mt-1 text-sm text-gray-700">Selectează unul dintre arbitrii disponibili</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAddPicker}
+                className="absolute right-3 top-3 border border-black bg-white px-2 py-1 text-sm font-bold text-gray-800 hover:bg-yellow-100"
+                aria-label="Închide popup arbitri"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 bg-white p-5">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Caută arbitru..."
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+
+              <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                {availableRefs.length === 0 ? (
+                  <div className="px-3 py-5 text-center text-sm text-gray-400">
+                    {search ? 'Niciun arbitru găsit.' : 'Nu există arbitri disponibili.'}
+                  </div>
+                ) : (
+                  availableRefs.map(ref => {
+                    const isSelected = rosterAthleteIds.has(ref.id);
+                    return (
+                      <button
+                        key={ref.id}
+                        type="button"
+                        onClick={() => toggleRefPresence(ref.id)}
+                        disabled={busy}
+                        className={`flex w-full items-center justify-between gap-3 border-b border-gray-100 px-3 py-2.5 text-left transition disabled:opacity-50 last:border-b-0 ${
+                          isSelected ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-yellow-50'
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className={`inline-flex h-6 w-6 items-center justify-center border text-sm font-bold ${
+                            isSelected
+                              ? 'border-green-500 bg-green-500 text-white'
+                              : 'border-gray-300 bg-white text-transparent'
+                          }`}>
+                            ✓
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-gray-900">
+                              {`${ref.last_name || ''} ${ref.first_name || ''}`.trim() || ref.athlete_name || `Arbitru #${ref.id}`}
+                            </p>
+                            <p className="truncate text-[11px] text-gray-500">
+                              {(ref.club_name || 'fără club')} · {formatGradeLabel(ref.current_grade || ref.grade)}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
