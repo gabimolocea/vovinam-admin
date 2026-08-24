@@ -56,7 +56,7 @@ class NewsPostAdmin(admin.ModelAdmin):
         count = obj.gallery_images.count()
         if count > 0:
             return format_html('<span style="color: green;">{} imagini</span>', count)
-        return format_html('<span style="color: gray;">Fără imagini</span>')
+        return format_html('<span style="color: gray;">{}</span>', _('Fără imagini'))
     gallery_count.short_description = _('Galerie')
     
     def get_queryset(self, request):
@@ -104,12 +104,12 @@ class EventAdmin(admin.ModelAdmin):
     
     def event_status(self, obj):
         if obj.is_past:
-            return format_html('<span style="color: red;">Trecut</span>')
+            return format_html('<span style="color: red;">{}</span>', _('Trecut'))
         if obj.is_ongoing:
-            return format_html('<span style="color: #0d6efd;">În desfășurare</span>')
+            return format_html('<span style="color: #0d6efd;">{}</span>', _('În desfășurare'))
         if obj.is_upcoming:
-            return format_html('<span style="color: green;">Următor</span>')
-        return format_html('<span style="color: gray;">Necunoscut</span>')
+            return format_html('<span style="color: green;">{}</span>', _('Următor'))
+        return format_html('<span style="color: gray;">{}</span>', _('Necunoscut'))
     event_status.short_description = _('Status')
 
     def lock_for_local_event(self, request, queryset):

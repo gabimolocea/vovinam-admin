@@ -17,12 +17,81 @@
       #changelist table thead th:first-child {width: inherit}
     </style>
   {% endif %}
+  <style>
+    #changelist.admin-filters-collapsed .changelist-form-container:has(#changelist-filter) > div {
+      max-width: none;
+    }
+
+    #changelist.admin-filters-collapsed #changelist-filter {
+      display: none;
+    }
+
+    #changelist-filter-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      min-width: 34px;
+      height: 30px;
+      margin: 0 0 10px auto;
+      padding: 0;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #toolbar #changelist-search {
+      flex: 1 1 auto;
+    }
+
+    #toolbar #changelist-filter-toggle {
+      flex: 0 0 auto;
+      margin: 0 0 0 auto;
+    }
+
+    #changelist:not(.admin-filters-collapsed) #changelist-filter {
+      order: 2;
+    }
+  </style>
 {% endblock %}
 
 {% block extrahead %}
 {{ block.super }}
 {{ media.js }}
 <script src="{% static 'admin/js/filters.js' %}" defer></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const changelist = document.getElementById('changelist');
+    const filters = document.getElementById('changelist-filter');
+    const toggle = document.getElementById('changelist-filter-toggle');
+
+    if (!changelist || !filters || !toggle) {
+      return;
+    }
+
+    const toolbar = document.getElementById('toolbar');
+    if (toolbar) {
+      toolbar.appendChild(toggle);
+    }
+
+    const setExpanded = function (expanded) {
+      changelist.classList.toggle('admin-filters-collapsed', !expanded);
+      toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      toggle.setAttribute('aria-label', expanded ? '{% translate "Hide filters" %}' : '{% translate "Show filters" %}');
+      toggle.setAttribute('title', expanded ? '{% translate "Hide filters" %}' : '{% translate "Show filters" %}');
+    };
+
+    setExpanded(false);
+    toggle.addEventListener('click', function () {
+      setExpanded(toggle.getAttribute('aria-expanded') !== 'true');
+    });
+  });
+</script>
 {% endblock %}
 
 {% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list{% endblock %}
@@ -54,27 +123,11 @@
         </p>
         {{ cl.formset.non_form_errors }}
     {% endif %}
-    <div class="module{% if cl.has_filters %} filtered{% endif %}" id="changelist">
+    <div class="module{% if cl.has_filters %} filtered admin-filters-collapsed{% endif %}" id="changelist">
       <div class="changelist-form-container">
-        {% block search %}{% search_form cl %}{% endblock %}
-        {% block date_hierarchy %}{% if cl.date_hierarchy %}{% date_hierarchy cl %}{% endif %}{% endblock %}
-
-        <form id="changelist-form" method="post"{% if cl.formset and cl.formset.is_multipart %} enctype="multipart/form-data"{% endif %} novalidate>{% csrf_token %}
-        {% if cl.formset %}
-          <div>{{ cl.formset.management_form }}</div>
-        {% endif %}
-
-        {% block result_list %}
-          {% if action_form and actions_on_top and cl.show_admin_actions %}{% admin_actions %}{% endif %}
-          {% result_list cl %}
-          {% if action_form and actions_on_bottom and cl.show_admin_actions %}{% admin_actions %}{% endif %}
-        {% endblock %}
-        {% block pagination %}{% pagination cl %}{% endblock %}
-        </form>
-      </div>
-      {% block filters %}
-        {% if cl.has_filters %}
-          <nav id="changelist-filter" aria-labelledby="changelist-filter-header">
+        {% block filters %}
+          {% if cl.has_filters %}
+          <search id="changelist-filter" aria-labelledby="changelist-filter-header">
             <h2 id="changelist-filter-header">{% translate 'Filter' %}</h2>
             {% if cl.is_facets_optional or cl.has_active_filters %}<div id="changelist-filter-extra-actions">
               {% if cl.is_facets_optional %}<h3>
@@ -86,9 +139,35 @@
               </h3>{% endif %}
             </div>{% endif %}
             {% for spec in cl.filter_specs %}{% admin_list_filter cl spec %}{% endfor %}
-          </nav>
-        {% endif %}
-      {% endblock %}
+          </search>
+          {% endif %}
+        {% endblock %}
+        <div>
+          {% if cl.has_filters %}
+            <button type="button" id="changelist-filter-toggle" class="button" aria-expanded="false" aria-controls="changelist-filter" aria-label="{% translate 'Show filters' %}" title="{% translate 'Show filters' %}"><span aria-hidden="true">&#9881;</span></button>
+          {% endif %}
+          {% block search %}{% search_form cl %}{% endblock %}
+          {% block date_hierarchy %}{% if cl.date_hierarchy %}{% date_hierarchy cl %}{% endif %}{% endblock %}
+
+          <form id="changelist-form" method="post"{% if cl.formset and cl.formset.is_multipart %} enctype="multipart/form-data"{% endif %} novalidate>{% csrf_token %}
+          {% if cl.formset %}
+            <div>{{ cl.formset.management_form }}</div>
+          {% endif %}
+
+          {% block result_list %}
+            {% if action_form and actions_on_top and cl.show_admin_actions %}{% admin_actions %}{% endif %}
+            {% result_list cl %}
+            {% if action_form and actions_on_bottom and cl.show_admin_actions %}{% admin_actions %}{% endif %}
+          {% endblock %}
+          {% block pagination %}
+          <div class="changelist-footer">
+          {% pagination cl %}
+          {% if cl.formset and cl.result_count %}<input type="submit" name="_save" class="default" value="{% translate 'Save' %}">{% endif %}
+          {% endblock %}
+          </div>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 {% endblock %}

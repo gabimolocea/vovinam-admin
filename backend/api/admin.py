@@ -67,7 +67,7 @@ from .models import (
 )
 
 
-admin.site.enable_nav_sidebar = False
+admin.site.enable_nav_sidebar = True
 
 
 def _apply_admin_model_labels():
@@ -2116,7 +2116,7 @@ class AthleteTeamResultsInline(admin.TabularInline):
     model = CategoryAthleteScore
     extra = 0
     verbose_name = _('Rezultat echipă')
-    verbose_name_plural = _('Rezultate echipe')
+    verbose_name_plural = _('REZULTATE ECHIPE')
     can_add = False
     can_delete = False
     show_change_link = True
@@ -4550,16 +4550,15 @@ class AthleteAdmin(admin.ModelAdmin):
     list_filter = ['status', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
     search_fields = ['first_name', 'last_name', 'license_series', 'cnp', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
-    readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'team_results_summary']
+    readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link']
     ordering = ['-submitted_date']
     inlines = [
         GradeHistoryInline,
     VisaInline,
         AthleteTrainingSeminarParticipationInline,
         AthleteSoloResultsInline,
+        AthleteTeamResultsInline,
         AthleteFightResultsInline,
-        # Team results displayed via custom method in fieldsets instead of inline
-        # to avoid admin inline parent-instance validation issues for M2M team members.
     ]
     
     fieldsets = (
@@ -4572,10 +4571,6 @@ class AthleteAdmin(admin.ModelAdmin):
         ('Contact de urgență', {
             'fields': ('emergency_contact_name', 'emergency_contact_phone')
         }),
-        ('Rezultate echipe', {
-            'fields': ('team_results_summary',)
-        }),
-        # Team results are shown via the AthleteTeamResultsInline instead of a custom field
         ('Flux de aprobare', {
             'fields': ('status', 'submitted_date_display', 'reviewed_date_display', 'reviewed_by', 'add_enrolled_event_link', 'add_grade_history_link')
         }),

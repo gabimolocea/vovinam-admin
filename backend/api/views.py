@@ -683,7 +683,12 @@ class CompetitionViewSet(viewsets.ViewSet):
             if not city:
                 return Response({'city': ['Invalid city selected.']}, status=400)
         # Build a unique slug
-        base_slug = slugify(title) or 'competition'
+        event_type = d.get('event_type') or 'competition'
+        valid_event_types = {choice[0] for choice in Event.EVENT_TYPE_CHOICES}
+        if event_type not in valid_event_types:
+            return Response({'event_type': ['Invalid event type.']}, status=400)
+
+        base_slug = slugify(title) or event_type
         slug = base_slug
         counter = 1
         while Event.objects.filter(slug=slug).exists():
@@ -705,7 +710,7 @@ class CompetitionViewSet(viewsets.ViewSet):
             end_date=parsed_end_date,
             coach_registration_deadline=coach_deadline,
             description=d.get('description', ''),
-            event_type='competition',
+            event_type=event_type,
             status=d.get('status', 'upcoming'),
             sync_mode=d.get('sync_mode', 'cloud') or 'cloud',
             sync_locked=_coerce_bool(d.get('sync_locked'), default=False),
@@ -1121,9 +1126,11 @@ class AthleteViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self):
-        """Use minimal serializer for list, full for detail"""
+        """Use minimal serializer for list, full for detail, writable for mutations."""
         if self.action == 'retrieve':
             return AthleteDetailSerializer
+        if self.action in ['create', 'update', 'partial_update']:
+            return AthleteSerializer
         return AthleteMinimalSerializer
 
     def get_queryset(self):
@@ -1225,17 +1232,19 @@ class AthleteViewSet(viewsets.ModelViewSet):
             return Response(AthleteProfileSerializer(athlete).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def update(self, request, pk=None):
+    def update(self, request, pk=None, *args, **kwargs):
         # Allow partial updates via AthleteProfileSerializer when editing own profile
+        partial = kwargs.pop('partial', False)
         athlete = self.get_object()
         # Only allow owner or admin to update
         if athlete.user != request.user and not (request.user and request.user.is_admin):
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer = AthleteProfileSerializer(athlete, data=request.data, partial=True, context={'request': request})
+        serializer_class = AthleteSerializer if request.user and request.user.is_admin else AthleteProfileSerializer
+        serializer = serializer_class(athlete, data=request.data, partial=partial, context={'request': request})
         if serializer.is_valid():
             updated = serializer.save()
-            return Response(AthleteProfileSerializer(updated).data)
+            return Response(AthleteDetailSerializer(updated).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
@@ -2160,6 +2169,107 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
     def destroy(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
         locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
+        if locked:
+            return locked
+        instance.delete()
+        return Response(status=204)
+
+
+class FightGroupEnrollmentViewSet(viewsets.ViewSet):
+    """
+    Pre-registration pool for fight athletes per group.
+    Athletes are weighted first, then assigned to concrete fight categories.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = FightGroupEnrollmentSerializer
+
+    def get_queryset(self):
+        queryset = FightGroupEnrollment.objects.select_related('athlete', 'athlete__club', 'group', 'event').all()
+
+        event_id = self.request.query_params.get('event')
+        group_id = self.request.query_params.get('group')
+        athlete_id = self.request.query_params.get('athlete')
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
+        if group_id:
+            queryset = queryset.filter(group_id=group_id)
+        if athlete_id:
+            queryset = queryset.filter(athlete_id=athlete_id)
+
+        my_club = self.request.query_params.get('my_club', None)
+        if my_club and str(my_club).lower() in ('1', 'true', 'yes'):
+            user = self.request.user
+            if user and hasattr(user, 'athlete') and user.athlete and user.athlete.club_id:
+                queryset = queryset.filter(athlete__club_id=user.athlete.club_id)
+            else:
+                queryset = queryset.none()
+
+        return queryset
+
+    def list(self, request):
+        serializer = self.serializer_class(self.get_queryset(), many=True)
+        return Response(serializer.data)
+
+    def create(self, request):
+        user = request.user
+        group_id = request.data.get('group')
+        event_id = request.data.get('event')
+        athlete_id = request.data.get('athlete')
+
+        group = Group.objects.select_related('event').filter(pk=group_id).first() if group_id else None
+        if not group:
+            return Response({'error': 'Grupa nu a fost găsită.'}, status=404)
+
+        event = Competition.objects.filter(pk=event_id).first() if event_id else group.event
+        if not event:
+            return Response({'error': 'Evenimentul nu a fost găsit.'}, status=404)
+        if group.event_id != event.id:
+            return Response({'error': 'Grupa selectată nu aparține evenimentului.'}, status=400)
+
+        locked = _event_operational_guard_response(user, event)
+        if locked:
+            return locked
+
+        if not user.is_admin:
+            if athlete_id:
+                target_athlete = Athlete.objects.filter(pk=athlete_id).first()
+                if not target_athlete:
+                    return Response({'error': 'Sportivul nu a fost găsit.'}, status=404)
+                user_club = getattr(getattr(user, 'athlete', None), 'club_id', None)
+                if not user_club or target_athlete.club_id != user_club:
+                    return Response({'error': 'Poți înscrie doar sportivi din clubul tău.'}, status=403)
+
+        payload = request.data.copy()
+        payload['event'] = event.id
+
+        serializer = self.serializer_class(data=payload)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+    def retrieve(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        return Response(self.serializer_class(instance).data)
+
+    def partial_update(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        locked = _event_operational_guard_response(request.user, instance.event)
+        if locked:
+            return locked
+
+        serializer = self.serializer_class(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+    def update(self, request, pk=None):
+        return self.partial_update(request, pk)
+
+    def destroy(self, request, pk=None):
+        instance = self.get_queryset().get(pk=pk)
+        locked = _event_operational_guard_response(request.user, instance.event)
         if locked:
             return locked
         instance.delete()
@@ -3354,6 +3464,10 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Ensure only athletes can create scores for themselves"""
+        if self.request.user and getattr(self.request.user, 'is_admin', False):
+            serializer.save(submitted_by_athlete=False, status=self.request.data.get('status') or 'approved')
+            return
+
         if not hasattr(self.request.user, 'athlete'):
             raise ValidationError("Only athletes can submit competition results")
         
@@ -3363,6 +3477,9 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         """Allow athletes to update their own scores, and coaches to update their club athletes' scores"""
         instance = self.get_object()
+
+        if request.user and getattr(request.user, 'is_admin', False):
+            return super().update(request, *args, **kwargs)
         
         # Check if user has permission
         if not hasattr(request.user, 'athlete'):
@@ -3485,7 +3602,7 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         scores = CategoryAthleteScore.objects.filter(
             models.Q(athlete=request.user.athlete, submitted_by_athlete=True) |  # Individual results they submitted
             models.Q(team_members=request.user.athlete, type='teams')     # Team results they're part of
-        ).select_related('category__competition', 'reviewed_by', 'athlete').prefetch_related('team_members').distinct()
+        ).select_related('category__event', 'reviewed_by', 'athlete').prefetch_related('team_members').distinct()
         
         serializer = self.get_serializer(scores, many=True)
         return Response(serializer.data)
@@ -3520,7 +3637,7 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         base_query = CategoryAthleteScore.objects.filter(
             models.Q(athlete=target_athlete) |                              # All individual results (official + submitted)
             models.Q(team_members=target_athlete, type='teams')      # All team results they're part of
-        ).select_related('category__competition', 'reviewed_by', 'athlete').prefetch_related('team_members').distinct()
+        ).select_related('category__event', 'reviewed_by', 'athlete').prefetch_related('team_members').distinct()
         
         # Apply visibility rules based on authentication and status
         if athlete_id:

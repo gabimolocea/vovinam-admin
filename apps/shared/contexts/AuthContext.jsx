@@ -61,7 +61,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     refetchUser: fetchUser,
-    isAdmin: user?.role === 'admin',
+    isAdmin: user?.role === 'admin' || user?.is_admin === true || user?.is_staff === true || user?.is_superuser === true,
     isCoach: user?.is_coach ?? false,
     isAthlete: user?.role === 'athlete',
     isReferee: user?.is_referee ?? false,

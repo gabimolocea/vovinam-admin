@@ -121,6 +121,14 @@ export const gradeAPI = {
   list: () => api.get('/grades/'),
 };
 
+export const titleAPI = {
+  list: () => api.get('/titles/'),
+};
+
+export const federationRoleAPI = {
+  list: () => api.get('/federation-roles/'),
+};
+
 // ── Coaches ───────────────────────────────────────────
 export const coachAPI = {
   list: (params) => api.get('/coaches/', { params }),
@@ -134,6 +142,12 @@ export const enrollmentAPI = {
     update: (id, data) => api.patch(`/category-athletes/${id}/`, data),
     delete: (id) => api.delete(`/category-athletes/${id}/`),
   },
+  fightGroupEnrollments: {
+    list: (params) => api.get('/fight-group-enrollments/', { params }),
+    create: (data) => api.post('/fight-group-enrollments/', data),
+    update: (id, data) => api.patch(`/fight-group-enrollments/${id}/`, data),
+    delete: (id) => api.delete(`/fight-group-enrollments/${id}/`),
+  },
   categoryTeams: {
     list: (params) => api.get('/category-teams/', { params }),
     create: (data) => api.post('/category-teams/', data),
@@ -141,6 +155,7 @@ export const enrollmentAPI = {
     delete: (id) => api.delete(`/category-teams/${id}/`),
   },
   eventEnrollments: {
+    list: (params) => api.get('/event-enrollments/', { params }),
     create: (data) => api.post('/event-enrollments/', data),
     delete: (id) => api.delete(`/event-enrollments/${id}/`),
   },
@@ -231,10 +246,12 @@ export const scoreAPI = {
   list: (params) => api.get('/category-athlete-score/', { params }),
   get: (id) => api.get(`/category-athlete-score/${id}/`),
   create: (data) => api.post('/category-athlete-score/', data),
+  update: (id, data) => api.patch(`/category-athlete-score/${id}/`, data),
   approve: (id, data) => api.post(`/category-athlete-score/${id}/approve/`, data),
   reject: (id, data) => api.post(`/category-athlete-score/${id}/reject/`, data),
   pendingReview: () => api.get('/category-athlete-score/pending_review/'),
   myResults: () => api.get('/category-athlete-score/my_results/'),
+  allResults: (params) => api.get('/category-athlete-score/all_results/', { params }),
 };
 
 // ── Monitor / Display ─────────────────────────────────

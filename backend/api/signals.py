@@ -1,4 +1,5 @@
 from django.apps import apps as django_apps
+from django.db.models import Q
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save, post_delete, post_migrate
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
@@ -322,6 +323,80 @@ def update_team_name_on_member_add(sender, instance, created, **kwargs):
     No database write is needed when members change.
     """
     return
+
+
+def _ensure_event_participation_for_category(athlete, category):
+    event = getattr(category, 'event', None)
+    if not athlete or not event:
+        return
+
+    participation = (
+        TrainingSeminarParticipation.objects
+        .filter(athlete=athlete)
+        .filter(Q(event=event) | Q(seminar=event))
+        .order_by('-event_id', 'id')
+        .first()
+    )
+
+    if participation is None:
+        TrainingSeminarParticipation.objects.create(
+            athlete=athlete,
+            event=event,
+            seminar=event,
+            submitted_by_athlete=False,
+            status='approved',
+        )
+        return
+
+    update_fields = []
+    if participation.event_id is None:
+        participation.event = event
+        update_fields.append('event')
+    if participation.seminar_id is None:
+        participation.seminar = event
+        update_fields.append('seminar')
+    if update_fields:
+        participation.save(update_fields=update_fields)
+
+
+def _ensure_event_participations_for_team(category, team):
+    if not category or not team:
+        return
+    for member in team.members.select_related('athlete'):
+        if member.athlete_id:
+            _ensure_event_participation_for_category(member.athlete, category)
+
+
+@receiver(post_save, sender=CategoryAthlete)
+def sync_category_athlete_to_event_participation(sender, instance, **kwargs):
+    _ensure_event_participation_for_category(instance.athlete, instance.category)
+
+
+@receiver(post_save, sender=CategoryTeam)
+def sync_category_team_to_event_participations(sender, instance, **kwargs):
+    _ensure_event_participations_for_team(instance.category, instance.team)
+
+
+@receiver(post_save, sender=TeamMember)
+def sync_team_member_to_event_participations(sender, instance, **kwargs):
+    for category_team in instance.team.enrolled_categories.select_related('category'):
+        _ensure_event_participation_for_category(instance.athlete, category_team.category)
+
+
+@receiver(post_save, sender=CategoryAthleteScore)
+def sync_category_score_to_event_participation(sender, instance, **kwargs):
+    if instance.athlete_id:
+        _ensure_event_participation_for_category(instance.athlete, instance.category)
+
+
+@receiver(m2m_changed, sender=CategoryAthleteScore.team_members.through)
+def sync_category_score_team_members_to_event_participations(sender, instance, action, pk_set, **kwargs):
+    if action not in {'post_add', 'post_set'} or not pk_set:
+        return
+    if instance.type != 'teams':
+        return
+    for athlete in Athlete.objects.filter(pk__in=pk_set):
+        _ensure_event_participation_for_category(athlete, instance.category)
 
 
 # ═══════════════════════════════════════════════════════════════════

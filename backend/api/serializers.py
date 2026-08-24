@@ -196,24 +196,118 @@ class AthleteDetailSerializer(serializers.ModelSerializer):
     city = CityMinimalSerializer(read_only=True)
     current_grade = GradeMinimalSerializer(read_only=True)
     full_name = serializers.SerializerMethodField()
+    federation_role_name = serializers.SerializerMethodField()
+    title_name = serializers.SerializerMethodField()
+    gender_display = serializers.SerializerMethodField()
+    status_display = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
+    grade_history = serializers.SerializerMethodField()
+    visas = serializers.SerializerMethodField()
+    event_participations = serializers.SerializerMethodField()
     
     class Meta:
         model = Athlete
         fields = [
             'id', 'user', 'first_name', 'last_name', 'full_name',
-            'license_series', 'cnp', 'date_of_birth', 'address', 'mobile_number',
+            'gender', 'gender_display', 'license_series', 'cnp', 'date_of_birth', 'address', 'mobile_number',
             'emergency_contact_name', 'emergency_contact_phone',
             'previous_experience',
             'club', 'city', 'current_grade',
-            'federation_role', 'title', 'is_coach', 'is_referee',
+            'federation_role', 'federation_role_name', 'title', 'title_name', 'is_coach', 'is_referee',
             'status', 'registered_date', 'expiration_date',
-            'approved_date', 'profile_image', 'medical_certificate',
+            'status_display', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name',
+            'admin_notes', 'approved_date', 'approved_by', 'profile_image', 'medical_certificate',
+            'grade_history', 'visas', 'event_participations',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
+
+    def get_federation_role_name(self, obj):
+        return obj.federation_role.name if obj.federation_role else None
+
+    def get_title_name(self, obj):
+        return obj.title.name if obj.title else None
+
+    def get_gender_display(self, obj):
+        return obj.get_gender_display() if obj.gender else None
+
+    def get_status_display(self, obj):
+        return obj.get_status_display() if obj.status else None
+
+    def get_reviewed_by_name(self, obj):
+        return str(obj.reviewed_by) if obj.reviewed_by else None
+
+    def get_grade_history(self, obj):
+        rows = obj.grade_history.select_related('grade', 'event', 'examiner_1', 'examiner_2', 'reviewed_by').order_by('-obtained_date', '-id')
+        return [
+            {
+                'id': row.id,
+                'grade_name': row.grade.name if row.grade else None,
+                'obtained_date': row.obtained_date,
+                'level': row.get_level_display() if row.level else None,
+                'event_name': str(row.event) if row.event else None,
+                'examiner_1_name': str(row.examiner_1) if row.examiner_1 else None,
+                'examiner_2_name': str(row.examiner_2) if row.examiner_2 else None,
+                'submitted_by_athlete': row.submitted_by_athlete,
+                'status': row.status,
+                'status_display': row.get_status_display() if row.status else None,
+                'submitted_date': row.submitted_date,
+                'reviewed_date': row.reviewed_date,
+                'reviewed_by_name': str(row.reviewed_by) if row.reviewed_by else None,
+                'notes': row.notes,
+                'admin_notes': row.admin_notes,
+                'certificate_image': _safe_file_url(row.certificate_image),
+                'result_document': _safe_file_url(row.result_document),
+            }
+            for row in rows
+        ]
+
+    def get_visas(self, obj):
+        rows = obj.visas.order_by('-issued_date', '-id')
+        return [
+            {
+                'id': row.id,
+                'visa_type': row.visa_type,
+                'visa_type_display': row.get_visa_type_display() if row.visa_type else None,
+                'issued_date': row.issued_date,
+                'visa_status': row.visa_status,
+                'health_status': row.health_status,
+                'status': row.status,
+                'status_display': row.get_status_display() if row.status else None,
+                'submitted_date': row.submitted_date,
+                'is_valid': row.is_valid() if hasattr(row, 'is_valid') else False,
+                'document': _safe_file_url(row.document),
+                'image': _safe_file_url(row.image),
+                'notes': row.notes,
+            }
+            for row in rows
+        ]
+
+    def get_event_participations(self, obj):
+        rows = obj.seminar_participations.select_related('event', 'seminar', 'reviewed_by').order_by('-submitted_date', '-id')
+        return [
+            {
+                'id': row.id,
+                'event_name': row.event.title if row.event else (row.seminar.title if row.seminar else None),
+                'event_type': row.event.event_type if row.event else (row.seminar.event_type if row.seminar else None),
+                'start_date': row.event.start_date if row.event else (row.seminar.start_date if row.seminar else None),
+                'end_date': row.event.end_date if row.event else (row.seminar.end_date if row.seminar else None),
+                'submitted_by_athlete': row.submitted_by_athlete,
+                'status': row.status,
+                'status_display': row.get_status_display() if row.status else None,
+                'submitted_date': row.submitted_date,
+                'reviewed_date': row.reviewed_date,
+                'reviewed_by_name': str(row.reviewed_by) if row.reviewed_by else None,
+                'notes': row.notes,
+                'admin_notes': row.admin_notes,
+                'participation_certificate': _safe_file_url(row.participation_certificate),
+                'participation_document': _safe_file_url(row.participation_document),
+            }
+            for row in rows
+        ]
 
 
 class CitySerializer(serializers.ModelSerializer):
@@ -816,6 +910,23 @@ class CategoryAthleteSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'athlete_details')
 
 
+class FightGroupEnrollmentSerializer(serializers.ModelSerializer):
+    athlete = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all())
+    group = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all())
+    event = serializers.PrimaryKeyRelatedField(queryset=Competition.objects.all())
+    athlete_details = AthleteSerializer(source='athlete', read_only=True)
+
+    class Meta:
+        model = FightGroupEnrollment
+        fields = (
+            'id', 'event', 'group', 'athlete',
+            'registered_weight_kg', 'notes',
+            'created_at', 'updated_at',
+            'athlete_details',
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at', 'athlete_details')
+
+
 class FightAthleteWeightSerializer(serializers.ModelSerializer):
     athlete_details = AthleteSerializer(source='athlete', read_only=True)
     weight_loss_display = serializers.SerializerMethodField()
@@ -1073,6 +1184,11 @@ class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
         if not request:
             raise serializers.ValidationError('Cerere invalidă.')
 
+        if request.user and getattr(request.user, 'is_admin', False):
+            validated_data.setdefault('status', 'approved')
+            validated_data.setdefault('submitted_by_athlete', False)
+            return super().create(validated_data)
+
         actor_athlete = getattr(request.user, 'athlete', None)
         if actor_athlete and not getattr(request.user, 'is_admin', False):
             validated_data['status'] = 'pending'
@@ -1206,6 +1322,13 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Auto-assign current user's athlete profile and set submission flag"""
         request = self.context.get('request')
+        if request and request.user and getattr(request.user, 'is_admin', False):
+            team_members = validated_data.pop('team_members', [])
+            result = super().create(validated_data)
+            if team_members:
+                result.team_members.set(team_members)
+            return result
+
         if request and hasattr(request.user, 'athlete'):
             validated_data['athlete'] = request.user.athlete
             validated_data['submitted_by_athlete'] = True
@@ -1596,7 +1719,7 @@ class MatchRefereeScoreSerializer(serializers.ModelSerializer):
 
 class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
     """Serializer for athlete category scores with approval workflow (supports both individual and team results)"""
-    athlete = serializers.PrimaryKeyRelatedField(read_only=True)
+    athlete = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all(), required=False, allow_null=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     group_name = serializers.CharField(source='category.group.name', read_only=True, allow_null=True)
     # Prefer event information when available; fall back to legacy Competition fields

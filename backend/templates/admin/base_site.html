@@ -2,15 +2,116 @@
 
 {% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_("Administrare site Django") }}{% endblock %}
 
-{% load static %}
+{% load static i18n %}
 
 {% block extrahead %}
 {{ block.super }}
 <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+<style>
+	:root {
+		--admin-left-edge: 16px;
+	}
+
+	#header {
+		padding-left: var(--admin-left-edge);
+	}
+
+	div.breadcrumbs {
+		padding-left: var(--admin-left-edge);
+	}
+
+	.admin-sidebar-panel {
+		z-index: 15;
+		flex: 0 0 0;
+		width: 0;
+		border-right: 0;
+		background: var(--body-bg);
+		max-height: 100vh;
+		overflow: hidden;
+	}
+
+	.main.shifted > .admin-sidebar-panel {
+		flex-basis: 276px;
+		width: 276px;
+		border-right: 1px solid var(--hairline-color);
+		overflow: auto;
+	}
+
+	#header .admin-sidebar-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 32px;
+		margin-right: 10px;
+		border: 1px solid rgba(255, 255, 255, 0.45);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--header-link-color);
+		cursor: pointer;
+		font-size: 1.25rem;
+		line-height: 1;
+	}
+
+	#header .admin-sidebar-toggle:hover,
+	#header .admin-sidebar-toggle:focus {
+		background: rgba(255, 255, 255, 0.12);
+	}
+
+	#header .admin-sidebar-toggle-icon {
+		display: block;
+		margin-top: -1px;
+	}
+
+	#site-name {
+		display: flex;
+		align-items: center;
+	}
+
+	.admin-sidebar-panel .toggle-nav-sidebar.admin-sidebar-toggle {
+		display: none;
+	}
+
+	.admin-sidebar-panel #nav-sidebar {
+		position: static;
+		width: auto;
+		margin: 0;
+		border: 0;
+		visibility: hidden;
+	}
+
+	.main.shifted > .admin-sidebar-panel #nav-sidebar {
+		visibility: visible;
+	}
+
+	.main > .admin-sidebar-panel + .content {
+		max-width: 100%;
+	}
+
+	.main.shifted > .admin-sidebar-panel + .content {
+		max-width: calc(100% - 276px);
+	}
+
+	@media (max-width: 767px) {
+		.admin-sidebar-panel {
+			display: none;
+		}
+
+		.main > .admin-sidebar-panel + .content,
+		.main.shifted > .admin-sidebar-panel + .content {
+			max-width: 100%;
+		}
+	}
+</style>
 {% endblock %}
 
 {% block branding %}
-<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_("Administrare Django") }}</a></div>
+<div id="site-name">
+	{% if not is_popup and is_nav_sidebar_enabled %}
+		<button type="button" class="admin-sidebar-toggle" id="toggle-nav-sidebar" aria-label="{% translate 'Toggle navigation' %}" title="{% translate 'Toggle navigation' %}"><span class="admin-sidebar-toggle-icon" aria-hidden="true">&#9776;</span></button>
+	{% endif %}
+	<a href="{% url 'admin:index' %}">{{ site_header|default:_("Administrare Django") }}</a>
+</div>
 {% if user.is_anonymous %}
 	{% include "admin/color_theme_toggle.html" %}
 {% endif %}
