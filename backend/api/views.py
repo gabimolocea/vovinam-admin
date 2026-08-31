@@ -3897,9 +3897,13 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
                 submitted_by_athlete=True
             )
         except IntegrityError:
-            # In case of a race or missed validation, return a friendly 400
-            # Use 'event' key as the canonical target now that we prefer events.
-            raise ValidationError({'event': 'You have already submitted participation for this event.'})
+            # `ValidationError` in this module resolves to django.core.exceptions.ValidationError
+            # (the `from .models import *` below the rest_framework import shadows it), which
+            # DRF's exception handler doesn't render as JSON and surfaces as an opaque 500
+            # instead of a 400. Import DRF's explicitly here so the friendly message actually
+            # reaches the client.
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            raise DRFValidationError({'event': 'You have already submitted participation for this event.'})
     
     def get_queryset(self):
         """Return seminar participations for the current user if athlete, all if admin"""

@@ -1250,7 +1250,7 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
     athlete = serializers.PrimaryKeyRelatedField(read_only=True)
     athlete_name = serializers.CharField(source='athlete.__str__', read_only=True)
     seminar_name = serializers.SerializerMethodField(read_only=True)
-    event = serializers.PrimaryKeyRelatedField(read_only=True)
+    event = serializers.PrimaryKeyRelatedField(queryset=Event.objects.all(), required=False, allow_null=True)
     event_name = serializers.SerializerMethodField(read_only=True)
     seminar_details = serializers.SerializerMethodField()
     reviewed_by_name = serializers.CharField(source='reviewed_by.__str__', read_only=True)
