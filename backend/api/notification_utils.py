@@ -131,23 +131,29 @@ def create_result_submitted_notification(result):
 def create_result_status_notification(result, new_status, admin_user, admin_notes=''):
     """Create notification when result status changes (approved/rejected/revision_required)"""
     athlete = result.athlete
-    
+
+    # Prefer event when available for richer payloads; competitions may only
+    # expose `title` (landing.Event) rather than `name`.
+    entity = getattr(result.category, 'event_or_competition', None) or result.category.competition
+    entity_name = getattr(entity, 'name', None) or getattr(entity, 'title', None) or 'N/A'
+    entity_date = getattr(entity, 'date', None) or getattr(entity, 'start_date', None) or None
+
     # Map status to notification type and messages
     status_mapping = {
         'approved': {
             'type': 'result_approved',
             'title': '🎉 Result Approved!',
-            'message': f'Congratulations! Your result for {result.category.name} in {result.category.competition.name} has been approved.',
+            'message': f'Congratulations! Your result for {result.category.name} in {entity_name} has been approved.',
         },
         'rejected': {
             'type': 'result_rejected',
             'title': 'Result Rejected',
-            'message': f'Your result for {result.category.name} in {result.category.competition.name} has been rejected.',
+            'message': f'Your result for {result.category.name} in {entity_name} has been rejected.',
         },
         'revision_required': {
             'type': 'result_revision_required',
             'title': 'Result Revision Required',
-            'message': f'Your result for {result.category.name} in {result.category.competition.name} requires revision.',
+            'message': f'Your result for {result.category.name} in {entity_name} requires revision.',
         }
     }
     
@@ -159,32 +165,34 @@ def create_result_status_notification(result, new_status, admin_user, admin_note
     message = status_info['message']
     if admin_notes:
         message += f'\n\nAdmin notes: {admin_notes}'
-    
-    # Prefer event when available for richer payloads
-    entity = getattr(result.category, 'event_or_competition', None) or result.category.competition
-    entity_name = getattr(entity, 'name', None) or getattr(entity, 'title', None) or 'N/A'
-    entity_date = getattr(entity, 'date', None) or getattr(entity, 'start_date', None) or None
 
-    # Create notification for the athlete
-    create_notification(
-        recipient=athlete.user,
-        notification_type=status_info['type'],
-        title=status_info['title'],
-        message=message,
-        related_result=result,
-        action_data={
-            'category_name': result.category.name,
-            'competition_name': getattr(result.category.competition, 'name', None) if getattr(result.category, 'competition', None) else None,
-            'event_id': getattr(result.category.event, 'id', None) if getattr(result.category, 'event', None) else None,
-            'event_name': getattr(result.category.event, 'title', None) or getattr(result.category.event, 'name', None) if getattr(result.category, 'event', None) else None,
-            'event_start': entity_date.isoformat() if entity_date else None,
-            'placement_claimed': result.placement_claimed,
-            'result_type': result.type,
-            'reviewed_by': str(admin_user) if admin_user else 'Admin',
-            'admin_notes': admin_notes,
-            'new_status': new_status
-        }
-    )
+    action_data = {
+        'category_name': result.category.name,
+        'competition_name': entity_name,
+        'event_id': getattr(result.category.event, 'id', None) if getattr(result.category, 'event', None) else None,
+        'event_name': entity_name,
+        'event_start': entity_date.isoformat() if entity_date else None,
+        'placement_claimed': result.placement_claimed,
+        'result_type': result.type,
+        'reviewed_by': str(admin_user) if admin_user else 'Admin',
+        'admin_notes': admin_notes,
+        'new_status': new_status
+    }
+
+    # Team results may have no individual submitter (athlete=None); notify
+    # every team member instead of a single recipient in that case.
+    recipients = [athlete] if athlete else list(result.team_members.all())
+    for recipient_athlete in recipients:
+        if not getattr(recipient_athlete, 'user_id', None):
+            continue
+        create_notification(
+            recipient=recipient_athlete.user,
+            notification_type=status_info['type'],
+            title=status_info['title'],
+            message=message,
+            related_result=result,
+            action_data=action_data,
+        )
 
 
 def create_competition_notification(competition, notification_type='competition_created'):

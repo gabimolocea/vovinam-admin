@@ -128,22 +128,6 @@ def auto_generate_team_name(sender, instance, action, **kwargs):
                 instance.team_name = auto_generated_name
                 instance.save(update_fields=['team_name'])
 
-@receiver(post_save, sender=Team)
-def validate_and_assign_places(sender, instance, **kwargs):
-    """
-    Validate team members and assign places after the team is saved.
-    """
-    # Validate that no team with the same set of athletes already exists
-    team_members = instance.members.all()
-    # Allow multiple teams with the same members - teams can compete in different categories/competitions
-    # existing_teams = Team.objects.exclude(pk=instance.pk)
-    # for team in existing_teams:
-    #     if set(team.members.values_list('athlete', flat=True)) == set(team_members.values_list('athlete', flat=True)):
-    #         raise ValueError("A team with the same members already exists.")
-
-    # Team placement is now handled through the CategoryAthleteScore system
-    # with team_members relationships, so no additional processing needed here
-
 
 @receiver(post_save, sender=LandingEvent)
 @receiver(post_save, sender=Event)

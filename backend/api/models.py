@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F
 from django.core.exceptions import ValidationError
 from django.contrib import admin
@@ -1060,9 +1060,14 @@ def get_team_members_with_related(team):
 class Team(models.Model):
     """
     Represents a team of athletes.
-    Team name is stored in database but auto-generated from members for consistency.
+
+    A team's identity is defined by its exact set of members (at least
+    MIN_MEMBERS athletes), not by a name. There is no persisted ``name``
+    field: ``name`` below is a read-only, auto-generated display value
+    derived from the current members, kept only for convenience/rendering.
     """
-    name = models.CharField(max_length=255, default='Team')  # Will be overridden by property
+    MIN_MEMBERS = 2
+
     categories = models.ManyToManyField(
         'Category',
         through='CategoryTeam',  # Use the existing through model
@@ -1073,7 +1078,7 @@ class Team(models.Model):
 
     @property
     def name(self):
-        """Auto-generate team display name from members."""
+        """Auto-generate team display name from members (display only, not identity)."""
         members = get_team_members_with_related(self)
         if not members:
             return f"Team #{self.pk}"
@@ -1083,6 +1088,57 @@ class Team(models.Model):
     def __str__(self):
         """Display team with member names for clarity"""
         return self.name
+
+    @classmethod
+    def find_by_members(cls, athletes):
+        """
+        Find an existing team whose member set exactly matches ``athletes``.
+        A team is a standalone entity that can enroll in multiple
+        categories, so the search is not scoped to any single category.
+        Returns ``None`` if no exact match is found.
+        """
+        athlete_ids = {athlete.pk for athlete in athletes if athlete is not None}
+        if len(athlete_ids) < cls.MIN_MEMBERS:
+            return None
+
+        candidates = cls.objects.prefetch_related('members').distinct()
+
+        for team in candidates:
+            existing_ids = {member.athlete_id for member in team.members.all()}
+            if existing_ids == athlete_ids:
+                return team
+        return None
+
+    @classmethod
+    def get_or_create_by_members(cls, athletes, *, category=None):
+        """
+        Get the existing team with this exact member set, or create a new
+        one with these members. Raises ``ValidationError`` if fewer than
+        ``MIN_MEMBERS`` distinct athletes are provided.
+
+        If ``category`` is given, the (found or created) team is enrolled
+        in it. Returns a ``(team, created)`` tuple, mirroring ``get_or_create``.
+        """
+        athletes = [athlete for athlete in athletes if athlete is not None]
+        unique_athletes = {athlete.pk: athlete for athlete in athletes}
+        if len(unique_athletes) < cls.MIN_MEMBERS:
+            raise ValidationError(
+                f"A team requires at least {cls.MIN_MEMBERS} distinct athletes."
+            )
+
+        existing = cls.find_by_members(athletes)
+        if existing is not None:
+            if category is not None:
+                existing.categories.add(category)
+            return existing, False
+
+        team = cls.objects.create()
+        TeamMember.objects.bulk_create(
+            [TeamMember(team=team, athlete=athlete) for athlete in unique_athletes.values()]
+        )
+        if category is not None:
+            team.categories.add(category)
+        return team, True
 
 
 class TeamMember(models.Model):
@@ -2271,12 +2327,34 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
             self._update_category_awards_text_only()
     
     def approve(self, admin_user, notes=''):
-        """Approve the athlete-submitted result and auto-populate Category awards"""
-        self._transition_status('approved', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_result_status(status, actor, message))
+        """
+        Approve the athlete-submitted result and auto-populate Category
+        awards. For team results, validates the minimum team size and
+        performs the status transition, award update, and team
+        creation/enrollment atomically so a failure never leaves the
+        result approved without its corresponding team.
+        """
+        if (
+            self.type == 'teams'
+            and self.placement_claimed
+            and self.team_members.count() < Team.MIN_MEMBERS
+        ):
+            raise ValidationError(
+                f"A team result requires at least {Team.MIN_MEMBERS} team members before it can be approved."
+            )
 
-        # Auto-populate Category awards if placement is claimed
-        if self.submitted_by_athlete and self.placement_claimed:
-            self._update_category_awards()
+        with transaction.atomic():
+            # Perform the transition without notifying yet; award/team
+            # creation must succeed first so we never notify about a
+            # change that gets rolled back.
+            self._transition_status('approved', admin_user, notes)
+
+            # Auto-populate Category awards if placement is claimed
+            if self.submitted_by_athlete and self.placement_claimed:
+                self._update_category_awards()
+
+        # Notify only after the transaction has committed successfully.
+        self._notify_result_status('approved', admin_user, notes)
 
     def reject(self, admin_user, notes=''):
         """Reject the athlete-submitted result"""
@@ -2290,32 +2368,19 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
         from .notification_utils import create_result_status_notification
         create_result_status_notification(self, status, admin_user, notes)
     
-    def _create_or_get_team_for_award(self):
+    def _get_or_create_team(self):
         """
-        Create or get Team object for award purposes.
+        Get (or create) the Team matching this result's exact set of team
+        members, identified by membership rather than name. Raises
+        ``ValidationError`` if fewer than ``Team.MIN_MEMBERS`` athletes are
+        recorded. Cached per-instance since it's used by both the award
+        text-field update and the auto-enrollment step.
         """
         if not hasattr(self, '_award_team'):
-            # Try to find existing team with same members for this category
-            team_members = list(self.team_members.all())
-            existing_teams = Team.objects.filter(categories=self.category)
-            
-            for team in existing_teams:
-                team_member_athletes = [tm.athlete for tm in team.members.all()]
-                if set(team_member_athletes) == set(team_members):
-                    self._award_team = team
-                    break
-            else:
-                # Create new team for this award
-                self._award_team = Team.objects.create(
-                    name=f"Team {', '.join([f'{m.first_name} {m.last_name}' for m in team_members])}"
-                )
-                # Add the team to the category through the many-to-many
-                self._award_team.categories.add(self.category)
-                
-                # Add team members through TeamMember model
-                for athlete in team_members:
-                    TeamMember.objects.create(team=self._award_team, athlete=athlete)
-        
+            team, _created = Team.get_or_create_by_members(
+                self.team_members.all(), category=self.category
+            )
+            self._award_team = team
         return self._award_team
     
     def _update_category_awards_text_only(self):
@@ -2328,7 +2393,7 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
         
         if self.type == 'teams' and self.team_members.exists():
             # Team result - create/get team and update ForeignKey fields
-            team = self._create_or_get_team_for_award()
+            team = self._get_or_create_team()
             
             if placement == '1st':
                 category.first_place_team = team
@@ -2361,54 +2426,20 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
         if self.type == 'teams' and self.team_members.exists():
             self._create_or_update_team()
     
-    def auto_generate_team_name(self):
-        """Auto-generate team name from team member names"""
-        if self.type == 'teams' and self.team_members.exists():
-            auto_generated_name = build_team_display_name(
-                self.team_members.select_related('club').all()
-            )
-
-            # Update the team name and save
-            self.team_name = auto_generated_name
-            self.save(update_fields=['team_name'])
-            return auto_generated_name
-        return None
-
     def _create_or_update_team(self):
-        """Create or update Team object when team result is approved"""
+        """
+        Get/create the Team for this result's members and ensure it is
+        enrolled in the category. Team identity and name synchronization
+        are handled by ``_get_or_create_team()`` and the
+        ``auto_generate_team_name`` m2m signal respectively.
+        """
         if not self.team_members.exists():
-            return
+            return None
 
-        auto_generated_name = build_team_display_name(
-            self.team_members.select_related('club').all()
-        )
+        team = self._get_or_create_team()
 
-        # Use auto-generated name (always override any manual name for consistency)
-        team_name = auto_generated_name
-        
-        # Update the CategoryAthleteScore with the auto-generated team name
-        if self.team_name != team_name:
-            self.team_name = team_name
-            self.save(update_fields=['team_name'])
-        
-        # Get or create the team
-        team, created = Team.objects.get_or_create(name=team_name)
-        
-        # Add all team members to the team using the TeamMember through model
-        for member in self.team_members.all():
-            from .models import TeamMember
-            TeamMember.objects.get_or_create(team=team, athlete=member)
-            
-        # AUTO-ENROLL the team in the category (this was missing!)
-        from .models import CategoryTeam
-        try:
-            CategoryTeam.objects.get(category=self.category, team=team)
-            print(f"Team {team.name} already enrolled in category {self.category.name}")
-        except CategoryTeam.DoesNotExist:
-            CategoryTeam.objects.create(category=self.category, team=team)
-            print(f"Auto-enrolled team {team.name} in category {self.category.name}")
-            
-        team.save()
+        CategoryTeam.objects.get_or_create(category=self.category, team=team)
+
         return team
     
     def _ensure_athlete_enrolled(self):
