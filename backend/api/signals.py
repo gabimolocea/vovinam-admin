@@ -57,11 +57,26 @@ def update_club_coaches(sender, instance, **kwargs):
 @receiver(post_save, sender=GradeHistory)
 def update_current_grade(sender, instance, **kwargs):
     """
-    Signal to update the current_grade field in Athlete when a new GradeHistory is created.
+    Signal to keep Athlete.current_grade in sync whenever a GradeHistory row
+    is saved (created, edited, or transitioned via approve/reject/
+    request_revision). Delegates to Athlete.update_current_grade(), the single
+    canonical rule: current_grade is always the highest-ranked *approved*
+    GradeHistory entry, so pending/rejected entries never overwrite it.
     """
-    athlete = instance.athlete
-    athlete.current_grade = instance.grade
-    athlete.save()
+    instance.athlete.update_current_grade()
+
+@receiver(post_delete, sender=GradeHistory)
+def update_current_grade_on_delete(sender, instance, **kwargs):
+    """
+    Keep Athlete.current_grade in sync when a GradeHistory row is deleted
+    (e.g. an admin removes a wrongly-approved entry). Without this, deleting
+    the highest-ranked approved GradeHistory would leave a stale
+    current_grade pointing at a record that no longer exists.
+    """
+    try:
+        instance.athlete.update_current_grade()
+    except Athlete.DoesNotExist:
+        pass
 
 @receiver(post_save, sender=Athlete)
 def sync_athlete_name_to_user(sender, instance, **kwargs):
@@ -127,22 +142,6 @@ def auto_generate_team_name(sender, instance, action, **kwargs):
             if instance.team_name != auto_generated_name:
                 instance.team_name = auto_generated_name
                 instance.save(update_fields=['team_name'])
-
-@receiver(post_save, sender=Team)
-def validate_and_assign_places(sender, instance, **kwargs):
-    """
-    Validate team members and assign places after the team is saved.
-    """
-    # Validate that no team with the same set of athletes already exists
-    team_members = instance.members.all()
-    # Allow multiple teams with the same members - teams can compete in different categories/competitions
-    # existing_teams = Team.objects.exclude(pk=instance.pk)
-    # for team in existing_teams:
-    #     if set(team.members.values_list('athlete', flat=True)) == set(team_members.values_list('athlete', flat=True)):
-    #         raise ValueError("A team with the same members already exists.")
-
-    # Team placement is now handled through the CategoryAthleteScore system
-    # with team_members relationships, so no additional processing needed here
 
 
 @receiver(post_save, sender=LandingEvent)

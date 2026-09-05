@@ -1,0 +1,53 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Administrare site Django') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:api_athlete_changelist' %}">Sportivi</a>
+&rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="module aligned">
+    <h2>Informații profil</h2>
+    <div class="form-row">
+        <div><strong>Nume:</strong> {{ profile.first_name }} {{ profile.last_name }}</div>
+        <div><strong>Email:</strong> {{ profile.user.email }}</div>
+        <div><strong>Data nașterii:</strong> {{ profile.date_of_birth }}</div>
+        <div><strong>Telefon:</strong> {{ profile.mobile_number }}</div>
+        <div><strong>Adresă:</strong> {{ profile.address }}</div>
+        <div><strong>Club:</strong> {{ profile.club|default:"Nespecificat" }}</div>
+        <div><strong>Data trimiterii:</strong> {{ profile.submitted_date }}</div>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <p>Confirmi aprobarea profilului sportivului <strong>{{ profile.first_name }} {{ profile.last_name }}</strong>?</p>
+    <div class="submit-row">
+        <input type="submit" value="Aprobă profilul" class="default">
+        <a href="{% url 'admin:api_athlete_changelist' %}" class="button cancel-link">Anulează</a>
+    </div>
+</form>
+
+<style>
+.cancel-link {
+    background: #f8f8f8;
+    border: 1px solid #ccc;
+    color: #333;
+    padding: 10px 15px;
+    text-decoration: none;
+    margin-left: 10px;
+    border-radius: 4px;
+}
+.cancel-link:hover {
+    background: #e8e8e8;
+}
+</style>
+{% endblock %}

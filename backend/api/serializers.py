@@ -34,6 +34,23 @@ def _safe_scalar(value):
             return None
 
 
+def _person_name(person, *, last_first=False, default=None):
+    if person is None:
+        return default
+
+    if hasattr(person, 'first_name') or hasattr(person, 'last_name'):
+        first_name = str(getattr(person, 'first_name', '') or '').strip()
+        last_name = str(getattr(person, 'last_name', '') or '').strip()
+        if last_first:
+            parts = [last_name, first_name]
+        else:
+            parts = [first_name, last_name]
+        return ' '.join(part for part in parts if part) or default
+
+    name = str(person).strip()
+    return name or default
+
+
 def _get_team_members(team):
     prefetched_members = _get_prefetched_relation(team, 'members')
     if prefetched_members is not None:
@@ -63,7 +80,7 @@ class UserMinimalSerializer(serializers.ModelSerializer):
         fields = ['id', 'email', 'username', 'full_name']
     
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}"
+        return _person_name(obj)
 
 
 class CityMinimalSerializer(serializers.ModelSerializer):
@@ -111,7 +128,7 @@ class AthleteMinimalSerializer(serializers.ModelSerializer):
         ]
     
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}"
+        return _person_name(obj)
 
     def get_club(self, obj):
         try:
@@ -161,7 +178,7 @@ class PublicAthleteSerializer(serializers.ModelSerializer):
         ]
 
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}".strip()
+        return _person_name(obj)
 
 
 class TeamMinimalSerializer(serializers.ModelSerializer):
@@ -537,7 +554,7 @@ class CoachSimpleSerializer(serializers.ModelSerializer):
         fields = ['id', 'first_name', 'last_name', 'full_name']
 
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}"
+        return _person_name(obj)
 
 
 class TeamSerializer(serializers.ModelSerializer):
@@ -674,9 +691,7 @@ class MatchSerializer(serializers.ModelSerializer):
 
     def get_red_corner_full_name(self, obj):
         """Get the full name of the red corner athlete."""
-        if obj.red_corner:
-            return f"{obj.red_corner.first_name} {obj.red_corner.last_name}"
-        return None
+        return _person_name(obj.red_corner)
 
     def get_field_id(self, obj):
         assignment = getattr(obj, 'field_assignment', None)
@@ -698,9 +713,7 @@ class MatchSerializer(serializers.ModelSerializer):
 
     def get_blue_corner_full_name(self, obj):
         """Get the full name of the blue corner athlete."""
-        if obj.blue_corner:
-            return f"{obj.blue_corner.first_name} {obj.blue_corner.last_name}"
-        return None
+        return _person_name(obj.blue_corner)
 
     def get_winner(self, obj):
         """Get winner ID from scoring system property"""
@@ -727,10 +740,7 @@ class MatchSerializer(serializers.ModelSerializer):
 
     def get_central_referee_name(self, obj):
         """Return the central referee full name if present."""
-        if getattr(obj, 'central_referee', None):
-            cr = obj.central_referee
-            return f"{cr.first_name} {cr.last_name}"
-        return None
+        return _person_name(getattr(obj, 'central_referee', None))
 
     def get_referee_scores(self, obj):
         """Return detailed scores from each referee for both corners, broken down by round, with central penalties subtracted."""
@@ -780,7 +790,7 @@ class MatchSerializer(serializers.ModelSerializer):
                 continue
 
             referee_id = event.referee.id
-            referee_name = f"{event.referee.first_name} {event.referee.last_name}"
+            referee_name = _person_name(event.referee)
             referee_data[referee_id]['referee_name'] = referee_name
             
             # Get round from metadata, default to 1
@@ -889,9 +899,7 @@ class RefereePointEventSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
 
     def get_referee_name(self, obj):
-        if obj.referee:
-            return f"{obj.referee.first_name} {obj.referee.last_name}".strip()
-        return None
+        return _person_name(obj.referee)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -1635,9 +1643,7 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
     
     def get_referee_name(self, obj):
         """Return referee's full name"""
-        if obj.referee:
-            return f"{obj.referee.first_name} {obj.referee.last_name}"
-        return None
+        return _person_name(obj.referee)
     
     def get_athlete(self, obj):
         """Return athlete ID from the linked CategoryAthleteScore"""
@@ -1656,8 +1662,7 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
         if obj.athlete_score and obj.athlete_score.type == 'teams' and obj.athlete_score.team_name:
             return obj.athlete_score.team_name
         if obj.athlete_score and obj.athlete_score.athlete:
-            athlete = obj.athlete_score.athlete
-            return f"{athlete.first_name} {athlete.last_name}"
+            return _person_name(obj.athlete_score.athlete)
         return None
     
     def validate(self, data):
@@ -1686,9 +1691,7 @@ class CategoryRefereeScoreEventSerializer(serializers.ModelSerializer):
         read_only_fields = ['timestamp', 'created_by', 'video_offset_ms']
 
     def get_referee_name(self, obj):
-        if obj.referee:
-            return f"{obj.referee.first_name} {obj.referee.last_name}".strip()
-        return None
+        return _person_name(obj.referee)
 
     def get_athlete_name(self, obj):
         athlete_score = obj.athlete_score
@@ -1696,7 +1699,7 @@ class CategoryRefereeScoreEventSerializer(serializers.ModelSerializer):
             return athlete_score.team_name
         athlete = athlete_score.athlete
         if athlete:
-            return f"{athlete.first_name} {athlete.last_name}".strip()
+            return _person_name(athlete)
         return None
 
 
@@ -1737,9 +1740,7 @@ class MatchRefereeScoreSerializer(serializers.ModelSerializer):
         read_only_fields = ['submitted_date']
     
     def get_referee_name(self, obj):
-        if obj.referee:
-            return f"{obj.referee.first_name} {obj.referee.last_name}"
-        return None
+        return _person_name(obj.referee)
 
 
 class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
@@ -2289,7 +2290,7 @@ class QRCodeAssignmentSerializer(serializers.ModelSerializer):
     
     def get_referee_name(self, obj):
         """Get full name of referee"""
-        return f"{obj.referee.first_name} {obj.referee.last_name}"
+        return _person_name(obj.referee)
 
 
 class CategoryRefereeScorerWithDeductionsSerializer(serializers.ModelSerializer):
@@ -2309,13 +2310,12 @@ class CategoryRefereeScorerWithDeductionsSerializer(serializers.ModelSerializer)
     
     def get_referee_name(self, obj):
         """Get full name of referee"""
-        return f"{obj.referee.first_name} {obj.referee.last_name}"
+        return _person_name(obj.referee)
     
     def get_athlete_name(self, obj):
         """Get athlete name or team name"""
         if obj.athlete_score.athlete:
-            athlete = obj.athlete_score.athlete
-            return f"{athlete.first_name} {athlete.last_name}"
+            return _person_name(obj.athlete_score.athlete)
         return obj.athlete_score.team_name or "Unknown"
     
     def create(self, validated_data):
@@ -2361,12 +2361,10 @@ class MatchFieldAssignmentSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
     def get_red_corner_name(self, obj):
-        rc = obj.match.red_corner
-        return f"{rc.last_name} {rc.first_name}" if rc else None
+        return _person_name(obj.match.red_corner, last_first=True)
 
     def get_blue_corner_name(self, obj):
-        bc = obj.match.blue_corner
-        return f"{bc.last_name} {bc.first_name}" if bc else None
+        return _person_name(obj.match.blue_corner, last_first=True)
 
 
 # ── Category Referee Assignment ────────────────────────
@@ -2393,7 +2391,7 @@ class CategoryRefereeAssignmentSerializer(serializers.ModelSerializer):
         ]
 
     def _referee_name(self, ref):
-        return f"{ref.last_name} {ref.first_name}" if ref else None
+        return _person_name(ref, last_first=True)
 
     def get_referee_1_name(self, obj): return self._referee_name(obj.referee_1)
     def get_referee_2_name(self, obj): return self._referee_name(obj.referee_2)
@@ -2426,7 +2424,7 @@ class MatchRefereeAssignmentSerializer(serializers.ModelSerializer):
         ]
 
     def _referee_name(self, ref):
-        return f"{ref.last_name} {ref.first_name}" if ref else None
+        return _person_name(ref, last_first=True)
 
     def get_referee_1_name(self, obj): return self._referee_name(obj.referee_1)
     def get_referee_2_name(self, obj): return self._referee_name(obj.referee_2)

@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.postgres',  # unaccent/trigram lookups used by CityAdmin search (no-op on non-Postgres backends)
     'corsheaders',
     'django_ckeditor_5',  # WYSIWYG editor
     'storages',  # For S3-compatible storage (DigitalOcean Spaces)

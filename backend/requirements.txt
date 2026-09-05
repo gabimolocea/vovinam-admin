@@ -1,7 +1,6 @@
 Django==6.1.0
-# Django 6.1 requires a DRF release that no longer imports the removed django.utils.cache API
-# used by older DRF versions.
-djangorestframework==3.16.0
+# Django 6.1 removed django.utils.cache.cc_delim_re; DRF 3.18 supports the new cache API.
+djangorestframework==3.18.0
 djangorestframework-simplejwt==5.5.1
 django-filter==24.3
 django-ckeditor-5==0.1.1
