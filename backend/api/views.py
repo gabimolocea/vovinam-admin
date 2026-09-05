@@ -70,6 +70,42 @@ def _event_operational_guard_response(user, event):
     return _coach_deadline_locked_response(user, event)
 
 
+def _referee_schedule_conflict_warnings(category, referee_ids):
+    """Non-blocking check: warns if any of ``referee_ids`` are already
+    assigned to another category whose scheduled field time-window
+    overlaps this category's. Only compares categories that have a
+    concrete ``scheduled_start_time`` on their CategoryFieldAssignment —
+    categories without a schedule yet are skipped (nothing to compare)."""
+    referee_ids = [rid for rid in referee_ids if rid]
+    if not referee_ids:
+        return []
+
+    assignment = getattr(category, 'field_assignment', None)
+    start = getattr(assignment, 'scheduled_start_time', None)
+    if not assignment or not start:
+        return []
+    end = start + timedelta(minutes=assignment.estimated_duration or 15)
+
+    warnings = []
+    others = CategoryRefereeAssignment.objects.filter(
+        category__field_assignment__scheduled_start_time__isnull=False
+    ).exclude(category_id=category.id).select_related(
+        'category__field_assignment', 'referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5'
+    )
+    for other in others:
+        other_assignment = other.category.field_assignment
+        other_start = other_assignment.scheduled_start_time
+        other_end = other_start + timedelta(minutes=other_assignment.estimated_duration or 15)
+        if start < other_end and other_start < end:
+            for ref in [other.referee_1, other.referee_2, other.referee_3, other.referee_4, other.referee_5]:
+                if ref and ref.id in referee_ids:
+                    warnings.append(
+                        f'{ref.first_name} {ref.last_name} este deja alocat la categoria '
+                        f'"{other.category.name}" într-un interval orar suprapus.'
+                    )
+    return warnings
+
+
 def _is_match_assigned_referee(match, athlete):
     if not match or not athlete:
         return False
@@ -990,8 +1026,12 @@ class ClubViewSet(viewsets.ViewSet):
         return Response({'status': 'ok'})
 
 class OfflineSyncViewSet(viewsets.ViewSet):
-    """Offline snapshot and results upload endpoints for competition manager."""
-    permission_classes = [permissions.IsAuthenticated]
+    """Offline snapshot and results upload endpoints for competition manager.
+
+    Restricted to admins: these endpoints can inject/overwrite competition data
+    for ANY event, so plain authentication is not sufficient authorization.
+    """
+    permission_classes = [IsAdmin]
 
     @action(detail=False, methods=['get'], url_path='event-pack')
     def event_pack(self, request):
@@ -1309,8 +1349,19 @@ class AthleteViewSet(viewsets.ModelViewSet):
         # Allow partial updates via AthleteProfileSerializer when editing own profile
         partial = kwargs.pop('partial', False)
         athlete = self.get_object()
-        # Only allow owner or admin to update
-        if athlete.user != request.user and not (request.user and request.user.is_admin):
+        # Allow: the athlete's own account, an admin, or a supporter explicitly
+        # granted can_edit=True on their SupporterAthleteRelation. Previously
+        # `can_edit` was stored but never checked anywhere, so it had no effect.
+        is_owner_or_admin = athlete.user == request.user or (request.user and request.user.is_admin)
+        is_authorized_supporter = (
+            not is_owner_or_admin
+            and request.user
+            and request.user.is_authenticated
+            and SupporterAthleteRelation.objects.filter(
+                supporter=request.user, athlete=athlete, can_edit=True, status='approved'
+            ).exists()
+        )
+        if not is_owner_or_admin and not is_authorized_supporter:
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer_class = AthleteSerializer if request.user and request.user.is_admin else AthleteProfileSerializer
@@ -1322,35 +1373,38 @@ class AthleteViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
-        athlete = self.get_object()
-        if athlete.status != 'pending':
-            return Response({'error': 'Athlete profile is not pending approval'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            athlete.approve(request.user)
+            with transaction.atomic():
+                athlete = Athlete.objects.select_for_update().get(pk=self.get_object().pk)
+                if athlete.status != 'pending':
+                    return Response({'error': 'Athlete profile is not pending approval'}, status=status.HTTP_400_BAD_REQUEST)
+                athlete.approve(request.user)
             return Response({'message': 'Athlete profile approved successfully', 'athlete_id': athlete.id})
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def process_application(self, request, pk=None):
-        athlete = self.get_object()
+        athlete_pk = self.get_object().pk
         serializer = AthleteProfileApprovalSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         action = serializer.validated_data['action']
         notes = serializer.validated_data.get('notes', '')
-        if athlete.status != 'pending':
-            return Response({'error': 'Athlete profile is not pending approval'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            if action == 'approve':
-                athlete.approve(request.user)
-                result_message = 'Athlete profile approved successfully'
-            elif action == 'reject':
-                athlete.reject(request.user, notes)
-                result_message = 'Athlete profile rejected'
-            elif action == 'request_revision':
-                athlete.request_revision(request.user, notes)
-                result_message = 'Revision requested'
+            with transaction.atomic():
+                athlete = Athlete.objects.select_for_update().get(pk=athlete_pk)
+                if athlete.status != 'pending':
+                    return Response({'error': 'Athlete profile is not pending approval'}, status=status.HTTP_400_BAD_REQUEST)
+                if action == 'approve':
+                    athlete.approve(request.user)
+                    result_message = 'Athlete profile approved successfully'
+                elif action == 'reject':
+                    athlete.reject(request.user, notes)
+                    result_message = 'Athlete profile rejected'
+                elif action == 'request_revision':
+                    athlete.request_revision(request.user, notes)
+                    result_message = 'Revision requested'
             return Response({'message': result_message})
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1580,6 +1634,11 @@ class TeamMemberViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(_event_for_team(team))
         if locked is not None:
             return locked
+        if team and team.has_approved_result:
+            return Response(
+                {'detail': 'Componența echipei nu poate fi modificată: echipa are deja un rezultat aprobat.'},
+                status=409,
+            )
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -1600,6 +1659,11 @@ class TeamMemberViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(_event_for_team(instance.team))
             if locked is not None:
                 return locked
+            if instance.team.has_approved_result:
+                return Response(
+                    {'detail': 'Componența echipei nu poate fi modificată: echipa are deja un rezultat aprobat.'},
+                    status=409,
+                )
             instance.delete()
             return Response(status=204)
         except TeamMember.DoesNotExist:
@@ -2366,8 +2430,15 @@ class FightGroupEnrollmentViewSet(viewsets.ViewSet):
 
         serializer = self.serializer_class(data=payload)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
+            instance = serializer.save()
+            data = serializer.data
+            athlete = getattr(instance, 'athlete', None)
+            if athlete:
+                warnings = group.eligibility_warnings(athlete) + athlete.visa_warnings()
+                if warnings:
+                    data = dict(data)
+                    data['warnings'] = warnings
+            return Response(data, status=201)
         return Response(serializer.errors, status=400)
 
     def retrieve(self, request, pk=None):
@@ -2870,6 +2941,14 @@ class SessionLogoutView(APIView):
     
     def post(self, request):
         from django.contrib.auth import logout
+        # Also revoke any JWT refresh token the client held from a prior
+        # session-login bridge, so it stops working after this logout.
+        refresh_token = request.data.get("refresh")
+        if refresh_token:
+            try:
+                RefreshToken(refresh_token).blacklist()
+            except Exception:
+                pass
         logout(request)
         return Response({'message': 'Session logged out successfully'})
 
@@ -2880,7 +2959,12 @@ class SessionLogoutView(APIView):
 
 
 class SupporterAthleteRelationViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing supporter-athlete relationships"""
+    """ViewSet for managing supporter-athlete relationships.
+
+    A relation is created with status='pending' and grants no permission
+    (can_edit/can_register_competitions are inert) until the athlete (or an
+    admin) approves it via the `approve`/`reject` actions.
+    """
     serializer_class = SupporterAthleteRelationSerializer
     permission_classes = [permissions.IsAuthenticated]
     
@@ -2891,14 +2975,66 @@ class SupporterAthleteRelationViewSet(viewsets.ModelViewSet):
         elif user.is_admin:
             return SupporterAthleteRelation.objects.all()
         else:
+            # An athlete needs to see (and act on) pending requests concerning them.
+            athlete = getattr(user, 'athlete', None)
+            if athlete:
+                return SupporterAthleteRelation.objects.filter(athlete=athlete)
             return SupporterAthleteRelation.objects.none()
     
     def perform_create(self, serializer):
-        """Create relationship for current supporter"""
+        """Create relationship for current supporter, pending athlete/admin approval."""
         if not self.request.user.is_supporter:
             raise ValidationError("Only supporters can create athlete relationships.")
-        
-        serializer.save(supporter=self.request.user)
+
+        relation = serializer.save(supporter=self.request.user, status='pending')
+        athlete_user = getattr(relation.athlete, 'user', None)
+        if athlete_user:
+            from .notification_utils import create_notification
+            create_notification(
+                recipient=athlete_user,
+                notification_type='supporter_request',
+                title='Cerere susținător nouă',
+                message=(
+                    f'{self.request.user.get_full_name() or self.request.user.username} '
+                    f'dorește să devină susținător pentru profilul tău. Aprobă sau respinge cererea.'
+                ),
+            )
+
+    def _can_review(self, user, relation):
+        if getattr(user, 'is_admin', False):
+            return True
+        athlete_user = getattr(relation.athlete, 'user', None)
+        return athlete_user is not None and athlete_user == user
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        relation = self.get_object()
+        if not self._can_review(request.user, relation):
+            return Response({'error': 'Doar sportivul sau un admin poate aproba această cerere.'}, status=403)
+        relation.approve(request.user)
+        from .notification_utils import create_notification
+        create_notification(
+            recipient=relation.supporter,
+            notification_type='supporter_approved',
+            title='Cerere de susținător aprobată',
+            message=f'Cererea ta de a susține profilul lui {relation.athlete} a fost aprobată.',
+        )
+        return Response(SupporterAthleteRelationSerializer(relation).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        relation = self.get_object()
+        if not self._can_review(request.user, relation):
+            return Response({'error': 'Doar sportivul sau un admin poate respinge această cerere.'}, status=403)
+        relation.reject(request.user)
+        from .notification_utils import create_notification
+        create_notification(
+            recipient=relation.supporter,
+            notification_type='supporter_rejected',
+            title='Cerere de susținător respinsă',
+            message=f'Cererea ta de a susține profilul lui {relation.athlete} a fost respinsă.',
+        )
+        return Response(SupporterAthleteRelationSerializer(relation).data)
 
 
 class UserRegistrationView(APIView):
@@ -2975,21 +3111,22 @@ class PendingApprovalsView(APIView):
             )
         
         try:
-            athlete = Athlete.objects.get(id=profile_id)
-            
-            if athlete.status != 'pending':
-                return Response(
-                    {'error': 'Athlete profile is not in pending status'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Use the athlete workflow methods
-            if action == 'approve':
-                athlete.approve(request.user)
-            elif action == 'reject':
-                athlete.reject(request.user, admin_notes)
-            elif action == 'request_revision':
-                athlete.request_revision(request.user, admin_notes)
+            with transaction.atomic():
+                athlete = Athlete.objects.select_for_update().get(id=profile_id)
+
+                if athlete.status != 'pending':
+                    return Response(
+                        {'error': 'Athlete profile is not in pending status'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Use the athlete workflow methods
+                if action == 'approve':
+                    athlete.approve(request.user)
+                elif action == 'reject':
+                    athlete.reject(request.user, admin_notes)
+                elif action == 'request_revision':
+                    athlete.request_revision(request.user, admin_notes)
             
             serializer = AthleteProfileSerializer(athlete)
             return Response({
@@ -4168,6 +4305,7 @@ class EventEnrollmentViewSet(viewsets.ViewSet):
             supporter=user,
             athlete=athlete,
             can_register_competitions=True,
+            status='approved',
         ).exists()
     
     def create(self, request):
@@ -4317,6 +4455,16 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
         elif count < current_count:
             # Remove from the end (highest field_number first)
             to_delete = existing[count:]
+            blocking = (
+                CategoryFieldAssignment.objects.filter(field_id__in=[f.id for f in to_delete])
+                .select_related('field', 'category')
+            )
+            if blocking.exists():
+                names = ', '.join(sorted({assignment.field.name for assignment in blocking}))
+                return Response(
+                    {'detail': f'Nu se poate reduce numărul de terenuri: {names} au categorii alocate. Elimină mai întâi alocările.'},
+                    status=409,
+                )
             CompetitionField.objects.filter(id__in=[f.id for f in to_delete]).delete()
 
         fields = CompetitionField.objects.filter(event_id=event_id).order_by('field_number')
@@ -5354,8 +5502,14 @@ class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
             return locked
         serializer = CategoryRefereeAssignmentSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            instance = serializer.save()
+            data = dict(serializer.data)
+            referee_ids = [instance.referee_1_id, instance.referee_2_id, instance.referee_3_id,
+                           instance.referee_4_id, instance.referee_5_id]
+            warnings = _referee_schedule_conflict_warnings(instance.category, referee_ids)
+            if warnings:
+                data['warnings'] = warnings
+            return Response(data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def retrieve(self, request, pk=None):
@@ -5375,8 +5529,14 @@ class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
                 return locked
             serializer = CategoryRefereeAssignmentSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
+                instance = serializer.save()
+                data = dict(serializer.data)
+                referee_ids = [instance.referee_1_id, instance.referee_2_id, instance.referee_3_id,
+                               instance.referee_4_id, instance.referee_5_id]
+                warnings = _referee_schedule_conflict_warnings(instance.category, referee_ids)
+                if warnings:
+                    data['warnings'] = warnings
+                return Response(data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except CategoryRefereeAssignment.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -5577,7 +5737,7 @@ from rest_framework.decorators import api_view, permission_classes as perm_dec
 
 
 @api_view(['POST'])
-@perm_dec([permissions.AllowAny])
+@perm_dec([permissions.IsAuthenticated])
 def generate_brackets(request, category_id):
     """
     Auto-generate bracket matches for a fight category.
@@ -5725,37 +5885,52 @@ def _advance_to_next(next_match, from_match, athlete):
 
 
 @api_view(['POST'])
-@perm_dec([permissions.AllowAny])
+@perm_dec([permissions.IsAuthenticated])
 def advance_match_winner(request, match_id):
     """
     After scoring is complete, advance the winner to the next match in the bracket.
     Also advances the loser to the consolation/bronze match if applicable.
+
+    Wrapped in a locking transaction so concurrent/duplicate calls (double-click,
+    retried requests) cannot place the winner/loser twice or race each other.
     """
-    try:
-        match = Match.objects.select_related('red_corner', 'blue_corner', 'next_match', 'loser_next_match').get(pk=match_id)
-    except Match.DoesNotExist:
-        return Response({'error': 'Meciul nu a fost gasit.'}, status=404)
+    with transaction.atomic():
+        try:
+            match = Match.objects.select_for_update().select_related(
+                'red_corner', 'blue_corner', 'next_match', 'loser_next_match'
+            ).get(pk=match_id)
+        except Match.DoesNotExist:
+            return Response({'error': 'Meciul nu a fost gasit.'}, status=404)
 
-    winner = match.winner
-    if not winner:
-        return Response({'error': 'Nu exista un castigator pentru acest meci.'}, status=400)
+        if match.status == 'cancelled':
+            return Response({'error': 'Meciul a fost anulat si nu poate fi avansat.'}, status=400)
 
-    result = {}
+        winner = match.winner
+        if not winner:
+            return Response({'error': 'Nu exista un castigator pentru acest meci.'}, status=400)
 
-    # Advance winner to next match
-    if match.next_match:
-        _advance_to_next(match.next_match, match, winner)
-        result['status'] = 'advanced'
-        result['next_match_id'] = match.next_match.id
-    else:
-        result['status'] = 'final'
-        result['winner'] = f"{winner.first_name} {winner.last_name}"
+        result = {}
 
-    # Advance loser to consolation/bronze match
-    if match.loser_next_match:
-        loser = match.blue_corner if winner == match.red_corner else match.red_corner
-        if loser:
-            _advance_to_next(match.loser_next_match, match, loser)
-            result['loser_advanced_to'] = match.loser_next_match.id
+        # Advance winner to next match
+        if match.next_match:
+            next_match = Match.objects.select_for_update().get(pk=match.next_match_id)
+            already_placed = next_match.red_corner_id == winner.id or next_match.blue_corner_id == winner.id
+            if not already_placed:
+                _advance_to_next(next_match, match, winner)
+            result['status'] = 'advanced'
+            result['next_match_id'] = next_match.id
+        else:
+            result['status'] = 'final'
+            result['winner'] = f"{winner.first_name} {winner.last_name}"
 
-    return Response(result)
+        # Advance loser to consolation/bronze match
+        if match.loser_next_match:
+            loser = match.blue_corner if winner == match.red_corner else match.red_corner
+            if loser:
+                loser_next_match = Match.objects.select_for_update().get(pk=match.loser_next_match_id)
+                already_placed = loser_next_match.red_corner_id == loser.id or loser_next_match.blue_corner_id == loser.id
+                if not already_placed:
+                    _advance_to_next(loser_next_match, match, loser)
+                result['loser_advanced_to'] = loser_next_match.id
+
+        return Response(result)

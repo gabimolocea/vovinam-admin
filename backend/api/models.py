@@ -525,10 +525,16 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     
     def reject(self, admin_user, reason=None):
         """Reject the athlete profile"""
+        # Clear legacy approval metadata so `can_add_results`/downstream checks
+        # don't keep treating a previously-approved-then-rejected athlete as approved.
+        self.approved_date = None
+        self.approved_by = None
         self._transition_status('rejected', admin_user, reason, set_notes=bool(reason))
     
     def request_revision(self, admin_user, reason=None):
         """Request revision of the athlete profile"""
+        self.approved_date = None
+        self.approved_by = None
         self._transition_status('revision_required', admin_user, reason, set_notes=bool(reason))
     
     def resubmit(self):
@@ -568,7 +574,20 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     def can_add_results(self):
         """Check if athlete can add competition results"""
         return self.user is not None and self.approved_date is not None
-    
+
+    def visa_warnings(self):
+        """Non-blocking check: returns Romanian warning strings for any
+        expired/missing visa (medical or annual). Enrollment is not blocked
+        on this — it's surfaced to the enrolling user/admin as a warning."""
+        warnings = []
+        visas = {v.visa_type: v for v in self.visas.all()}
+        for visa_type, label in Visa.VISA_TYPE_CHOICES:
+            visa = visas.get(visa_type)
+            if not visa or visa.visa_status != 'Valid':
+                status_label = visa.visa_status if visa else 'Lipsă'
+                warnings.append(f'Viza {label.lower()} este {status_label.lower()}.')
+        return warnings
+
     def __str__(self):
         club_name = f", {self.club.name}" if self.club else ""
         return f"{self.first_name} {self.last_name}{club_name}"
@@ -723,8 +742,6 @@ class Visa(models.Model):
 
     # Medical-specific status (optional)
     health_status = models.CharField(max_length=10, choices=[('approved','Approved'),('denied','Denied')], null=True, blank=True)
-    # Annual-specific cached status
-    visa_status = models.CharField(max_length=15, blank=True, null=True)
 
     # Approval workflow
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved')
@@ -750,7 +767,23 @@ class Visa(models.Model):
             expiration = self.issued_date + timedelta(days=180)
         else:
             expiration = self.issued_date + timedelta(days=365)
-        return date.today() <= expiration
+        # Use the federation's local date (not naive date.today()) so validity
+        # doesn't flip early/late around midnight due to server timezone.
+        return timezone.localdate() <= expiration
+
+    @property
+    def visa_status(self):
+        """Computed fresh on every access (never stored/stale).
+
+        Previously this was a plain CharField set once in save(), so a visa
+        issued today could still display "Valid" in the admin/API months
+        after it had actually expired, because nothing ever re-saved the row.
+        """
+        if self.visa_type == 'medical' and self.health_status == 'approved':
+            return 'Valid'
+        if not self.issued_date:
+            return 'Not available'
+        return 'Valid' if self.is_valid() else 'Expired'
 
     def save(self, *args, **kwargs):
         # Set default status based on submission origin
@@ -758,21 +791,6 @@ class Visa(models.Model):
             self.status = 'pending'
         elif not getattr(self, 'submitted_by_athlete', False):
             self.status = 'approved'
-
-        # Update visa_status depending on visa type
-        if self.visa_type == 'annual':
-            if self.issued_date:
-                self.visa_status = 'Valid' if self.is_valid() else 'Expired'
-            else:
-                self.visa_status = 'Not available'
-        elif self.visa_type == 'medical':
-            # If health_status explicitly approved, mark as Valid regardless
-            if self.health_status == 'approved':
-                self.visa_status = 'Valid'
-            elif self.issued_date:
-                self.visa_status = 'Valid' if self.is_valid() else 'Expired'
-            else:
-                self.visa_status = 'Not available'
 
         super().save(*args, **kwargs)
 
@@ -1088,6 +1106,17 @@ class Team(models.Model):
         athlete_members = [member.athlete for member in members if member.athlete_id]
         return build_team_display_name(athlete_members) or f"Team #{self.pk}"
 
+    @property
+    def has_approved_result(self):
+        """True if this team has been awarded a placement in any category
+        (i.e. it was used in an approved result), meaning its membership
+        must be frozen to keep results history consistent."""
+        return (
+            self.first_place_team_categories.exists()
+            or self.second_place_team_categories.exists()
+            or self.third_place_team_categories.exists()
+        )
+
     def __str__(self):
         """Display team with member names for clarity"""
         return self.name
@@ -1121,6 +1150,14 @@ class Team(models.Model):
 
         If ``category`` is given, the (found or created) team is enrolled
         in it. Returns a ``(team, created)`` tuple, mirroring ``get_or_create``.
+
+        Wrapped in a locking transaction: without it, two concurrent calls
+        for the same member set (e.g. two referees submitting a team result
+        at the same time) could both miss the "existing team" lookup and
+        each create their own duplicate ``Team`` row. Locking all existing
+        ``Team`` rows for the duration of the lookup+create serializes
+        concurrent calls so the second one always sees the first one's
+        newly-created team instead of racing it.
         """
         athletes = [athlete for athlete in athletes if athlete is not None]
         unique_athletes = {athlete.pk: athlete for athlete in athletes}
@@ -1129,19 +1166,24 @@ class Team(models.Model):
                 f"A team requires at least {cls.MIN_MEMBERS} distinct athletes."
             )
 
-        existing = cls.find_by_members(athletes)
-        if existing is not None:
-            if category is not None:
-                existing.categories.add(category)
-            return existing, False
+        with transaction.atomic():
+            # Lock existing teams so a concurrent caller can't create a
+            # duplicate for the same member set while we're checking/creating.
+            list(cls.objects.select_for_update().values_list('pk', flat=True))
 
-        team = cls.objects.create()
-        TeamMember.objects.bulk_create(
-            [TeamMember(team=team, athlete=athlete) for athlete in unique_athletes.values()]
-        )
-        if category is not None:
-            team.categories.add(category)
-        return team, True
+            existing = cls.find_by_members(athletes)
+            if existing is not None:
+                if category is not None:
+                    existing.categories.add(category)
+                return existing, False
+
+            team = cls.objects.create()
+            TeamMember.objects.bulk_create(
+                [TeamMember(team=team, athlete=athlete) for athlete in unique_athletes.values()]
+            )
+            if category is not None:
+                team.categories.add(category)
+            return team, True
 
 
 class TeamMember(models.Model):
@@ -2057,6 +2099,21 @@ class CategoryRefereeScore(models.Model):
                 f"Referee scoring is only applicable to solo and team categories, not {self.athlete_score.type}"
             )
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Any create/edit of a referee score after the parent result was
+        # already approved must reopen it for re-review: the displayed
+        # score is always live-computed, but an already-"approved" status
+        # should not silently survive a scoring change.
+        athlete_score = self.athlete_score
+        if athlete_score.status == 'approved':
+            type(athlete_score).objects.filter(pk=athlete_score.pk).update(
+                status='pending', reviewed_date=None, reviewed_by=None,
+            )
+            athlete_score.status = 'pending'
+            athlete_score.reviewed_date = None
+            athlete_score.reviewed_by = None
+
 
 class CategoryRefereeScoreEvent(models.Model):
     ACTION_CHOICES = [
@@ -2584,6 +2641,38 @@ class Group(models.Model):
                     'birth_year_start': 'Start year must be before or equal to end year'
                 })
 
+    def eligibility_warnings(self, athlete):
+        """Non-blocking eligibility checks (age + grade type) for enrolling
+        ``athlete`` into this group. Returns a list of Romanian warning
+        strings; an empty list means no issues detected. Callers should
+        still allow the enrollment to proceed (e.g. an admin can force it)."""
+        warnings = []
+
+        dob = getattr(athlete, 'date_of_birth', None)
+        if dob:
+            if self.birth_date_start and self.birth_date_end:
+                if not (self.birth_date_start <= dob <= self.birth_date_end):
+                    if not (self.allow_younger and dob < self.birth_date_start):
+                        warnings.append(
+                            'Data de naștere a sportivului nu se încadrează în intervalul grupei de vârstă.'
+                        )
+            elif self.birth_year_start and self.birth_year_end:
+                if not (self.birth_year_start <= dob.year <= self.birth_year_end):
+                    if not (self.allow_younger and dob.year < self.birth_year_start):
+                        warnings.append(
+                            'Anul nașterii sportivului nu se încadrează în intervalul grupei de vârstă.'
+                        )
+
+        if self.allowed_grade_type != 'all':
+            grade = getattr(athlete, 'current_grade', None)
+            if grade and grade.grade_type != self.allowed_grade_type:
+                warnings.append(
+                    f'Gradul sportivului ({grade.get_grade_type_display()}) nu corespunde cerinței grupei '
+                    f'({self.get_allowed_grade_type_display()}).'
+                )
+
+        return warnings
+
  
 # FrontendTheme model removed — dynamic theme management has been deleted.
 # The database migration that originally created the model remains; a
@@ -2600,19 +2689,49 @@ class SupporterAthleteRelation(models.Model):
         ('coach', 'Coach'),
         ('other', 'Other'),
     ]
-    
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
     supporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='supported_athletes')
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='supporters')
     relationship = models.CharField(max_length=20, choices=RELATIONSHIP_CHOICES, default='other')
     can_edit = models.BooleanField(default=False, help_text='Can edit athlete profile')
     can_register_competitions = models.BooleanField(default=False, help_text='Can register athlete for competitions')
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='pending',
+        help_text='Relationship must be approved by the athlete or an admin before it grants any permission.',
+    )
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_supporter_relations',
+    )
+    reviewed_date = models.DateTimeField(null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         unique_together = ['supporter', 'athlete']
-    
+
     def __str__(self):
         return f"{self.supporter.get_full_name() or self.supporter.username} supports {self.athlete}"
+
+    @property
+    def is_approved(self):
+        return self.status == 'approved'
+
+    def approve(self, reviewer):
+        self.status = 'approved'
+        self.reviewed_by = reviewer
+        self.reviewed_date = timezone.now()
+        self.save(update_fields=['status', 'reviewed_by', 'reviewed_date'])
+
+    def reject(self, reviewer):
+        self.status = 'rejected'
+        self.reviewed_by = reviewer
+        self.reviewed_date = timezone.now()
+        self.save(update_fields=['status', 'reviewed_by', 'reviewed_date'])
 
 
 class AthleteMatch(models.Model):
@@ -2724,6 +2843,9 @@ class Notification(models.Model):
         ('competition_created', 'Competition Created'),
         ('competition_updated', 'Competition Updated'),
         ('system_announcement', 'System Announcement'),
+        ('supporter_request', 'Supporter Relation Request'),
+        ('supporter_approved', 'Supporter Relation Approved'),
+        ('supporter_rejected', 'Supporter Relation Rejected'),
     ]
     
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
@@ -2736,6 +2858,11 @@ class Notification(models.Model):
     
     # Optional link to related objects
     related_result = models.ForeignKey('CategoryAthleteScore', on_delete=models.CASCADE, null=True, blank=True)
+    related_competition = models.ForeignKey(
+        'landing.Event', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='notifications',
+        help_text="Optional link to the competition/event this notification is about",
+    )
     
     # Optional action data (JSON field for flexible data storage)
     action_data = models.JSONField(null=True, blank=True, help_text="Additional data for notification actions")
@@ -3612,6 +3739,21 @@ class QRCodeAssignment(models.Model):
             raise ValidationError("QR code must be assigned to either a category or a match")
         if self.category and self.match:
             raise ValidationError("QR code cannot be assigned to both a category and a match")
+
+    def save(self, *args, **kwargs):
+        # Auto-expire the code shortly after the competition ends, so a
+        # referee's access QR doesn't stay valid indefinitely if no explicit
+        # expires_at was provided.
+        if self.expires_at is None:
+            event = None
+            if self.category_id:
+                event = getattr(self.category, 'event', None)
+            elif self.match_id:
+                event = getattr(getattr(self.match, 'category', None), 'event', None)
+            end_date = getattr(event, 'end_date', None)
+            if end_date:
+                self.expires_at = end_date + timedelta(days=1)
+        super().save(*args, **kwargs)
 
 
 class CompetitionReferee(models.Model):

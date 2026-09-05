@@ -1335,20 +1335,20 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
         return None
     
     def validate(self, attrs):
-        """Prevent duplicate submissions for the same athlete+seminar.
+        """Prevent duplicate submissions for the same athlete+event.
 
         This returns a 400 with a clear message instead of letting the DB
         raise an IntegrityError (which bubbled up as a 500).
         """
         request = self.context.get('request')
-        seminar = attrs.get('seminar')
+        event = attrs.get('event')
         # Only validate for authenticated users with an athlete profile
-        if request and hasattr(request.user, 'athlete') and seminar:
+        if request and hasattr(request.user, 'athlete') and event:
             athlete = request.user.athlete
             from .models import TrainingSeminarParticipation
-            if TrainingSeminarParticipation.objects.filter(athlete=athlete, seminar=seminar).exists():
+            if TrainingSeminarParticipation.objects.filter(athlete=athlete, event=event).exists():
                 raise serializers.ValidationError(
-                    {'seminar': 'You have already submitted participation for this seminar.'}
+                    {'event': 'You have already submitted participation for this seminar.'}
                 )
         return attrs
     
@@ -1523,9 +1523,10 @@ class SupporterAthleteRelationSerializer(serializers.ModelSerializer):
         model = SupporterAthleteRelation
         fields = [
             'id', 'supporter', 'athlete', 'relationship',
-            'can_edit', 'can_register_competitions', 'created'
+            'can_edit', 'can_register_competitions', 'status',
+            'reviewed_by', 'reviewed_date', 'created',
         ]
-        read_only_fields = ['created']
+        read_only_fields = ['created', 'status', 'reviewed_by', 'reviewed_date']
     
     def to_representation(self, instance):
         """Include detailed supporter and athlete info"""

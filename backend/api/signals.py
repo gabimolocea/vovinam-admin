@@ -54,6 +54,29 @@ def update_club_coaches(sender, instance, **kwargs):
         if instance.club and instance.club.coaches.filter(pk=instance.pk).exists():
             instance.club.coaches.remove(instance)
 
+
+@receiver(pre_delete, sender=Club)
+def capture_club_coaches_before_delete(sender, instance, **kwargs):
+    """
+    Deleting a Club cascades the Club<->Athlete coaches M2M rows at the DB
+    level without firing m2m_changed, so `update_is_coach` never runs and
+    former coaches would be left permanently stuck with is_coach=True and no
+    club. Capture the affected athlete ids here so post_delete can recompute
+    their is_coach flag once the club (and its M2M rows) are actually gone.
+    """
+    instance._coach_ids_before_delete = list(instance.coaches.values_list('pk', flat=True))
+
+
+@receiver(post_delete, sender=Club)
+def reset_is_coach_after_club_delete(sender, instance, **kwargs):
+    athlete_ids = getattr(instance, '_coach_ids_before_delete', [])
+    if not athlete_ids:
+        return
+    for athlete in Athlete.objects.filter(pk__in=athlete_ids, is_coach=True):
+        if not athlete.coached_clubs.exists():
+            athlete.is_coach = False
+            athlete.save(update_fields=['is_coach'])
+
 @receiver(post_save, sender=GradeHistory)
 def update_current_grade(sender, instance, **kwargs):
     """

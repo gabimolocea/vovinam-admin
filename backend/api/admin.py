@@ -4910,6 +4910,7 @@ class AthleteAdmin(admin.ModelAdmin):
         from django.shortcuts import get_object_or_404, redirect
         from django.contrib import messages
         from django.core.exceptions import PermissionDenied
+        from django.db import transaction
 
         if not self.has_change_permission(request):
             raise PermissionDenied
@@ -4922,8 +4923,13 @@ class AthleteAdmin(admin.ModelAdmin):
 
         if request.method == 'POST':
             try:
-                # Use the approve method from the consolidated model
-                athlete.approve(request.user)
+                with transaction.atomic():
+                    athlete = Athlete.objects.select_for_update().get(pk=athlete.pk)
+                    if athlete.status != 'pending':
+                        messages.error(request, f'Profilul sportivului nu este în starea în așteptare (curent: {athlete.status})')
+                        return redirect('admin:api_athlete_changelist')
+                    # Use the approve method from the consolidated model
+                    athlete.approve(request.user)
 
                 messages.success(request, f'Profilul sportivului {athlete.first_name} {athlete.last_name} a fost aprobat cu succes')
 
@@ -4943,6 +4949,7 @@ class AthleteAdmin(admin.ModelAdmin):
         from django.shortcuts import get_object_or_404, redirect
         from django.contrib import messages
         from django.core.exceptions import PermissionDenied
+        from django.db import transaction
 
         if not self.has_change_permission(request):
             raise PermissionDenied
@@ -4955,9 +4962,14 @@ class AthleteAdmin(admin.ModelAdmin):
         
         if request.method == 'POST':
             rejection_reason = request.POST.get('admin_notes', '')
-            
-            # Use the reject method from the consolidated model
-            athlete.reject(request.user, rejection_reason)
+
+            with transaction.atomic():
+                athlete = Athlete.objects.select_for_update().get(pk=athlete.pk)
+                if athlete.status != 'pending':
+                    messages.error(request, f'Profilul sportivului nu este în starea în așteptare (curent: {athlete.status})')
+                    return redirect('admin:api_athlete_changelist')
+                # Use the reject method from the consolidated model
+                athlete.reject(request.user, rejection_reason)
             
             messages.success(request, f'Profilul sportivului {athlete.first_name} {athlete.last_name} a fost respins cu succes')
             return redirect('admin:api_athlete_changelist')
@@ -4973,6 +4985,7 @@ class AthleteAdmin(admin.ModelAdmin):
         from django.shortcuts import get_object_or_404, redirect
         from django.contrib import messages
         from django.core.exceptions import PermissionDenied
+        from django.db import transaction
 
         if not self.has_change_permission(request):
             raise PermissionDenied
@@ -4985,9 +4998,14 @@ class AthleteAdmin(admin.ModelAdmin):
         
         if request.method == 'POST':
             revision_notes = request.POST.get('admin_notes', '')
-            
-            # Use the request_revision method from the consolidated model
-            athlete.request_revision(request.user, revision_notes)
+
+            with transaction.atomic():
+                athlete = Athlete.objects.select_for_update().get(pk=athlete.pk)
+                if athlete.status != 'pending':
+                    messages.error(request, f'Profilul sportivului nu este în starea în așteptare (curent: {athlete.status})')
+                    return redirect('admin:api_athlete_changelist')
+                # Use the request_revision method from the consolidated model
+                athlete.request_revision(request.user, revision_notes)
             
             messages.success(request, f'A fost solicitată revizuirea pentru {athlete.first_name} {athlete.last_name}')
             return redirect('admin:api_athlete_changelist')
@@ -5024,10 +5042,21 @@ class CategoryRefereeScoreInline(admin.TabularInline):
 
 @admin.register(SupporterAthleteRelation)
 class SupporterAthleteRelationAdmin(admin.ModelAdmin):
-    list_display = ['supporter', 'athlete', 'relationship', 'can_edit', 'can_register_competitions', 'created']
-    list_filter = ['relationship', 'can_edit', 'can_register_competitions', 'created']
+    list_display = ['supporter', 'athlete', 'relationship', 'status', 'can_edit', 'can_register_competitions', 'created']
+    list_filter = ['status', 'relationship', 'can_edit', 'can_register_competitions', 'created']
     search_fields = ['supporter__username', 'supporter__email', 'athlete__first_name', 'athlete__last_name']
     ordering = ['-created']
+    actions = ['approve_relations', 'reject_relations']
+
+    def approve_relations(self, request, queryset):
+        for relation in queryset:
+            relation.approve(request.user)
+    approve_relations.short_description = 'Aprobă relațiile selectate'
+
+    def reject_relations(self, request, queryset):
+        for relation in queryset:
+            relation.reject(request.user)
+    reject_relations.short_description = 'Respinge relațiile selectate'
 
 
 # Note: CategoryAthleteScore has no standalone admin page; scores are managed

@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'django_filters',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',  # enables refresh-token revocation on logout
     'news',
     'landing',
     'contact',

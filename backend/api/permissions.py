@@ -64,7 +64,19 @@ class IsClubCoachOrAdmin(permissions.BasePermission):
         # Admins can do anything
         if request.user.is_admin:
             return True
-        
+
+        # For Athlete objects: the athlete themselves, or a supporter explicitly
+        # granted can_edit=True on their SupporterAthleteRelation, may edit the
+        # profile even if they are not a club coach.
+        if obj.__class__.__name__ == 'Athlete':
+            if obj.user_id and obj.user_id == request.user.id:
+                return True
+            from .models import SupporterAthleteRelation
+            if SupporterAthleteRelation.objects.filter(
+                supporter=request.user, athlete=obj, can_edit=True, status='approved'
+            ).exists():
+                return True
+
         # Check if user is a coach of the club
         try:
             # Get the user's athlete profile
