@@ -92,6 +92,37 @@ class User(AbstractUser):
             return False
 
 
+class ApprovalWorkflowMixin:
+    """Shared helper for status transitions used across approval-driven models."""
+
+    class Meta:
+        abstract = True
+
+    def _transition_status(self, status, admin_user, notes='', *, set_notes=True, on_success=None):
+        from django.utils import timezone
+
+        self.status = status
+        self.reviewed_date = timezone.now()
+        self.reviewed_by = admin_user
+        if set_notes:
+            self.admin_notes = notes
+        self.save()
+
+        if callable(on_success):
+            on_success(self, status, admin_user, notes)
+
+        return self
+
+    def approve(self, admin_user, notes=''):
+        return self._transition_status('approved', admin_user, notes)
+
+    def reject(self, admin_user, notes=''):
+        return self._transition_status('rejected', admin_user, notes)
+
+    def request_revision(self, admin_user, notes=''):
+        return self._transition_status('revision_required', admin_user, notes)
+
+
 # Proxy model so the custom User appears under Django's 'auth' app section in admin
 class UserProxy(User):
     class Meta:
@@ -102,11 +133,11 @@ class UserProxy(User):
     
     @property
     def has_pending_athlete_profile(self):
-        return hasattr(self, 'athlete_profile') and self.athlete_profile.status == 'pending'
+        return hasattr(self, 'athlete') and self.athlete is not None and self.athlete.status == 'pending'
     
     @property
     def has_approved_athlete_profile(self):
-        return hasattr(self, 'athlete') and self.athlete is not None
+        return hasattr(self, 'athlete') and self.athlete is not None and self.athlete.status == 'approved'
 
 
 # Proxy model to show the landing Event under the API section in Django admin
@@ -334,7 +365,7 @@ class FederationRole(models.Model):
         return self.name
 
 
-class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Model):
+class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWorkflowMixin, models.Model):
     """
     Unified Athlete model that handles both pending and approved athletes.
     Replaces the separate AthleteProfile system for simplified workflow.
@@ -485,36 +516,17 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
     
     def approve(self, admin_user):
         """Approve the athlete profile"""
-        from django.utils import timezone
-        
-        self.status = 'approved'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
         self.approved_date = timezone.now()  # Legacy field
         self.approved_by = admin_user  # Legacy field
-        self.save()
+        self._transition_status('approved', admin_user, set_notes=False)
     
     def reject(self, admin_user, reason=None):
         """Reject the athlete profile"""
-        from django.utils import timezone
-        
-        self.status = 'rejected'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        if reason:
-            self.admin_notes = reason
-        self.save()
+        self._transition_status('rejected', admin_user, reason, set_notes=bool(reason))
     
     def request_revision(self, admin_user, reason=None):
         """Request revision of the athlete profile"""
-        from django.utils import timezone
-        
-        self.status = 'revision_required'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        if reason:
-            self.admin_notes = reason
-        self.save()
+        self._transition_status('revision_required', admin_user, reason, set_notes=bool(reason))
     
     def resubmit(self):
         """Resubmit profile after revision"""
@@ -559,7 +571,7 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, models.Mod
         return f"{self.first_name} {self.last_name}{club_name}"
 
 
-class GradeHistory(models.Model):
+class GradeHistory(ApprovalWorkflowMixin, models.Model):
     LEVEL_CHOICES = [
         ('good', 'Good'),
         ('bad', 'Bad'),
@@ -637,15 +649,6 @@ class GradeHistory(models.Model):
                 self.status = 'approved'
         super().save(*args, **kwargs)
 
-        # Ensure the seminar M2M stays in sync: add athlete to seminar.athletes when a participation exists
-        try:
-            if self.seminar and self.athlete:
-                # Use add() which is safe if already present
-                self.seminar.athletes.add(self.athlete)
-        except Exception:
-            # Don't let auxiliary M2M sync failures block the main save
-            pass
-
     def clean(self):
         """Validate that examiners (if provided) are marked as coaches."""
         errors = {}
@@ -673,45 +676,19 @@ class GradeHistory(models.Model):
     
     def approve(self, admin_user, notes=''):
         """Approve the athlete-submitted grade"""
-        from django.utils import timezone
-        
-        self.status = 'approved'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
-        # Create notification for grade approval
-        from .notification_utils import create_grade_status_notification
-        create_grade_status_notification(self, 'approved', admin_user, notes)
-    
+        self._transition_status('approved', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_grade_status(status, actor, message))
+
     def reject(self, admin_user, notes=''):
         """Reject the athlete-submitted grade"""
-        from django.utils import timezone
-        
-        self.status = 'rejected'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
-        # Create notification for grade rejection
-        from .notification_utils import create_grade_status_notification
-        create_grade_status_notification(self, 'rejected', admin_user, notes)
-    
+        self._transition_status('rejected', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_grade_status(status, actor, message))
+
     def request_revision(self, admin_user, notes=''):
         """Request revision of the athlete-submitted grade"""
-        from django.utils import timezone
-        
-        self.status = 'revision_required'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
-        # Create notification for grade revision request
+        self._transition_status('revision_required', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_grade_status(status, actor, message))
+
+    def _notify_grade_status(self, status, admin_user, notes):
         from .notification_utils import create_grade_status_notification
-        create_grade_status_notification(self, 'revision_required', admin_user, notes)
+        create_grade_status_notification(self, status, admin_user, notes)
 
 
 # Yearly Medical Visa
@@ -802,7 +779,7 @@ class Visa(models.Model):
 
 
 # Training Seminars
-class TrainingSeminarParticipation(models.Model):
+class TrainingSeminarParticipation(ApprovalWorkflowMixin, models.Model):
     """
     Athlete participation in events (training seminars, competitions, etc.) with approval workflow.
     Migrated from TrainingSeminar to use Event model directly.
@@ -872,45 +849,19 @@ class TrainingSeminarParticipation(models.Model):
     
     def approve(self, admin_user, notes=''):
         """Approve the athlete-submitted seminar participation"""
-        from django.utils import timezone
-        
-        self.status = 'approved'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
-        # Create notification for seminar participation approval
-        from .notification_utils import create_seminar_status_notification
-        create_seminar_status_notification(self, 'approved', admin_user, notes)
-    
+        self._transition_status('approved', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_seminar_status(status, actor, message))
+
     def reject(self, admin_user, notes=''):
         """Reject the athlete-submitted seminar participation"""
-        from django.utils import timezone
-        
-        self.status = 'rejected'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
-        # Create notification for seminar participation rejection
-        from .notification_utils import create_seminar_status_notification
-        create_seminar_status_notification(self, 'rejected', admin_user, notes)
-    
+        self._transition_status('rejected', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_seminar_status(status, actor, message))
+
     def request_revision(self, admin_user, notes=''):
         """Request revision of the athlete-submitted seminar participation"""
-        from django.utils import timezone
-        
-        self.status = 'revision_required'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
-        # Create notification for seminar participation revision request
+        self._transition_status('revision_required', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_seminar_status(status, actor, message))
+
+    def _notify_seminar_status(self, status, admin_user, notes):
         from .notification_utils import create_seminar_status_notification
-        create_seminar_status_notification(self, 'revision_required', admin_user, notes)
+        create_seminar_status_notification(self, status, admin_user, notes)
 
 
 # Proxy model to present TrainingSeminarParticipation as EventParticipation
@@ -2105,7 +2056,7 @@ class CategoryRefereeScoreEvent(models.Model):
         return f"Category score event #{self.pk} ({self.action})"
 
 
-class CategoryAthleteScore(models.Model):
+class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
     """
     Stores athlete results for a category with approval workflow.
     Athletes can submit their own results (individual or team) which require admin approval and auto-populate Category awards.
@@ -2321,21 +2272,23 @@ class CategoryAthleteScore(models.Model):
     
     def approve(self, admin_user, notes=''):
         """Approve the athlete-submitted result and auto-populate Category awards"""
-        from django.utils import timezone
-        
-        self.status = 'approved'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
+        self._transition_status('approved', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_result_status(status, actor, message))
+
         # Auto-populate Category awards if placement is claimed
         if self.submitted_by_athlete and self.placement_claimed:
             self._update_category_awards()
-        
-        # Create notification for result approval
+
+    def reject(self, admin_user, notes=''):
+        """Reject the athlete-submitted result"""
+        self._transition_status('rejected', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_result_status(status, actor, message))
+
+    def request_revision(self, admin_user, notes=''):
+        """Request revision on the athlete-submitted result"""
+        self._transition_status('revision_required', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_result_status(status, actor, message))
+
+    def _notify_result_status(self, status, admin_user, notes):
         from .notification_utils import create_result_status_notification
-        create_result_status_notification(self, 'approved', admin_user, notes)
+        create_result_status_notification(self, status, admin_user, notes)
     
     def _create_or_get_team_for_award(self):
         """
@@ -2487,33 +2440,6 @@ class CategoryAthleteScore(models.Model):
         )
         return category, created
     
-    def reject(self, admin_user, notes=''):
-        """Reject the athlete-submitted result"""
-        from django.utils import timezone
-        
-        self.status = 'rejected'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
-        # Create notification for result rejection
-        from .notification_utils import create_result_status_notification
-        create_result_status_notification(self, 'rejected', admin_user, notes)
-    
-    def request_revision(self, admin_user, notes=''):
-        """Request revision on the athlete-submitted result"""
-        from django.utils import timezone
-        
-        self.status = 'revision_required'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-        
-        # Create notification for revision request
-        from .notification_utils import create_result_status_notification
-        create_result_status_notification(self, 'revision_required', admin_user, notes)
 
 
 class CategoryTeamScore(models.Model):
