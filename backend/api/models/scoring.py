@@ -41,45 +41,49 @@ class CategoryRefereeScore(models.Model):
     """
     CATEGORY_TYPE_CHOICES = [
         ('solo', 'Solo'),
-        ('teams', 'Teams'),
+        ('teams', 'Echipe'),
     ]
     
     # Link to the athlete's result submission
     athlete_score = models.ForeignKey(
         'CategoryAthleteScore',
         on_delete=models.CASCADE,
+        verbose_name=_('Rezultat sportiv'),
         related_name='referee_scores',
-        help_text='The athlete/team result being scored'
+        help_text=_('Rezultatul sportivului sau echipei care este arbitrat.')
     )
     
     # The referee providing the score
     referee = models.ForeignKey(
         'Athlete',
         on_delete=models.CASCADE,
+        verbose_name=_('Arbitru'),
         limit_choices_to={'is_referee': True},
         related_name='given_category_scores',
-        help_text='The referee providing this score'
+        help_text=_('Arbitrul care acordă acest scor.')
     )
     
     # Deduction structure (JSON field for flexibility)
     # Example: {"wrong_technique": 10, "wrong_position": 5, "not_looking_real": 0, "stamina": 3}
     deductions = models.JSONField(
+        _('Deduceri'),
         default=dict,
         blank=True,
-        help_text='Deductions by category: wrong_technique, wrong_position, not_looking_real, stamina'
+        help_text=_('Deduceri pe categorii: tehnică greșită, poziție greșită, lipsă realism, rezistență.')
     )
     
     # Calculated total score (100 - sum_of_deductions)
     score = models.DecimalField(
+        _('Scor'),
         max_digits=5,
         decimal_places=2,
         default=100,
-        help_text='Final score: 100 minus all deductions'
+        help_text=_('Scor final: 100 minus toate deducerile.')
     )
     
     # Metadata
-    submitted_date = models.DateTimeField(auto_now_add=True)
-    notes = models.TextField(blank=True, null=True, help_text='Optional notes from referee')
+    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
+    notes = models.TextField(_('Note'), blank=True, null=True, help_text=_('Note opționale de la arbitru.'))
     
     class Meta:
         unique_together = ('athlete_score', 'referee')  # Each referee scores each athlete/team once
@@ -87,8 +91,8 @@ class CategoryRefereeScore(models.Model):
             models.Index(fields=['athlete_score', 'referee']),
             models.Index(fields=['submitted_date']),
         ]
-        verbose_name = 'Category Referee Score'
-        verbose_name_plural = 'Category Referee Scores'
+        verbose_name = _('Scor arbitru categorie')
+        verbose_name_plural = _('Scoruri arbitri categorie')
     
     def __str__(self):
         athlete = self.athlete_score.athlete
@@ -128,47 +132,50 @@ class CategoryRefereeScore(models.Model):
 
 class CategoryRefereeScoreEvent(models.Model):
     ACTION_CHOICES = [
-        ('create', 'Create'),
-        ('update', 'Update'),
-        ('delete', 'Delete'),
-        ('reveal', 'Reveal'),
+        ('create', 'Creare'),
+        ('update', 'Actualizare'),
+        ('delete', 'Ștergere'),
+        ('reveal', 'Afișare'),
     ]
 
     SOURCE_CHOICES = [
-        ('referee_app', 'Referee App'),
-        ('competition_admin', 'Competition Admin'),
-        ('system', 'System'),
+        ('referee_app', 'Aplicație arbitru'),
+        ('competition_admin', 'Administrare competiție'),
+        ('system', 'Sistem'),
     ]
 
     athlete_score = models.ForeignKey(
         'CategoryAthleteScore',
         on_delete=models.CASCADE,
+        verbose_name=_('Rezultat sportiv'),
         related_name='score_events',
-        help_text='The athlete/team score affected by this event'
+        help_text=_('Rezultatul sportivului sau echipei afectat de acest eveniment.')
     )
     referee = models.ForeignKey(
         'Athlete',
         on_delete=models.CASCADE,
+        verbose_name=_('Arbitru'),
         limit_choices_to={'is_referee': True},
         related_name='category_score_events',
-        help_text='The referee that produced this event'
+        help_text=_('Arbitrul care a produs acest eveniment.')
     )
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='update')
-    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='competition_admin')
-    score_value = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    previous_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    notes = models.TextField(blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    action = models.CharField(_('Acțiune'), max_length=20, choices=ACTION_CHOICES, default='update')
+    source = models.CharField(_('Sursă'), max_length=20, choices=SOURCE_CHOICES, default='competition_admin')
+    score_value = models.DecimalField(_('Valoare scor'), max_digits=5, decimal_places=2, null=True, blank=True)
+    previous_score = models.DecimalField(_('Scor anterior'), max_digits=5, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(_('Note'), blank=True, null=True)
+    timestamp = models.DateTimeField(_('Moment înregistrare'), auto_now_add=True)
+    created_by = models.ForeignKey('User', on_delete=models.SET_NULL, verbose_name=_('Creat de'), null=True, blank=True)
     recording_session = models.ForeignKey(
         'FieldRecordingSession',
         on_delete=models.SET_NULL,
+        verbose_name=_('Sesiune înregistrare'),
         null=True,
         blank=True,
         related_name='category_score_events'
     )
-    video_offset_ms = models.IntegerField(null=True, blank=True)
-    metadata = models.JSONField(default=dict, blank=True)
+    video_offset_ms = models.IntegerField(_('Decalaj video (ms)'), null=True, blank=True)
+    metadata = models.JSONField(_('Metadate'), default=dict, blank=True)
 
     class Meta:
         ordering = ['timestamp', 'id']
@@ -176,8 +183,8 @@ class CategoryRefereeScoreEvent(models.Model):
             models.Index(fields=['athlete_score', 'timestamp']),
             models.Index(fields=['referee', 'timestamp']),
         ]
-        verbose_name = 'Category Referee Score Event'
-        verbose_name_plural = 'Category Referee Score Events'
+        verbose_name = _('Eveniment scor arbitru categorie')
+        verbose_name_plural = _('Evenimente scor arbitru categorie')
 
     def __str__(self):
         return f"Category score event #{self.pk} ({self.action})"
@@ -190,35 +197,36 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
     """
     CATEGORY_TYPE_CHOICES = [
         ('solo', 'Solo'),
-        ('teams', 'Teams'),
-        ('fight', 'Fight'),
+        ('teams', 'Echipe'),
+        ('fight', 'Luptă'),
     ]
     
     STATUS_CHOICES = APPROVAL_STATUS_CHOICES
     
     PLACEMENT_CHOICES = [
-        ('1st', '1st Place'),
-        ('2nd', '2nd Place'), 
-        ('3rd', '3rd Place'),
+        ('1st', 'Locul 1'),
+        ('2nd', 'Locul 2'),
+        ('3rd', 'Locul 3'),
     ]
     
-    category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='athlete_scores')
-    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='category_scores', null=True, blank=True, help_text='Athlete being scored (null for team scores)')
-    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True}, null=True, blank=True)
-    score = models.IntegerField(default=0, blank=True, null=True, help_text='Numeric score given by referee/official (not relevant for athlete self-submissions with placement claims)')
+    category = models.ForeignKey('Category', on_delete=models.CASCADE, verbose_name=_('Categorie'), related_name='athlete_scores')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='category_scores', null=True, blank=True, help_text=_('Sportivul arbitrat (nul pentru scorurile de echipă).'))
+    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, verbose_name=_('Arbitru'), limit_choices_to={'is_referee': True}, null=True, blank=True)
+    score = models.IntegerField(_('Punctaj'), default=0, blank=True, null=True, help_text=_('Punctajul numeric acordat de arbitru/oficial (nerelevant pentru auto-raportările sportivilor cu revendicare de clasament).'))
     
     # Type and group (matching Category model structure)
-    type = models.CharField(max_length=10, choices=CATEGORY_TYPE_CHOICES, default='solo', help_text='Type of result: solo, fight, or teams')
+    type = models.CharField(_('Tip rezultat'), max_length=10, choices=CATEGORY_TYPE_CHOICES, default='solo', help_text=_('Tipul rezultatului: solo, luptă sau echipe.'))
     group = models.ForeignKey(
         'Group',
         on_delete=models.SET_NULL,
+        verbose_name=_('Grupă'),
         null=True,
         blank=True,
         related_name='athlete_scores',
-        help_text='Group assignment (similar to Category model)'
+        help_text=_('Grupa alocată (similar modelului Category).')
     )
-    team_members = models.ManyToManyField('Athlete', blank=True, related_name='team_results', help_text='Team members (including submitter for team results)')
-    team_name = models.CharField(max_length=200, blank=True, null=True, help_text='Optional team name')
+    team_members = models.ManyToManyField('Athlete', verbose_name=_('Membri echipă'), blank=True, related_name='team_results', help_text=_('Membrii echipei, inclusiv persoana care a trimis rezultatul echipei.'))
+    team_name = models.CharField(_('Nume echipă'), max_length=200, blank=True, null=True, help_text=_('Nume opțional al echipei.'))
 
     # Backwards-compatibility: some scripts/tests use `result_type` as the field name.
     # Provide a manager that annotates `result_type` and accept `result_type` in __init__.
@@ -237,18 +245,18 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
         super().__init__(*args, **kwargs)
     
     # Athlete self-submission fields
-    submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
-    placement_claimed = models.CharField(max_length=10, choices=PLACEMENT_CHOICES, blank=True, null=True, help_text='Award placement claimed by athlete')
-    notes = models.TextField(blank=True, null=True, help_text='Additional notes about the performance')
-    certificate_image = models.ImageField(upload_to='result_certificates/', null=True, blank=True, help_text='Certificate or award photo')
-    result_document = models.FileField(upload_to='result_documents/', null=True, blank=True, help_text='Official result document')
+    submitted_by_athlete = models.BooleanField(_('Trimis de sportiv'), default=False, help_text=_('Bifat dacă a fost trimis chiar de sportiv.'))
+    placement_claimed = models.CharField(_('Loc revendicat'), max_length=10, choices=PLACEMENT_CHOICES, blank=True, null=True, help_text=_('Locul revendicat de sportiv sau echipă.'))
+    notes = models.TextField(_('Note'), blank=True, null=True, help_text=_('Note suplimentare despre prestație.'))
+    certificate_image = models.ImageField(_('Imagine certificat'), upload_to='result_certificates/', null=True, blank=True, help_text=_('Fotografie a certificatului sau a premiului.'))
+    result_document = models.FileField(_('Document rezultat'), upload_to='result_documents/', null=True, blank=True, help_text=_('Documentul oficial cu rezultatul.'))
     
     # Approval workflow fields
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved', help_text='Approval status (defaults to approved for referee submissions)')
-    submitted_date = models.DateTimeField(auto_now_add=True)
-    reviewed_date = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_scores')
-    admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
+    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved', help_text=_('Starea aprobării (implicit aprobat pentru trimiterile arbitrilor).'))
+    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
+    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_scores')
+    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
 
     class Meta:
         unique_together = ('category', 'athlete', 'referee')  # Ensure unique scores per referee and athlete
@@ -258,13 +266,15 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
             models.Index(fields=['submitted_date']),
             models.Index(fields=['status', 'submitted_by_athlete']),
         ]
+        verbose_name = _('Rezultat sportiv')
+        verbose_name_plural = _('Rezultate sportivi')
 
     def __str__(self):
         category = self.category
         group = category.group if category else None
         event = category.event if category else None
         group_name = group.name if group else 'No Group'
-        event_title = event.title if event else 'No Competition'
+        event_title = event.title if event else 'Fără competiție'
         
         if self.athlete:
             return (
@@ -543,16 +553,18 @@ class CategoryTeamScore(models.Model):
     """
     Stores referee scores for teams in a category.
     """
-    category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='team_scores')
-    team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='category_scores')
-    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, limit_choices_to={'is_referee': True})
-    score = models.IntegerField(default=0)  # Score given by the referee
+    category = models.ForeignKey('Category', on_delete=models.CASCADE, verbose_name=_('Categorie'), related_name='team_scores')
+    team = models.ForeignKey('Team', on_delete=models.CASCADE, verbose_name=_('Echipă'), related_name='category_scores')
+    referee = models.ForeignKey('Athlete', on_delete=models.CASCADE, verbose_name=_('Arbitru'), limit_choices_to={'is_referee': True})
+    score = models.IntegerField(_('Punctaj'), default=0)  # Score given by the referee
 
     class Meta:
         unique_together = ('category', 'team', 'referee')  # Ensure unique scores per referee and team
+        verbose_name = _('Rezultat echipă')
+        verbose_name_plural = _('Rezultate echipe')
 
     def __str__(self):
-        return f"{self.team.name} - {self.category.name} - Referee: {self.referee.first_name} {self.referee.last_name}"
+        return f"{self.team.name} - {self.category.name} - Arbitru: {self.referee.first_name} {self.referee.last_name}"
 
 
 # NOTE: CategoryTeamAthleteScore model consolidated into CategoryAthleteScore with type='teams'
@@ -567,26 +579,26 @@ class CategoryTeamScore(models.Model):
 
 class FieldRecordingSession(models.Model):
     STATUS_CHOICES = [
-        ('recording', 'Recording'),
-        ('stopped', 'Stopped'),
-        ('failed', 'Failed'),
+        ('recording', 'Înregistrare în curs'),
+        ('stopped', 'Oprită'),
+        ('failed', 'Eșuată'),
     ]
 
-    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='field_recording_sessions')
-    field = models.ForeignKey('CompetitionField', on_delete=models.CASCADE, related_name='recording_sessions')
-    title = models.CharField(max_length=255, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recording')
-    started_at = models.DateTimeField()
-    ended_at = models.DateTimeField(null=True, blank=True)
-    obs_scene_name = models.CharField(max_length=255, blank=True)
-    obs_source_name = models.CharField(max_length=255, blank=True)
-    recording_file_name = models.CharField(max_length=255, blank=True)
-    recording_file_path = models.CharField(max_length=500, blank=True)
-    recording_url = models.URLField(blank=True, max_length=500)
-    notes = models.TextField(blank=True)
-    metadata = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, verbose_name=_('Eveniment'), related_name='field_recording_sessions')
+    field = models.ForeignKey('CompetitionField', on_delete=models.CASCADE, verbose_name=_('Teren'), related_name='recording_sessions')
+    title = models.CharField(_('Titlu'), max_length=255, blank=True)
+    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='recording')
+    started_at = models.DateTimeField(_('Început la'))
+    ended_at = models.DateTimeField(_('Încheiat la'), null=True, blank=True)
+    obs_scene_name = models.CharField(_('Nume scenă OBS'), max_length=255, blank=True)
+    obs_source_name = models.CharField(_('Nume sursă OBS'), max_length=255, blank=True)
+    recording_file_name = models.CharField(_('Nume fișier înregistrare'), max_length=255, blank=True)
+    recording_file_path = models.CharField(_('Cale fișier înregistrare'), max_length=500, blank=True)
+    recording_url = models.URLField(_('URL înregistrare'), blank=True, max_length=500)
+    notes = models.TextField(_('Note'), blank=True)
+    metadata = models.JSONField(_('Metadate'), default=dict, blank=True)
+    created_at = models.DateTimeField(_('Data creării'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Data actualizării'), auto_now=True)
 
     class Meta:
         ordering = ['-started_at', '-id']
@@ -594,8 +606,9 @@ class FieldRecordingSession(models.Model):
             models.Index(fields=['event', 'field', 'status']),
             models.Index(fields=['started_at']),
         ]
+        verbose_name = _('Sesiune înregistrare teren')
+        verbose_name_plural = _('Sesiuni înregistrare teren')
 
     def __str__(self):
-        label = self.title or f"{self.field} recording"
+        label = self.title or f"Înregistrare {self.field}"
         return f"{label} ({self.started_at:%Y-%m-%d %H:%M})"
-

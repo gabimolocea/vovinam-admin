@@ -29,56 +29,63 @@ class MatchVideoRecording(models.Model):
     match = models.ForeignKey(
         'Match',
         on_delete=models.CASCADE,
+        verbose_name=_('Meci'),
         related_name='video_recordings',
-        help_text='The match this video records'
+        help_text=_('Meciul înregistrat de acest video.')
     )
     
     # Video storage - either file upload OR external URL
     video_file = models.FileField(
+        _('Fișier video'),
         upload_to='match_videos/%Y/%m/%d/',
         blank=True,
         null=True,
-        help_text='Uploaded video file (MP4, WebM, etc.)'
+        help_text=_('Fișierul video încărcat (MP4, WebM etc.).')
     )
     
     video_url = models.URLField(
+        _('URL video'),
         blank=True,
         null=True,
         max_length=500,
-        help_text='External video URL (YouTube, Vimeo, streaming service)'
+        help_text=_('URL video extern (YouTube, Vimeo, serviciu de streaming).')
     )
     
     # Video metadata
     duration_seconds = models.IntegerField(
+        _('Durată (secunde)'),
         blank=True,
         null=True,
-        help_text='Total video duration in seconds'
+        help_text=_('Durata totală a videoclipului în secunde.')
     )
     
     recorded_at = models.DateTimeField(
+        _('Înregistrat la'),
         blank=True,
         null=True,
-        help_text='When the video was recorded'
+        help_text=_('Momentul înregistrării videoclipului.')
     )
     
     uploaded_at = models.DateTimeField(
+        _('Încărcat la'),
         auto_now_add=True,
-        help_text='When video was uploaded to system'
+        help_text=_('Momentul încărcării videoclipului în sistem.')
     )
     
     # Access control
     is_public = models.BooleanField(
+        _('Public'),
         default=False,
-        help_text='Whether video is publicly accessible'
+        help_text=_('Indică dacă videoclipul este accesibil public.')
     )
     
     class Meta:
-        verbose_name = 'Match Video Recording'
-        verbose_name_plural = 'Match Video Recordings'
+        verbose_name = _('Înregistrare video meci')
+        verbose_name_plural = _('Înregistrări video meci')
         ordering = ['-recorded_at', '-uploaded_at']
     
     def __str__(self):
-        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'Fără dată'
         return f"{self.match.name} ({date})"
     
     def clean(self):
@@ -96,51 +103,57 @@ class AthletePerformanceVideo(models.Model):
         'CategoryAthleteScore',
         on_delete=models.CASCADE,
         related_name='performance_video',
-        verbose_name='Solo category',
-        help_text='The athlete score entry this video documents'
+        verbose_name=_('Rezultat individual'),
+        help_text=_('Înregistrarea rezultatului sportivului documentată de acest video.')
     )
     
     # Video storage - either file upload OR external URL
     video_file = models.FileField(
+        _('Fișier video'),
         upload_to='athlete_videos/%Y/%m/%d/',
         blank=True,
         null=True,
-        help_text='Uploaded video file (MP4, WebM, etc.)'
+        help_text=_('Fișierul video încărcat (MP4, WebM etc.).')
     )
     
     video_url = models.URLField(
+        _('URL video'),
         blank=True,
         null=True,
         max_length=500,
-        help_text='External video URL (YouTube, Vimeo, streaming service)'
+        help_text=_('URL video extern (YouTube, Vimeo, serviciu de streaming).')
     )
     
     duration_seconds = models.IntegerField(
+        _('Durată (secunde)'),
         blank=True,
         null=True,
-        help_text='Total video duration in seconds'
+        help_text=_('Durata totală a videoclipului în secunde.')
     )
     
     recorded_at = models.DateTimeField(
+        _('Înregistrat la'),
         blank=True,
         null=True,
-        help_text='When the video was recorded'
+        help_text=_('Momentul înregistrării videoclipului.')
     )
     
     uploaded_at = models.DateTimeField(
+        _('Încărcat la'),
         auto_now_add=True,
-        help_text='When video was uploaded to system'
+        help_text=_('Momentul încărcării videoclipului în sistem.')
     )
     
     # Access control
     is_public = models.BooleanField(
+        _('Public'),
         default=False,
-        help_text='Whether video is publicly accessible'
+        help_text=_('Indică dacă videoclipul este accesibil public.')
     )
     
     class Meta:
-        verbose_name = 'Solo Performance Video'
-        verbose_name_plural = 'Solo Performance Videos'
+        verbose_name = _('Video probă individuală')
+        verbose_name_plural = _('Video-uri probe individuale')
         ordering = ['-recorded_at', '-uploaded_at']
     
     def __str__(self):
@@ -148,9 +161,9 @@ class AthletePerformanceVideo(models.Model):
         category = self.athlete_score.category
         group = category.group
         event = category.event
-        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
-        group_name = group.name if group else 'No Group'
-        event_title = event.title if event else 'No Competition'
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'Fără dată'
+        group_name = group.name if group else 'Fără grupă'
+        event_title = event.title if event else 'Fără competiție'
         return (
             f"{athlete.first_name} {athlete.last_name} - "
             f"{category.name} / {group_name} / {event_title} ({date})"
@@ -170,56 +183,63 @@ class TeamPerformanceVideo(models.Model):
     category_team = models.OneToOneField(
         'CategoryTeam',
         on_delete=models.CASCADE,
+        verbose_name=_('Rezultat echipă în categorie'),
         related_name='performance_video',
-        help_text='The team enrollment this video documents'
+        help_text=_('Înscrierea echipei în categorie documentată de acest video.')
     )
     
     # Video storage - either file upload OR external URL
     video_file = models.FileField(
+        _('Fișier video'),
         upload_to='team_videos/%Y/%m/%d/',
         blank=True,
         null=True,
-        help_text='Uploaded video file (MP4, WebM, etc.)'
+        help_text=_('Fișierul video încărcat (MP4, WebM etc.).')
     )
     
     video_url = models.URLField(
+        _('URL video'),
         blank=True,
         null=True,
         max_length=500,
-        help_text='External video URL (YouTube, Vimeo, streaming service)'
+        help_text=_('URL video extern (YouTube, Vimeo, serviciu de streaming).')
     )
     
     duration_seconds = models.IntegerField(
+        _('Durată (secunde)'),
         blank=True,
         null=True,
-        help_text='Total video duration in seconds'
+        help_text=_('Durata totală a videoclipului în secunde.')
     )
     
     recorded_at = models.DateTimeField(
+        _('Înregistrat la'),
         blank=True,
         null=True,
-        help_text='When the video was recorded'
+        help_text=_('Momentul înregistrării videoclipului.')
     )
     
     uploaded_at = models.DateTimeField(
+        _('Încărcat la'),
         auto_now_add=True,
-        help_text='When video was uploaded to system'
+        help_text=_('Momentul încărcării videoclipului în sistem.')
     )
     
     # Access control
     is_public = models.BooleanField(
+        _('Public'),
         default=False,
-        help_text='Whether video is publicly accessible'
+        help_text=_('Indică dacă videoclipul este accesibil public.')
     )
     
     class Meta:
-        verbose_name = 'Team Performance Video'
-        verbose_name_plural = 'Team Performance Videos'
+        verbose_name = _('Video probă pe echipe')
+        verbose_name_plural = _('Video-uri probe pe echipe')
         ordering = ['-recorded_at', '-uploaded_at']
     
     def __str__(self):
         team = self.category_team.team
-        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'No date'
+        date = self.recorded_at.strftime('%Y-%m-%d') if self.recorded_at else 'Fără dată'
         return f"{team.name} ({date})"
     
     def clean(self):
