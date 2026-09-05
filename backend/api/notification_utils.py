@@ -199,14 +199,18 @@ def create_competition_notification(competition, notification_type='competition_
     """Create notification for competition events"""
     # Notify all athletes about new/updated competitions
     athletes = User.objects.filter(role='athlete')
-    
+    # `competition` may be a plain landing.Event or the api.models.Competition
+    # proxy; only the proxy exposes `.name` (an alias for `.title`).
+    competition_name = getattr(competition, 'name', None) or getattr(competition, 'title', str(competition))
+
     if notification_type == 'competition_created':
         title = 'New Competition Available'
-        message = f'A new competition "{competition.name}" has been created and is available for registration.'
+        message = f'A new competition "{competition_name}" has been created and is available for registration.'
     else:
         title = 'Competition Updated'
-        message = f'The competition "{competition.name}" has been updated. Please check for any changes.'
+        message = f'The competition "{competition_name}" has been updated. Please check for any changes.'
     
+    start_date = getattr(competition, 'start_date', None)
     for athlete in athletes:
         create_notification(
             recipient=athlete,
@@ -215,9 +219,9 @@ def create_competition_notification(competition, notification_type='competition_
             message=message,
             related_competition=competition,
             action_data={
-                'competition_name': competition.name,
-                'competition_date': competition.date.isoformat() if competition.date else None,
-                'location': getattr(competition, 'location', ''),
+                'competition_name': competition_name,
+                'competition_date': start_date.isoformat() if start_date else None,
+                'location': getattr(competition, 'address', ''),
             }
         )
 
