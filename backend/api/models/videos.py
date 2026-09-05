@@ -80,8 +80,8 @@ class MatchVideoRecording(models.Model):
     )
     
     class Meta:
-        verbose_name = _('Înregistrare video meci')
-        verbose_name_plural = _('Înregistrări video meci')
+        verbose_name = _('Înregistrare video a meciului')
+        verbose_name_plural = _('Înregistrări video ale meciurilor')
         ordering = ['-recorded_at', '-uploaded_at']
     
     def __str__(self):
@@ -152,8 +152,8 @@ class AthletePerformanceVideo(models.Model):
     )
     
     class Meta:
-        verbose_name = _('Video probă individuală')
-        verbose_name_plural = _('Video-uri probe individuale')
+        verbose_name = _('Înregistrare video a probei individuale')
+        verbose_name_plural = _('Înregistrări video ale probelor individuale')
         ordering = ['-recorded_at', '-uploaded_at']
     
     def __str__(self):
@@ -233,8 +233,8 @@ class TeamPerformanceVideo(models.Model):
     )
     
     class Meta:
-        verbose_name = _('Video probă pe echipe')
-        verbose_name_plural = _('Video-uri probe pe echipe')
+        verbose_name = _('Înregistrare video a probei pe echipe')
+        verbose_name_plural = _('Înregistrări video ale probelor pe echipe')
         ordering = ['-recorded_at', '-uploaded_at']
     
     def __str__(self):

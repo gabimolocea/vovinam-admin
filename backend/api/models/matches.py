@@ -251,8 +251,8 @@ class RefereeScore(models.Model):
     winner = models.CharField(_('Câștigător'), max_length=10, choices=[('red', 'Colț roșu'), ('blue', 'Colț albastru')], null=True, blank=True)
 
     class Meta:
-        verbose_name = _('Scor arbitru')
-        verbose_name_plural = _('Scoruri arbitri')
+        verbose_name = _('Scor al arbitrului')
+        verbose_name_plural = _('Scoruri ale arbitrilor')
 
     def __str__(self):
         if self.referee:
@@ -313,8 +313,8 @@ class RefereePointEvent(models.Model):
 
     class Meta:
         ordering = ['timestamp']
-        verbose_name = _('Eveniment punctaj arbitru')
-        verbose_name_plural = _('Evenimente punctaj arbitru')
+        verbose_name = _('Eveniment de punctaj al arbitrului')
+        verbose_name_plural = _('Evenimente de punctaj ale arbitrilor')
 
     def __str__(self):
         return f"Eveniment {self.pk} - Meci {self.match_id} - Arbitru {self.referee_id} - {self.side} ({self.points})"
@@ -402,8 +402,8 @@ class MatchRefereeAssignment(models.Model):
     )
 
     class Meta:
-        verbose_name = _('Alocare arbitri meci')
-        verbose_name_plural = _('Alocări arbitri meci')
+        verbose_name = _('Alocare arbitri pentru meci')
+        verbose_name_plural = _('Alocări de arbitri pentru meciuri')
     
     def __str__(self):
         return f"Alocare arbitri pentru {self.match}"
@@ -477,8 +477,8 @@ class MatchRefereeScore(models.Model):
         indexes = [
             models.Index(fields=['match', 'referee']),
         ]
-        verbose_name = _('Scor arbitru meci')
-        verbose_name_plural = _('Scoruri arbitri meci')
+        verbose_name = _('Scor al arbitrului pentru meci')
+        verbose_name_plural = _('Scoruri ale arbitrilor pentru meciuri')
     
     def __str__(self):
         rnd = f" R{self.round.round_number}" if self.round else " Final"
@@ -531,8 +531,8 @@ class AthleteMatch(ApprovalWorkflowMixin, models.Model):
     
     class Meta:
         ordering = ['-match_date']
-        verbose_name = _('Meci sportiv')
-        verbose_name_plural = _('Meciuri sportiv')
+        verbose_name = _('Meci al sportivului')
+        verbose_name_plural = _('Meciuri ale sportivilor')
     
     def __str__(self):
         if self.submitted_by_athlete:
@@ -732,8 +732,8 @@ class MatchEvent(models.Model):
     
     class Meta:
         ordering = ['created_at']
-        verbose_name = _('Eveniment meci')
-        verbose_name_plural = _('Evenimente meci')
+        verbose_name = _('Eveniment de meci')
+        verbose_name_plural = _('Evenimente de meci')
     
     def __str__(self):
         return f"{self.match} - {self.get_event_type_display()} ({self.created_at})"

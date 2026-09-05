@@ -64,8 +64,8 @@ class CompetitionField(models.Model):
     class Meta:
         unique_together = ('event', 'field_number')
         ordering = ['field_number']
-        verbose_name = _('Teren competiție')
-        verbose_name_plural = _('Terenuri competiție')
+        verbose_name = _('Teren de competiție')
+        verbose_name_plural = _('Terenuri de competiție')
     
     def __str__(self):
         return f"{self.name} (Event: {self.event.title})"
@@ -104,8 +104,8 @@ class FieldBreak(models.Model):
 
     class Meta:
         ordering = ['order']
-        verbose_name = _('Pauză teren')
-        verbose_name_plural = _('Pauze teren')
+        verbose_name = _('Pauză pe teren')
+        verbose_name_plural = _('Pauze pe teren')
 
     def __str__(self):
         return f"{self.label} ({self.duration}min) - {self.field.name}"
@@ -184,8 +184,8 @@ class CategoryFieldAssignment(models.Model):
     
     class Meta:
         ordering = ['order']
-        verbose_name = _('Alocare teren categorie')
-        verbose_name_plural = _('Alocări teren categorie')
+        verbose_name = _('Alocare teren pentru categorie')
+        verbose_name_plural = _('Alocări de teren pentru categorii')
         indexes = [
             models.Index(fields=['field', 'status']),
         ]
@@ -268,8 +268,8 @@ class MatchFieldAssignment(models.Model):
 
     class Meta:
         ordering = ['order']
-        verbose_name = _('Alocare teren meci')
-        verbose_name_plural = _('Alocări teren meci')
+        verbose_name = _('Alocare teren pentru meci')
+        verbose_name_plural = _('Alocări de teren pentru meciuri')
         indexes = [
             models.Index(fields=['field', 'status'], name='api_match_field_status_idx'),
         ]
@@ -367,8 +367,8 @@ class DisplayMonitorSession(models.Model):
     updated_at = models.DateTimeField(_('Data actualizării'), auto_now=True)
     
     class Meta:
-        verbose_name = _('Sesiune monitor afișaj')
-        verbose_name_plural = _('Sesiuni monitor afișaj')
+        verbose_name = _('Sesiune de afișare pe monitor')
+        verbose_name_plural = _('Sesiuni de afișare pe monitor')
     
     def __str__(self):
         if self.current_category:
@@ -434,8 +434,8 @@ class QRCodeAssignment(models.Model):
     
     class Meta:
         unique_together = ('referee', 'category', 'match')
-        verbose_name = _('Alocare cod QR')
-        verbose_name_plural = _('Alocări coduri QR')
+        verbose_name = _('Alocare de cod QR')
+        verbose_name_plural = _('Alocări de coduri QR')
         indexes = [
             models.Index(fields=['code']),
             models.Index(fields=['referee', 'category']),

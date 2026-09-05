@@ -52,8 +52,8 @@ class DiplomaTemplate(models.Model):
     class Meta:
         ordering = ['event_id', 'category_scope', 'template_kind', 'id']
         unique_together = ('event', 'template_kind', 'category_scope')
-        verbose_name = _('Șablon diplomă')
-        verbose_name_plural = _('Șabloane diplome')
+        verbose_name = _('Șablon de diplomă')
+        verbose_name_plural = _('Șabloane de diplome')
 
     def __str__(self):
         return f"{self.event.title} - {self.get_template_kind_display()} - {self.get_category_scope_display()}"
@@ -119,8 +119,8 @@ class CategoryAthlete(models.Model):
             models.Index(fields=['athlete']),
             models.Index(fields=['category', 'disqualified']),
         ]
-        verbose_name = _('Sportiv în categorie')
-        verbose_name_plural = _('Sportivi în categorii')
+        verbose_name = _('Sportiv înscris în categorie')
+        verbose_name_plural = _('Sportivi înscriși în categorii')
 
     def delete(self, *args, **kwargs):
         """
@@ -192,8 +192,8 @@ class CategoryTeam(models.Model):
             models.Index(fields=['category']),
             models.Index(fields=['team']),
         ]
-        verbose_name = _('Echipă în categorie')
-        verbose_name_plural = _('Echipe în categorie')
+        verbose_name = _('Echipă înscrisă în categorie')
+        verbose_name_plural = _('Echipe înscrise în categorii')
 
     def __str__(self):
         category = self.category
@@ -373,8 +373,8 @@ class TeamCategory(Category):
     third_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, verbose_name=_('Locul 3'), null=True, blank=True, related_name='third_place_team_categories')
 
     class Meta:
-        verbose_name = _('Categorie echipă')
-        verbose_name_plural = _('Categorii echipă')
+        verbose_name = _('Categorie pe echipe')
+        verbose_name_plural = _('Categorii pe echipe')
 
     def clean(self):
         """Validate awards are enrolled teams"""
@@ -437,8 +437,8 @@ class FightGroupEnrollment(models.Model):
             models.Index(fields=['event', 'group'], name='api_fightgr_event_i_eb4365_idx'),
             models.Index(fields=['athlete'], name='api_fightgr_athlete_8e4255_idx'),
         ]
-        verbose_name = _('Înscriere grupă luptă')
-        verbose_name_plural = _('Înscrieri grupe luptă')
+        verbose_name = _('Înscriere în grupă de luptă')
+        verbose_name_plural = _('Înscrieri în grupe de luptă')
 
     def __str__(self):
         return f"{self.athlete} @ {self.group} ({self.event})"
@@ -469,8 +469,8 @@ class FightAthleteWeight(models.Model):
 
     class Meta:
         unique_together = ('category', 'athlete')
-        verbose_name = _('Greutate sportiv luptă')
-        verbose_name_plural = _('Greutăți sportivi luptă')
+        verbose_name = _('Cântărire a sportivului la luptă')
+        verbose_name_plural = _('Cântăriri ale sportivilor la luptă')
 
     def __str__(self):
         return f"{self.athlete} - {self.category.name}"

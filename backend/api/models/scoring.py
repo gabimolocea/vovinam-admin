@@ -91,8 +91,8 @@ class CategoryRefereeScore(models.Model):
             models.Index(fields=['athlete_score', 'referee']),
             models.Index(fields=['submitted_date']),
         ]
-        verbose_name = _('Scor arbitru categorie')
-        verbose_name_plural = _('Scoruri arbitri categorie')
+        verbose_name = _('Scor al arbitrului pentru categorie')
+        verbose_name_plural = _('Scoruri ale arbitrilor pentru categorii')
     
     def __str__(self):
         athlete = self.athlete_score.athlete
@@ -183,8 +183,8 @@ class CategoryRefereeScoreEvent(models.Model):
             models.Index(fields=['athlete_score', 'timestamp']),
             models.Index(fields=['referee', 'timestamp']),
         ]
-        verbose_name = _('Eveniment scor arbitru categorie')
-        verbose_name_plural = _('Evenimente scor arbitru categorie')
+        verbose_name = _('Eveniment de scor al arbitrului pentru categorie')
+        verbose_name_plural = _('Evenimente de scor ale arbitrilor pentru categorii')
 
     def __str__(self):
         return f"Category score event #{self.pk} ({self.action})"
@@ -266,8 +266,8 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
             models.Index(fields=['submitted_date']),
             models.Index(fields=['status', 'submitted_by_athlete']),
         ]
-        verbose_name = _('Rezultat sportiv')
-        verbose_name_plural = _('Rezultate sportivi')
+        verbose_name = _('Rezultat al sportivului')
+        verbose_name_plural = _('Rezultate ale sportivilor')
 
     def __str__(self):
         category = self.category
@@ -560,8 +560,8 @@ class CategoryTeamScore(models.Model):
 
     class Meta:
         unique_together = ('category', 'team', 'referee')  # Ensure unique scores per referee and team
-        verbose_name = _('Rezultat echipă')
-        verbose_name_plural = _('Rezultate echipe')
+        verbose_name = _('Rezultat al echipei')
+        verbose_name_plural = _('Rezultate ale echipelor')
 
     def __str__(self):
         return f"{self.team.name} - {self.category.name} - Arbitru: {self.referee.first_name} {self.referee.last_name}"
@@ -606,8 +606,8 @@ class FieldRecordingSession(models.Model):
             models.Index(fields=['event', 'field', 'status']),
             models.Index(fields=['started_at']),
         ]
-        verbose_name = _('Sesiune înregistrare teren')
-        verbose_name_plural = _('Sesiuni înregistrare teren')
+        verbose_name = _('Sesiune de înregistrare a terenului')
+        verbose_name_plural = _('Sesiuni de înregistrare a terenului')
 
     def __str__(self):
         label = self.title or f"Înregistrare {self.field}"

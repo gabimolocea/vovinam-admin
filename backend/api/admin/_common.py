@@ -81,7 +81,7 @@ def _apply_admin_model_labels():
         TrainingSeminarParticipation: ('participare la seminar', 'participări la seminare'),
         EventParticipation: ('participare la eveniment', 'participări la evenimente'),
         Grade: ('grad', 'grade'),
-        GradeHistory: ('istoric grad', 'istoric grade'),
+        GradeHistory: ('istoric de grad', 'istorice de grad'),
         Title: ('titlu', 'titluri'),
         FederationRole: ('rol în federație', 'roluri în federație'),
         Visa: ('viză', 'vize'),
@@ -90,31 +90,31 @@ def _apply_admin_model_labels():
         SoloCategory: ('categorie individuală', 'categorii individuale'),
         TeamCategory: ('categorie pe echipe', 'categorii pe echipe'),
         FightCategory: ('categorie de luptă', 'categorii de luptă'),
-        FightAthleteWeight: ('greutate sportiv luptă', 'greutăți sportivi luptă'),
+        FightAthleteWeight: ('cântărire a sportivului la luptă', 'cântăriri ale sportivilor la luptă'),
         Team: ('echipă', 'echipe'),
-        CategoryTeam: ('echipă în categorie', 'echipe în categorie'),
-        CategoryAthlete: ('sportiv în categorie', 'sportivi în categorii'),
+        CategoryTeam: ('echipă înscrisă în categorie', 'echipe înscrise în categorii'),
+        CategoryAthlete: ('sportiv înscris în categorie', 'sportivi înscriși în categorii'),
         Match: ('meci', 'meciuri'),
-        MatchEvent: ('eveniment meci', 'evenimente meci'),
-        MatchRefereeScore: ('scor arbitru meci', 'scoruri arbitri meci'),
-        RefereeScore: ('scor arbitru', 'scoruri arbitri'),
-        RefereePointEvent: ('eveniment punctaj arbitru', 'evenimente punctaj arbitru'),
-        CategoryAthleteScore: ('rezultat sportiv', 'rezultate sportivi'),
-        CategoryRefereeScore: ('scor arbitru categorie', 'scoruri arbitri categorie'),
-        CategoryRefereeAssignment: ('alocare arbitri categorie', 'alocări arbitri categorie'),
-        MatchRefereeAssignment: ('alocare arbitri meci', 'alocări arbitri meci'),
-        CategoryTeamScore: ('rezultat echipă', 'rezultate echipe'),
-        TeamMember: ('membru echipă', 'membri echipă'),
-        Group: ('grup', 'grupuri'),
-        MatchVideoRecording: ('înregistrare video meci', 'înregistrări video meci'),
-        AthletePerformanceVideo: ('video probă individuală', 'video-uri probe individuale'),
-        TeamPerformanceVideo: ('video probă pe echipe', 'video-uri probe pe echipe'),
+        MatchEvent: ('eveniment de meci', 'evenimente de meci'),
+        MatchRefereeScore: ('scor de arbitru pentru meci', 'scoruri de arbitru pentru meciuri'),
+        RefereeScore: ('scor al arbitrului', 'scoruri ale arbitrilor'),
+        RefereePointEvent: ('eveniment de punctaj al arbitrului', 'evenimente de punctaj ale arbitrilor'),
+        CategoryAthleteScore: ('rezultat al sportivului', 'rezultate ale sportivilor'),
+        CategoryRefereeScore: ('scor al arbitrului pentru categorie', 'scoruri ale arbitrilor pentru categorii'),
+        CategoryRefereeAssignment: ('alocare arbitri pentru categorie', 'alocări de arbitri pentru categorii'),
+        MatchRefereeAssignment: ('alocare arbitri pentru meci', 'alocări de arbitri pentru meciuri'),
+        CategoryTeamScore: ('rezultat al echipei', 'rezultate ale echipelor'),
+        TeamMember: ('membru al echipei', 'membri ai echipei'),
+        Group: ('grupă', 'grupe'),
+        MatchVideoRecording: ('înregistrare video a meciului', 'înregistrări video ale meciurilor'),
+        AthletePerformanceVideo: ('înregistrare video a probei individuale', 'înregistrări video ale probelor individuale'),
+        TeamPerformanceVideo: ('înregistrare video a probei pe echipe', 'înregistrări video ale probelor pe echipe'),
         CompetitionField: ('teren de concurs', 'terenuri de concurs'),
-        CategoryFieldAssignment: ('alocare teren categorie', 'alocări teren categorie'),
-        MatchFieldAssignment: ('alocare teren meci', 'alocări teren meci'),
+        CategoryFieldAssignment: ('alocare teren pentru categorie', 'alocări de teren pentru categorii'),
+        MatchFieldAssignment: ('alocare teren pentru meci', 'alocări de teren pentru meciuri'),
         MatchRound: ('rundă meci', 'runde meci'),
-        CompetitionReferee: ('arbitru competiție', 'arbitri competiție'),
-        DisplayMonitorSession: ('sesiune monitor afișaj', 'sesiuni monitor afișaj'),
+        CompetitionReferee: ('arbitru de competiție', 'arbitri de competiție'),
+        DisplayMonitorSession: ('sesiune de afișare pe monitor', 'sesiuni de afișare pe monitor'),
         UserProxy: ('utilizator', 'utilizatori'),
     }
 
@@ -1081,8 +1081,8 @@ class MatchInline(admin.TabularInline):
     exclude = ('field',)
     readonly_fields = ('winner_display', 'match_link')
     show_change_link = False
-    verbose_name = "Meci"
-    verbose_name_plural = "Meciuri"
+    verbose_name = _("Meci")
+    verbose_name_plural = _("Meciuri")
 
     def winner_display(self, obj):
         """Display computed winner from scoring system"""
@@ -1186,8 +1186,8 @@ class RefereeScoreInline(admin.TabularInline):
     extra = 5
     max_num = 5
     can_delete = False
-    verbose_name = 'Scor arbitru vechi'
-    verbose_name_plural = 'Scoruri arbitri vechi (sincronizate / opționale)'
+    verbose_name = _('Scor de arbitru vechi')
+    verbose_name_plural = _('Scoruri vechi ale arbitrilor (sincronizate / opționale)')
     fields = (
         'referee',
         'red_round_1', 'blue_round_1',  # ROUND 1
@@ -2118,8 +2118,8 @@ class AthleteFightResultsInline(admin.TabularInline):
     """
     model = CategoryAthlete
     extra = 0
-    verbose_name = "Rezultat luptă"
-    verbose_name_plural = "Rezultate luptă"
+    verbose_name = _("Rezultat la luptă")
+    verbose_name_plural = _("Rezultate la luptă")
     can_add = False  # Disable the "Add another" button
     can_delete = False  # Disable the "Delete" button
     show_change_link = False  # Hide the "Change" link
@@ -2171,7 +2171,7 @@ class CategoryTeamInline(admin.TabularInline):
     autocomplete_fields = ['category']
     fields = ('category', 'place_obtained')
     readonly_fields = ('place_obtained',)
-    verbose_name_plural = "ECHIPĂ ÎNSCRISĂ ÎN URMĂTOARELE CATEGORII"  # Rename the section title
+    verbose_name_plural = _("ECHIPĂ ÎNSCRISĂ ÎN URMĂTOARELE CATEGORII")  # Rename the section title
     def place_obtained(self, obj):
         """
         Display the place obtained by the team in the category.
@@ -2192,8 +2192,8 @@ class GroupInline(admin.TabularInline):
     model = Group
     extra = 1  # Number of empty forms to display
     fields = ('name',)  # Only display the name field
-    verbose_name = "Grupă"
-    verbose_name_plural = "Grupe"
+    verbose_name = _("Grupă")
+    verbose_name_plural = _("Grupe")
 
 class CategoryAdminForm(forms.ModelForm):
     class Meta:
@@ -2204,8 +2204,8 @@ class CategoryAdminForm(forms.ModelForm):
 class CategoryFieldAssignmentInline(admin.StackedInline):
     model = CategoryFieldAssignment
     extra = 0
-    verbose_name = 'Programare teren'
-    verbose_name_plural = 'Programări teren'
+    verbose_name = _('Programare pe teren')
+    verbose_name_plural = _('Programări pe teren')
     fields = (
         'field',
         'status',
@@ -2255,8 +2255,8 @@ class RefereePointEventInline(admin.TabularInline):
     extra = 1
     fields = ('referee', 'side', 'points', 'reason')
     readonly_fields = ()
-    verbose_name = 'Penalizare arbitru central'
-    verbose_name_plural = 'Penalizări arbitru central'
+    verbose_name = _('Penalizare a arbitrului central')
+    verbose_name_plural = _('Penalizări ale arbitrului central')
     can_delete = True
 
     # No custom Media for metadata editor â€” keep plain textarea behavior
@@ -2610,8 +2610,8 @@ class LiveMatchRefereeScoreInline(admin.TabularInline):
     extra = 0
     fields = ('referee', 'round', 'red_corner_score', 'blue_corner_score', 'winner_choice_display', 'submitted_date')
     readonly_fields = ('winner_choice_display', 'submitted_date')
-    verbose_name = 'Scor arbitru live'
-    verbose_name_plural = 'Scoruri arbitri live (sursa principală)'
+    verbose_name = _('Scor live al arbitrului')
+    verbose_name_plural = _('Scoruri live ale arbitrilor (sursa principală)')
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('referee', 'round').order_by('referee__last_name', 'referee__first_name', 'round__round_number', 'id')
@@ -2667,8 +2667,8 @@ class LiveCentralPenaltyEventInline(admin.TabularInline):
     extra = 0
     fields = ('created_by', 'corner', 'value', 'round', 'notes', 'created_at')
     readonly_fields = ('created_at',)
-    verbose_name = 'Penalizare centrală live'
-    verbose_name_plural = 'Penalizări centrale live (sursa principală)'
+    verbose_name = _('Penalizare centrală live')
+    verbose_name_plural = _('Penalizări centrale live (sursa principală)')
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(event_type__in=['penalty_red', 'penalty_blue']).select_related('created_by', 'round').order_by('-created_at')
@@ -2704,8 +2704,8 @@ class MatchFieldAssignmentInline(admin.StackedInline):
     model = MatchFieldAssignment
     form = MatchFieldAssignmentInlineForm
     extra = 0
-    verbose_name = 'Programare teren'
-    verbose_name_plural = 'Programare teren'
+    verbose_name = _('Programare pe teren')
+    verbose_name_plural = _('Programări pe teren')
     fields = (
         'field',
         'status',
