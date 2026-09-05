@@ -89,8 +89,8 @@ class CategoryRefereeAssignment(models.Model):
     )
 
     class Meta:
-        verbose_name = _('Alocare arbitri categorie')
-        verbose_name_plural = _('Alocări arbitri categorie')
+        verbose_name = _('Alocare arbitri pentru categorie')
+        verbose_name_plural = _('Alocări de arbitri pentru categorii')
     
     def __str__(self):
         return f"Referees for {self.category.name}"
@@ -152,8 +152,8 @@ class CompetitionReferee(models.Model):
     class Meta:
         unique_together = ('event', 'athlete')
         ordering = ['athlete__last_name']
-        verbose_name = _('Arbitru competiție')
-        verbose_name_plural = _('Arbitri competiție')
+        verbose_name = _('Arbitru de competiție')
+        verbose_name_plural = _('Arbitri de competiție')
 
     def __str__(self):
         return f"{self.athlete.last_name} {self.athlete.first_name} - {self.event.title}"
@@ -185,7 +185,7 @@ class RefereePresence(models.Model):
     class Meta:
         unique_together = ('category', 'referee')
         verbose_name = _('Prezență arbitru')
-        verbose_name_plural = _('Prezențe arbitri')
+        verbose_name_plural = _('Prezențe ale arbitrilor')
 
     def __str__(self):
         return f"Referee {self.referee_id} on category {self.category_id}"

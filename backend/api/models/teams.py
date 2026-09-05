@@ -182,8 +182,8 @@ class TeamMember(models.Model):
 
     class Meta:
         unique_together = ('team', 'athlete')  # Ensure an athlete cannot be added twice to the same team
-        verbose_name = _('Membru echipă')
-        verbose_name_plural = _('Membri echipă')
+        verbose_name = _('Membru al echipei')
+        verbose_name_plural = _('Membri ai echipei')
 
     def __str__(self):
         club_name = f", {self.athlete.club.name}" if self.athlete.club else ""

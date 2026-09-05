@@ -126,8 +126,8 @@ class NotificationSettings(models.Model):
     updated_at = models.DateTimeField(_('Data actualizării'), auto_now=True)
 
     class Meta:
-        verbose_name = _('Setări notificări')
-        verbose_name_plural = _('Setări notificări')
+        verbose_name = _('Setări de notificare')
+        verbose_name_plural = _('Setări de notificare')
     
     def __str__(self):
         return f"Setări notificări - {self.user.get_full_name()}"
