@@ -34,24 +34,26 @@ class DiplomaTemplate(models.Model):
         ('fight', 'Luptă'),
     ]
     PREVIEW_ORIENTATION_CHOICES = [
-        ('landscape', 'Landscape'),
-        ('portrait', 'Portrait'),
+        ('landscape', 'Orizontal'),
+        ('portrait', 'Vertical'),
     ]
 
-    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='diploma_templates')
-    title = models.CharField(max_length=120)
-    template_kind = models.CharField(max_length=20, choices=TEMPLATE_KIND_CHOICES)
-    category_scope = models.CharField(max_length=12, choices=CATEGORY_SCOPE_CHOICES, default='all')
-    pdf_file = models.FileField(upload_to='diploma_templates/')
-    preview_orientation = models.CharField(max_length=12, choices=PREVIEW_ORIENTATION_CHOICES, default='landscape')
-    placements = models.JSONField(default=list, blank=True, help_text='Listă de câmpuri poziționate pe diploma PDF.')
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, verbose_name=_('Eveniment'), related_name='diploma_templates')
+    title = models.CharField(_('Titlu'), max_length=120)
+    template_kind = models.CharField(_('Tip șablon'), max_length=20, choices=TEMPLATE_KIND_CHOICES)
+    category_scope = models.CharField(_('Domeniu categorie'), max_length=12, choices=CATEGORY_SCOPE_CHOICES, default='all')
+    pdf_file = models.FileField(_('Fișier PDF'), upload_to='diploma_templates/')
+    preview_orientation = models.CharField(_('Orientare previzualizare'), max_length=12, choices=PREVIEW_ORIENTATION_CHOICES, default='landscape')
+    placements = models.JSONField(_('Poziționări'), default=list, blank=True, help_text=_('Listă de câmpuri poziționate pe diploma PDF.'))
+    is_active = models.BooleanField(_('Activ'), default=True)
+    created_at = models.DateTimeField(_('Data creării'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Data actualizării'), auto_now=True)
 
     class Meta:
         ordering = ['event_id', 'category_scope', 'template_kind', 'id']
         unique_together = ('event', 'template_kind', 'category_scope')
+        verbose_name = _('Șablon diplomă')
+        verbose_name_plural = _('Șabloane diplome')
 
     def __str__(self):
         return f"{self.event.title} - {self.get_template_kind_display()} - {self.get_category_scope_display()}"
@@ -61,23 +63,23 @@ class CategoryAthlete(models.Model):
     Through model for the many-to-many relationship between Category and Athlete.
     """
     PLACE_CHOICES = [
-        (1, '1st Place'),
-        (2, '2nd Place'),
-        (3, '3rd Place'),
+        (1, 'Locul 1'),
+        (2, 'Locul 2'),
+        (3, 'Locul 3'),
     ]
     
-    category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name="enrolled_athletes")
-    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE)
-    weight = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)  # Weight in kilograms
-    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement (auto-calculated from total score)')
-    disqualified = models.BooleanField(default=False, help_text='Mark as disqualified')
+    category = models.ForeignKey('Category', on_delete=models.CASCADE, verbose_name=_('Categorie'), related_name="enrolled_athletes")
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, verbose_name=_('Sportiv'))
+    weight = models.DecimalField(_('Greutate'), max_digits=5, decimal_places=2, blank=True, null=True)  # Weight in kilograms
+    place = models.PositiveSmallIntegerField(_('Loc'), choices=PLACE_CHOICES, null=True, blank=True, help_text=_('Locul obținut (calculat automat din scorul total).'))
+    disqualified = models.BooleanField(_('Descalificat'), default=False, help_text=_('Bifați dacă sportivul a fost descalificat.'))
     
     # Referee scores for solo categories
-    ref1_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF1', help_text='Referee 1 score')
-    ref2_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF2', help_text='Referee 2 score')
-    ref3_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF3', help_text='Referee 3 score')
-    ref4_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF4', help_text='Referee 4 score')
-    ref5_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF5', help_text='Referee 5 score')
+    ref1_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF1'), help_text=_('Scorul arbitrului 1.'))
+    ref2_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF2'), help_text=_('Scorul arbitrului 2.'))
+    ref3_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF3'), help_text=_('Scorul arbitrului 3.'))
+    ref4_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF4'), help_text=_('Scorul arbitrului 4.'))
+    ref5_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF5'), help_text=_('Scorul arbitrului 5.'))
     
     @property
     def total_score(self):
@@ -117,6 +119,8 @@ class CategoryAthlete(models.Model):
             models.Index(fields=['athlete']),
             models.Index(fields=['category', 'disqualified']),
         ]
+        verbose_name = _('Sportiv în categorie')
+        verbose_name_plural = _('Sportivi în categorii')
 
     def delete(self, *args, **kwargs):
         """
@@ -134,22 +138,22 @@ class CategoryTeam(models.Model):
     Through model for the many-to-many relationship between Category and Team.
     """
     PLACE_CHOICES = [
-        (1, '1st Place'),
-        (2, '2nd Place'),
-        (3, '3rd Place'),
+        (1, 'Locul 1'),
+        (2, 'Locul 2'),
+        (3, 'Locul 3'),
     ]
     
-    category = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='enrolled_teams')
-    team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='enrolled_categories')  # Rename related_name
-    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement (auto-calculated from total score)')
-    disqualified = models.BooleanField(default=False, help_text='Mark as disqualified')
+    category = models.ForeignKey('Category', on_delete=models.CASCADE, verbose_name=_('Categorie'), related_name='enrolled_teams')
+    team = models.ForeignKey('Team', on_delete=models.CASCADE, verbose_name=_('Echipă'), related_name='enrolled_categories')  # Rename related_name
+    place = models.PositiveSmallIntegerField(_('Loc'), choices=PLACE_CHOICES, null=True, blank=True, help_text=_('Locul obținut (calculat automat din scorul total).'))
+    disqualified = models.BooleanField(_('Descalificată'), default=False, help_text=_('Bifați dacă echipa a fost descalificată.'))
     
     # Referee scores for team categories
-    ref1_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF1', help_text='Referee 1 score')
-    ref2_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF2', help_text='Referee 2 score')
-    ref3_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF3', help_text='Referee 3 score')
-    ref4_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF4', help_text='Referee 4 score')
-    ref5_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='REF5', help_text='Referee 5 score')
+    ref1_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF1'), help_text=_('Scorul arbitrului 1.'))
+    ref2_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF2'), help_text=_('Scorul arbitrului 2.'))
+    ref3_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF3'), help_text=_('Scorul arbitrului 3.'))
+    ref4_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF4'), help_text=_('Scorul arbitrului 4.'))
+    ref5_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('REF5'), help_text=_('Scorul arbitrului 5.'))
     
     @property
     def total_score(self):
@@ -188,13 +192,15 @@ class CategoryTeam(models.Model):
             models.Index(fields=['category']),
             models.Index(fields=['team']),
         ]
+        verbose_name = _('Echipă în categorie')
+        verbose_name_plural = _('Echipe în categorie')
 
     def __str__(self):
         category = self.category
         group = category.group if category else None
         event = category.event if category else None
         group_name = group.name if group else 'No Group'
-        event_title = event.title if event else 'No Competition'
+        event_title = event.title if event else 'Fără competiție'
         return (
             f"{self.team.name} - "
             f"{category.name} - {group_name} - {event_title}"
@@ -223,43 +229,47 @@ class Category(models.Model):
     Specific category types (Solo, Team, Fight) extend this model.
     """
     GENDER_CHOICES = [
-        ('male', 'Male'),
-        ('female', 'Female'),
+        ('male', 'Masculin'),
+        ('female', 'Feminin'),
         ('mixt', 'Mixt'),
     ]
     
-    category_number = models.CharField(max_length=50, blank=True, null=True, help_text='Unique identifier for this category (e.g., C1, C2, SOLO-M-1)')
-    name = models.CharField(max_length=100)
-    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
-    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixt')
+    category_number = models.CharField(_('Număr categorie'), max_length=50, blank=True, null=True, help_text=_('Identificator unic pentru această categorie (de exemplu, C1, C2, SOLO-M-1).'))
+    name = models.CharField(_('Nume'), max_length=100)
+    event = models.ForeignKey('landing.Event', on_delete=models.CASCADE, verbose_name=_('Eveniment'), related_name='categories', null=True, blank=True)
+    gender = models.CharField(_('Gen'), max_length=20, choices=GENDER_CHOICES, default='mixt')
     
     # M2M relationships shared across all types - defined here but used by child classes
-    athletes = models.ManyToManyField('Athlete', through='CategoryAthlete', related_name='categories', blank=True)
-    teams = models.ManyToManyField('Team', through='CategoryTeam', related_name='category_teams', blank=True)
+    athletes = models.ManyToManyField('Athlete', verbose_name=_('Sportivi'), through='CategoryAthlete', related_name='categories', blank=True)
+    teams = models.ManyToManyField('Team', verbose_name=_('Echipe'), through='CategoryTeam', related_name='category_teams', blank=True)
     
     group = models.ForeignKey(
         'Group',
         on_delete=models.SET_NULL,
+        verbose_name=_('Grupă'),
         null=True,
         blank=True,
         related_name='categories'
     )
     birth_year_start = models.IntegerField(
+        _('An naștere de început'),
         null=True, blank=True,
-        help_text="Optional sub-range start (oldest birth year). Used for fight categories within a group."
+        help_text=_('Subinterval opțional de început (cel mai vechi an de naștere). Folosit pentru categoriile de luptă dintr-o grupă.')
     )
     birth_year_end = models.IntegerField(
+        _('An naștere de sfârșit'),
         null=True, blank=True,
-        help_text="Optional sub-range end (newest birth year). Used for fight categories within a group."
+        help_text=_('Subinterval opțional de sfârșit (cel mai nou an de naștere). Folosit pentru categoriile de luptă dintr-o grupă.')
     )
-    display_order = models.IntegerField(default=0, help_text="Order within the group for display purposes")
+    display_order = models.IntegerField(_('Ordine de afișare'), default=0, help_text=_('Ordinea de afișare în cadrul grupei.'))
 
     class Meta:
         indexes = [
             models.Index(fields=['event']),
         ]
         ordering = ['display_order', 'id']
-        verbose_name_plural = 'Categories'
+        verbose_name = _('Categorie')
+        verbose_name_plural = _('Categorii')
 
     def __str__(self):
         associated = getattr(self, 'event', None) or getattr(self, 'competition', None)
@@ -324,13 +334,13 @@ class SoloCategory(Category):
     Athletes enrolled via CategoryAthlete M2M (inherited from Category).
     """
     # Individual awards
-    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_first_place_categories')
-    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_second_place_categories')
-    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='solo_third_place_categories')
+    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, verbose_name=_('Locul 1'), null=True, blank=True, related_name='solo_first_place_categories')
+    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, verbose_name=_('Locul 2'), null=True, blank=True, related_name='solo_second_place_categories')
+    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, verbose_name=_('Locul 3'), null=True, blank=True, related_name='solo_third_place_categories')
 
     class Meta:
-        verbose_name = 'Solo Category'
-        verbose_name_plural = 'Solo Categories'
+        verbose_name = _('Categorie individuală')
+        verbose_name_plural = _('Categorii individuale')
 
     def clean(self):
         """Validate awards are enrolled athletes"""
@@ -358,13 +368,13 @@ class TeamCategory(Category):
     Teams enrolled via CategoryTeam M2M (inherited from Category).
     """
     # Team awards
-    first_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='first_place_team_categories')
-    second_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='second_place_team_categories')
-    third_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='third_place_team_categories')
+    first_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, verbose_name=_('Locul 1'), null=True, blank=True, related_name='first_place_team_categories')
+    second_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, verbose_name=_('Locul 2'), null=True, blank=True, related_name='second_place_team_categories')
+    third_place_team = models.ForeignKey('Team', on_delete=models.SET_NULL, verbose_name=_('Locul 3'), null=True, blank=True, related_name='third_place_team_categories')
 
     class Meta:
-        verbose_name = 'Team Category'
-        verbose_name_plural = 'Team Categories'
+        verbose_name = _('Categorie echipă')
+        verbose_name_plural = _('Categorii echipă')
 
     def clean(self):
         """Validate awards are enrolled teams"""
@@ -386,13 +396,13 @@ class FightCategory(Category):
     Matches created for bracket generation.
     """
     # Fight-specific awards
-    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_first_place_categories')
-    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_second_place_categories')
-    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, null=True, blank=True, related_name='fight_third_place_categories')
+    first_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, verbose_name=_('Locul 1'), null=True, blank=True, related_name='fight_first_place_categories')
+    second_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, verbose_name=_('Locul 2'), null=True, blank=True, related_name='fight_second_place_categories')
+    third_place = models.ForeignKey('Athlete', on_delete=models.SET_NULL, verbose_name=_('Locul 3'), null=True, blank=True, related_name='fight_third_place_categories')
 
     class Meta:
-        verbose_name = 'Fight Category'
-        verbose_name_plural = 'Fight Categories'
+        verbose_name = _('Categorie luptă')
+        verbose_name_plural = _('Categorii luptă')
 
     def clean(self):
         """Validate awards are enrolled athletes"""
@@ -413,13 +423,13 @@ class FightGroupEnrollment(models.Model):
     Athletes can be weighted first, then assigned to fight categories later.
     """
 
-    event = models.ForeignKey('Competition', on_delete=models.CASCADE, related_name='fight_group_enrollments')
-    group = models.ForeignKey('Group', on_delete=models.CASCADE, related_name='fight_group_enrollments')
-    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='fight_group_enrollments')
-    registered_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    notes = models.CharField(max_length=255, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    event = models.ForeignKey('Competition', on_delete=models.CASCADE, verbose_name=_('Competiție'), related_name='fight_group_enrollments')
+    group = models.ForeignKey('Group', on_delete=models.CASCADE, verbose_name=_('Grupă'), related_name='fight_group_enrollments')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='fight_group_enrollments')
+    registered_weight_kg = models.DecimalField(_('Greutate înregistrată (kg)'), max_digits=5, decimal_places=2, null=True, blank=True)
+    notes = models.CharField(_('Note'), max_length=255, blank=True)
+    created_at = models.DateTimeField(_('Data creării'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Data actualizării'), auto_now=True)
 
     class Meta:
         unique_together = ('event', 'group', 'athlete')
@@ -427,8 +437,8 @@ class FightGroupEnrollment(models.Model):
             models.Index(fields=['event', 'group'], name='api_fightgr_event_i_eb4365_idx'),
             models.Index(fields=['athlete'], name='api_fightgr_athlete_8e4255_idx'),
         ]
-        verbose_name = 'Fight Group Enrollment'
-        verbose_name_plural = 'Fight Group Enrollments'
+        verbose_name = _('Înscriere grupă luptă')
+        verbose_name_plural = _('Înscrieri grupe luptă')
 
     def __str__(self):
         return f"{self.athlete} @ {self.group} ({self.event})"
@@ -442,25 +452,25 @@ class FightAthleteWeight(models.Model):
     Used to detect disqualifications due to excessive weight loss
     """
     PLACE_CHOICES = [
-        (1, '1st Place'),
-        (2, '2nd Place'),
-        (3, '3rd Place'),
+        (1, 'Locul 1'),
+        (2, 'Locul 2'),
+        (3, 'Locul 3'),
     ]
     
-    category = models.ForeignKey('FightCategory', on_delete=models.CASCADE, related_name='athlete_weights')
-    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='fight_weights')
-    pre_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='Registered Weight (kg)', help_text='Weight submitted ~1 week before competition')
-    current_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='Match Day Weight (kg)', help_text='Weight measured on competition day')
-    weight_loss_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, editable=False, help_text='Calculated percentage weight loss')
-    is_disqualified = models.BooleanField(default=False, help_text='Mark as disqualified if weight exceeds limits')
-    disqualification_reason = models.CharField(max_length=255, blank=True, help_text='Reason for disqualification')
-    place = models.PositiveSmallIntegerField(choices=PLACE_CHOICES, null=True, blank=True, help_text='Award placement')
-    recorded_at = models.DateTimeField(auto_now=True)
+    category = models.ForeignKey('FightCategory', on_delete=models.CASCADE, verbose_name=_('Categorie'), related_name='athlete_weights')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='fight_weights')
+    pre_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('Greutate declarată (kg)'), help_text=_('Greutatea declarată cu aproximativ o săptămână înainte de competiție.'))
+    current_weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name=_('Greutate în ziua meciului (kg)'), help_text=_('Greutatea măsurată în ziua competiției.'))
+    weight_loss_percentage = models.DecimalField(_('Procent pierdere greutate'), max_digits=5, decimal_places=2, null=True, blank=True, editable=False, help_text=_('Procentul calculat al pierderii în greutate.'))
+    is_disqualified = models.BooleanField(_('Descalificat'), default=False, help_text=_('Bifați dacă sportivul este descalificat din cauza greutății.'))
+    disqualification_reason = models.CharField(_('Motiv descalificare'), max_length=255, blank=True, help_text=_('Motivul descalificării.'))
+    place = models.PositiveSmallIntegerField(_('Loc'), choices=PLACE_CHOICES, null=True, blank=True, help_text=_('Locul obținut.'))
+    recorded_at = models.DateTimeField(_('Înregistrat la'), auto_now=True)
 
     class Meta:
         unique_together = ('category', 'athlete')
-        verbose_name = 'Fight Athlete Weight'
-        verbose_name_plural = 'Fight Athlete Weights'
+        verbose_name = _('Greutate sportiv luptă')
+        verbose_name_plural = _('Greutăți sportivi luptă')
 
     def __str__(self):
         return f"{self.athlete} - {self.category.name}"
@@ -477,5 +487,4 @@ class FightAthleteWeight(models.Model):
         if self.pre_weight_kg and self.current_weight_kg:
             loss_kg = self.pre_weight_kg - self.current_weight_kg
             return f"{loss_kg:.2f}kg ({self.weight_loss_percentage:.1f}%)" if self.weight_loss_percentage else f"{loss_kg:.2f}kg"
-        return "Incomplete"
-
+        return "Incomplet"

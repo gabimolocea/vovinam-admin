@@ -67,6 +67,9 @@ from ..models import (
 
 
 admin.site.enable_nav_sidebar = True
+admin.site.site_header = _('Administrare FRVV')
+admin.site.site_title = _('FRVV Admin')
+admin.site.index_title = _('Panou de administrare')
 
 
 def _apply_admin_model_labels():
@@ -559,7 +562,12 @@ try:
 
         def visa_status(self, obj):
             try:
-                return obj.visa_status or ''
+                translations = {
+                    'Valid': _('Validă'),
+                    'Expired': _('Expirată'),
+                    'Not available': _('Indisponibilă'),
+                }
+                return translations.get(obj.visa_status, obj.visa_status) or ''
             except Exception:
                 return ''
         visa_status.short_description = _('Status')
@@ -685,7 +693,12 @@ class VisaInline(admin.TabularInline):
 
     def visa_status(self, obj):
             try:
-                return obj.visa_status or ''
+                translations = {
+                    'Valid': _('Validă'),
+                    'Expired': _('Expirată'),
+                    'Not available': _('Indisponibilă'),
+                }
+                return translations.get(obj.visa_status, obj.visa_status) or ''
             except Exception:
                 return ''
     visa_status.short_description = _('Status')
@@ -2779,4 +2792,3 @@ class CategoryRefereeScoreInline(admin.TabularInline):
         if db_field.name == "referee":
             kwargs["queryset"] = Athlete.objects.filter(is_referee=True, status='approved')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
