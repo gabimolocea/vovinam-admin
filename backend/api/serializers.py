@@ -365,7 +365,11 @@ class ClubSerializer(serializers.ModelSerializer):
     def get_athletes(self, obj):
         """Return limited summary of athletes"""
         try:
-            athletes = obj.athletes.select_related('club', 'current_grade').all()[:10]  # Limit to 10
+            prefetched = _get_prefetched_relation(obj, 'athletes')
+            if prefetched is not None:
+                athletes = list(prefetched)[:10]
+            else:
+                athletes = obj.athletes.select_related('club', 'current_grade').all()[:10]  # Limit to 10
             return AthleteMinimalSerializer(athletes, many=True).data
         except Exception:
             return []
@@ -373,7 +377,11 @@ class ClubSerializer(serializers.ModelSerializer):
     def get_coaches(self, obj):
         """Return coaches using minimal serializer"""
         try:
-            coaches = obj.coaches.select_related('club', 'current_grade').all()
+            prefetched = _get_prefetched_relation(obj, 'coaches')
+            if prefetched is not None:
+                coaches = list(prefetched)
+            else:
+                coaches = obj.coaches.select_related('club', 'current_grade').all()
             return AthleteMinimalSerializer(coaches, many=True).data
         except Exception:
             return []

@@ -975,7 +975,13 @@ class ClubViewSet(viewsets.ViewSet):
     serializer_class = ClubSerializer
 
     def list(self, request):
-        queryset = Club.objects.all().order_by('display_order', 'name')
+        # select_related('city') + prefetch_related(...) avoid N+1 queries:
+        # to_representation() reads instance.city, and get_coaches()/get_athletes()
+        # each query a reverse FK per club without this.
+        queryset = Club.objects.select_related('city').prefetch_related(
+            'coaches__club__city', 'coaches__current_grade',
+            'athletes__club__city', 'athletes__current_grade',
+        ).order_by('display_order', 'name')
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
@@ -1573,7 +1579,13 @@ class TeamViewSet(viewsets.ViewSet):
     serializer_class = TeamSerializer
 
     def list(self, request):
-        queryset = Team.objects.all()
+        # prefetch members->athlete->club and categories to avoid N+1 queries:
+        # TeamSerializer.to_representation() walks these per team via
+        # _get_team_members/_get_team_categories, which use the prefetch
+        # cache automatically when present.
+        queryset = Team.objects.prefetch_related(
+            'members__athlete__club', 'categories',
+        )
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
@@ -3983,7 +3995,10 @@ class NotificationViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Return notifications for the current user"""
-        return Notification.objects.filter(recipient=self.request.user)
+        # select_related('recipient') avoids one query per notification for
+        # NotificationSerializer's recipient_name field (source='recipient.__str__') —
+        # previously every row re-fetched the *same* user row from scratch.
+        return Notification.objects.filter(recipient=self.request.user).select_related('recipient')
     
     @action(detail=False, methods=['get'])
     def unread_count(self, request):

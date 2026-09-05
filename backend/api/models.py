@@ -92,6 +92,18 @@ class User(AbstractUser):
             return False
 
 
+# Shared choices for the standard 4-state approval workflow (pending / approved /
+# rejected / revision_required), used by every model that mixes in
+# ApprovalWorkflowMixin. Defined once so the labels/values can't drift between
+# models (previously copy-pasted verbatim into 6+ model bodies).
+APPROVAL_STATUS_CHOICES = [
+    ('pending', 'Pending Approval'),
+    ('approved', 'Approved'),
+    ('rejected', 'Rejected'),
+    ('revision_required', 'Revision Required'),
+]
+
+
 class ApprovalWorkflowMixin:
     """Shared helper for status transitions used across approval-driven models."""
 
@@ -371,12 +383,7 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     Replaces the separate AthleteProfile system for simplified workflow.
     Enhanced with: timestamps, sync tracking, soft delete, and audit trail.
     """
-    STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('revision_required', 'Revision Required'),
-    ]
+    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
     GENDER_CHOICES = [
         ('male', 'Male'),
@@ -599,12 +606,7 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
         ('bad', 'Bad'),
     ]
     
-    STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('revision_required', 'Revision Required'),
-    ]
+    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='grade_history')
     grade = models.ForeignKey(Grade, on_delete=models.CASCADE)
@@ -718,18 +720,13 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
 
 
 # Unified Visa model (new) - covers both medical and annual visas.
-class Visa(models.Model):
+class Visa(ApprovalWorkflowMixin, models.Model):
     VISA_TYPE_CHOICES = [
         ('medical', 'Medical'),
         ('annual', 'Annual'),
     ]
 
-    STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('revision_required', 'Revision Required'),
-    ]
+    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='visas')
     visa_type = models.CharField(max_length=10, choices=VISA_TYPE_CHOICES)
@@ -786,12 +783,13 @@ class Visa(models.Model):
         return 'Valid' if self.is_valid() else 'Expired'
 
     def save(self, *args, **kwargs):
-        # Set default status based on submission origin
-        if getattr(self, 'submitted_by_athlete', False) and not self.pk:
-            self.status = 'pending'
-        elif not getattr(self, 'submitted_by_athlete', False):
-            self.status = 'approved'
-
+        # NOTE: this used to also force status back to 'approved' on every
+        # save() whenever `submitted_by_athlete` wasn't set — but Visa has no
+        # such field/param, so that branch was always true and silently
+        # reset any pending/rejected/revision_required status back to
+        # 'approved' on the very next save (e.g. from an approve()/reject()
+        # call). The field's `default='approved'` already covers the normal
+        # admin-created case, so no override is needed here anymore.
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -805,12 +803,7 @@ class TrainingSeminarParticipation(ApprovalWorkflowMixin, models.Model):
     Athlete participation in events (training seminars, competitions, etc.) with approval workflow.
     Migrated from TrainingSeminar to use Event model directly.
     """
-    STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('revision_required', 'Revision Required'),
-    ]
+    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
     
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='seminar_participations')
     # Legacy seminar field - deprecated, use event instead
@@ -2183,12 +2176,7 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
         ('fight', 'Fight'),
     ]
     
-    STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('revision_required', 'Revision Required'),
-    ]
+    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
     
     PLACEMENT_CHOICES = [
         ('1st', '1st Place'),
@@ -2734,7 +2722,7 @@ class SupporterAthleteRelation(models.Model):
         self.save(update_fields=['status', 'reviewed_by', 'reviewed_date'])
 
 
-class AthleteMatch(models.Model):
+class AthleteMatch(ApprovalWorkflowMixin, models.Model):
     """
     Model to track individual matches/fights with approval workflow for athlete submissions.
     Separate from the competition Match model which tracks organized tournament matches.
@@ -2745,12 +2733,7 @@ class AthleteMatch(models.Model):
         ('draw', 'Draw'),
     ]
     
-    STATUS_CHOICES = [
-        ('pending', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('revision_required', 'Revision Required'),
-    ]
+    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
     
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='athlete_matches')
     opponent_name = models.CharField(max_length=200, help_text='Name of the opponent')
@@ -2785,43 +2768,14 @@ class AthleteMatch(models.Model):
         return f"{self.athlete.first_name} {self.athlete.last_name} vs {self.opponent_name} ({self.match_date}) - {self.result}"
     
     def save(self, *args, **kwargs):
-        # If submitted by athlete, set status to pending
-        if self.submitted_by_athlete and not self.pk:
-            self.status = 'pending'
-        # If submitted by admin, set status to approved
-        elif not self.submitted_by_athlete:
-            self.status = 'approved'
+        # Only stamp a default status at creation time. Previously the
+        # "admin submission -> approved" branch ran on *every* save (no
+        # `not self.pk` guard), so calling .reject()/.request_revision() on
+        # an admin-submitted match would silently bounce back to 'approved'
+        # on that same save() call.
+        if not self.pk:
+            self.status = 'pending' if self.submitted_by_athlete else 'approved'
         super().save(*args, **kwargs)
-    
-    def approve(self, admin_user, notes=''):
-        """Approve the athlete-submitted match"""
-        from django.utils import timezone
-        
-        self.status = 'approved'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-    
-    def reject(self, admin_user, notes=''):
-        """Reject the athlete-submitted match"""
-        from django.utils import timezone
-        
-        self.status = 'rejected'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
-    
-    def request_revision(self, admin_user, notes=''):
-        """Request revision of the athlete-submitted match"""
-        from django.utils import timezone
-        
-        self.status = 'revision_required'
-        self.reviewed_date = timezone.now()
-        self.reviewed_by = admin_user
-        self.admin_notes = notes
-        self.save()
 
 
 # Notification System Models
