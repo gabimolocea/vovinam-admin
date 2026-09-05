@@ -15,8 +15,6 @@ from dal import autocomplete, forward
 from .bracket_visualization import bracket_visualization_readonly_field, BracketStats
 from django.db import models
 from django.db.models import Count, Case, When, IntegerField
-from django.db.models.functions import TruncMonth
-import datetime
 import json
 import urllib.parse
 from django.utils.safestring import mark_safe
@@ -713,31 +711,10 @@ class TrainingSeminarParticipationInline(admin.TabularInline):
     can_delete = True
 
     class _InlineFormSet(forms.BaseInlineFormSet):
-        def _ensure_legacy_seminar(self, event):
-            if not event or not event.pk:
-                return
-            try:
-                from django.db import connection
-                ev_start = getattr(event, 'start_date', None)
-                ev_end = getattr(event, 'end_date', None)
-                if hasattr(ev_start, 'date'):
-                    ev_start = ev_start.date()
-                if hasattr(ev_end, 'date'):
-                    ev_end = ev_end.date()
-                ev_place = getattr(event, 'address', '') or ''
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        "INSERT OR IGNORE INTO api_trainingseminar (id, name, start_date, end_date, place) VALUES (?, ?, ?, ?, ?)",
-                        [event.pk, getattr(event, 'title', '') or f"Event {event.pk}", ev_start, ev_end, ev_place]
-                    )
-            except Exception:
-                pass
-
         def save_new(self, form, commit=True):
             obj = super().save_new(form, commit=False)
             event = getattr(self, 'instance', None)
             if event:
-                self._ensure_legacy_seminar(event)
                 if not obj.event_id:
                     obj.event = event
                 if not obj.seminar_id:
@@ -750,7 +727,6 @@ class TrainingSeminarParticipationInline(admin.TabularInline):
             obj = super().save_existing(form, instance, commit=False)
             event = getattr(self, 'instance', None)
             if event:
-                self._ensure_legacy_seminar(event)
                 if not obj.event_id:
                     obj.event = event
                 if not obj.seminar_id:
@@ -764,7 +740,8 @@ class TrainingSeminarParticipationInline(admin.TabularInline):
     def athlete_link(self, obj):
         """Link to the athlete change page when available."""
         try:
-            return format_html('<a href="/admin/api/athlete/{}/change/">{} {}</a>', obj.athlete.pk, obj.athlete.first_name, obj.athlete.last_name)
+            url = reverse('admin:api_athlete_change', args=(obj.athlete.pk,))
+            return format_html('<a href="{}">{} {}</a>', url, obj.athlete.first_name, obj.athlete.last_name)
         except Exception:
             return str(getattr(obj, 'athlete', ''))
     athlete_link.short_description = _('Sportiv')
@@ -840,27 +817,6 @@ try:
                 ]
                 return custom_urls + urls
 
-            def _ensure_legacy_seminar(self, event):
-                """Ensure legacy TrainingSeminar row exists for this event."""
-                if not event or not event.pk:
-                    return
-                try:
-                    from django.db import connection
-                    ev_start = getattr(event, 'start_date', None)
-                    ev_end = getattr(event, 'end_date', None)
-                    if hasattr(ev_start, 'date'):
-                        ev_start = ev_start.date()
-                    if hasattr(ev_end, 'date'):
-                        ev_end = ev_end.date()
-                    ev_place = getattr(event, 'address', '') or ''
-                    with connection.cursor() as cursor:
-                        cursor.execute(
-                            "INSERT OR IGNORE INTO api_trainingseminar (id, name, start_date, end_date, place) VALUES (?, ?, ?, ?, ?)",
-                            [event.pk, getattr(event, 'title', '') or f"Event {event.pk}", ev_start, ev_end, ev_place]
-                        )
-                except Exception:
-                    pass
-            
             def get_readonly_fields(self, request, obj=None):
                 """Add custom display fields for quick-add links"""
                 readonly = list(super().get_readonly_fields(request))
@@ -925,10 +881,9 @@ try:
                 return fieldsets
 
             def save_formset(self, request, form, formset, change):
-                """Ensure legacy seminar is set for event participations."""
+                """Ensure event/seminar FKs are set for event participations."""
                 if formset.model is TrainingSeminarParticipation:
                     event = form.instance
-                    self._ensure_legacy_seminar(event)
                     instances = formset.save(commit=False)
                     for instance in instances:
                         if not instance.seminar_id:
@@ -1037,24 +992,8 @@ try:
                 event = cleaned.get('event')
 
                 if not seminar and event:
-                    # Legacy DB schema expects seminar_id to exist in api_trainingseminar.
-                    # Ensure a matching row exists, then mirror the event id.
-                    try:
-                        from django.db import connection
-                        ev_start = getattr(event, 'start_date', None)
-                        ev_end = getattr(event, 'end_date', None)
-                        if hasattr(ev_start, 'date'):
-                            ev_start = ev_start.date()
-                        if hasattr(ev_end, 'date'):
-                            ev_end = ev_end.date()
-                        ev_place = getattr(event, 'address', '') or ''
-                        with connection.cursor() as cursor:
-                            cursor.execute(
-                                "INSERT OR IGNORE INTO api_trainingseminar (id, name, start_date, end_date, place) VALUES (?, ?, ?, ?, ?)",
-                                [event.pk, getattr(event, 'title', '') or f"Event {event.pk}", ev_start, ev_end, ev_place]
-                            )
-                    except Exception:
-                        pass
+                    # `seminar` mirrors `event` (both FK to landing.Event); no
+                    # separate legacy table exists to populate here.
                     cleaned['seminar'] = event
 
                 # If we still don't have a seminar, raise a validation error so
@@ -1893,8 +1832,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(1)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
-                             '/admin/api/categoryscore/add/', obj.pk)
+            return format_html('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='R2')
@@ -1904,8 +1842,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(2)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
-                             '/admin/api/categoryscore/add/', obj.pk)
+            return format_html('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='R3')
@@ -1915,8 +1852,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(3)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
-                             '/admin/api/categoryscore/add/', obj.pk)
+            return format_html('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='R4')
@@ -1926,8 +1862,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(4)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
-                             '/admin/api/categoryscore/add/', obj.pk)
+            return format_html('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='R5')
@@ -1937,8 +1872,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(5)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<a href="{}?athlete_score={}" style="color: #417690;">Adaugă scor</a>', 
-                             '/admin/api/categoryscore/add/', obj.pk)
+            return format_html('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='Total')
@@ -2296,20 +2230,24 @@ class ClubAdmin(admin.ModelAdmin):
         js = ('/static/admin/js/club_tabs.js?v=20260206',)
     
     def athlete_count(self, obj):
-        """Display the number of athletes in this club"""
-        return obj.athletes.count()
+        """Display the number of athletes in this club (uses the annotated count, no extra query)."""
+        return obj.athlete_count_annotated
     athlete_count.short_description = _('Sportivi')
-    athlete_count.admin_order_field = 'athletes__count'
+    athlete_count.admin_order_field = 'athlete_count_annotated'
     
     def coach_count(self, obj):
-        """Display the number of coaches in this club"""
-        return obj.coaches.count()
+        """Display the number of coaches in this club (uses the annotated count, no extra query)."""
+        return obj.coach_count_annotated
     coach_count.short_description = _('Antrenori')
+    coach_count.admin_order_field = 'coach_count_annotated'
     
     def get_queryset(self, request):
-        """Optimize queryset to include athlete count for sorting"""
+        """Annotate athlete/coach counts and select the related city to avoid N+1 queries on the changelist."""
         qs = super().get_queryset(request)
-        return qs.annotate(Count('athletes'))
+        return qs.select_related('city').annotate(
+            athlete_count_annotated=Count('athletes', distinct=True),
+            coach_count_annotated=Count('coaches', distinct=True),
+        )
     
     def formfield_for_manytomany(self, db_field, request, **kwargs):
         """Filter coaches to only show athletes who are marked as coaches"""
@@ -2335,71 +2273,6 @@ class ClubAdmin(admin.ModelAdmin):
                 if isinstance(inline, AthleteInline):
                     inline.verbose_name_plural = f"Athletes ({athlete_count})"
         return inlines
-
-
-# ---- Admin dashboard view -------------------------------------------------
-def get_dashboard_context():
-    """Return a dict with dashboard data for templates (JSON-ready strings)."""
-    # Top clubs by athlete count
-    clubs = Club.objects.annotate(num_athletes=Count('athletes')).order_by('-num_athletes')[:10]
-    club_labels = [c.name for c in clubs]
-    club_counts = [c.num_athletes for c in clubs]
-
-    # Visa stats: annual visas valid vs expired
-    from .models import Visa
-    annual_visas = Visa.objects.filter(visa_type='annual')
-    # Use case-insensitive matching to tolerate capitalization changes
-    expired_count = annual_visas.filter(visa_status__iexact='expired').count()
-    valid_count = annual_visas.filter(visa_status__iexact='valid').count()
-    not_available = annual_visas.filter(visa_status__iregex=r'not\s*available|not_available').count()
-
-    # New athletes per month (last 6 months)
-    now = datetime.date.today()
-
-    # Build a simple timeseries (last 6 months)
-    series_labels = []
-    series_counts = []
-    athlete_months = (
-        Athlete.objects
-        .annotate(month=TruncMonth('submitted_date'))
-        .values('month')
-        .annotate(count=Count('id'))
-        .order_by('month')
-    )
-    for i in range(5, -1, -1):
-        month = (now.replace(day=1) - datetime.timedelta(days=30 * i)).replace(day=1)
-        label = month.strftime('%Y-%m')
-        series_labels.append(label)
-        found = next((a['count'] for a in athlete_months if a['month'] and a['month'].strftime('%Y-%m') == label), 0)
-        series_counts.append(found)
-
-    # Clubs by city (top 8)
-    clubs_by_city_qs = (
-        Club.objects.values('city__name')
-        .annotate(count=Count('id'))
-        .order_by('-count')[:8]
-    )
-    city_labels = [c['city__name'] or 'Unknown' for c in clubs_by_city_qs]
-    city_counts = [c['count'] for c in clubs_by_city_qs]
-
-    context = {
-        'club_labels': club_labels,
-        'club_counts': club_counts,
-        'visa_stats': {'expired': expired_count, 'valid': valid_count, 'not_available': not_available},
-        'new_athlete_labels': series_labels,
-        'new_athlete_counts': series_counts,
-        'city_labels': city_labels,
-        'city_counts': city_counts,
-    }
-    return context
-
-
-def dashboard_view(request):
-    """Dashboard route kept for direct access; renders template with context."""
-    context = get_dashboard_context()
-    context.update(admin.site.each_context(request))
-    context['app_list'] = admin.site.get_app_list(request)
-    return render(request, 'admin/index.html', context)
 
 
 # FrontendTheme admin removed â€” frontend theme management has been disabled.
@@ -2479,10 +2352,6 @@ class GradeAdmin(admin.ModelAdmin):
     image_preview.short_description = 'Previzualizare imagine'
 
 
-class GradeHistoryAdminForm(forms.ModelForm):
-    class Meta:
-        model = GradeHistory
-        fields = '__all__'
 
 # Updated GradeHistoryAdmin
 @admin.register(GradeHistory)
@@ -2527,11 +2396,16 @@ class FederationRoleAdmin(admin.ModelAdmin):
     list_display = ('name', 'get_associated_athletes')
     search_fields = ('name',)
 
+    def get_queryset(self, request):
+        """Prefetch related athletes to avoid a query per row on the changelist."""
+        qs = super().get_queryset(request)
+        return qs.prefetch_related('athletes')
+
     def get_associated_athletes(self, obj):
         """
         Custom method to display athletes associated with the federation role.
         """
-        athletes = Athlete.objects.filter(federation_role=obj)
+        athletes = obj.athletes.all()
         return ", ".join([f"{athlete.first_name} {athlete.last_name}" for athlete in athletes]) if athletes else "Niciunul"
     get_associated_athletes.short_description = _('Sportivi asociați')
 
@@ -3569,6 +3443,11 @@ class MatchAdmin(admin.ModelAdmin):
 
     readonly_fields = ('winner_display', 'frontend_referee_scores_panel', 'frontend_central_penalties_panel')
 
+    def get_queryset(self, request):
+        """Select related rows used by list_display to avoid a query per row on the changelist."""
+        qs = super().get_queryset(request)
+        return qs.select_related('red_corner', 'blue_corner', 'category__event', 'field')
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'field':
             qs = CompetitionField.objects.filter(field_number__in=[1, 2, 3])
@@ -3865,7 +3744,8 @@ class MatchAdmin(admin.ModelAdmin):
         """
         Display the category name as a bold clickable link.
         """
-        return format_html('<a href="/admin/api/category/{}/change/" style="font-weight: bold;">{}</a>', obj.category.id, obj.category.name)
+        url = reverse('admin:api_category_change', args=(obj.category.id,))
+        return format_html('<a href="{}" style="font-weight: bold;">{}</a>', url, obj.category.name)
     category_link.short_description = _('Categorie')
 
     def get_winner(self, obj):
@@ -4451,6 +4331,11 @@ class GroupAdmin(admin.ModelAdmin):
         }),
     )
     
+    def get_queryset(self, request):
+        """Select related event and annotate category count to avoid N+1 queries."""
+        qs = super().get_queryset(request)
+        return qs.select_related('event').annotate(category_count_annotated=Count('categories', distinct=True))
+
     def get_age_range(self, obj):
         """Display the age range for this group"""
         if obj.birth_year_start and obj.birth_year_end:
@@ -4463,10 +4348,10 @@ class GroupAdmin(admin.ModelAdmin):
     get_age_range.short_description = 'Interval ani naștere'
     
     def get_category_count(self, obj):
-        """Display number of categories in this group"""
-        count = obj.categories.count()
-        return f"{count} categorii"
+        """Display number of categories in this group (uses the annotated count, no extra query)"""
+        return f"{obj.category_count_annotated} categorii"
     get_category_count.short_description = 'Categorii'
+    get_category_count.admin_order_field = 'category_count_annotated'
 
 
 # User Admin
@@ -4990,7 +4875,7 @@ class AthleteAdmin(admin.ModelAdmin):
         if not obj or not obj.pk:
             return ''
         try:
-            url = reverse('admin:api_trainingseminarparticipation_add') + f'?athlete={obj.pk}'
+            url = reverse('admin:api_eventparticipation_add') + f'?athlete={obj.pk}'
             return format_html('<a class="button" href="{}">Adaugă eveniment înscris</a>', url)
         except Exception:
             return ''
@@ -5010,30 +4895,44 @@ class AthleteAdmin(admin.ModelAdmin):
     def approve_profile(self, request, pk):
         from django.shortcuts import get_object_or_404, redirect
         from django.contrib import messages
-        from django.utils import timezone
-        
+        from django.core.exceptions import PermissionDenied
+
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
         athlete = get_object_or_404(Athlete, pk=pk)
-        
+
         if athlete.status != 'pending':
             messages.error(request, f'Profilul sportivului nu este în starea în așteptare (curent: {athlete.status})')
             return redirect('admin:api_athlete_changelist')
-        
-        try:
-            # Use the approve method from the consolidated model
-            athlete.approve(request.user)
-            
-            messages.success(request, f'Profilul sportivului {athlete.first_name} {athlete.last_name} a fost aprobat cu succes')
-            
-        except Exception as e:
-            messages.error(request, f'Eroare la aprobarea profilului sportivului: {str(e)}')
-        
-        return redirect('admin:api_athlete_changelist')
+
+        if request.method == 'POST':
+            try:
+                # Use the approve method from the consolidated model
+                athlete.approve(request.user)
+
+                messages.success(request, f'Profilul sportivului {athlete.first_name} {athlete.last_name} a fost aprobat cu succes')
+
+            except Exception as e:
+                messages.error(request, f'Eroare la aprobarea profilului sportivului: {str(e)}')
+
+            return redirect('admin:api_athlete_changelist')
+
+        # Show confirmation form
+        context = {
+            'profile': athlete,
+            'title': f'Aprobă profilul: {athlete.first_name} {athlete.last_name}',
+        }
+        return render(request, 'admin/approve_profile.html', context)
     
     def reject_profile(self, request, pk):
         from django.shortcuts import get_object_or_404, redirect
         from django.contrib import messages
-        from django.utils import timezone
-        
+        from django.core.exceptions import PermissionDenied
+
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
         athlete = get_object_or_404(Athlete, pk=pk)
         
         if athlete.status != 'pending':
@@ -5059,8 +4958,11 @@ class AthleteAdmin(admin.ModelAdmin):
     def request_revision(self, request, pk):
         from django.shortcuts import get_object_or_404, redirect
         from django.contrib import messages
-        from django.utils import timezone
-        
+        from django.core.exceptions import PermissionDenied
+
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
         athlete = get_object_or_404(Athlete, pk=pk)
         
         if athlete.status != 'pending':
