@@ -144,7 +144,7 @@ class ClubAdmin(admin.ModelAdmin):
             athlete_count = obj.athletes.count()
             for inline in inlines:
                 if isinstance(inline, AthleteInline):
-                    inline.verbose_name_plural = f"Athletes ({athlete_count})"
+                    inline.verbose_name_plural = f"Sportivi ({athlete_count})"
         return inlines
 
 

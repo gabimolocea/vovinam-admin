@@ -21,9 +21,13 @@ from ..managers import AthleteManager
 # Create your models here.
 
 class City(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
+    name = models.CharField(_('Nume'), max_length=100, unique=True)
+    created = models.DateTimeField(_('Data creării'), auto_now_add=True)
+    modified = models.DateTimeField(_('Data actualizării'), auto_now=True)
+
+    class Meta:
+        verbose_name = _('Oraș')
+        verbose_name_plural = _('Orașe')
 
     def __str__(self):
         return self.name
@@ -34,50 +38,65 @@ class Group(models.Model):
     Groups organize categories by athlete birth year ranges.
     Example: Athletes born 2015-2018
     """
-    name = models.CharField(max_length=100, help_text="Group name (e.g., 'U12 Beginners', 'Youth 2015-2018')")
+    name = models.CharField(
+        _('Nume'),
+        max_length=100,
+        help_text=_("Numele grupei (de exemplu, „U12 Începători”, „Tineret 2015-2018”).")
+    )
     event = models.ForeignKey(
         'landing.Event',
         on_delete=models.CASCADE,
+        verbose_name=_('Eveniment'),
         related_name='groups',
         null=True,
         blank=True
     )
     birth_year_start = models.IntegerField(
+        _('An naștere de început'),
         null=True,
         blank=True,
-        help_text="Starting birth year for this age group (e.g., 2015)"
+        help_text=_('Anul de naștere de început pentru această grupă de vârstă (de exemplu, 2015).')
     )
     birth_year_end = models.IntegerField(
+        _('An naștere de sfârșit'),
         null=True,
         blank=True,
-        help_text="Ending birth year for this age group (e.g., 2018)"
+        help_text=_('Anul de naștere de sfârșit pentru această grupă de vârstă (de exemplu, 2018).')
     )
     birth_date_start = models.DateField(
+        _('Data nașterii de început'),
         null=True,
         blank=True,
-        help_text="Exact start date for age eligibility (inclusive). If set, takes priority over birth_year_start."
+        help_text=_('Data exactă de început pentru eligibilitatea de vârstă (inclusiv). Dacă este setată, are prioritate față de anul de naștere de început.')
     )
     birth_date_end = models.DateField(
+        _('Data nașterii de sfârșit'),
         null=True,
         blank=True,
-        help_text="Exact end date for age eligibility (inclusive). If set, takes priority over birth_year_end."
+        help_text=_('Data exactă de sfârșit pentru eligibilitatea de vârstă (inclusiv). Dacă este setată, are prioritate față de anul de naștere de sfârșit.')
     )
     allow_younger = models.BooleanField(
+        _('Permite sportivi mai tineri'),
         default=False,
-        help_text="Allow athletes younger than the minimum age (who want to compete in a higher age category)"
+        help_text=_('Permite sportivilor mai tineri decât vârsta minimă să concureze într-o categorie de vârstă superioară.')
     )
     GRADE_TYPE_CHOICES = [
-        ('all', 'All grades'),
-        ('inferior', 'Inferior grades only'),
-        ('superior', 'Superior grades only'),
+        ('all', 'Toate gradele'),
+        ('inferior', 'Doar grade inferioare'),
+        ('superior', 'Doar grade superioare'),
     ]
     allowed_grade_type = models.CharField(
+        _('Tip grad permis'),
         max_length=10,
         choices=GRADE_TYPE_CHOICES,
         default='all',
-        help_text="Restrict participation by grade type. 'inferior' = only inferior grades, 'superior' = only superior grades."
+        help_text=_('Restricționează participarea după tipul gradului: „inferior” = doar grade inferioare, „superior” = doar grade superioare.')
     )
-    display_order = models.IntegerField(default=0, help_text="Order within the event for display purposes")
+    display_order = models.IntegerField(
+        _('Ordine de afișare'),
+        default=0,
+        help_text=_('Ordinea de afișare în cadrul evenimentului.')
+    )
 
     class Meta:
         constraints = [
@@ -88,6 +107,8 @@ class Group(models.Model):
             ),
         ]
         ordering = ['event', 'display_order', 'id']
+        verbose_name = _('Grupă')
+        verbose_name_plural = _('Grupe')
 
     def __str__(self):
         age_range = ""
@@ -148,4 +169,3 @@ class Group(models.Model):
 # subsequent migration will drop the table when applied.
 
 # AthleteActivity and CategoryScoreActivity models removed - activity tracking eliminated per business decision
-

@@ -24,24 +24,28 @@ from .teams import Team
 class User(AbstractUser):
     ROLE_CHOICES = [
         ('admin', 'Admin'),
-        ('athlete', 'Athlete'),
-        ('supporter', 'Supporter'),  # New role for parents/supporters
-        ('user', 'User'),
+        ('athlete', 'Sportiv'),
+        ('supporter', 'Susținător'),  # New role for parents/supporters
+        ('user', 'Utilizator'),
     ]
     
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
-    first_name = models.CharField(max_length=150)
-    last_name = models.CharField(max_length=150)
-    email = models.EmailField(unique=True)
+    role = models.CharField(_('Rol'), max_length=10, choices=ROLE_CHOICES, default='user')
+    first_name = models.CharField(_('Prenume'), max_length=150)
+    last_name = models.CharField(_('Nume'), max_length=150)
+    email = models.EmailField(_('Email'), unique=True)
     
     # New fields for enhanced user management
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
-    date_of_birth = models.DateField(blank=True, null=True)
+    phone_number = models.CharField(_('Telefon'), max_length=15, blank=True, null=True)
+    date_of_birth = models.DateField(_('Data nașterii'), blank=True, null=True)
     # City removed - use athlete.city instead
-    profile_completed = models.BooleanField(default=False)
+    profile_completed = models.BooleanField(_('Profil completat'), default=False)
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
+
+    class Meta:
+        verbose_name = _('Utilizator')
+        verbose_name_plural = _('Utilizatori')
     
     def save(self, *args, **kwargs):
         # Set admin role for superusers
@@ -98,10 +102,10 @@ class User(AbstractUser):
 # ApprovalWorkflowMixin. Defined once so the labels/values can't drift between
 # models (previously copy-pasted verbatim into 6+ model bodies).
 APPROVAL_STATUS_CHOICES = [
-    ('pending', 'Pending Approval'),
-    ('approved', 'Approved'),
-    ('rejected', 'Rejected'),
-    ('revision_required', 'Revision Required'),
+    ('pending', 'În așteptarea aprobării'),
+    ('approved', 'Aprobat'),
+    ('rejected', 'Respins'),
+    ('revision_required', 'Necesită revizie'),
 ]
 
 
@@ -141,8 +145,8 @@ class UserProxy(User):
     class Meta:
         proxy = True
         app_label = 'auth'
-        verbose_name = _('User')
-        verbose_name_plural = _('Users')
+        verbose_name = _('Utilizator')
+        verbose_name_plural = _('Utilizatori')
     
     @property
     def has_pending_athlete_profile(self):
@@ -189,8 +193,8 @@ try:
         class Meta:
             proxy = True
             app_label = 'api'
-            verbose_name = _('Event')
-            verbose_name_plural = _('Events')
+            verbose_name = _('Eveniment')
+            verbose_name_plural = _('Evenimente')
 
 
     class Competition(Event):
@@ -200,8 +204,8 @@ try:
         class Meta:
             proxy = True
             app_label = 'api'
-            verbose_name = _('Competition')
-            verbose_name_plural = _('Competitions')
+            verbose_name = _('Competiție')
+            verbose_name_plural = _('Competiții')
 
         @property
         def name(self):
@@ -247,8 +251,8 @@ try:
         class Meta:
             proxy = True
             app_label = 'api'
-            verbose_name = _('Training seminar')
-            verbose_name_plural = _('Training seminars')
+            verbose_name = _('Seminar de pregătire')
+            verbose_name_plural = _('Seminare de pregătire')
 
         @property
         def name(self):
@@ -277,16 +281,26 @@ except Exception:
 
 class Grade(models.Model):
     GRADE_TYPE_CHOICES = [
-        ('inferior', 'Inferior Grade'),
-        ('superior', 'Superior Grade'),
+        ('inferior', 'Grad inferior'),
+        ('superior', 'Grad superior'),
     ]
 
-    name = models.CharField(max_length=100)
-    rank_order = models.IntegerField(default=0)  # Rank order for grades (higher value = higher rank)
-    grade_type = models.CharField(max_length=10, choices=GRADE_TYPE_CHOICES, default='inferior')  # Type of grade
-    image = models.ImageField(upload_to='grades/', blank=True, null=True, help_text='Grade badge image (SVG or PNG)')
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
+    name = models.CharField(_('Nume'), max_length=100)
+    rank_order = models.IntegerField(_('Ordine rang'), default=0)  # Rank order for grades (higher value = higher rank)
+    grade_type = models.CharField(_('Tip grad'), max_length=10, choices=GRADE_TYPE_CHOICES, default='inferior')  # Type of grade
+    image = models.ImageField(
+        _('Imagine'),
+        upload_to='grades/',
+        blank=True,
+        null=True,
+        help_text=_('Imaginea emblemei gradului (SVG sau PNG).')
+    )
+    created = models.DateTimeField(_('Data creării'), auto_now_add=True)
+    modified = models.DateTimeField(_('Data actualizării'), auto_now=True)
+
+    class Meta:
+        verbose_name = _('Grad')
+        verbose_name_plural = _('Grade')
 
     def __str__(self):
         return f"{self.name} (Rank: {self.rank_order}, Type: {self.get_grade_type_display()})"
@@ -301,38 +315,51 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
     GENDER_CHOICES = [
-        ('male', 'Male'),
-        ('female', 'Female'),
+        ('male', 'Masculin'),
+        ('female', 'Feminin'),
     ]
     
     # Custom manager for optimized queries
     objects = AthleteManager()
     
     # Link to User account - required for new athletes
-    user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='athlete', blank=True, null=True)
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        verbose_name=_('Utilizator'),
+        related_name='athlete',
+        blank=True,
+        null=True
+    )
     
     # Personal Data
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, blank=True, null=True)
-    license_series = models.CharField(max_length=50, blank=True, null=True)
-    cnp = models.CharField(max_length=13, blank=True, null=True)
-    date_of_birth = models.DateField(blank=True, null=True)
-    team_place = models.CharField(max_length=50, blank=True, null=True)  # Place awarded to the athlete in a team competition
-    address = models.TextField(blank=True, null=True)
-    mobile_number = models.CharField(max_length=15, blank=True, null=True)
+    first_name = models.CharField(_('Prenume'), max_length=100)
+    last_name = models.CharField(_('Nume'), max_length=100)
+    gender = models.CharField(_('Gen'), max_length=20, choices=GENDER_CHOICES, blank=True, null=True)
+    license_series = models.CharField(_('Serie legitimație'), max_length=50, blank=True, null=True)
+    cnp = models.CharField(_('CNP'), max_length=13, blank=True, null=True)
+    date_of_birth = models.DateField(_('Data nașterii'), blank=True, null=True)
+    team_place = models.CharField(_('Loc obținut cu echipa'), max_length=50, blank=True, null=True)  # Place awarded to the athlete in a team competition
+    address = models.TextField(_('Adresă'), blank=True, null=True)
+    mobile_number = models.CharField(_('Telefon mobil'), max_length=15, blank=True, null=True)
     
     # Emergency Contact Information (from AthleteProfile)
-    emergency_contact_name = models.CharField(max_length=100, blank=True, null=True)
-    emergency_contact_phone = models.CharField(max_length=15, blank=True, null=True)
+    emergency_contact_name = models.CharField(_('Nume contact de urgență'), max_length=100, blank=True, null=True)
+    emergency_contact_phone = models.CharField(_('Telefon contact de urgență'), max_length=15, blank=True, null=True)
     
     # Previous Experience (from AthleteProfile)
-    previous_experience = models.TextField(blank=True, null=True, help_text="Previous martial arts experience")
+    previous_experience = models.TextField(
+        _('Experiență anterioară'),
+        blank=True,
+        null=True,
+        help_text=_('Experiența anterioară în arte marțiale.')
+    )
     
     # Sport-related data
     club = models.ForeignKey(
         'Club',
         on_delete=models.SET_NULL,
+        verbose_name=_('Club'),
         related_name='athletes',
         blank=True,
         null=True
@@ -340,6 +367,7 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     city = models.ForeignKey(
         'City',
         on_delete=models.SET_NULL,
+        verbose_name=_('Oraș'),
         related_name='athletes',
         blank=True,
         null=True
@@ -347,6 +375,7 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     current_grade = models.ForeignKey(
         Grade,
         on_delete=models.SET_NULL,
+        verbose_name=_('Grad curent'),
         related_name='current_athletes',
         blank=True,
         null=True
@@ -354,6 +383,7 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     federation_role = models.ForeignKey(
         'FederationRole',
         on_delete=models.SET_NULL,
+        verbose_name=_('Rol în federație'),
         related_name='athletes',
         blank=True,
         null=True
@@ -361,31 +391,33 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     title = models.ForeignKey(
         'Title',
         on_delete=models.SET_NULL,
+        verbose_name=_('Titlu'),
         related_name='athletes',
         blank=True,
         null=True
     )
-    registered_date = models.DateField(blank=True, null=True)
-    expiration_date = models.DateField(blank=True, null=True)
-    is_coach = models.BooleanField(default=False)
-    is_referee = models.BooleanField(default=False)
+    registered_date = models.DateField(_('Data înregistrării'), blank=True, null=True)
+    expiration_date = models.DateField(_('Data expirării'), blank=True, null=True)
+    is_coach = models.BooleanField(_('Antrenor'), default=False)
+    is_referee = models.BooleanField(_('Arbitru'), default=False)
     
     # Documents
     profile_image = models.ImageField(
+        _('Imagine profil'),
         upload_to='profile_images/', blank=True, null=True, default='profile_images/default.png'
     )  # Optional profile image with default
-    medical_certificate = models.FileField(upload_to='medical_certificates/', blank=True, null=True)
+    medical_certificate = models.FileField(_('Certificat medical'), upload_to='medical_certificates/', blank=True, null=True)
     
     # Approval workflow (merged from AthleteProfile)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    submitted_date = models.DateTimeField(auto_now_add=True)
-    reviewed_date = models.DateTimeField(blank=True, null=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name='reviewed_athletes')
-    admin_notes = models.TextField(blank=True, null=True, help_text="Admin notes about approval/rejection")
+    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='pending')
+    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
+    reviewed_date = models.DateTimeField(_('Data revizuirii'), blank=True, null=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), blank=True, null=True, related_name='reviewed_athletes')
+    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
     
     # Legacy approval tracking (keep for compatibility)
-    approved_date = models.DateTimeField(blank=True, null=True)
-    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name='approved_athletes')
+    approved_date = models.DateTimeField(_('Data aprobării'), blank=True, null=True)
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Aprobat de'), blank=True, null=True, related_name='approved_athletes')
 
     class Meta:
         indexes = [
@@ -407,6 +439,8 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
             models.Index(fields=['club', 'status', 'is_referee']),  # Club referees
             models.Index(fields=['status', 'approved_date']),  # Status filtering
         ]
+        verbose_name = _('Sportiv')
+        verbose_name_plural = _('Sportivi')
 
     def update_current_grade(self):
         """
@@ -517,30 +551,32 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
 
 class GradeHistory(ApprovalWorkflowMixin, models.Model):
     LEVEL_CHOICES = [
-        ('good', 'Good'),
-        ('bad', 'Bad'),
+        ('good', 'Bine'),
+        ('bad', 'Slab'),
     ]
     
     STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
-    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='grade_history')
-    grade = models.ForeignKey(Grade, on_delete=models.CASCADE)
-    obtained_date = models.DateField(default=date.today)  # Date when the grade was obtained
-    level = models.CharField(max_length=10, choices=LEVEL_CHOICES, default='good')  # Dropdown for level
+    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='grade_history')
+    grade = models.ForeignKey(Grade, on_delete=models.CASCADE, verbose_name=_('Grad'))
+    obtained_date = models.DateField(_('Data obținerii'), default=date.today)  # Date when the grade was obtained
+    level = models.CharField(_('Nivel'), max_length=10, choices=LEVEL_CHOICES, default='good')  # Dropdown for level
     # Link GradeHistory to an Event (optional). Use landing.Event model which is part of the landing app.
     event = models.ForeignKey(
         'landing.Event',
         on_delete=models.SET_NULL,
+        verbose_name=_('Eveniment'),
         null=True,
         blank=True,
         related_name='grade_histories',
-        help_text='Optional event associated with this grade exam'
+        help_text=_('Evenimentul opțional asociat acestui examen de grad.')
     )
     # exam_place removed
     # New explicit examiners: allow selecting from all athletes
     examiner_1 = models.ForeignKey(
         'Athlete',
         on_delete=models.SET_NULL,
+        verbose_name=_('Examinator 1'),
         null=True,
         blank=True,
         related_name='grades_as_examiner1'
@@ -548,6 +584,7 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
     examiner_2 = models.ForeignKey(
         'Athlete',
         on_delete=models.SET_NULL,
+        verbose_name=_('Examinator 2'),
         null=True,
         blank=True,
         related_name='grades_as_examiner2'
@@ -555,17 +592,17 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
     # President field removed; not used anymore
     
     # Athlete self-submission fields
-    submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
-    certificate_image = models.ImageField(upload_to='grade_certificates/', null=True, blank=True, help_text='Grade certificate photo')
-    result_document = models.FileField(upload_to='grade_documents/', null=True, blank=True, help_text='Official grade document')
-    notes = models.TextField(blank=True, null=True, help_text='Additional notes about the grading exam')
+    submitted_by_athlete = models.BooleanField(_('Trimis de sportiv'), default=False, help_text=_('Bifat dacă a fost trimis chiar de sportiv.'))
+    certificate_image = models.ImageField(_('Imagine certificat'), upload_to='grade_certificates/', null=True, blank=True, help_text=_('Fotografie a certificatului de grad.'))
+    result_document = models.FileField(_('Document rezultat'), upload_to='grade_documents/', null=True, blank=True, help_text=_('Documentul oficial al examenului de grad.'))
+    notes = models.TextField(_('Note'), blank=True, null=True, help_text=_('Note suplimentare despre examenul de grad.'))
     
     # Approval workflow fields
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved', help_text='Approval status (defaults to approved for admin submissions)')
-    submitted_date = models.DateTimeField(auto_now_add=True)
-    reviewed_date = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_grades')
-    admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
+    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved', help_text=_('Starea aprobării (implicit aprobat pentru înregistrările adăugate de administrator).'))
+    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
+    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_grades')
+    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
 
     class Meta:
         indexes = [
@@ -573,6 +610,8 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
             models.Index(fields=['obtained_date']),
             models.Index(fields=['status', 'submitted_date']),
         ]
+        verbose_name = _('Istoric grad')
+        verbose_name_plural = _('Istoric grade')
 
     def __str__(self):
         if self.submitted_by_athlete:
@@ -637,34 +676,40 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
 # Unified Visa model (new) - covers both medical and annual visas.
 class Visa(ApprovalWorkflowMixin, models.Model):
     VISA_TYPE_CHOICES = [
-        ('medical', 'Medical'),
-        ('annual', 'Annual'),
+        ('medical', 'Medicală'),
+        ('annual', 'Anuală'),
     ]
 
     STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
-    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='visas')
-    visa_type = models.CharField(max_length=10, choices=VISA_TYPE_CHOICES)
-    issued_date = models.DateField(blank=True, null=True)
+    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='visas')
+    visa_type = models.CharField(_('Tip viză'), max_length=10, choices=VISA_TYPE_CHOICES)
+    issued_date = models.DateField(_('Data emiterii'), blank=True, null=True)
 
     # Fields that may be used for either type
-    document = models.FileField(upload_to='visa_documents/', null=True, blank=True)
-    image = models.ImageField(upload_to='visa_images/', null=True, blank=True)
-    notes = models.TextField(blank=True, null=True)
+    document = models.FileField(_('Document'), upload_to='visa_documents/', null=True, blank=True)
+    image = models.ImageField(_('Imagine'), upload_to='visa_images/', null=True, blank=True)
+    notes = models.TextField(_('Note'), blank=True, null=True)
 
     # Medical-specific status (optional)
-    health_status = models.CharField(max_length=10, choices=[('approved','Approved'),('denied','Denied')], null=True, blank=True)
+    health_status = models.CharField(
+        _('Stare medicală'),
+        max_length=10,
+        choices=[('approved', 'Aprobat'), ('denied', 'Respins')],
+        null=True,
+        blank=True
+    )
 
     # Approval workflow
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved')
-    submitted_date = models.DateTimeField(auto_now_add=True)
-    reviewed_date = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_visas')
-    admin_notes = models.TextField(blank=True, null=True)
+    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved')
+    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
+    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_visas')
+    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True)
 
     class Meta:
-        verbose_name = _('Visa')
-        verbose_name_plural = _('Visas')
+        verbose_name = _('Viză')
+        verbose_name_plural = _('Vize')
         unique_together = ['athlete', 'visa_type', 'issued_date']
         indexes = [
             models.Index(fields=['athlete', 'visa_type', 'issued_date']),
@@ -709,7 +754,7 @@ class Visa(ApprovalWorkflowMixin, models.Model):
 
     def __str__(self):
         status = 'Valid' if self.is_valid() else 'Expired'
-        return f"{self.get_visa_type_display()} Visa for {self.athlete} - {status}"
+        return f"{self.get_visa_type_display()} pentru {self.athlete} - {status}"
 
 
 # Training Seminars
@@ -720,34 +765,35 @@ class TrainingSeminarParticipation(ApprovalWorkflowMixin, models.Model):
     """
     STATUS_CHOICES = APPROVAL_STATUS_CHOICES
     
-    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name='seminar_participations')
+    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='seminar_participations')
     # Legacy seminar field - deprecated, use event instead
-    seminar = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, related_name='legacy_participations', null=True, blank=True)
+    seminar = models.ForeignKey('landing.Event', on_delete=models.SET_NULL, verbose_name=_('Seminar'), related_name='legacy_participations', null=True, blank=True)
     # Primary event field
     event = models.ForeignKey(
         'landing.Event',
         on_delete=models.CASCADE,
+        verbose_name=_('Eveniment'),
         null=True,
         blank=True,
         related_name='seminar_participations',
-        help_text='Event this athlete participated in'
+        help_text=_('Evenimentul la care a participat acest sportiv.')
     )
-    submitted_by_athlete = models.BooleanField(default=False, help_text='True if submitted by the athlete themselves')
-    participation_certificate = models.ImageField(upload_to='seminar_certificates/', null=True, blank=True, help_text='Participation certificate photo')
-    participation_document = models.FileField(upload_to='seminar_documents/', null=True, blank=True, help_text='Official participation document')
-    notes = models.TextField(blank=True, null=True, help_text='Additional notes about participation')
+    submitted_by_athlete = models.BooleanField(_('Trimis de sportiv'), default=False, help_text=_('Bifat dacă a fost trimis chiar de sportiv.'))
+    participation_certificate = models.ImageField(_('Certificat de participare'), upload_to='seminar_certificates/', null=True, blank=True, help_text=_('Fotografie a certificatului de participare.'))
+    participation_document = models.FileField(_('Document de participare'), upload_to='seminar_documents/', null=True, blank=True, help_text=_('Documentul oficial de participare.'))
+    notes = models.TextField(_('Note'), blank=True, null=True, help_text=_('Note suplimentare despre participare.'))
     
     # Approval workflow fields
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved', help_text='Approval status (defaults to approved for admin submissions)')
-    submitted_date = models.DateTimeField(auto_now_add=True)
-    reviewed_date = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_seminar_participations')
-    admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes about approval/rejection')
+    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved', help_text=_('Starea aprobării (implicit aprobat pentru înregistrările adăugate de administrator).'))
+    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
+    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_seminar_participations')
+    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
     
     class Meta:
         unique_together = ('athlete', 'event')
-        verbose_name = _('Event participation')
-        verbose_name_plural = _('Event participations')
+        verbose_name = _('Participare la eveniment')
+        verbose_name_plural = _('Participări la evenimente')
         indexes = [
             models.Index(fields=['athlete', 'status']),
             models.Index(fields=['status', 'submitted_date']),
@@ -761,7 +807,7 @@ class TrainingSeminarParticipation(ApprovalWorkflowMixin, models.Model):
         elif self.seminar:
             target_name = self.seminar.title
         else:
-            target_name = 'Unknown Event'
+            target_name = 'Eveniment necunoscut'
 
         if self.submitted_by_athlete:
             return f"{self.athlete.first_name} {self.athlete.last_name} - {target_name} (Self-submitted: {self.status})"
@@ -798,5 +844,5 @@ class TrainingSeminarParticipation(ApprovalWorkflowMixin, models.Model):
 class EventParticipation(TrainingSeminarParticipation):
     class Meta:
         proxy = True
-        verbose_name = 'Event participation'
-        verbose_name_plural = 'Event participations'
+        verbose_name = _('Participare la eveniment')
+        verbose_name_plural = _('Participări la evenimente')

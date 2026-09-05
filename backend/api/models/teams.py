@@ -73,11 +73,16 @@ class Team(models.Model):
 
     categories = models.ManyToManyField(
         'Category',
+        verbose_name=_('Categorii'),
         through='CategoryTeam',  # Use the existing through model
         related_name='team_categories',
         blank=True,
         limit_choices_to={'type': 'teams'},  # Only allow categories with type 'teams'
     )
+
+    class Meta:
+        verbose_name = _('Echipă')
+        verbose_name_plural = _('Echipe')
 
     @property
     def name(self):
@@ -172,13 +177,14 @@ class TeamMember(models.Model):
     """
     Represents a member of a team.
     """
-    team = models.ForeignKey('Team', on_delete=models.CASCADE, related_name='members')
-    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, related_name='team_members')
+    team = models.ForeignKey('Team', on_delete=models.CASCADE, verbose_name=_('Echipă'), related_name='members')
+    athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='team_members')
 
     class Meta:
         unique_together = ('team', 'athlete')  # Ensure an athlete cannot be added twice to the same team
+        verbose_name = _('Membru al echipei')
+        verbose_name_plural = _('Membri ai echipei')
 
     def __str__(self):
         club_name = f", {self.athlete.club.name}" if self.athlete.club else ""
         return f"{self.athlete.first_name} {self.athlete.last_name}{club_name}"
-

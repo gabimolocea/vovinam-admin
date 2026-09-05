@@ -28,8 +28,9 @@ class CategoryRefereeAssignment(models.Model):
     category = models.OneToOneField(
         'Category',
         on_delete=models.CASCADE,
+        verbose_name=_('Categorie'),
         related_name='referee_assignment',
-        help_text='The category these referees are assigned to'
+        help_text=_('Categoria la care sunt alocați acești arbitri.')
     )
     
     referee_1 = models.ForeignKey(
@@ -39,7 +40,8 @@ class CategoryRefereeAssignment(models.Model):
         blank=True,
         limit_choices_to={'is_referee': True},
         related_name='referee_1_categories',
-        help_text='Referee 1 (R1)'
+        verbose_name=_('Arbitru 1'),
+        help_text=_('Arbitrul de pe poziția 1 (R1).')
     )
     
     referee_2 = models.ForeignKey(
@@ -49,7 +51,8 @@ class CategoryRefereeAssignment(models.Model):
         blank=True,
         limit_choices_to={'is_referee': True},
         related_name='referee_2_categories',
-        help_text='Referee 2 (R2)'
+        verbose_name=_('Arbitru 2'),
+        help_text=_('Arbitrul de pe poziția 2 (R2).')
     )
     
     referee_3 = models.ForeignKey(
@@ -59,7 +62,8 @@ class CategoryRefereeAssignment(models.Model):
         blank=True,
         limit_choices_to={'is_referee': True},
         related_name='referee_3_categories',
-        help_text='Referee 3 (R3)'
+        verbose_name=_('Arbitru 3'),
+        help_text=_('Arbitrul de pe poziția 3 (R3).')
     )
     
     referee_4 = models.ForeignKey(
@@ -69,7 +73,8 @@ class CategoryRefereeAssignment(models.Model):
         blank=True,
         limit_choices_to={'is_referee': True},
         related_name='referee_4_categories',
-        help_text='Referee 4 (R4)'
+        verbose_name=_('Arbitru 4'),
+        help_text=_('Arbitrul de pe poziția 4 (R4).')
     )
     
     referee_5 = models.ForeignKey(
@@ -79,12 +84,13 @@ class CategoryRefereeAssignment(models.Model):
         blank=True,
         limit_choices_to={'is_referee': True},
         related_name='referee_5_categories',
-        help_text='Referee 5 (R5)'
+        verbose_name=_('Arbitru 5'),
+        help_text=_('Arbitrul de pe poziția 5 (R5).')
     )
-    
+
     class Meta:
-        verbose_name = 'Category Referee Assignment'
-        verbose_name_plural = 'Category Referee Assignments'
+        verbose_name = _('Alocare arbitri pentru categorie')
+        verbose_name_plural = _('Alocări de arbitri pentru categorii')
     
     def __str__(self):
         return f"Referees for {self.category.name}"
@@ -122,29 +128,32 @@ class CompetitionReferee(models.Model):
     event = models.ForeignKey(
         'landing.Event',
         on_delete=models.CASCADE,
+        verbose_name=_('Eveniment'),
         related_name='competition_referees',
-        help_text='The event this referee is participating in'
+        help_text=_('Evenimentul la care participă acest arbitru.')
     )
     athlete = models.ForeignKey(
         'Athlete',
         on_delete=models.CASCADE,
+        verbose_name=_('Arbitru'),
         related_name='competition_referee_entries',
         limit_choices_to={'is_referee': True},
-        help_text='The referee athlete'
+        help_text=_('Sportivul care arbitrează.')
     )
     notes = models.TextField(
+        _('Note'),
         blank=True,
         default='',
-        help_text='Additional notes'
+        help_text=_('Note suplimentare.')
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(_('Data creării'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Data actualizării'), auto_now=True)
 
     class Meta:
         unique_together = ('event', 'athlete')
         ordering = ['athlete__last_name']
-        verbose_name = 'Competition Referee'
-        verbose_name_plural = 'Competition Referees'
+        verbose_name = _('Arbitru de competiție')
+        verbose_name_plural = _('Arbitri de competiție')
 
     def __str__(self):
         return f"{self.athlete.last_name} {self.athlete.first_name} - {self.event.title}"
@@ -157,23 +166,26 @@ class RefereePresence(models.Model):
     category = models.ForeignKey(
         'Category',
         on_delete=models.CASCADE,
+        verbose_name=_('Categorie'),
         related_name='referee_presences',
-        help_text='The category the referee is scoring'
+        help_text=_('Categoria pe care o arbitrează acest arbitru.')
     )
     referee = models.ForeignKey(
         'Athlete',
         on_delete=models.CASCADE,
+        verbose_name=_('Arbitru'),
         related_name='presence_records',
-        help_text='The referee athlete'
+        help_text=_('Sportivul arbitru.')
     )
     last_ping = models.DateTimeField(
-        help_text='Last time the referee pinged from the scoring page'
+        _('Ultimul ping'),
+        help_text=_('Ultima dată când arbitrul a trimis un ping din pagina de arbitraj.')
     )
 
     class Meta:
         unique_together = ('category', 'referee')
-        verbose_name = 'Referee Presence'
-        verbose_name_plural = 'Referee Presences'
+        verbose_name = _('Prezență arbitru')
+        verbose_name_plural = _('Prezențe ale arbitrilor')
 
     def __str__(self):
         return f"Referee {self.referee_id} on category {self.category_id}"
