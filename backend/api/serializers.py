@@ -145,6 +145,25 @@ class AthleteMinimalSerializer(serializers.ModelSerializer):
         return representation
 
 
+class PublicAthleteSerializer(serializers.ModelSerializer):
+    """Public athlete profile without private contact, identity, or workflow data."""
+    club = ClubMinimalSerializer(read_only=True)
+    city = CityMinimalSerializer(read_only=True)
+    current_grade = GradeMinimalSerializer(read_only=True)
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Athlete
+        fields = [
+            'id', 'first_name', 'last_name', 'full_name', 'gender',
+            'club', 'city', 'current_grade', 'is_coach', 'is_referee',
+            'profile_image',
+        ]
+
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip()
+
+
 class TeamMinimalSerializer(serializers.ModelSerializer):
     """Minimal team data"""
     club = serializers.SerializerMethodField()
@@ -685,17 +704,26 @@ class MatchSerializer(serializers.ModelSerializer):
 
     def get_winner(self, obj):
         """Get winner ID from scoring system property"""
-        winner = obj.winner
+        winner = self._get_cached_winner(obj)
         return winner.id if winner else None
 
     def get_winner_name(self, obj):
         """Determine the winner name dynamically from scoring system."""
-        winner = obj.winner
+        winner = self._get_cached_winner(obj)
         if winner == obj.red_corner:
             return self.get_red_corner_full_name(obj)
         elif winner == obj.blue_corner:
             return self.get_blue_corner_full_name(obj)
         return None  # No winner
+
+    def _get_cached_winner(self, obj):
+        if not hasattr(obj, '_serialized_winner'):
+            obj._serialized_winner = obj.winner
+        return obj._serialized_winner
+
+    def _get_point_events(self, obj):
+        prefetched_events = getattr(obj, '_prefetched_point_events', None)
+        return prefetched_events if prefetched_events is not None else obj.point_events.all()
 
     def get_central_referee_name(self, obj):
         """Return the central referee full name if present."""
@@ -712,7 +740,8 @@ class MatchSerializer(serializers.ModelSerializer):
         total_red_penalty = 0
         total_blue_penalty = 0
         
-        for event in obj.point_events.all():
+        point_events = self._get_point_events(obj)
+        for event in point_events:
             # Check if this is a central penalty event
             is_central = False
             if event.metadata and isinstance(event.metadata, dict):
@@ -737,7 +766,7 @@ class MatchSerializer(serializers.ModelSerializer):
         central_referee_id = obj.central_referee.id if obj.central_referee else None
 
         # Aggregate point events by referee and round (excluding central penalties)
-        for event in obj.point_events.all():
+        for event in point_events:
             # Skip central penalty events
             is_central = False
             if event.metadata and isinstance(event.metadata, dict):
@@ -794,35 +823,31 @@ class MatchSerializer(serializers.ModelSerializer):
 
     def get_central_penalties_red(self, obj):
         """Return detailed central penalties for the red corner."""
-        penalties = []
-        # Filter for central penalties for the red corner
-        penalty_events = obj.point_events.filter(
-            side='red',
-            event_type__in=['penalty', 'deduction'],
-            metadata__central=True
-        )
-        for event in penalty_events:
-            penalties.append({
+        return [
+            {
                 'points': event.points,
                 'metadata': event.metadata or {}
-            })
-        return penalties
+            }
+            for event in self._get_point_events(obj)
+            if event.side == 'red'
+            and event.event_type in ('penalty', 'deduction')
+            and isinstance(event.metadata, dict)
+            and event.metadata.get('central') is True
+        ]
 
     def get_central_penalties_blue(self, obj):
         """Return detailed central penalties for the blue corner."""
-        penalties = []
-        # Filter for central penalties for the blue corner
-        penalty_events = obj.point_events.filter(
-            side='blue',
-            event_type__in=['penalty', 'deduction'],
-            metadata__central=True
-        )
-        for event in penalty_events:
-            penalties.append({
+        return [
+            {
                 'points': event.points,
                 'metadata': event.metadata or {}
-            })
-        return penalties
+            }
+            for event in self._get_point_events(obj)
+            if event.side == 'blue'
+            and event.event_type in ('penalty', 'deduction')
+            and isinstance(event.metadata, dict)
+            and event.metadata.get('central') is True
+        ]
 
     def validate(self, data):
         """

@@ -10,9 +10,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
+        migrations.AlterField(
             model_name='athlete',
             name='gender',
-            field=models.CharField(blank=True, choices=[('male', 'Male'), ('female', 'Female')], help_text="Athlete's gender for category enrollment", max_length=10, null=True),
+            field=models.CharField(blank=True, choices=[('male', 'Male'), ('female', 'Female')], max_length=20, null=True),
         ),
     ]

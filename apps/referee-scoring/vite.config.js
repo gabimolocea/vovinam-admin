@@ -1,11 +1,10 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-import path from 'path';
+import { createAppViteConfig } from '../shared/vite.base.js';
 
-export default defineConfig({
+export default createAppViteConfig({
+  port: 5176,
+  proxyMedia: false,
   plugins: [
-    react(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
@@ -39,19 +38,4 @@ export default defineConfig({
       },
     }),
   ],
-  resolve: {
-    alias: {
-      '@shared': path.resolve(__dirname, '../shared'),
-    },
-    dedupe: ['react', 'react-dom', 'react-router-dom', 'axios'],
-  },
-  optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', 'axios'],
-  },
-  server: {
-    host: '0.0.0.0',
-    proxy: {
-      '/api': 'http://localhost:8000',
-    },
-  },
 });

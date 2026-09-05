@@ -39,7 +39,10 @@ function getLatestVisaByAthlete(items) {
   return map;
 }
 
-function VisaBadge({ visa }) {
+function VisaBadge({ visa, unavailable = false }) {
+  if (unavailable) {
+    return <span className="inline-flex border border-amber-500 bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">Indisponibilă</span>;
+  }
   if (!visa) {
     return <span className="inline-flex rounded-full border border-gray-300 bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-500">Lipsește</span>;
   }
@@ -62,7 +65,7 @@ function ApprovalInfoIcon() {
   );
 }
 
-function MobileAthleteCard({ athlete, annualVisa, medicalVisa, onOpen }) {
+function MobileAthleteCard({ athlete, annualVisa, medicalVisa, annualVisaUnavailable, medicalVisaUnavailable, onOpen }) {
   const profileImageUrl = imgUrl(athlete.profile_image);
   const fullName = `${athlete.last_name || ''} ${athlete.first_name || ''}`.trim() || athlete.full_name || '—';
 
@@ -102,13 +105,13 @@ function MobileAthleteCard({ athlete, annualVisa, medicalVisa, onOpen }) {
         <div className="min-w-0">
           <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">Viza anuală</div>
           <div className="min-w-0 [&>span]:w-full [&>span]:justify-center [&>span]:px-1.5 [&>span]:text-[10px]">
-            <VisaBadge visa={annualVisa} />
+            <VisaBadge visa={annualVisa} unavailable={annualVisaUnavailable} />
           </div>
         </div>
         <div className="min-w-0">
           <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">Viza medicală</div>
           <div className="min-w-0 [&>span]:w-full [&>span]:justify-center [&>span]:px-1.5 [&>span]:text-[10px]">
-            <VisaBadge visa={medicalVisa} />
+            <VisaBadge visa={medicalVisa} unavailable={medicalVisaUnavailable} />
           </div>
         </div>
       </div>
@@ -121,20 +124,36 @@ export default function AthletesList() {
   const [annualVisas, setAnnualVisas] = useState([]);
   const [medicalVisas, setMedicalVisas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [annualVisaUnavailable, setAnnualVisaUnavailable] = useState(false);
+  const [medicalVisaUnavailable, setMedicalVisaUnavailable] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
-    Promise.all([
+    let active = true;
+    setLoading(true);
+    setError('');
+    Promise.allSettled([
       athleteAPI.list({ my_club: true }),
-      visaAPI.annual.list().catch(() => ({ data: [] })),
-      visaAPI.medical.list().catch(() => ({ data: [] })),
-    ]).then(([athletesRes, annualRes, medicalRes]) => {
-      setAthletes(normalizeList(athletesRes.data));
-      setAnnualVisas(normalizeList(annualRes.data));
-      setMedicalVisas(normalizeList(medicalRes.data));
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+      visaAPI.annual.list(),
+      visaAPI.medical.list(),
+    ]).then(([athletesResult, annualResult, medicalResult]) => {
+      if (!active) return;
+      if (athletesResult.status === 'rejected') {
+        setError('Nu s-au putut încărca sportivii clubului.');
+        return;
+      }
+      setAthletes(normalizeList(athletesResult.value.data));
+      setAnnualVisaUnavailable(annualResult.status === 'rejected');
+      setMedicalVisaUnavailable(medicalResult.status === 'rejected');
+      setAnnualVisas(annualResult.status === 'fulfilled' ? normalizeList(annualResult.value.data) : []);
+      setMedicalVisas(medicalResult.status === 'fulfilled' ? normalizeList(medicalResult.value.data) : []);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [reloadKey]);
 
   const latestAnnualVisaByAthlete = useMemo(() => getLatestVisaByAthlete(annualVisas), [annualVisas]);
   const latestMedicalVisaByAthlete = useMemo(() => getLatestVisaByAthlete(medicalVisas), [medicalVisas]);
@@ -175,16 +194,29 @@ export default function AthletesList() {
     {
       key: 'annual_visa',
       label: 'Viza anuală',
-      render: (r) => <VisaBadge visa={latestAnnualVisaByAthlete.get(r.id)} />,
+      render: (r) => <VisaBadge visa={latestAnnualVisaByAthlete.get(r.id)} unavailable={annualVisaUnavailable} />,
     },
     {
       key: 'medical_visa',
       label: 'Viza medicală',
-      render: (r) => <VisaBadge visa={latestMedicalVisaByAthlete.get(r.id)} />,
+      render: (r) => <VisaBadge visa={latestMedicalVisaByAthlete.get(r.id)} unavailable={medicalVisaUnavailable} />,
     },
   ];
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="border-2 border-red-700 bg-red-50 p-5 text-red-900" role="alert">
+          <p className="font-bold">{error}</p>
+          <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="mt-3 frvv-btn-primary">
+            Reîncearcă
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6">
@@ -211,6 +243,8 @@ export default function AthletesList() {
                 athlete={athlete}
                 annualVisa={latestAnnualVisaByAthlete.get(athlete.id)}
                 medicalVisa={latestMedicalVisaByAthlete.get(athlete.id)}
+                annualVisaUnavailable={annualVisaUnavailable}
+                medicalVisaUnavailable={medicalVisaUnavailable}
                 onOpen={() => navigate(`/athletes/${athlete.id}`)}
               />
             ))}

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ArrowLeft, CheckCircle2, ExternalLink, Pencil, X } from 'lucide-react';
 import { useAuth } from '@shared';
+import { Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Skeleton, Textarea } from '../components/ui';
 import {
   athleteAPI,
   categoryAPI,
@@ -120,25 +122,26 @@ function getAthleteName(athlete) {
 
 function InfoSection({ title, action, children }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
-        <h2 className="text-sm font-black uppercase tracking-wide text-gray-700">{title}</h2>
+    <Card className="registry-panel overflow-hidden">
+      <CardHeader className="flex-row items-center justify-between space-y-0 border-b py-4">
+        <CardTitle className="text-base">{title}</CardTitle>
         {action}
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
+      </CardHeader>
+      <CardContent className="pt-5">{children}</CardContent>
+    </Card>
   );
 }
 
 function SectionButton({ children, onClick, active = false }) {
   return (
-    <button
+    <Button
       type="button"
       onClick={onClick}
-      className={`rounded border px-3 py-1 text-xs font-semibold ${active ? 'border-gray-700 bg-gray-700 text-white' : 'border-blue-700 bg-blue-700 text-white hover:bg-blue-800'}`}
+      variant={active ? 'secondary' : 'outline'}
+      size="sm"
     >
-      {children}
-    </button>
+      {active ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}{children}
+    </Button>
   );
 }
 
@@ -147,8 +150,8 @@ function InfoGrid({ items }) {
     <dl className="grid gap-4 text-sm md:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
         <div key={item.label} className="min-w-0">
-          <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{item.label}</dt>
-          <dd className="mt-1 break-words text-gray-900">{formatValue(item.value)}</dd>
+          <dt className="text-xs font-medium text-muted-foreground">{item.label}</dt>
+          <dd className="mt-1 break-words font-medium text-foreground">{formatValue(item.value)}</dd>
         </div>
       ))}
     </dl>
@@ -158,76 +161,74 @@ function InfoGrid({ items }) {
 function FileLink({ href, children }) {
   const resolvedHref = resolveMediaUrl(href);
   if (!resolvedHref) return '-';
-  return <a className="font-semibold text-blue-700 hover:underline" href={resolvedHref} target="_blank" rel="noreferrer">{children}</a>;
+  return <a className="inline-flex items-center gap-1 font-medium text-primary hover:underline" href={resolvedHref} target="_blank" rel="noreferrer">{children}<ExternalLink className="h-3.5 w-3.5" /></a>;
 }
 
 function TextField({ label, value, onChange, type = 'text', as = 'input', required = false }) {
-  const Component = as;
+  const Component = as === 'textarea' ? Textarea : Input;
   return (
-    <label className="block text-sm">
-      <span className="font-semibold text-gray-700">{label}{required ? ' *' : ''}</span>
+    <Label className="block space-y-2">
+      <span>{label}{required ? ' *' : ''}</span>
       <Component
         type={as === 'input' ? type : undefined}
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value)}
         required={required}
-        className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
       />
-    </label>
+    </Label>
   );
 }
 
 function SelectField({ label, value, onChange, options, required = false, children }) {
   return (
-    <label className="block text-sm">
-      <span className="font-semibold text-gray-700">{label}{required ? ' *' : ''}</span>
-      <select
+    <Label className="block space-y-2">
+      <span>{label}{required ? ' *' : ''}</span>
+      <Select
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value)}
         required={required}
-        className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
       >
         <option value="">-</option>
         {children || options.map((option) => (
           <option key={option.id} value={option.id}>{option.name || option.title || option.full_name || option.email || option.id}</option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Label>
   );
 }
 
 function AdminForm({ title, onSubmit, saving, children }) {
   return (
-    <form onSubmit={onSubmit} className="space-y-3 rounded border border-gray-200 bg-gray-50 p-4">
-      <h3 className="text-sm font-black uppercase tracking-wide text-gray-700">{title}</h3>
+    <form onSubmit={onSubmit} className="space-y-4 rounded-lg border bg-muted/40 p-4">
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{children}</div>
-      <button
+      <Button
         type="submit"
         disabled={saving}
-        className="rounded border border-blue-700 bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {saving ? 'Se salvează...' : 'Salvează'}
-      </button>
+        <CheckCircle2 className="h-4 w-4" />{saving ? 'Se salvează...' : 'Salvează'}
+      </Button>
     </form>
   );
 }
 
 function AdminModal({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-          <h2 className="text-sm font-black uppercase tracking-wide text-gray-700">{title}</h2>
-          <button
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/35 px-4 py-6 backdrop-blur-sm">
+      <Card className="max-h-[90vh] w-full max-w-3xl overflow-y-auto">
+        <CardHeader className="flex-row items-center justify-between space-y-0 border-b py-4">
+          <CardTitle className="text-base">{title}</CardTitle>
+          <Button
             type="button"
             onClick={onClose}
-            className="rounded border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            variant="ghost"
+            size="sm"
           >
-            Închide
-          </button>
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
+            <X className="h-4 w-4" />Închide
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-5">{children}</CardContent>
+      </Card>
     </div>
   );
 }
@@ -512,14 +513,14 @@ export default function AthleteProfilePage() {
   }, [results]);
 
   if (loading) {
-    return <div className="rounded border border-gray-200 bg-white p-4 text-sm text-gray-600">Se încarcă profilul...</div>;
+    return <Card className="registry-panel p-5"><Skeleton className="h-28 w-full" /></Card>;
   }
 
   if (error) {
     return (
       <div className="space-y-3">
-        <Link to="/" className="text-sm font-semibold text-blue-700 hover:underline">← Înapoi la registru</Link>
-        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        <Button asChild variant="ghost" size="sm"><Link to="/"><ArrowLeft className="h-4 w-4" />Înapoi la registru</Link></Button>
+        <Alert variant="destructive">{error}</Alert>
       </div>
     );
   }
@@ -527,8 +528,8 @@ export default function AthleteProfilePage() {
   if (!athlete) {
     return (
       <div className="space-y-3">
-        <Link to="/" className="text-sm font-semibold text-blue-700 hover:underline">← Înapoi la registru</Link>
-        <div className="rounded border border-gray-200 bg-white p-4 text-sm text-gray-700">Sportivul nu a fost găsit.</div>
+        <Button asChild variant="ghost" size="sm"><Link to="/"><ArrowLeft className="h-4 w-4" />Înapoi la registru</Link></Button>
+        <Alert>Sportivul nu a fost găsit.</Alert>
       </div>
     );
   }
@@ -540,41 +541,37 @@ export default function AthleteProfilePage() {
   const profileImageUrl = resolveMediaUrl(athlete.profile_image);
 
   return (
-    <section className="space-y-4">
-      <Link to="/" className="text-sm font-semibold text-blue-700 hover:underline">← Înapoi la registru</Link>
+    <section className="space-y-5">
+      <Button asChild variant="ghost" size="sm" className="-ml-3"><Link to="/"><ArrowLeft className="h-4 w-4" />Înapoi la registru</Link></Button>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <div className="flex flex-col gap-4 p-4 md:flex-row md:items-start">
+      <Card className="registry-panel overflow-hidden">
+        <div className="flex flex-col gap-5 p-5 md:flex-row md:items-center">
           <ProfileImage athlete={athlete} src={profileImageUrl} />
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-black text-gray-900">{getAthleteName(athlete)}</h1>
-            <div className="mt-2 grid gap-2 text-sm text-gray-700 md:grid-cols-2">
-              <p><span className="font-semibold">Club:</span> {athlete?.club?.name || '-'}</p>
-              <p><span className="font-semibold">Grad:</span> {athlete?.current_grade?.name || '-'}</p>
-              <p><span className="font-semibold">Status:</span> {athlete.status_display || athlete.status || '-'}</p>
-              <p><span className="font-semibold">Vârstă:</span> {age ?? '-'}</p>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Badge variant="success">Profil validat</Badge>
+              {athlete.is_coach && <Badge variant="secondary">Antrenor</Badge>}
+              {athlete.is_referee && <Badge variant="secondary">Arbitru</Badge>}
+            </div>
+            <h1 className="font-display text-3xl font-semibold text-foreground">{getAthleteName(athlete)}</h1>
+            <div className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
+              <p><span className="font-medium text-foreground">Club:</span> {athlete?.club?.name || '-'}</p>
+              <p><span className="font-medium text-foreground">Grad:</span> {athlete?.current_grade?.name || '-'}</p>
+              <p><span className="font-medium text-foreground">Status:</span> {athlete.status_display || athlete.status || '-'}</p>
+              <p><span className="font-medium text-foreground">Vârstă:</span> {age ?? '-'}</p>
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-gray-500">Total rezultate</p>
-          <p className="mt-1 text-2xl font-black text-gray-900">{summary.total}</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-gray-500">Rezultate validate</p>
-          <p className="mt-1 text-2xl font-black text-green-700">{summary.approved}</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-gray-500">În așteptare</p>
-          <p className="mt-1 text-2xl font-black text-amber-700">{summary.pending}</p>
-        </div>
+        <Card className="registry-panel p-4"><p className="text-xs font-medium text-muted-foreground">Total rezultate</p><p className="font-display mt-1 text-3xl font-semibold">{summary.total}</p></Card>
+        <Card className="registry-panel p-4"><p className="text-xs font-medium text-muted-foreground">Rezultate validate</p><p className="font-display mt-1 text-3xl font-semibold text-emerald-700">{summary.approved}</p></Card>
+        <Card className="registry-panel p-4"><p className="text-xs font-medium text-muted-foreground">În așteptare</p><p className="font-display mt-1 text-3xl font-semibold text-amber-700">{summary.pending}</p></Card>
       </div>
 
-      {isAdmin && adminMessage && <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{adminMessage}</div>}
-      {isAdmin && adminError && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{adminError}</div>}
+      {isAdmin && adminMessage && <Alert variant="success"><CheckCircle2 className="mr-2 inline h-4 w-4" />{adminMessage}</Alert>}
+      {isAdmin && adminError && <Alert variant="destructive">{adminError}</Alert>}
 
       <InfoSection
         title="Informații personale"
@@ -701,9 +698,7 @@ export default function AthleteProfilePage() {
       </InfoSection>
 
       {resultsWarning && (
-        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {resultsWarning}
-        </div>
+        <Alert variant="warning">{resultsWarning}</Alert>
       )}
 
       <InfoSection

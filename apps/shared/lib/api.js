@@ -88,7 +88,7 @@ export const groupAPI = {
   list: (params) => api.get('/groups/', { params }),
   create: (data) => api.post('/groups/', data),
   update: (id, data) => api.put(`/groups/${id}/`, data),
-  delete: (id) => api.delete(`/groups/${id}/`),
+  delete: (id, params) => api.delete(`/groups/${id}/`, { params }),
   reorder: (order) => api.post('/groups/reorder/', { order }),
 };
 

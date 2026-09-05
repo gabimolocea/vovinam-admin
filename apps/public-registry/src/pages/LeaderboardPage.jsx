@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowRight, Medal, RotateCcw, Trophy } from 'lucide-react';
 import { athleteAPI, scoreAPI } from '@shared/lib/api';
+import { Alert, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 
 function getAge(dateOfBirth) {
   if (!dateOfBirth) return null;
@@ -169,108 +171,98 @@ export default function LeaderboardPage() {
   }, [scores, athleteMap, clubFilter, gradeFilter, ageGroupFilter]);
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h1 className="text-xl font-black text-gray-900">Clasament Public Sportivi</h1>
-        <p className="mt-1 text-sm text-gray-600">
+    <section className="space-y-5">
+      <Card className="registry-panel">
+        <CardHeader>
+        <Badge variant="outline" className="mb-2 w-fit"><Trophy className="mr-1.5 h-3.5 w-3.5" />Performanță oficială</Badge>
+        <CardTitle className="font-display text-2xl">Clasamentul sportivilor</CardTitle>
+        <CardDescription>
           Clasament bazat pe rezultate validate (approved), podium și scorurile oficiale.
-        </p>
-      </div>
+        </CardDescription>
+        </CardHeader>
+      </Card>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <Card className="registry-panel"><CardContent className="pt-5">
         <div className="grid gap-3 md:grid-cols-4">
-          <select
+          <Select
             value={clubFilter}
             onChange={(e) => setClubFilter(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none ring-blue-500 focus:ring"
           >
             <option value="all">Toate cluburile</option>
             {clubOptions.map((club) => (
               <option key={club.id} value={club.id}>{club.name}</option>
             ))}
-          </select>
+          </Select>
 
-          <select
+          <Select
             value={gradeFilter}
             onChange={(e) => setGradeFilter(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none ring-blue-500 focus:ring"
           >
             <option value="all">Toate gradele</option>
             {gradeOptions.map((gradeName) => (
               <option key={gradeName} value={gradeName}>{gradeName}</option>
             ))}
-          </select>
+          </Select>
 
-          <select
+          <Select
             value={ageGroupFilter}
             onChange={(e) => setAgeGroupFilter(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none ring-blue-500 focus:ring"
           >
             <option value="all">Toate grupele</option>
             <option value="u12">Sub 12</option>
             <option value="u16">12-15</option>
             <option value="u21">16-20</option>
             <option value="senior">21+</option>
-          </select>
+          </Select>
 
-          <div className="flex items-center justify-between rounded border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700">
+          <div className="flex items-center justify-between rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground">
             <span>{loading ? 'Se încarcă...' : `${leaderboardRows.length} sportivi`}</span>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setClubFilter('all');
                 setGradeFilter('all');
                 setAgeGroupFilter('all');
               }}
-              className="text-xs font-semibold text-blue-700 hover:underline"
             >
-              Reset
-            </button>
+              <RotateCcw className="h-3.5 w-3.5" />Reset
+            </Button>
           </div>
         </div>
-      </div>
+      </CardContent></Card>
 
       {error && (
-        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <Alert variant="destructive">{error}</Alert>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+      <Card className="registry-panel overflow-hidden">
+        <Table>
+          <TableHeader className="bg-muted/60">
             <tr>
-              <th className="px-4 py-3">Loc</th>
-              <th className="px-4 py-3">Sportiv</th>
-              <th className="px-4 py-3">Club</th>
-              <th className="px-4 py-3">1st / 2nd / 3rd</th>
-              <th className="px-4 py-3">Participări</th>
-              <th className="px-4 py-3">Scor mediu</th>
-              <th className="px-4 py-3">Punctaj clasament</th>
+              <TableHead>Loc</TableHead><TableHead>Sportiv</TableHead><TableHead>Club</TableHead><TableHead>Podium</TableHead><TableHead>Participări</TableHead><TableHead>Scor mediu</TableHead><TableHead className="text-right">Punctaj</TableHead>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
+          </TableHeader>
+          <TableBody>
+            {loading && [0, 1, 2].map((row) => <TableRow key={row}><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>)}
             {!loading && leaderboardRows.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">Nu există date pentru filtrele selectate.</td>
-              </tr>
+              <TableRow><TableCell colSpan={7} className="h-24 text-center text-muted-foreground">Nu există date pentru filtrele selectate.</TableCell></TableRow>
             )}
             {leaderboardRows.map((row, index) => (
-              <tr key={row.athleteId} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-black text-gray-900">#{index + 1}</td>
-                <td className="px-4 py-3 text-gray-900">
-                  <Link to={`/athletes/${row.athleteId}`} className="font-semibold text-blue-700 hover:underline">
-                    {row.athlete?.first_name} {row.athlete?.last_name}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-gray-700">{row.athlete?.club?.name || '-'}</td>
-                <td className="px-4 py-3 text-gray-700">{row.firstPlaces} / {row.secondPlaces} / {row.thirdPlaces}</td>
-                <td className="px-4 py-3 text-gray-700">{row.appearances}</td>
-                <td className="px-4 py-3 text-gray-700">{row.averageScore.toFixed(2)}</td>
-                <td className="px-4 py-3 font-semibold text-gray-900">{row.rankingPoints.toFixed(2)}</td>
-              </tr>
+              <TableRow key={row.athleteId}>
+                <TableCell><Badge variant={index < 3 ? 'default' : 'outline'}><Medal className="mr-1 h-3 w-3" />{index + 1}</Badge></TableCell>
+                <TableCell><Button asChild variant="ghost" size="sm" className="px-0"><Link to={`/athletes/${row.athleteId}`}>{row.athlete?.first_name} {row.athlete?.last_name}<ArrowRight className="h-3.5 w-3.5" /></Link></Button></TableCell>
+                <TableCell className="text-muted-foreground">{row.athlete?.club?.name || '-'}</TableCell>
+                <TableCell>{row.firstPlaces} / {row.secondPlaces} / {row.thirdPlaces}</TableCell>
+                <TableCell>{row.appearances}</TableCell>
+                <TableCell>{row.averageScore.toFixed(2)}</TableCell>
+                <TableCell className="text-right font-semibold">{row.rankingPoints.toFixed(2)}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+      </Card>
     </section>
   );
 }

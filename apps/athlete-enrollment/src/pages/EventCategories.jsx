@@ -9,19 +9,24 @@ export default function EventCategories() {
   const [enrolled, setEnrolled] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setError('');
     Promise.all([
       categoryAPI.list({ event: eventId }),
-      enrollmentAPI.categoryAthletes.list({ event: eventId, my: true }).catch(() => ({ data: [] })),
+      enrollmentAPI.categoryAthletes.list({ event: eventId, my: true }),
     ]).then(([catRes, enrollRes]) => {
       const cats = Array.isArray(catRes.data) ? catRes.data : catRes.data.results ?? [];
       setCategories(cats);
       const enrolledCats = (Array.isArray(enrollRes.data) ? enrollRes.data : enrollRes.data.results ?? []);
       setEnrolled(new Set(enrolledCats.map((e) => e.category)));
-      setLoading(false);
-    });
-  }, [eventId]);
+    }).catch((err) => {
+      setError(err.response?.data?.detail || 'Nu s-au putut încărca înscrierile.');
+    }).finally(() => setLoading(false));
+  }, [eventId, reloadKey]);
 
   const handleEnroll = async (categoryId) => {
     setBusyId(categoryId);
@@ -36,6 +41,17 @@ export default function EventCategories() {
   };
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
+
+  if (error) {
+    return (
+      <div className="border-2 border-red-700 bg-red-50 p-5 text-red-900" role="alert">
+        <p className="font-bold">{error}</p>
+        <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="mt-3 frvv-btn-primary">
+          Reîncearcă
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>

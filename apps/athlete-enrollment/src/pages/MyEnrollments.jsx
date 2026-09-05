@@ -5,12 +5,16 @@ import { PageHeader, Spinner, EmptyState, DataTable } from '@shared/components/u
 export default function MyEnrollments() {
   const [enrollments, setEnrollments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const fetch = () => {
+    setLoading(true);
+    setError('');
     enrollmentAPI.categoryAthletes.list({ my: true }).then(({ data }) => {
       setEnrollments(Array.isArray(data) ? data : data.results ?? []);
-      setLoading(false);
-    });
+    }).catch((err) => {
+      setError(err.response?.data?.detail || 'Nu s-au putut încărca înscrierile.');
+    }).finally(() => setLoading(false));
   };
 
   useEffect(fetch, []);
@@ -40,6 +44,15 @@ export default function MyEnrollments() {
   ];
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
+
+  if (error) {
+    return (
+      <div className="border-2 border-red-700 bg-red-50 p-5 text-red-900" role="alert">
+        <p className="font-bold">{error}</p>
+        <button type="button" onClick={fetch} className="mt-3 frvv-btn-primary">Reîncearcă</button>
+      </div>
+    );
+  }
 
   return (
     <>

@@ -108,6 +108,7 @@ export default function LiveFullscreenPage() {
   const [showStopCategoryConfirm, setShowStopCategoryConfirm] = useState(false);
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
   const pollRef = useRef(null);
+  const pollInFlightRef = useRef(false);
 
   const arr = r => r.data?.results || r.data || [];
 
@@ -179,6 +180,8 @@ export default function LiveFullscreenPage() {
   // Lightweight fetch — only scores + sessions (polled every 2s)
   const fetchMatchState = useCallback(async () => {
     if (!eventId) return;
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
     try {
       const requests = [monitorAPI.sessions.list({ event_id: eventId })];
 
@@ -231,6 +234,8 @@ export default function LiveFullscreenPage() {
       }
     } catch (err) {
       console.error('Match state fetch error:', err);
+    } finally {
+      pollInFlightRef.current = false;
     }
   }, [eventId, fieldId, itemId, panelType]);
 

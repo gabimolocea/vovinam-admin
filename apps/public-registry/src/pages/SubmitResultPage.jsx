@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, CheckCircle2, Send } from 'lucide-react';
 import { categoryAPI, scoreAPI } from '@shared/lib/api';
 import { useAuth } from '@shared';
+import { Alert, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Select, Textarea } from '../components/ui';
 
 const EMPTY_FORM = {
   category: '',
@@ -88,27 +90,30 @@ export default function SubmitResultPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h1 className="text-xl font-black text-gray-900">Trimite rezultat nou</h1>
-        <p className="mt-1 text-sm text-gray-600">
+    <section className="space-y-5">
+      <Card className="registry-panel">
+        <CardHeader>
+        <Badge variant="outline" className="mb-2 w-fit"><Send className="mr-1.5 h-3.5 w-3.5" />Transmitere oficială</Badge>
+        <CardTitle className="font-display text-2xl">Trimite rezultat nou</CardTitle>
+        <CardDescription>
           Rezultatul este salvat cu status pending și devine public după validarea admin.
-        </p>
-      </div>
+        </CardDescription>
+        </CardHeader>
+      </Card>
 
-      <form onSubmit={onSubmit} className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
-        <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
-          Cont curent: <span className="font-semibold">{user?.email || 'necunoscut'}</span>
+      <Card className="registry-panel"><CardContent className="pt-5">
+      <form onSubmit={onSubmit} className="space-y-5">
+        <div className="flex items-center justify-between rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+          <span>Cont curent</span><Badge variant="secondary">{user?.email || 'necunoscut'}</Badge>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-1 text-sm">
-            <span className="font-semibold text-gray-700">Categorie</span>
-            <select
+          <Label className="space-y-2">
+            <span>Categorie</span>
+            <Select
               value={form.category}
               onChange={onChange('category')}
               disabled={loadingCategories}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none ring-blue-500 focus:ring"
               required
             >
               <option value="">Selectează categoria</option>
@@ -117,85 +122,81 @@ export default function SubmitResultPage() {
                   {category.name}{category?.competition_name ? ` - ${category.competition_name}` : ''}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="space-y-1 text-sm">
-            <span className="font-semibold text-gray-700">Tip</span>
-            <select
+          <Label className="space-y-2">
+            <span>Tip</span>
+            <Select
               value={form.type}
               onChange={onChange('type')}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none ring-blue-500 focus:ring"
             >
               <option value="solo">Individual (solo)</option>
               <option value="fight">Fight</option>
               <option value="teams">Echipă</option>
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="space-y-1 text-sm">
-            <span className="font-semibold text-gray-700">Scor</span>
-            <input
+          <Label className="space-y-2">
+            <span>Scor</span>
+            <Input
               type="number"
               value={form.score}
               onChange={onChange('score')}
               placeholder="ex: 95"
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none ring-blue-500 focus:ring"
             />
-          </label>
+          </Label>
 
-          <label className="space-y-1 text-sm">
-            <span className="font-semibold text-gray-700">Podium revendicat</span>
-            <select
+          <Label className="space-y-2">
+            <span>Podium revendicat</span>
+            <Select
               value={form.placement_claimed}
               onChange={onChange('placement_claimed')}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none ring-blue-500 focus:ring"
             >
               <option value="">Nespecificat</option>
               <option value="1st">Locul 1</option>
               <option value="2nd">Locul 2</option>
               <option value="3rd">Locul 3</option>
-            </select>
-          </label>
+            </Select>
+          </Label>
 
-          <label className="space-y-1 text-sm md:col-span-2">
-            <span className="font-semibold text-gray-700">Note</span>
-            <textarea
+          <Label className="space-y-2 md:col-span-2">
+            <span>Note</span>
+            <Textarea
               value={form.notes}
               onChange={onChange('notes')}
               placeholder="ex: finală câștigată la puncte"
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none ring-blue-500 focus:ring"
               rows={4}
             />
-          </label>
+          </Label>
         </div>
 
         {selectedCategory && (
-          <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          <Alert>
             Categorie selectată: <span className="font-semibold">{selectedCategory.name}</span>
-          </div>
+          </Alert>
         )}
 
-        {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-        {success && <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{success}</div>}
+        {error && <Alert variant="destructive">{error}</Alert>}
+        {success && <Alert variant="success"><CheckCircle2 className="mr-2 inline h-4 w-4" />{success}</Alert>}
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="submit"
             disabled={submitting}
-            className="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitting ? 'Se trimite...' : 'Trimite rezultat'}
-          </button>
-          <button
+            <Send className="h-4 w-4" />{submitting ? 'Se trimite...' : 'Trimite rezultat'}
+          </Button>
+          <Button
             type="button"
+            variant="outline"
             onClick={() => navigate(-1)}
-            className="rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
           >
-            Înapoi
-          </button>
+            <ArrowLeft className="h-4 w-4" />Înapoi
+          </Button>
         </div>
       </form>
+      </CardContent></Card>
     </section>
   );
 }

@@ -79,7 +79,10 @@ def compute_match_results(match: Match, events: Optional[Iterable[RefereePointEv
     # computing winners even if no RefereePointEvent rows exist for them.
     try:
         from .models import RefereeScore
-        for rs in RefereeScore.objects.filter(match=match):
+        referee_scores = getattr(match, '_prefetched_legacy_scores', None)
+        if referee_scores is None:
+            referee_scores = RefereeScore.objects.filter(match=match)
+        for rs in referee_scores:
             rid = rs.referee_id
             if rid not in per_ref:
                 # store as round 1 values

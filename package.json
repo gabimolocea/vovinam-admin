@@ -1,0 +1,42 @@
+{
+  "name": "vovinam-admin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n admin,enroll,coach,referee,display,registry -c blue,green,magenta,yellow,cyan,white \"npm:dev:admin\" \"npm:dev:enroll\" \"npm:dev:coach\" \"npm:dev:referee\" \"npm:dev:display\" \"npm:dev:registry\"",
+    "dev:admin": "npm run dev --workspace @vovinam/competition-admin",
+    "dev:enroll": "npm run dev --workspace @vovinam/athlete-enrollment",
+    "dev:coach": "npm run dev --workspace @vovinam/coach-dashboard",
+    "dev:referee": "npm run dev --workspace @vovinam/referee-scoring",
+    "dev:display": "npm run dev --workspace @vovinam/public-display",
+    "dev:registry": "npm run dev --workspace @vovinam/public-registry",
+    "build": "npm run build --workspaces --if-present",
+    "build:admin": "npm run build --workspace @vovinam/competition-admin",
+    "build:enroll": "npm run build --workspace @vovinam/athlete-enrollment",
+    "build:coach": "npm run build --workspace @vovinam/coach-dashboard",
+    "build:referee": "npm run build --workspace @vovinam/referee-scoring",
+    "build:display": "npm run build --workspace @vovinam/public-display",
+    "build:registry": "npm run build --workspace @vovinam/public-registry",
+    "preview": "npm run preview --workspaces --if-present",
+    "lint": "eslint \"apps/*/src/**/*.{js,jsx}\"",
+    "lint:fix": "eslint \"apps/*/src/**/*.{js,jsx}\" --fix",
+    "format": "prettier --write \"apps/*/src/**/*.{js,jsx,css}\"",
+    "format:check": "prettier --check \"apps/*/src/**/*.{js,jsx,css}\"",
+    "backend": "cd backend && python3 manage.py runserver 0.0.0.0:8000",
+    "start:all": "./scripts/start-all-apps.sh",
+    "stop:all": "./scripts/start-all-apps.sh --stop"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.15.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.4.1"
+  }
+}

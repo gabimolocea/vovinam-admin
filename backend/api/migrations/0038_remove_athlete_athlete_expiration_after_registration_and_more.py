@@ -40,10 +40,6 @@ class Migration(migrations.Migration):
             model_name='gradehistory',
             name='api_gradehi_athlete_ead8ce_idx',
         ),
-        migrations.RemoveField(
-            model_name='category',
-            name='competition',
-        ),
         migrations.AlterField(
             model_name='athlete',
             name='gender',

@@ -290,8 +290,7 @@ export default function useCentralizator() {
       onConfirm: async () => {
         setBusy(true);
         try {
-          for (const c of groupCats) await categoryAPI.delete(c.id);
-          await groupAPI.delete(id);
+          await groupAPI.delete(id, { cascade_categories: true });
           await refreshStructureData();
         } finally { setBusy(false); setConfirmModal(null); }
       },

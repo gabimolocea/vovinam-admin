@@ -1,6 +1,8 @@
-import { Routes, Route, Link, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom';
+import { LogIn, LogOut, Medal, Plus, Users } from 'lucide-react';
 import { useAuth } from '@shared';
 import LoginPage from '@shared/components/LoginPage';
+import { Button } from './components/ui';
 import AthletesDirectoryPage from './pages/AthletesDirectoryPage';
 import AthleteProfilePage from './pages/AthleteProfilePage';
 import LeaderboardPage from './pages/LeaderboardPage';
@@ -10,34 +12,36 @@ function PublicLayout() {
   const { isAuthenticated, user, logout } = useAuth();
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
-          <Link to="/" className="text-base font-black uppercase tracking-wide text-gray-900">FRVV Public Registry</Link>
-          <div className="flex items-center gap-2">
-            <Link to="/" className="rounded border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50">Sportivi</Link>
-            <Link to="/leaderboard" className="rounded border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50">Clasament</Link>
+    <div className="public-registry-app">
+      <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <Link to="/" className="font-display text-lg font-semibold text-foreground">Registrul FRVV</Link>
+          <nav className="flex flex-wrap items-center gap-1" aria-label="Navigație principală">
+            <NavLink to="/" end className={({ isActive }) => `inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${isActive ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}><Users className="h-4 w-4" />Sportivi</NavLink>
+            <NavLink to="/leaderboard" className={({ isActive }) => `inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${isActive ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}><Medal className="h-4 w-4" />Clasament</NavLink>
             {isAuthenticated && (
-              <Link to="/submit-result" className="rounded border border-blue-600 bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700">Adaugă rezultat</Link>
+              <Button asChild size="sm"><Link to="/submit-result"><Plus className="h-4 w-4" />Adaugă rezultat</Link></Button>
             )}
             {isAuthenticated ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={async () => {
                   await logout();
                 }}
-                className="rounded border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                title={`Deconectare ${user?.email || ''}`}
               >
-                Logout ({user?.email || 'cont'})
-              </button>
+                <LogOut className="h-4 w-4" />Ieșire
+              </Button>
             ) : (
-              <Link to="/login" className="rounded border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50">Login</Link>
+              <Button asChild variant="outline" size="sm"><Link to="/login"><LogIn className="h-4 w-4" />Autentificare</Link></Button>
             )}
-          </div>
+          </nav>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-6">
+      <main className="mx-auto w-full max-w-6xl px-4 py-8">
         <Routes>
           <Route index element={<AthletesDirectoryPage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
@@ -56,7 +60,7 @@ export default function App() {
     <Routes>
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage title="Public Registry Login" />}
+        element={isAuthenticated ? <Navigate to="/" replace /> : <div className="public-registry-app"><LoginPage title="Autentificare Registru FRVV" /></div>}
       />
       <Route path="/*" element={<PublicLayout />} />
     </Routes>

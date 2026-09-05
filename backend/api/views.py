@@ -2,7 +2,7 @@ from django.shortcuts import render
 from datetime import datetime, timedelta
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Prefetch, Q
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.decorators import api_view, action, permission_classes
@@ -10,6 +10,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import ValidationError
+from rest_framework.pagination import PageNumberPagination
 from .serializers import *
 from .models import *
 from .permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
@@ -87,6 +88,21 @@ def _is_match_assigned_referee(match, athlete):
             assignment.referee_5_id,
         }
     return False
+
+
+def _is_category_assigned_referee(category, athlete):
+    if not category or not athlete:
+        return False
+    assignment = getattr(category, 'referee_assignment', None)
+    if not assignment:
+        return False
+    return athlete.id in {
+        assignment.referee_1_id,
+        assignment.referee_2_id,
+        assignment.referee_3_id,
+        assignment.referee_4_id,
+        assignment.referee_5_id,
+    }
 
 
 def _coerce_bool(value, default=False):
@@ -436,10 +452,14 @@ def athlete_detail(request, pk):
     function-based view ensures a stable URL for public athlete pages.
     """
     try:
-        athlete = Athlete.objects.get(pk=pk)
+        athlete = Athlete.objects.select_related('club__city', 'city', 'current_grade').get(
+            pk=pk,
+            status='approved',
+            is_deleted=False,
+        )
     except Athlete.DoesNotExist:
         return Response({'detail': 'Not found.'}, status=404)
-    serializer = AthleteSerializer(athlete, context={'request': request})
+    serializer = PublicAthleteSerializer(athlete, context={'request': request})
     return Response(serializer.data)
 
 
@@ -914,7 +934,7 @@ class CompetitionViewSet(viewsets.ViewSet):
     
 
 class ClubViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAdminOrReadOnly]
     queryset = Club.objects.all()
     serializer_class = ClubSerializer
 
@@ -1127,6 +1147,10 @@ class AthleteViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         """Use minimal serializer for list, full for detail, writable for mutations."""
+        if self.action in ['list', 'retrieve'] and not (
+            self.request.user and self.request.user.is_authenticated and self.request.user.is_admin
+        ):
+            return PublicAthleteSerializer
         if self.action == 'retrieve':
             return AthleteDetailSerializer
         if self.action in ['create', 'update', 'partial_update']:
@@ -1148,6 +1172,11 @@ class AthleteViewSet(viewsets.ModelViewSet):
             'visas',
             'team_members'
         )
+
+        if self.action in ['list', 'retrieve'] and not (
+            self.request.user and self.request.user.is_authenticated and self.request.user.is_admin
+        ):
+            queryset = queryset.filter(status='approved', is_deleted=False)
         
         # Apply filters
         club_id = self.request.query_params.get('club')
@@ -1166,7 +1195,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
         return queryset
 
     def list(self, request):
-        # Support optional filtering by coach status and simple search
+        # Support filtering for operational lists and the public directory.
         is_coach = request.query_params.get('is_coach')
         is_referee = request.query_params.get('is_referee')
         queryset = self.get_queryset()
@@ -1184,9 +1213,53 @@ class AthleteViewSet(viewsets.ModelViewSet):
 
         q = request.query_params.get('q')
         if q:
-            queryset = queryset.filter(models.Q(first_name__icontains=q) | models.Q(last_name__icontains=q))
+            queryset = queryset.filter(
+                models.Q(first_name__icontains=q)
+                | models.Q(last_name__icontains=q)
+                | models.Q(club__name__icontains=q)
+                | models.Q(current_grade__name__icontains=q)
+                | models.Q(city__name__icontains=q)
+            )
+
+        city_id = request.query_params.get('city')
+        if city_id:
+            queryset = queryset.filter(city_id=city_id)
+
+        grade_id = request.query_params.get('grade')
+        if grade_id:
+            queryset = queryset.filter(current_grade_id=grade_id)
+
+        age_group = request.query_params.get('age_group')
+        if age_group:
+            today = timezone.localdate()
+
+            def years_ago(years):
+                try:
+                    return today.replace(year=today.year - years)
+                except ValueError:
+                    return today.replace(year=today.year - years, day=28)
+
+            if age_group == 'u12':
+                queryset = queryset.filter(date_of_birth__gt=years_ago(12))
+            elif age_group == 'u16':
+                queryset = queryset.filter(date_of_birth__lte=years_ago(12), date_of_birth__gt=years_ago(16))
+            elif age_group == 'u21':
+                queryset = queryset.filter(date_of_birth__lte=years_ago(16), date_of_birth__gt=years_ago(21))
+            elif age_group == 'senior':
+                queryset = queryset.filter(date_of_birth__lte=years_ago(21))
+
+        queryset = queryset.order_by('last_name', 'first_name', 'id')
 
         serializer = self.get_serializer_class()
+        paginate = str(request.query_params.get('paginate', '')).lower() in ('1', 'true', 'yes')
+        if paginate:
+            paginator = PageNumberPagination()
+            paginator.page_size = 20
+            paginator.page_size_query_param = 'page_size'
+            paginator.max_page_size = 100
+            page = paginator.paginate_queryset(queryset, request, view=self)
+            ser = serializer(page, many=True)
+            return paginator.get_paginated_response(ser.data)
         ser = serializer(queryset, many=True)
         return Response(ser.data)
 
@@ -1411,7 +1484,7 @@ class FederationRoleViewSet(viewsets.ViewSet):
         instance.delete()
         return Response(status=204)
 class GradeViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAdminOrReadOnly]
     queryset = Grade.objects.all()
     serializer_class = GradeSerializer
     def list(self, request):
@@ -1534,12 +1607,39 @@ class TeamMemberViewSet(viewsets.ViewSet):
 
 
 class MatchViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAdminOrReadOnly]
     queryset = Match.objects.all()
     serializer_class = MatchSerializer
 
+    def get_queryset(self):
+        return Match.objects.select_related(
+            'category__group',
+            'red_corner__club',
+            'blue_corner__club',
+            'central_referee',
+            'field',
+            'field_assignment__field',
+        ).prefetch_related(
+            'referees',
+            Prefetch(
+                'point_events',
+                queryset=RefereePointEvent.objects.select_related('referee').order_by('timestamp'),
+                to_attr='_prefetched_point_events',
+            ),
+            Prefetch(
+                'simplified_referee_scores',
+                queryset=MatchRefereeScore.objects.select_related('referee', 'round'),
+                to_attr='_prefetched_simplified_scores',
+            ),
+            Prefetch(
+                'referee_scores',
+                queryset=RefereeScore.objects.select_related('referee'),
+                to_attr='_prefetched_legacy_scores',
+            ),
+        )
+
     def list(self, request):
-        queryset = Match.objects.all()
+        queryset = self.get_queryset()
         event_id = request.query_params.get('event_id')
         field_id = request.query_params.get('field_id')
         category_id = request.query_params.get('category_id')
@@ -1566,7 +1666,7 @@ class MatchViewSet(viewsets.ViewSet):
         return Response(serializer.errors, status=400)
 
     def retrieve(self, request, pk=None):
-        queryset = self.queryset.get(pk=pk)
+        queryset = self.get_queryset().get(pk=pk)
         serializer = self.serializer_class(queryset)
         return Response(serializer.data)
 
@@ -1928,12 +2028,20 @@ class CategoryViewSet(viewsets.ViewSet):
         order = request.data.get('order', [])
         if not order:
             return Response({'detail': 'order list is required.'}, status=400)
-        first_category = Category.objects.select_related('event').filter(pk=order[0]).first()
-        locked = _event_operational_lock_response(getattr(first_category, 'event', None))
+        categories = list(Category.objects.select_related('event').filter(pk__in=order))
+        if len(order) != len(set(order)) or len(categories) != len(order):
+            return Response({'detail': 'All category ids must exist and be unique.'}, status=400)
+        event_ids = {category.event_id for category in categories}
+        if len(event_ids) != 1:
+            return Response({'detail': 'All categories must belong to the same event.'}, status=400)
+        locked = _event_operational_lock_response(categories[0].event)
         if locked is not None:
             return locked
-        for idx, cat_id in enumerate(order):
-            Category.objects.filter(pk=cat_id).update(display_order=idx)
+        positions = {int(category_id): index for index, category_id in enumerate(order)}
+        for category in categories:
+            category.display_order = positions[category.id]
+        with transaction.atomic():
+            Category.objects.bulk_update(categories, ['display_order'])
         return Response({'status': 'ok'})
 
 
@@ -2106,6 +2214,11 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         if event_id is not None:
             queryset = queryset.filter(category__event_id=event_id)
 
+        my_enrollments = self.request.query_params.get('my', None)
+        if my_enrollments and str(my_enrollments).lower() in ('1', 'true', 'yes'):
+            athlete = getattr(self.request.user, 'athlete', None)
+            queryset = queryset.filter(athlete=athlete) if athlete else queryset.none()
+
         # Filter by club — coaches see only their club's enrollments
         my_club = self.request.query_params.get('my_club', None)
         if my_club and str(my_club).lower() in ('1', 'true', 'yes'):
@@ -2133,18 +2246,27 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
             locked = _event_operational_guard_response(user, category.event)
             if locked:
                 return locked
+        payload = request.data.copy()
         if not user.is_admin:
-            athlete_id = request.data.get('athlete')
+            athlete_id = payload.get('athlete')
+            if not athlete_id:
+                own_athlete = getattr(user, 'athlete', None)
+                if not own_athlete:
+                    return Response({'error': 'Nu aveți un profil de sportiv asociat.'}, status=400)
+                athlete_id = own_athlete.id
+                payload['athlete'] = athlete_id
             if athlete_id:
                 try:
                     target_athlete = Athlete.objects.get(pk=athlete_id)
                 except Athlete.DoesNotExist:
                     return Response({'error': 'Sportivul nu a fost găsit.'}, status=404)
-                user_club = getattr(getattr(user, 'athlete', None), 'club_id', None)
-                if not user_club or target_athlete.club_id != user_club:
+                own_athlete = getattr(user, 'athlete', None)
+                is_self_enrollment = own_athlete and target_athlete.id == own_athlete.id
+                user_club = getattr(own_athlete, 'club_id', None)
+                if not is_self_enrollment and (not user_club or target_athlete.club_id != user_club):
                     return Response({'error': 'Poți înscrie doar sportivi din clubul tău.'}, status=403)
 
-        serializer = self.serializer_class(data=request.data)
+        serializer = self.serializer_class(data=payload)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=201)
@@ -2281,7 +2403,7 @@ class FightAthleteWeightViewSet(viewsets.ViewSet):
     ViewSet for FightAthleteWeight - fight category weigh-in data.
     Tracks registered weight, match day weight, disqualification.
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAdminOrReadOnly]
     serializer_class = FightAthleteWeightSerializer
 
     def get_queryset(self):
@@ -2574,7 +2696,11 @@ class GroupViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(getattr(instance, 'event', None))
         if locked is not None:
             return locked
-        instance.delete()
+        cascade_categories = str(request.query_params.get('cascade_categories', '')).lower() in ('1', 'true', 'yes')
+        with transaction.atomic():
+            if cascade_categories:
+                Category.objects.filter(group=instance).delete()
+            instance.delete()
         return Response(status=204)
 
     @action(detail=False, methods=['post'], url_path='reorder')
@@ -2586,12 +2712,20 @@ class GroupViewSet(viewsets.ViewSet):
         order = request.data.get('order', [])
         if not order:
             return Response({'detail': 'order list is required.'}, status=400)
-        first_group = Group.objects.select_related('event').filter(pk=order[0]).first()
-        locked = _event_operational_lock_response(getattr(first_group, 'event', None))
+        groups = list(Group.objects.select_related('event').filter(pk__in=order))
+        if len(order) != len(set(order)) or len(groups) != len(order):
+            return Response({'detail': 'All group ids must exist and be unique.'}, status=400)
+        event_ids = {group.event_id for group in groups}
+        if len(event_ids) != 1:
+            return Response({'detail': 'All groups must belong to the same event.'}, status=400)
+        locked = _event_operational_lock_response(groups[0].event)
         if locked is not None:
             return locked
-        for idx, group_id in enumerate(order):
-            Group.objects.filter(pk=group_id).update(display_order=idx)
+        positions = {int(group_id): index for index, group_id in enumerate(order)}
+        for group in groups:
+            group.display_order = positions[group.id]
+        with transaction.atomic():
+            Group.objects.bulk_update(groups, ['display_order'])
         return Response({'status': 'ok'})
 
 @api_view(['GET'])
@@ -2954,7 +3088,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
     """ViewSet for referees to submit scores for athletes/teams in solo/team categories.
     Read access allowed for public display; write requires authentication.
     """
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
     def list(self, request):
         """List referee scores - unauthenticated/public see all (read-only),
@@ -3025,6 +3159,19 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                 {'error': 'Only referees or admins can submit scores'},
                 status=status.HTTP_403_FORBIDDEN
             )
+
+        target_category = None
+        if request.data.get('athlete_score'):
+            target_score = CategoryAthleteScore.objects.select_related('category').filter(
+                pk=request.data['athlete_score'],
+            ).first()
+            target_category = target_score.category if target_score else None
+        elif request.data.get('category'):
+            target_category = Category.objects.filter(pk=request.data['category']).first()
+        if not target_category:
+            return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not is_admin and not _is_category_assigned_referee(target_category, user.athlete):
+            return Response({'error': 'Nu ești arbitru alocat acestei categorii.'}, status=status.HTTP_403_FORBIDDEN)
         
         # Build a clean plain dict for the serializer
         incoming = request.data
@@ -3226,7 +3373,8 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         # Check permissions: only the referee who created it or admin can update
         if not (user.is_staff or
                 (hasattr(user, 'role') and user.role == 'admin') or
-                (hasattr(user, 'athlete') and user.athlete == score.referee)):
+            (hasattr(user, 'athlete') and user.athlete == score.referee
+             and _is_category_assigned_referee(score.athlete_score.category, user.athlete))):
             return Response(
                 {'error': 'You can only update your own scores'},
                 status=status.HTTP_403_FORBIDDEN
@@ -4273,8 +4421,17 @@ class FieldBreakViewSet(viewsets.ViewSet):
         Body: { items: [{ id, order }, ...] }
         """
         items = request.data.get('items', [])
-        for item in items:
-            FieldBreak.objects.filter(pk=item['id']).update(order=item.get('order', 0))
+        ids = [item.get('id') for item in items]
+        breaks = list(FieldBreak.objects.select_related('field__event').filter(pk__in=ids))
+        if len(ids) != len(set(ids)) or len(breaks) != len(ids):
+            return Response({'detail': 'All field break ids must exist and be unique.'}, status=400)
+        if len({item.field.event_id for item in breaks}) > 1:
+            return Response({'detail': 'All field breaks must belong to the same event.'}, status=400)
+        positions = {int(item['id']): item.get('order', 0) for item in items}
+        for field_break in breaks:
+            field_break.order = positions[field_break.id]
+        with transaction.atomic():
+            FieldBreak.objects.bulk_update(breaks, ['order'])
         return Response({'status': 'ok'})
 
 
@@ -4356,18 +4513,36 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
         Body: { items: [{ id, field, order, estimated_duration }, ...] }
         """
         items = request.data.get('items', [])
-        if items:
-            assignment = CategoryFieldAssignment.objects.select_related('category__event').filter(pk=items[0].get('id')).first()
-            locked = _event_operational_lock_response(getattr(getattr(assignment, 'category', None), 'event', None))
+        ids = [item.get('id') for item in items]
+        assignments = list(CategoryFieldAssignment.objects.select_related('category__event').filter(pk__in=ids))
+        if len(ids) != len(set(ids)) or len(assignments) != len(ids):
+            return Response({'detail': 'All assignment ids must exist and be unique.'}, status=400)
+        event_ids = {assignment.category.event_id for assignment in assignments}
+        if len(event_ids) > 1:
+            return Response({'detail': 'All assignments must belong to the same event.'}, status=400)
+        if assignments:
+            locked = _event_operational_lock_response(assignments[0].category.event)
             if locked is not None:
                 return locked
-        for item in items:
-            updates = {'order': item.get('order', 0)}
+        requested_field_ids = {item.get('field') for item in items if item.get('field') is not None}
+        if requested_field_ids and CompetitionField.objects.filter(
+            id__in=requested_field_ids,
+            event_id=next(iter(event_ids)),
+        ).count() != len(requested_field_ids):
+            return Response({'detail': 'All fields must belong to the assignments event.'}, status=400)
+        item_by_id = {int(item['id']): item for item in items}
+        changed_fields = {'order'}
+        for assignment in assignments:
+            item = item_by_id[assignment.id]
+            assignment.order = item.get('order', 0)
             if 'field' in item:
-                updates['field_id'] = item['field']
+                assignment.field_id = item['field']
+                changed_fields.add('field')
             if 'estimated_duration' in item:
-                updates['estimated_duration'] = item['estimated_duration']
-            CategoryFieldAssignment.objects.filter(pk=item['id']).update(**updates)
+                assignment.estimated_duration = item['estimated_duration']
+                changed_fields.add('estimated_duration')
+        with transaction.atomic():
+            CategoryFieldAssignment.objects.bulk_update(assignments, sorted(changed_fields))
         return Response({'status': 'ok'})
 
 
@@ -4375,7 +4550,7 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
     """ViewSet for managing display monitor sessions.
     Public read access needed for public-display app (no auth).
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsAdminOrReadOnly]
     
     def list(self, request):
         """List all monitor sessions"""
@@ -4390,6 +4565,88 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
         
         serializer = DisplayMonitorSessionSerializer(sessions, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='field-state')
+    def field_state(self, request):
+        field_id = request.query_params.get('field')
+        if not field_id:
+            return Response({'detail': 'field query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        field = CompetitionField.objects.select_related('event', 'event__city').filter(pk=field_id).first()
+        if not field:
+            return Response({'detail': 'Field not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        session = DisplayMonitorSession.objects.select_related(
+            'field',
+            'current_category__group',
+            'current_athlete__club',
+            'current_match',
+        ).filter(field=field).first()
+
+        payload = {
+            'field': CompetitionFieldSerializer(field).data,
+            'event': CompetitionViewSet()._serialize_event(field.event),
+            'session': None,
+            'category': None,
+            'group': None,
+            'athlete': None,
+            'match': None,
+            'rounds': [],
+            'match_referee_scores': [],
+            'match_events': [],
+            'point_events': [],
+            'match_referee_assignment': None,
+            'category_referee_scores': [],
+        }
+        if not session:
+            return Response(payload)
+
+        session_data = DisplayMonitorSessionSerializer(session).data
+        payload['session'] = session_data
+        category = session.current_category
+        if category:
+            payload['category'] = CategorySerializer(category).data
+            payload['group'] = GroupSerializer(category.group).data if category.group_id else None
+
+        if session.current_athlete_id:
+            payload['athlete'] = PublicAthleteSerializer(session.current_athlete).data
+
+        if session.current_match_id:
+            match = MatchViewSet().get_queryset().get(pk=session.current_match_id)
+            payload['match'] = MatchSerializer(match).data
+            payload['rounds'] = MatchRoundSerializer(
+                MatchRound.objects.filter(match=match).order_by('round_number'),
+                many=True,
+            ).data
+            payload['match_referee_scores'] = MatchRefereeScoreSerializer(
+                MatchRefereeScore.objects.filter(match=match).select_related('referee', 'round'),
+                many=True,
+            ).data
+            payload['match_events'] = MatchEventSerializer(
+                MatchEvent.objects.filter(match=match).select_related('round', 'created_by'),
+                many=True,
+            ).data
+            payload['point_events'] = RefereePointEventSerializer(
+                RefereePointEvent.objects.filter(match=match).select_related('referee').order_by('timestamp'),
+                many=True,
+            ).data
+            assignment = MatchRefereeAssignment.objects.select_related(
+                'referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5',
+            ).filter(match=match).first()
+            if assignment:
+                payload['match_referee_assignment'] = MatchRefereeAssignmentSerializer(assignment).data
+        elif category:
+            scores = CategoryRefereeScore.objects.filter(
+                athlete_score__category=category,
+            ).select_related('athlete_score__athlete', 'referee')
+            athlete_score_id = session_data.get('current_athlete_score_id')
+            if athlete_score_id:
+                scores = scores.filter(athlete_score_id=athlete_score_id)
+            elif session.current_athlete_id:
+                scores = scores.filter(athlete_score__athlete_id=session.current_athlete_id)
+            payload['category_referee_scores'] = CategoryRefereeScoreSerializer(scores, many=True).data
+
+        return Response(payload)
     
     def create(self, request):
         """Create a new monitor session"""
@@ -4775,7 +5032,7 @@ class MatchEventViewSet(viewsets.ViewSet):
 
 class MatchRefereeScoreViewSet(viewsets.ViewSet):
     """ViewSet for managing individual referee scores in fighting matches"""
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
     def list(self, request):
         match_id = request.query_params.get('match_id')
@@ -4794,9 +5051,17 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
     def create(self, request):
         data = request.data.copy()
         match = Match.objects.select_related('category__event').filter(pk=data.get('match')).first()
+        if not match:
+            return Response({'error': 'Match not found'}, status=status.HTTP_404_NOT_FOUND)
         locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
         if locked is not None:
             return locked
+        is_admin = bool(request.user.is_staff or getattr(request.user, 'role', None) == 'admin')
+        requester_athlete = getattr(request.user, 'athlete', None)
+        if not is_admin:
+            if not requester_athlete or not requester_athlete.is_referee or not _is_match_assigned_referee(match, requester_athlete):
+                return Response({'error': 'Nu ești arbitru alocat acestui meci.'}, status=status.HTTP_403_FORBIDDEN)
+            data['referee'] = requester_athlete.id
         # Auto-populate referee from authenticated user's athlete profile
         if 'referee' not in data or not data['referee']:
             try:
@@ -4825,11 +5090,23 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
     
     def update(self, request, pk=None):
         try:
-            obj = MatchRefereeScore.objects.get(pk=pk)
+            obj = MatchRefereeScore.objects.select_related('match__category__event', 'referee').get(pk=pk)
             locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
-            serializer = MatchRefereeScoreSerializer(obj, data=request.data, partial=True)
+            is_admin = bool(request.user.is_staff or getattr(request.user, 'role', None) == 'admin')
+            requester_athlete = getattr(request.user, 'athlete', None)
+            if not is_admin and (
+                not requester_athlete
+                or obj.referee_id != requester_athlete.id
+                or not _is_match_assigned_referee(obj.match, requester_athlete)
+            ):
+                return Response({'error': 'Poți modifica doar propriul scor pentru un meci alocat.'}, status=status.HTTP_403_FORBIDDEN)
+            data = request.data.copy()
+            if not is_admin:
+                data.pop('match', None)
+                data.pop('referee', None)
+            serializer = MatchRefereeScoreSerializer(obj, data=data, partial=True)
             if serializer.is_valid():
                 instance = serializer.save()
                 try:
@@ -4848,10 +5125,18 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
     def destroy(self, request, pk=None):
         """Delete a referee score"""
         try:
-            obj = MatchRefereeScore.objects.get(pk=pk)
+            obj = MatchRefereeScore.objects.select_related('match__category__event', 'referee').get(pk=pk)
             locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            is_admin = bool(request.user.is_staff or getattr(request.user, 'role', None) == 'admin')
+            requester_athlete = getattr(request.user, 'athlete', None)
+            if not is_admin and (
+                not requester_athlete
+                or obj.referee_id != requester_athlete.id
+                or not _is_match_assigned_referee(obj.match, requester_athlete)
+            ):
+                return Response({'error': 'Poți șterge doar propriul scor pentru un meci alocat.'}, status=status.HTTP_403_FORBIDDEN)
             match_id = obj.match_id
             referee_id = obj.referee_id
             obj.delete()
@@ -5017,15 +5302,30 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
         Body: { items: [{ id, field, order }, ...] }
         """
         items = request.data.get('items', [])
-        if items:
-            assignment = MatchFieldAssignment.objects.select_related('match__category__event').filter(pk=items[0].get('id')).first()
-            locked = _event_operational_lock_response(getattr(getattr(getattr(assignment, 'match', None), 'category', None), 'event', None))
+        ids = [item.get('id') for item in items]
+        assignments = list(MatchFieldAssignment.objects.select_related('match__category__event').filter(pk__in=ids))
+        if len(ids) != len(set(ids)) or len(assignments) != len(ids):
+            return Response({'detail': 'All assignment ids must exist and be unique.'}, status=400)
+        event_ids = {assignment.match.category.event_id for assignment in assignments}
+        if len(event_ids) > 1:
+            return Response({'detail': 'All assignments must belong to the same event.'}, status=400)
+        if assignments:
+            locked = _event_operational_lock_response(assignments[0].match.category.event)
             if locked is not None:
                 return locked
-        for item in items:
-            MatchFieldAssignment.objects.filter(pk=item['id']).update(
-                field_id=item.get('field'), order=item.get('order', 0)
-            )
+        requested_field_ids = {item.get('field') for item in items if item.get('field') is not None}
+        if requested_field_ids and CompetitionField.objects.filter(
+            id__in=requested_field_ids,
+            event_id=next(iter(event_ids)),
+        ).count() != len(requested_field_ids):
+            return Response({'detail': 'All fields must belong to the assignments event.'}, status=400)
+        item_by_id = {int(item['id']): item for item in items}
+        for assignment in assignments:
+            item = item_by_id[assignment.id]
+            assignment.field_id = item.get('field')
+            assignment.order = item.get('order', 0)
+        with transaction.atomic():
+            MatchFieldAssignment.objects.bulk_update(assignments, ['field', 'order'])
         return Response({'status': 'ok'})
 
 

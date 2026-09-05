@@ -1,28 +1,31 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, ProtectedRoute } from '@shared';
 import LoginPage from '@shared/components/LoginPage';
+import { Spinner } from '@shared/components/ui';
 import Layout from './components/Layout';
-import PortalPage from './pages/PortalPage';
-import CompetitionList from './pages/CompetitionList';
-import CompetitionForm from './pages/CompetitionForm';
-import CreateAthlete from './pages/CreateAthlete';
-import CategoriesLayout from './pages/CategoriesLayout';
-import CentralizatorPage from './pages/CentralizatorPage';
-import TehnicaPage from './pages/TehnicaPage';
-import ClasamentLayout from './pages/ClasamentLayout';
-import ClasamenteTehnicaPage from './pages/ClasamenteTehnicaPage';
-import ClasamentCluburiPage from './pages/ClasamentCluburiPage';
-import ClasamentSportiviInscrisiPage from './pages/ClasamentSportiviInscrisiPage';
-import LuptaPage from './pages/LuptaPage';
-import ClasamenteLuptaPage from './pages/ClasamenteLuptaPage';
-import ProgramarePage from './pages/ProgramarePage';
-import ArbitriPage from './pages/ArbitriPage';
-import BracketPage from './pages/BracketPage';
-import ResultsPage from './pages/ResultsPage';
-import LivePage from './pages/LivePage';
-import LiveFullscreenPage from './pages/LiveFullscreenPage';
-import SyncCenterPage from './pages/SyncCenterPage';
-import DiplomaConfiguratorPage from './pages/DiplomaConfiguratorPage';
+
+const PortalPage = lazy(() => import('./pages/PortalPage'));
+const CompetitionList = lazy(() => import('./pages/CompetitionList'));
+const CompetitionForm = lazy(() => import('./pages/CompetitionForm'));
+const CreateAthlete = lazy(() => import('./pages/CreateAthlete'));
+const CategoriesLayout = lazy(() => import('./pages/CategoriesLayout'));
+const CentralizatorPage = lazy(() => import('./pages/CentralizatorPage'));
+const TehnicaPage = lazy(() => import('./pages/TehnicaPage'));
+const ClasamentLayout = lazy(() => import('./pages/ClasamentLayout'));
+const ClasamenteTehnicaPage = lazy(() => import('./pages/ClasamenteTehnicaPage'));
+const ClasamentCluburiPage = lazy(() => import('./pages/ClasamentCluburiPage'));
+const ClasamentSportiviInscrisiPage = lazy(() => import('./pages/ClasamentSportiviInscrisiPage'));
+const LuptaPage = lazy(() => import('./pages/LuptaPage'));
+const ClasamenteLuptaPage = lazy(() => import('./pages/ClasamenteLuptaPage'));
+const ProgramarePage = lazy(() => import('./pages/ProgramarePage'));
+const ArbitriPage = lazy(() => import('./pages/ArbitriPage'));
+const BracketPage = lazy(() => import('./pages/BracketPage'));
+const ResultsPage = lazy(() => import('./pages/ResultsPage'));
+const LivePage = lazy(() => import('./pages/LivePage'));
+const LiveFullscreenPage = lazy(() => import('./pages/LiveFullscreenPage'));
+const SyncCenterPage = lazy(() => import('./pages/SyncCenterPage'));
+const DiplomaConfiguratorPage = lazy(() => import('./pages/DiplomaConfiguratorPage'));
 
 function LegacySyncRedirect() {
   return <Navigate to="../categories/sync" replace relative="path" />;
@@ -34,7 +37,8 @@ export default function App() {
   if (loading) return null;
 
   return (
-    <Routes>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><Spinner /></div>}>
+      <Routes>
       <Route
         path="/login"
         element={
@@ -101,6 +105,7 @@ export default function App() {
       <Route path="/competitions/:id/fields" element={<Navigate to="../categories/programare" replace />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }

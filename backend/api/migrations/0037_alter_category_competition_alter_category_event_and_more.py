@@ -15,11 +15,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AlterField(
             model_name='category',
-            name='competition',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='categories', to='api.competition'),
-        ),
-        migrations.AlterField(
-            model_name='category',
             name='event',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='categories', to='landing.event'),
         ),
@@ -33,40 +28,12 @@ class Migration(migrations.Migration):
             index=models.Index(fields=['status', '-submitted_date'], name='api_athlete_status_ee51c5_idx'),
         ),
         migrations.AddIndex(
-            model_name='athlete',
-            index=models.Index(fields=['club', 'status'], name='api_athlete_club_id_7f309f_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='athlete',
-            index=models.Index(fields=['current_grade'], name='api_athlete_current_a89674_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='athlete',
-            index=models.Index(fields=['is_coach'], name='api_athlete_is_coac_708bf5_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='athlete',
-            index=models.Index(fields=['is_referee'], name='api_athlete_is_refe_007646_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='categoryathletescore',
-            index=models.Index(fields=['category', 'status'], name='api_categor_categor_2b2894_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='categoryathletescore',
-            index=models.Index(fields=['athlete', 'status'], name='api_categor_athlete_01b156_idx'),
-        ),
-        migrations.AddIndex(
             model_name='categoryathletescore',
             index=models.Index(fields=['status', '-submitted_date'], name='api_categor_status_c4af93_idx'),
         ),
         migrations.AddIndex(
             model_name='categoryathletescore',
             index=models.Index(fields=['type', 'status'], name='api_categor_type_91bcb1_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='gradehistory',
-            index=models.Index(fields=['athlete', 'status'], name='api_gradehi_athlete_c6e8ab_idx'),
         ),
         migrations.AddIndex(
             model_name='gradehistory',

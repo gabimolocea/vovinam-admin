@@ -1372,8 +1372,8 @@ class FightGroupEnrollment(models.Model):
     class Meta:
         unique_together = ('event', 'group', 'athlete')
         indexes = [
-            models.Index(fields=['event', 'group']),
-            models.Index(fields=['athlete']),
+            models.Index(fields=['event', 'group'], name='api_fightgr_event_i_eb4365_idx'),
+            models.Index(fields=['athlete'], name='api_fightgr_athlete_8e4255_idx'),
         ]
         verbose_name = 'Fight Group Enrollment'
         verbose_name_plural = 'Fight Group Enrollments'
@@ -1480,7 +1480,10 @@ class Match(models.Model):
         # Fall back to complex scoring system
         try:
             from .scoring import compute_match_results
-            results = compute_match_results(self)
+            results = compute_match_results(
+                self,
+                events=getattr(self, '_prefetched_point_events', None),
+            )
             return results.get('match_winner')
         except Exception:
             # Fallback to old calculation if scoring system unavailable
@@ -1506,9 +1509,13 @@ class Match(models.Model):
         try:
             # Prefer final referee decisions (`round is null`) when they exist.
             # Fall back to all simplified scores for backwards compatibility.
-            scores = list(self.simplified_referee_scores.filter(round__isnull=True))
+            prefetched_scores = getattr(self, '_prefetched_simplified_scores', None)
+            if prefetched_scores is not None:
+                scores = [score for score in prefetched_scores if score.round_id is None]
+            else:
+                scores = list(self.simplified_referee_scores.filter(round__isnull=True))
             if not scores:
-                scores = list(self.simplified_referee_scores.all())
+                scores = prefetched_scores if prefetched_scores is not None else list(self.simplified_referee_scores.all())
 
             if not scores:
                 return None
@@ -1570,8 +1577,13 @@ class Match(models.Model):
     
     def _calculate_winner_legacy(self):
         """Legacy winner calculation based on referee votes"""
-        red_votes = self.referee_scores.filter(winner='red').count()
-        blue_votes = self.referee_scores.filter(winner='blue').count()
+        prefetched_scores = getattr(self, '_prefetched_legacy_scores', None)
+        if prefetched_scores is not None:
+            red_votes = sum(score.winner == 'red' for score in prefetched_scores)
+            blue_votes = sum(score.winner == 'blue' for score in prefetched_scores)
+        else:
+            red_votes = self.referee_scores.filter(winner='red').count()
+            blue_votes = self.referee_scores.filter(winner='blue').count()
         if red_votes > blue_votes:
             return self.red_corner
         elif blue_votes > red_votes:

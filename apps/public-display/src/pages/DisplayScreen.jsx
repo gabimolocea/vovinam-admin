@@ -83,28 +83,30 @@ export default function DisplayScreen() {
   const [revealed, setRevealed] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const intervalRef = useRef(null);
+  const pollInFlightRef = useRef(false);
 
   const fetchSession = useCallback(async () => {
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
     try {
-      let currentCategoryData = null;
-
-      // Get monitor session for this field
-      const { data: sessions } = await api.get('/monitor-sessions/', { params: { field: fieldId } });
-      const list = Array.isArray(sessions) ? sessions : sessions.results ?? [];
-      const sess = list[0] || null;
+      const { data } = await api.get('/monitor-sessions/field-state/', { params: { field: fieldId } });
+      const sess = data.session || null;
       setSession(sess);
+      setEvent(data.event || null);
+      setCategory(data.category || null);
+      setGroup(data.group || null);
+      setAthlete(data.athlete || null);
+      setMatch(data.match || null);
+      setRounds(data.rounds || []);
+      setMatchRefScores(data.match_referee_scores || []);
+      setMatchRefAssignment(data.match_referee_assignment || null);
+      setMatchEvents(data.match_events || []);
+      setPointEvents(data.point_events || []);
+      setRefScores(data.category_referee_scores || []);
+      setRevealed(sess?.status === 'scores_revealed');
 
       if (!sess || sess.status === 'idle') {
-        setCategory(null);
-        setMatch(null);
-        setAthlete(null);
         setActiveTeam(null);
-        setRefScores([]);
-        setMatchRefScores([]);
-        setMatchRefAssignment(null);
-        setMatchEvents([]);
-        setPointEvents([]);
-        setRevealed(false);
         return;
       }
 
@@ -119,132 +121,10 @@ export default function DisplayScreen() {
         : null;
       setActiveTeam(sessionTeamFallback || null);
       if (sessionTeamFallback) stableTeamRef.current = sessionTeamFallback;
-
-      // Fetch current athlete (for solo/team)
-      if (sess.current_athlete) {
-        const { data: ath } = await api.get(`/athletes/${sess.current_athlete}/`);
-        setAthlete(ath);
-      } else {
-        setAthlete(null);
-      }
-
-      // Fetch match details (for fight)
-      if (sess.current_match) {
-        const { data: m } = await api.get(`/matches/${sess.current_match}/`);
-        setMatch(m);
-        // Fetch match rounds
-        const { data: rds } = await api.get('/match-rounds/', { params: { match_id: sess.current_match } });
-        setRounds(Array.isArray(rds) ? rds : rds.results ?? []);
-        // Fetch match referee scores
-        const { data: mrs } = await api.get('/match-referee-scores/', { params: { match_id: sess.current_match } });
-        setMatchRefScores(Array.isArray(mrs) ? mrs : mrs.results ?? []);
-        // Fetch match events (warnings, penalties, pauses)
-        const { data: mev } = await api.get('/match-events/', { params: { match_id: sess.current_match } });
-        setMatchEvents(Array.isArray(mev) ? mev : mev.results ?? []);
-        const { data: pte } = await api.get(`/matches/${sess.current_match}/point_events/`);
-        setPointEvents(Array.isArray(pte) ? pte : pte.results ?? []);
-        // Fetch match referee assignment (to know total referee count)
-        const { data: mra } = await api.get('/match-referee-assignments/', { params: { match_id: sess.current_match } });
-        const mraList = Array.isArray(mra) ? mra : mra.results ?? [];
-        setMatchRefAssignment(mraList[0] || null);
-
-        const categoryId = sess.current_category || m.category || null;
-        if (categoryId) {
-          const { data: cat } = await api.get(`/categories/${categoryId}/`);
-          currentCategoryData = cat;
-          setCategory(cat);
-
-          if (cat.group) {
-            const { data: grp } = await api.get(`/groups/${cat.group}/`);
-            setGroup(grp);
-          } else {
-            setGroup(null);
-          }
-
-          if (cat.event) {
-            const { data: evt } = await api.get(`/competitions/${cat.event}/`);
-            setEvent(evt);
-          } else {
-            setEvent(null);
-          }
-        } else {
-          setCategory(null);
-          setGroup(null);
-          setEvent(null);
-        }
-      } else {
-        setMatch(null);
-        setRounds([]);
-        setMatchRefScores([]);
-        setMatchRefAssignment(null);
-        setMatchEvents([]);
-        setPointEvents([]);
-
-        if (sess.current_category) {
-          const { data: cat } = await api.get(`/categories/${sess.current_category}/`);
-          currentCategoryData = cat;
-          setCategory(cat);
-
-          if (cat.group) {
-            const { data: grp } = await api.get(`/groups/${cat.group}/`);
-            setGroup(grp);
-          } else {
-            setGroup(null);
-          }
-
-          if (cat.event) {
-            const { data: evt } = await api.get(`/competitions/${cat.event}/`);
-            setEvent(evt);
-          } else {
-            setEvent(null);
-          }
-        } else {
-          setCategory(null);
-          setGroup(null);
-          setEvent(null);
-        }
-      }
-
-      // Fetch category referee scores (for solo/team — scores for current athlete)
-      if (sess.current_category && (sess.current_athlete || sess.current_athlete_score_id || sess.current_team_name)) {
-        if (isTeamCategoryType(currentCategoryData?.type)) {
-          const activeAthleteId = normalizeId(sess.current_athlete);
-          const activeAthleteName = sess.current_athlete_name || [athlete?.first_name, athlete?.last_name].filter(Boolean).join(' ');
-          const activeEnrollment = (currentCategoryData?.enrolled_teams || []).find(team => teamMatchesCurrentAthlete(team, activeAthleteId, activeAthleteName));
-          const currentTeam = activeEnrollment || sessionTeamFallback || null;
-          if (currentTeam) stableTeamRef.current = currentTeam;
-          setActiveTeam(currentTeam);
-
-          const { data: crs } = await api.get('/category-referee-score/', {
-            params: sess.current_athlete_score_id
-              ? { category: sess.current_category, athlete_score: sess.current_athlete_score_id }
-              : { category: sess.current_category }
-          });
-          const scores = Array.isArray(crs) ? crs : crs.results ?? [];
-          const targetAthleteScoreId = sess.current_athlete_score_id || null;
-          setRefScores(targetAthleteScoreId ? scores.filter(score => normalizeId(score.athlete_score) === normalizeId(targetAthleteScoreId)) : []);
-        } else {
-          const { data: crs } = await api.get('/category-referee-score/', {
-            params: { category: sess.current_category, athlete: sess.current_athlete }
-          });
-          const scores = Array.isArray(crs) ? crs : crs.results ?? [];
-          setRefScores(scores);
-        }
-
-        // Reveal only when admin explicitly sets scores_revealed
-        if (sess.status === 'scores_revealed') {
-          setRevealed(true);
-        } else {
-          setRevealed(false);
-        }
-      } else {
-        setRefScores([]);
-        setRevealed(false);
-      }
-
     } catch (err) {
       console.error('Poll error:', err);
     } finally {
+      pollInFlightRef.current = false;
       setInitialLoading(false);
     }
   }, [fieldId]);

@@ -21,6 +21,11 @@ check_*.py
 debug_*.py
 test_*.py
 *_test.py
+!backend/api/tests/test_public_api_permissions.py
+!backend/api/tests/test_self_enrollment.py
+!backend/api/tests/test_live_state_performance.py
+!backend/api/tests/test_bulk_operations.py
+!backend/api/tests/test_assigned_referee_score_permissions.py
 
 # Environment Variables
 .env
@@ -32,6 +37,8 @@ deployment-config.txt
 # Node / Build
 node_modules/
 dist/
+dev-dist/
+logs/
 
 # OS
 .DS_Store
