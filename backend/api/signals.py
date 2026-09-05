@@ -57,11 +57,26 @@ def update_club_coaches(sender, instance, **kwargs):
 @receiver(post_save, sender=GradeHistory)
 def update_current_grade(sender, instance, **kwargs):
     """
-    Signal to update the current_grade field in Athlete when a new GradeHistory is created.
+    Signal to keep Athlete.current_grade in sync whenever a GradeHistory row
+    is saved (created, edited, or transitioned via approve/reject/
+    request_revision). Delegates to Athlete.update_current_grade(), the single
+    canonical rule: current_grade is always the highest-ranked *approved*
+    GradeHistory entry, so pending/rejected entries never overwrite it.
     """
-    athlete = instance.athlete
-    athlete.current_grade = instance.grade
-    athlete.save()
+    instance.athlete.update_current_grade()
+
+@receiver(post_delete, sender=GradeHistory)
+def update_current_grade_on_delete(sender, instance, **kwargs):
+    """
+    Keep Athlete.current_grade in sync when a GradeHistory row is deleted
+    (e.g. an admin removes a wrongly-approved entry). Without this, deleting
+    the highest-ranked approved GradeHistory would leave a stale
+    current_grade pointing at a record that no longer exists.
+    """
+    try:
+        instance.athlete.update_current_grade()
+    except Athlete.DoesNotExist:
+        pass
 
 @receiver(post_save, sender=Athlete)
 def sync_athlete_name_to_user(sender, instance, **kwargs):

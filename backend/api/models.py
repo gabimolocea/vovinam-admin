@@ -488,9 +488,12 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
 
     def update_current_grade(self):
         """
-        Automatically set the current_grade to the grade with the highest rank_order from GradeHistory.
+        Automatically set the current_grade to the highest-ranked grade among
+        this athlete's *approved* GradeHistory entries. Pending/rejected/
+        revision-required entries are ignored so they can never overwrite an
+        athlete's grade before being reviewed.
         """
-        highest_grade = self.grade_history.order_by('-grade__rank_order').first()
+        highest_grade = self.grade_history.filter(status='approved').order_by('-grade__rank_order').first()
         self.current_grade = highest_grade.grade if highest_grade else None
         self.save()
     

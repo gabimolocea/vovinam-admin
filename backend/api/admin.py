@@ -13,8 +13,9 @@ from django.http import JsonResponse, HttpResponseRedirect
 from reversion.admin import VersionAdmin
 from dal import autocomplete, forward
 from .bracket_visualization import bracket_visualization_readonly_field, BracketStats
-from django.db import models
-from django.db.models import Count, Case, When, IntegerField
+from django.db import models, connection
+from django.db.models import Count, Case, When, IntegerField, Func
+from django.db.models.functions import Lower
 import json
 import urllib.parse
 from django.utils.safestring import mark_safe
@@ -2159,38 +2160,66 @@ class CityAdmin(admin.ModelAdmin):
 
     def get_search_results(self, request, queryset, search_term):
         queryset, use_distinct = super().get_search_results(request, queryset, search_term)
-        if search_term:
-            import unicodedata
+        if not search_term:
+            return queryset, use_distinct
 
-            def normalize(value: str) -> str:
-                if not value:
-                    return ''
-                normalized = unicodedata.normalize('NFKD', value)
-                return ''.join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
+        import unicodedata
 
-            norm_query = normalize(search_term.strip())
-            if norm_query:
-                matches = []
-                for row in City.objects.values('id', 'name'):
-                    norm_name = normalize(row['name'])
-                    if norm_query in norm_name:
-                        # score: exact match first, then startswith, then contains
-                        if norm_name == norm_query:
-                            score = 0
-                        elif norm_name.startswith(norm_query):
-                            score = 1
-                        else:
-                            score = 2
-                        matches.append((score, row['name'], row['id']))
+        def normalize(value: str) -> str:
+            if not value:
+                return ''
+            normalized = unicodedata.normalize('NFKD', value)
+            return ''.join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
 
-                if matches:
-                    matches.sort(key=lambda x: (x[0], x[1]))
-                    ordered_ids = [m[2] for m in matches]
-                    preserved = Case(
-                        *[When(id=pk, then=pos) for pos, pk in enumerate(ordered_ids)],
+        norm_query = normalize(search_term.strip())
+        if not norm_query:
+            return queryset, use_distinct
+
+        if connection.vendor == 'postgresql':
+            # Do the accent-insensitive match/ranking in the database using the
+            # 'unaccent' extension, instead of loading every City row into
+            # Python on each keystroke (this table has 10k+ rows from the
+            # GeoNames RO import).
+            queryset = (
+                City.objects.annotate(
+                    _normalized_name=Lower(Func(models.F('name'), function='unaccent')),
+                )
+                .filter(_normalized_name__icontains=norm_query)
+                .annotate(
+                    _order=Case(
+                        When(_normalized_name=norm_query, then=0),
+                        When(_normalized_name__startswith=norm_query, then=1),
+                        default=2,
                         output_field=IntegerField(),
-                    )
-                    queryset = City.objects.filter(id__in=ordered_ids).annotate(_order=preserved).order_by('_order')
+                    ),
+                )
+                .order_by('_order', 'name')
+            )
+            return queryset, use_distinct
+
+        # Non-PostgreSQL backends (SQLite in local dev/tests) have no
+        # 'unaccent' function available, so fall back to the Python-side scan.
+        matches = []
+        for row in City.objects.values('id', 'name'):
+            norm_name = normalize(row['name'])
+            if norm_query in norm_name:
+                # score: exact match first, then startswith, then contains
+                if norm_name == norm_query:
+                    score = 0
+                elif norm_name.startswith(norm_query):
+                    score = 1
+                else:
+                    score = 2
+                matches.append((score, row['name'], row['id']))
+
+        if matches:
+            matches.sort(key=lambda x: (x[0], x[1]))
+            ordered_ids = [m[2] for m in matches]
+            preserved = Case(
+                *[When(id=pk, then=pos) for pos, pk in enumerate(ordered_ids)],
+                output_field=IntegerField(),
+            )
+            queryset = City.objects.filter(id__in=ordered_ids).annotate(_order=preserved).order_by('_order')
         return queryset, use_distinct
     
     def has_module_permission(self, request):
@@ -3572,6 +3601,13 @@ class MatchAdmin(admin.ModelAdmin):
                         match_event_id=deleted_id,
                     )
                 )
+        elif formset.model == RefereeScore:
+            # Let Django save the inline instances first, then translate any
+            # per-round form fields (red_round_X / blue_round_X) into
+            # RefereePointEvent rows of type 'score' so the shared aggregator
+            # can compute adjusted totals consistently in save_related.
+            super().save_formset(request, form, formset, change)
+            self._sync_referee_score_round_events(request, form, formset)
         else:
             super().save_formset(request, form, formset, change)
     
@@ -3957,27 +3993,11 @@ class MatchAdmin(admin.ModelAdmin):
                             )
                             referee_scores.append(rs)
 
-                        # Determine match winner by majority votes
-                        votes_red = sum(1 for r in referee_scores if r.winner == 'red')
-                        votes_blue = sum(1 for r in referee_scores if r.winner == 'blue')
-                        chosen_winner = None
-                        if votes_red >= 3 and votes_red > votes_blue:
-                            chosen_winner = match.red_corner
-                        elif votes_blue >= 3 and votes_blue > votes_red:
-                            chosen_winner = match.blue_corner
-                        else:
-                            total_red = sum(r.red_corner_score for r in referee_scores) - (central_penalties.get('red', 0) * len(referee_scores))
-                            total_blue = sum(r.blue_corner_score for r in referee_scores) - (central_penalties.get('blue', 0) * len(referee_scores))
-                            if total_red > total_blue:
-                                chosen_winner = match.red_corner
-                            elif total_blue > total_red:
-                                chosen_winner = match.blue_corner
-                            else:
-                                chosen_winner = None
-
-                        if match.winner != chosen_winner:
-                            match.winner = chosen_winner
-                            match.save()
+                        # Match.winner is a read-only property computed from
+                        # compute_match_results()/calculate_winner_simplified()
+                        # using the freshly saved RefereeScore rows above; there
+                        # is no setter, so no separate majority-vote calculation
+                        # or persistence happens here (see mv below).
                 except Exception:
                     # Best-effort: don't crash the admin UI if recompute fails
                     pass
@@ -4009,18 +4029,14 @@ class MatchAdmin(admin.ModelAdmin):
         )
         return render(request, 'admin/api/match/add_central_penalty.html', context)
 
-    def save_formset(self, request, form, formset, change):
-        """Handle saving of RefereeScore inline plus create/update per-round score events.
+    def _sync_referee_score_round_events(self, request, form, formset):
+        """Translate RefereeScore inline per-round fields into RefereePointEvent rows.
 
-        We let Django save the inline instances first, then we translate any
-        per-round form fields (red_round_X / blue_round_X) into RefereePointEvent
-        rows of type 'score' so the shared aggregator can compute adjusted
-        totals consistently in save_related.
+        Called by save_formset() after Django has already saved the RefereeScore
+        inline instances. Maps per-round form fields (red_round_X / blue_round_X)
+        into RefereePointEvent rows of type 'score' so the shared aggregator can
+        compute adjusted totals consistently in save_related.
         """
-        # Let Django save the inlines first
-        super().save_formset(request, form, formset, change)
-        super().save_formset(request, form, formset, change)
-
         # If this was the RefereeScore inline, map per-round fields into score events
         from .models import RefereePointEvent
         if formset.model == RefereeScore:
@@ -4247,11 +4263,9 @@ class MatchAdmin(admin.ModelAdmin):
                     except Exception:
                         pass
 
-            # Persist match winner
-            match_winner = results.get('match_winner')
-            if match.winner != match_winner:
-                match.winner = match_winner
-                match.save()
+            # Match.winner is a read-only property computed from
+            # compute_match_results()/calculate_winner_simplified(); it has no
+            # setter and is intentionally not persisted here or anywhere else.
         except Exception:
             # Best-effort: don't block saving if recompute fails
             pass
@@ -4291,16 +4305,16 @@ class MatchAdmin(admin.ModelAdmin):
                 )
                 persisted.append({'referee_id': rid, 'winner': winner})
 
-            # Persist match winner
-            match_winner = results.get('match_winner')
-            if match.winner != match_winner:
-                match.winner = match_winner
-                match.save()
+            # Match.winner is a read-only property computed from
+            # compute_match_results()/calculate_winner_simplified(); it has no
+            # setter, so it is never assigned here. Re-reading it below reflects
+            # the just-persisted RefereeScore rows automatically.
 
             # Return a compact summary for the admin UI to render
             mv = None
-            if match.winner:
-                mv = {'id': match.winner.pk, 'name': f"{match.winner.first_name} {match.winner.last_name}"}
+            winner_athlete = match.winner
+            if winner_athlete:
+                mv = {'id': winner_athlete.pk, 'name': f"{winner_athlete.first_name} {winner_athlete.last_name}"}
 
             return JsonResponse({'ok': True, 'match_winner': mv, 'per_ref': persisted})
         except Exception as exc:
@@ -5008,321 +5022,6 @@ class CategoryRefereeScoreInline(admin.TabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
-class CategoryAthleteScoreAdminForm(forms.ModelForm):
-    """Custom form for CategoryAthleteScore to allow selecting existing teams"""
-    
-    existing_team = forms.ModelChoiceField(
-        queryset=None,
-        required=False,
-        label='Echipă',
-        help_text='Selectează o echipă existentă pentru categoriile pe echipe'
-    )
-    
-    class Meta:
-        model = CategoryAthleteScore
-        fields = '__all__'
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from .models import Team
-        
-        # Populate existing teams
-        self.fields['existing_team'].queryset = Team.objects.all().order_by('id')
-        
-        # Make athlete optional (for team scores)
-        self.fields['athlete'].required = False
-        self.fields['athlete'].help_text = 'Selectează sportivul pentru categoriile solo/luptă. Lasă gol pentru scorurile pe echipe.'
-        
-        # Hide team_name and team_members fields (they'll be auto-populated)
-        if 'team_name' in self.fields:
-            self.fields['team_name'].widget = forms.HiddenInput()
-        if 'team_members' in self.fields:
-            self.fields['team_members'].widget = forms.HiddenInput()
-    
-    def clean(self):
-        cleaned_data = super().clean()
-        score_type = cleaned_data.get('type')
-        athlete = cleaned_data.get('athlete')
-        existing_team = cleaned_data.get('existing_team')
-        
-        # Validate based on type
-        if score_type == 'teams':
-            if not existing_team:
-                raise forms.ValidationError('Pentru scorurile pe echipe trebuie să selectezi o echipă.')
-        elif score_type in ['solo', 'fight']:
-            if not athlete:
-                raise forms.ValidationError(f'Pentru categoriile de tip {score_type} trebuie să selectezi un sportiv.')
-        
-        # If existing team is selected, populate team_members and team_name
-        if existing_team:
-            cleaned_data['team_members'] = list(existing_team.members.all())
-            # Auto-generate team name from members
-            member_names = [f"{m.athlete.first_name} {m.athlete.last_name}" for m in existing_team.members.all()[:3]]
-            if member_names:
-                auto_name = ', '.join(member_names)
-                if existing_team.members.count() > 3:
-                    auto_name += f" (+{existing_team.members.count() - 3} more)"
-                cleaned_data['team_name'] = auto_name
-        
-        return cleaned_data
-
-
-@admin.register(CategoryAthleteScore)
-class CategoryAthleteScoreAdmin(admin.ModelAdmin):
-    form = CategoryAthleteScoreAdminForm
-    list_display = [
-        'get_athlete_name', 'get_competition_name', 'get_category_name', 'get_submission_type', 
-        'type', 'group', 'placement_claimed', 'get_calculated_score', 'status', 'submitted_date', 'get_action_buttons'
-    ]
-    list_filter = ['status', 'type', 'group', 'submitted_by_athlete', 'submitted_date', 'category__event__start_date']
-    search_fields = [
-    'athlete__first_name', 'athlete__last_name', 'category__name', 'category__event__title',
-        'team_members__first_name', 'team_members__last_name', 'team_name'
-    ]
-    readonly_fields = ['submitted_date', 'reviewed_date', 'get_calculated_score_display', 'get_referee_count']
-    ordering = ['-submitted_date']
-    inlines = [CategoryRefereeScoreInline, AthletePerformanceVideoInline]
-    
-    fieldsets = (
-        ('Informații de bază', {
-            'fields': ('category', 'type', 'group', 'submitted_by_athlete')
-        }),
-        ('Selectează participantul', {
-            'fields': ('athlete', 'existing_team'),
-            'description': 'Pentru solo/luptă: selectează sportivul. Pentru echipe: selectează o echipă existentă (creată din administrarea echipelor).',
-        }),
-        ('Arbitraj', {
-            'fields': ('get_calculated_score_display', 'get_referee_count'),
-            'description': 'Adaugă scorurile arbitrilor în secțiunea de mai jos. Scorul final exclude valoarea maximă și minimă.',
-        }),
-        ('Detalii trimitere sportiv', {
-            'fields': ('placement_claimed', 'notes', 'certificate_image', 'result_document'),
-            'description': 'Folosit când sportivii își trimit propriile rezultate și clasarea revendicată',
-            'classes': ('collapse',)
-        }),
-        ('Status aprobare', {
-            'fields': ('status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes')
-        }),
-    )
-    
-    def get_queryset(self, request):
-        # Show athlete-submitted results first, include team members
-        return super().get_queryset(request).select_related('athlete', 'category__event', 'reviewed_by').prefetch_related('team_members')
-    
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        
-        # If this is an athlete submission, make score field optional and add help text
-        if obj and obj.submitted_by_athlete:
-            if 'score' in form.base_fields:
-                form.base_fields['score'].required = False
-                form.base_fields['score'].help_text = 'Scorul nu este obligatoriu pentru trimiterile proprii ale sportivilor; accentul cade pe locul revendicat.'
-        
-        return form
-    
-    def get_athlete_name(self, obj):
-        """Display athlete name or team name"""
-        if obj.team_name and obj.team_members.exists():
-            member_count = obj.team_members.count()
-            return f"Echipă: {obj.team_name} ({member_count} membri)" if member_count > 0 else f"Echipă: {obj.team_name}"
-        elif obj.athlete:
-            return f"{obj.athlete.first_name} {obj.athlete.last_name}"
-        return "N/A"
-    get_athlete_name.short_description = _('Sportiv / Echipă')
-    get_athlete_name.admin_order_field = 'athlete__first_name'
-    
-    def get_competition_name(self, obj):
-        if obj.category and obj.category.event:
-            return obj.category.event.title
-        return "N/A"
-    get_competition_name.short_description = _('Eveniment')
-    # Keep admin ordering keyed to the legacy competition name for now; Event ordering could be added later
-    get_competition_name.admin_order_field = 'category__competition__name'
-    
-    def get_category_name(self, obj):
-        return obj.category.name
-    get_category_name.short_description = _('Categorie')
-    get_category_name.admin_order_field = 'category__name'
-    
-    def get_submission_type(self, obj):
-        if obj.submitted_by_athlete:
-            return f"Trimis de sportiv ({obj.placement_claimed or 'Fără clasare'})"
-        else:
-            return f"Scor arbitru ({obj.score})"
-    get_submission_type.short_description = _('Tip')
-    
-    def get_calculated_score(self, obj):
-        """Display calculated score in list view"""
-        from .models import FightCategory
-        if isinstance(obj.category, FightCategory):
-            return f'⚠ {obj.referee_score_count}/5 scoruri'
-        score = obj.calculated_score
-        if score is None:
-            return 'N/A'
-        return f'✓ {score:.2f}'
-    get_calculated_score.short_description = _('Scor final')
-
-    
-    def get_calculated_score_display(self, obj):
-        """Display calculated score with details in change form"""
-        from .models import FightCategory
-        if isinstance(obj.category, FightCategory):
-            return mark_safe('<em>Nu se aplică (doar pentru categoriile solo/echipe)</em>')
-        
-        score = obj.calculated_score
-        count = obj.referee_score_count
-        
-        if score is None:
-            if count == 0:
-                return mark_safe('<strong style="color: red;">Nu au fost trimise încă scoruri de arbitraj</strong>')
-            else:
-                return format_html(
-                    '<strong style="color: orange;">Incomplet: {}/{} scoruri de arbitraj trimise</strong><br>'
-                    '<em>Sunt necesare cel puțin 3 scoruri pentru calcul (ideal 5)</em>',
-                    count, 5
-                )
-        
-        # Get all scores to show breakdown
-        scores = list(obj.referee_scores.values_list('score', flat=True))
-        sorted_scores = sorted(scores)
-        
-        if len(scores) >= 5:
-            excluded = [sorted_scores[0], sorted_scores[-1]]
-            breakdown = f'Scoruri: {", ".join(str(s) for s in sorted_scores)} | Excluse: {excluded[0]}, {excluded[1]}'
-        elif len(scores) == 4:
-            excluded = [sorted_scores[-1]]
-            breakdown = f'Scoruri: {", ".join(str(s) for s in sorted_scores)} | Exclus maximul: {excluded[0]}'
-        else:
-            breakdown = f'Scoruri: {", ".join(str(s) for s in sorted_scores)} | Toate sunt incluse (sunt necesare 5 pentru calculul complet)'
-        
-        return format_html(
-            '<strong style="font-size: 16px;">Scor final: {:.2f}</strong><br>'
-            '<em style="color: #666;">{}</em>',
-            score, breakdown
-        )
-    get_calculated_score_display.short_description = _('Scor final calculat')
-    
-    def get_referee_count(self, obj):
-        """Display referee score count with validation status"""
-        from .models import FightCategory
-        if isinstance(obj.category, FightCategory):
-            return mark_safe('<em>N/A</em>')
-        
-        count = obj.referee_score_count
-        if count == 5:
-            return format_html('<strong style="color: green;">Complet ({}/5)</strong>', count)
-        elif count >= 3:
-            return format_html('<strong style="color: orange;">Parțial ({}/5)</strong>', count)
-        else:
-            return format_html('<strong style="color: red;">Incomplet ({}/5)</strong>', count)
-    get_referee_count.short_description = _('Scoruri arbitri')
-    
-    def get_action_buttons(self, obj):
-        if obj.submitted_by_athlete and obj.status == 'pending':
-            return format_html(
-                '<a class="button" href="{}/approve/">Aprobă</a> '
-                '<a class="button" href="{}/reject/">Respinge</a> '
-                '<a class="button" href="{}/request_revision/">Solicită revizuirea</a>',
-                obj.pk, obj.pk, obj.pk
-            )
-        elif obj.status == 'approved':
-            return mark_safe('<span style="color: green;">Aprobat</span>')
-        elif obj.status == 'rejected':
-            return mark_safe('<span style="color: red;">Respins</span>')
-        elif obj.status == 'revision_required':
-            return mark_safe('<span style="color: orange;">Revizuire necesară</span>')
-        elif not obj.submitted_by_athlete:
-            return mark_safe('<span style="color: blue;">Înregistrare arbitru</span>')
-        return ''
-    get_action_buttons.short_description = _('Acțiuni')
-    
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('<int:pk>/approve/', self.admin_site.admin_view(self.approve_score), name='api_categoryathletescore_approve'),
-            path('<int:pk>/reject/', self.admin_site.admin_view(self.reject_score), name='api_categoryathletescore_reject'),
-            path('<int:pk>/request_revision/', self.admin_site.admin_view(self.request_revision), name='api_categoryathletescore_request_revision'),
-        ]
-        return custom_urls + urls
-    
-    def approve_score(self, request, pk):
-        from django.shortcuts import get_object_or_404, redirect
-        from django.contrib import messages
-        
-        score = get_object_or_404(CategoryAthleteScore, pk=pk)
-        
-        if score.status != 'pending':
-            messages.error(request, f'Scorul nu este în starea în așteptare (curent: {score.status})')
-            return redirect('admin:api_categoryathletescore_changelist')
-        
-        try:
-            score.approve(request.user)
-            messages.success(request, f'Rezultatul pentru {score.athlete} a fost aprobat cu succes')
-        except Exception as e:
-            messages.error(request, f'Eroare la aprobarea rezultatului: {str(e)}')
-        
-        return redirect('admin:api_categoryathletescore_changelist')
-    
-    def reject_score(self, request, pk):
-        from django.shortcuts import get_object_or_404, redirect
-        from django.contrib import messages
-        
-        score = get_object_or_404(CategoryAthleteScore, pk=pk)
-        
-        if score.status != 'pending':
-            messages.error(request, f'Scorul nu este în starea în așteptare (curent: {score.status})')
-            return redirect('admin:api_categoryathletescore_changelist')
-        
-        if request.method == 'POST':
-            rejection_reason = request.POST.get('admin_notes', '')
-            score.reject(request.user, rejection_reason)
-            messages.success(request, f'Rezultatul pentru {score.athlete} a fost respins cu succes')
-            return redirect('admin:api_categoryathletescore_changelist')
-        
-        # Show rejection form
-        context = {
-            'score': score,
-            'title': f'Respinge rezultatul: {score.category.name} - {score.athlete}',
-        }
-        return render(request, 'admin/reject_score.html', context)
-    
-    def request_revision(self, request, pk):
-        from django.shortcuts import get_object_or_404, redirect
-        from django.contrib import messages
-        
-        score = get_object_or_404(CategoryAthleteScore, pk=pk)
-        
-        if score.status != 'pending':
-            messages.error(request, f'Scorul nu este în starea în așteptare (curent: {score.status})')
-            return redirect('admin:api_categoryathletescore_changelist')
-        
-        if request.method == 'POST':
-            revision_notes = request.POST.get('admin_notes', '')
-            score.request_revision(request.user, revision_notes)
-            messages.success(request, f'A fost solicitată revizuirea pentru {score.athlete}')
-            return redirect('admin:api_categoryathletescore_changelist')
-        
-        # Show revision request form
-        context = {
-            'score': score,
-            'title': f'Solicită revizuirea: {score.category.name} - {score.athlete}',
-        }
-        return render(request, 'admin/request_score_revision.html', context)
-
-
-# Hide CategoryAthleteScore from admin for now
-try:
-    admin.site.unregister(CategoryAthleteScore)
-except admin.sites.NotRegistered:
-    pass
-
-
-# ============================================================================
-# Note: CategoryAthleteScore already registered above with @admin.register
-# Removed duplicate admin.site.register to avoid conflicts
-# ============================================================================
-
-
 @admin.register(SupporterAthleteRelation)
 class SupporterAthleteRelationAdmin(admin.ModelAdmin):
     list_display = ['supporter', 'athlete', 'relationship', 'can_edit', 'can_register_competitions', 'created']
@@ -5331,13 +5030,8 @@ class SupporterAthleteRelationAdmin(admin.ModelAdmin):
     ordering = ['-created']
 
 
-# ============================================================================
-# SCORING SUMMARY:
-# - CategoryAthleteScoreAdmin: Main results (registered above with @admin.register)
-# - CategoryRefereeScoreInline: 5 referee scores (inline in CategoryAthleteScoreAdmin)
-#
-# Removed: ScoreHistoryProxy, duplicate admin registrations, complex forms, activity logs
-# ============================================================================
+# Note: CategoryAthleteScore has no standalone admin page; scores are managed
+# via CategoryTeamScoreInline/CategoryRefereeScoreInline on the category admins.
 
 
 # DISABLED INLINES (for future use):
