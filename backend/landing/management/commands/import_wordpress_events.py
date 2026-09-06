@@ -346,7 +346,15 @@ class Command(BaseCommand):
     def _import_featured_image(self, session, event, html):
         if event.featured_image:
             return
-        match = IMAGE_RE.search(html)
+        # Anchor the search to *after* the post title so we never pick up the
+        # site logo or other header images that also carry a lazy-loaded
+        # `data-src="...wp-content/uploads/..."` attribute earlier in the
+        # page (this previously caused every single event to end up with the
+        # same "Screenshot-2023-11-01-at-12.28.35.png" file - that's actually
+        # the site's own logo image, not an event photo).
+        title_match = re.search(r'class="[^"]*\bbrxe-post-title\b[^"]*"', html)
+        search_start = title_match.end() if title_match else 0
+        match = IMAGE_RE.search(html, search_start)
         if not match:
             return
         image_url = match.group(1)

@@ -401,6 +401,7 @@ export const publicContentAPI = {
   },
   events: {
     upcoming: () => api.get('/public/events/upcoming/'),
+    list: (params) => api.get('/public/events/', { params }),
   },
   clubs: {
     list: () => api.get('/public/clubs/'),

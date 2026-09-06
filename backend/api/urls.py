@@ -149,6 +149,7 @@ urlpatterns = autocomplete_urlpatterns + [
     path('public/about/', PublicAboutViewSet.as_view({'get': 'list'}), name='public-about-list'),
     path('public/contact/', PublicContactViewSet.as_view({'post': 'create'}), name='public-contact-create'),
     path('public/events/upcoming/', PublicEventViewSet.as_view({'get': 'upcoming'}), name='public-events-upcoming'),
+    path('public/events/', PublicEventViewSet.as_view({'get': 'list'}), name='public-events-list'),
 
     # Federation directory pages, backing the 'Federație' and 'Competiție'
     # dropdown nav items (full menu parity with the live vovinam.ro site).

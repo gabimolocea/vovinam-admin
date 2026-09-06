@@ -104,7 +104,10 @@ class PublicEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Event
-        fields = ['title', 'slug', 'event_type', 'start_date', 'end_date', 'address', 'city']
+        fields = [
+            'title', 'slug', 'event_type', 'start_date', 'end_date', 'address', 'city',
+            'featured_image', 'status',
+        ]
 
 
 class PublicClubSerializer(serializers.ModelSerializer):
@@ -251,8 +254,22 @@ class PublicContactViewSet(viewsets.ViewSet):
 
 
 class PublicEventViewSet(viewsets.ViewSet):
-    """GET /api/public/events/upcoming/ - upcoming competitions/events."""
+    """
+    GET /api/public/events/          - all published events (past + upcoming), newest first
+    GET /api/public/events/upcoming/ - upcoming competitions/events only
+    """
     permission_classes = [AllowAny]
+    pagination_class = PublicContentPagination
+
+    def get_queryset(self):
+        return Event.objects.select_related('city').order_by('-start_date')
+
+    def list(self, request):
+        queryset = self.get_queryset()
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = PublicEventSerializer(page, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
