@@ -135,11 +135,12 @@ class PublicStaffSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     federation_role = serializers.CharField(source='federation_role.name', read_only=True, default='')
     title = serializers.CharField(source='title.name', read_only=True, default='')
+    grade = serializers.CharField(source='current_grade.name', read_only=True, default='')
     club = serializers.CharField(source='club.name', read_only=True, default='')
 
     class Meta:
         model = Athlete
-        fields = ['full_name', 'federation_role', 'title', 'club', 'profile_image']
+        fields = ['full_name', 'federation_role', 'title', 'grade', 'club', 'profile_image']
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
@@ -150,11 +151,12 @@ class PublicRefereeSerializer(serializers.ModelSerializer):
     is_referee=True. Same public-safe field restriction as staff."""
     full_name = serializers.SerializerMethodField()
     title = serializers.CharField(source='title.name', read_only=True, default='')
+    grade = serializers.CharField(source='current_grade.name', read_only=True, default='')
     club = serializers.CharField(source='club.name', read_only=True, default='')
 
     class Meta:
         model = Athlete
-        fields = ['full_name', 'title', 'club', 'profile_image']
+        fields = ['full_name', 'title', 'grade', 'club', 'profile_image']
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()

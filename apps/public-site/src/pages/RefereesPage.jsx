@@ -53,6 +53,7 @@ export default function RefereesPage() {
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-2">
                 {person.title && <span className="text-sm text-muted-foreground">{person.title}</span>}
+                {person.grade && <span className="text-xs font-medium uppercase tracking-wide text-brand-navy">{person.grade}</span>}
                 {person.club && <span className="text-sm text-muted-foreground">{person.club}</span>}
               </CardContent>
             </Card>
