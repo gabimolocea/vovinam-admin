@@ -110,6 +110,13 @@ class PublicEventSerializer(serializers.ModelSerializer):
         ]
 
 
+class PublicEventDetailSerializer(PublicEventSerializer):
+    """Adds the full description for the event detail page."""
+
+    class Meta(PublicEventSerializer.Meta):
+        fields = PublicEventSerializer.Meta.fields + ['description']
+
+
 class PublicClubSerializer(serializers.ModelSerializer):
     """Public federation directory entry - business/contact info only, no
     athlete/coach personal data (see PublicStaffSerializer for staff)."""
@@ -256,6 +263,7 @@ class PublicContactViewSet(viewsets.ViewSet):
 class PublicEventViewSet(viewsets.ViewSet):
     """
     GET /api/public/events/          - all published events (past + upcoming), newest first
+    GET /api/public/events/<slug>/   - detail of a single event (full description)
     GET /api/public/events/upcoming/ - upcoming competitions/events only
     """
     permission_classes = [AllowAny]
@@ -270,6 +278,12 @@ class PublicEventViewSet(viewsets.ViewSet):
         page = paginator.paginate_queryset(queryset, request, view=self)
         serializer = PublicEventSerializer(page, many=True, context={'request': request})
         return paginator.get_paginated_response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        # `pk` here is actually the event slug (see api/urls.py routing).
+        instance = get_object_or_404(self.get_queryset(), slug=pk)
+        serializer = PublicEventDetailSerializer(instance, context={'request': request})
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def upcoming(self, request):

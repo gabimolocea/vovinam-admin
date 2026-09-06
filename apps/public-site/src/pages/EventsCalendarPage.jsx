@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CalendarDays, MapPin } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
@@ -73,37 +74,39 @@ export default function EventsCalendarPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {events.map((event) => (
-            <Card key={event.slug} className="flex flex-col overflow-hidden">
-              {event.featured_image ? (
-                <div className="flex h-40 w-full items-center justify-center bg-sky-50">
-                  <img src={event.featured_image} alt={event.title} className="h-full w-full object-contain" />
-                </div>
-              ) : (
-                <div className="flex h-40 w-full items-center justify-center bg-sky-50">
-                  <CalendarDays className="h-10 w-10 text-brand-navy/30" />
-                </div>
-              )}
-              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
-                <CardTitle as="h2" className="text-lg">{event.title}</CardTitle>
-                {event.status === 'past' ? (
-                  <Badge variant="outline">{STATUS_LABELS.past}</Badge>
+            <Link key={event.slug} to={`/competitii/${event.slug}`} className="block transition-shadow hover:shadow-md">
+              <Card className="flex h-full flex-col overflow-hidden">
+                {event.featured_image ? (
+                  <div className="flex h-40 w-full items-center justify-center bg-sky-50">
+                    <img src={event.featured_image} alt={event.title} className="h-full w-full object-contain" />
+                  </div>
                 ) : (
-                  <Badge variant="secondary">{STATUS_LABELS[event.status] || event.status}</Badge>
+                  <div className="flex h-40 w-full items-center justify-center bg-sky-50">
+                    <CalendarDays className="h-10 w-10 text-brand-navy/30" />
+                  </div>
                 )}
-              </CardHeader>
-              <CardContent className="flex flex-1 flex-col gap-2">
-                <CardDescription className="flex items-center gap-1"><CalendarDays className="h-4 w-4" />{formatDateRange(event.start_date, event.end_date)}</CardDescription>
-                {(event.city || event.address) && (
-                  <CardDescription className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {[event.city, event.address].filter(Boolean).join(' · ')}
-                  </CardDescription>
-                )}
-                <div className="mt-auto pt-2">
-                  <Badge variant="outline">{EVENT_TYPE_LABELS[event.event_type] || event.event_type}</Badge>
-                </div>
-              </CardContent>
-            </Card>
+                <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
+                  <CardTitle as="h2" className="text-lg">{event.title}</CardTitle>
+                  {event.status === 'past' ? (
+                    <Badge variant="outline">{STATUS_LABELS.past}</Badge>
+                  ) : (
+                    <Badge variant="secondary">{STATUS_LABELS[event.status] || event.status}</Badge>
+                  )}
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-2">
+                  <CardDescription className="flex items-center gap-1"><CalendarDays className="h-4 w-4" />{formatDateRange(event.start_date, event.end_date)}</CardDescription>
+                  {(event.city || event.address) && (
+                    <CardDescription className="flex items-center gap-1">
+                      <MapPin className="h-4 w-4" />
+                      {[event.city, event.address].filter(Boolean).join(' · ')}
+                    </CardDescription>
+                  )}
+                  <div className="mt-auto pt-2">
+                    <Badge variant="outline">{EVENT_TYPE_LABELS[event.event_type] || event.event_type}</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       )}

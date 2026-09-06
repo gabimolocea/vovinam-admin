@@ -7,6 +7,7 @@ import VideosPage from './pages/VideosPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import EventsCalendarPage from './pages/EventsCalendarPage';
+import EventDetailPage from './pages/EventDetailPage';
 import ClubsPage from './pages/ClubsPage';
 import StaffPage from './pages/StaffPage';
 import RefereesPage from './pages/RefereesPage';
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="despre" element={<AboutPage />} />
         <Route path="contact" element={<ContactPage />} />
         <Route path="competitii" element={<EventsCalendarPage />} />
+        <Route path="competitii/:slug" element={<EventDetailPage />} />
         <Route path="cluburi" element={<ClubsPage />} />
         <Route path="staff" element={<StaffPage />} />
         <Route path="arbitri" element={<RefereesPage />} />
