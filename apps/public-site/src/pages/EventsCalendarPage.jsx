@@ -75,9 +75,11 @@ export default function EventsCalendarPage() {
           {events.map((event) => (
             <Card key={event.slug} className="flex flex-col overflow-hidden">
               {event.featured_image ? (
-                <img src={event.featured_image} alt={event.title} className="h-40 w-full object-cover" />
+                <div className="flex h-40 w-full items-center justify-center bg-sky-50">
+                  <img src={event.featured_image} alt={event.title} className="h-full w-full object-contain" />
+                </div>
               ) : (
-                <div className="flex h-40 w-full items-center justify-center bg-brand-navy/5">
+                <div className="flex h-40 w-full items-center justify-center bg-sky-50">
                   <CalendarDays className="h-10 w-10 text-brand-navy/30" />
                 </div>
               )}
