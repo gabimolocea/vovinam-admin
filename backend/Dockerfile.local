@@ -1,0 +1,38 @@
+# Backend-only image for local/venue (LAN) competition-day operation.
+# Frontends (competition-admin, referee-scoring, public-display) are NOT
+# bundled here — they keep running via `npm run dev` / `./scripts/start-all-apps.sh`
+# on the same machine (their Vite dev server already binds 0.0.0.0 and proxies
+# /api to this backend), which keeps this image small and avoids rebuilding
+# static bundles for every event.
+#
+# See docker-compose.local.yml and docs/GHID_COMPETITIE_LOCALA.md.
+
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DJANGO_SETTINGS_MODULE=crud.settings_local
+
+WORKDIR /app
+
+# postgresql-client provides pg_dump/pg_restore, used by the backup/restore panel.
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
+
+COPY . .
+
+RUN mkdir -p static media local_backups
+
+COPY entrypoint.local.sh /app/entrypoint.local.sh
+RUN chmod +x /app/entrypoint.local.sh
+
+EXPOSE 8000
+
+ENTRYPOINT ["/app/entrypoint.local.sh"]

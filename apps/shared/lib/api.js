@@ -381,3 +381,15 @@ export const offlineAPI = {
   importEventResults: (payload) => api.post('/offline/event-results/import/', payload),
   uploadResults: (data) => api.post('/offline/results/', data),
 };
+
+// ── System info (tells the frontend if this backend is the local/LAN venue server) ──
+export const systemAPI = {
+  info: () => api.get('/system-info/'),
+};
+
+// ── Local event backups ("time travel" panel, only functional on the venue server) ──
+export const localBackupAPI = {
+  list: () => api.get('/local-backups/'),
+  create: (label) => api.post('/local-backups/', { label }),
+  restore: (filename) => api.post('/local-backups/restore/', { filename }),
+};

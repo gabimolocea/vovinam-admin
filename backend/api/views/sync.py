@@ -22,6 +22,26 @@ import logging
 from pathlib import Path
 from django.db import IntegrityError
 
+logger = logging.getLogger(__name__)
+
+
+def _safety_backup_before_risky_action(trigger):
+    """Best-effort local snapshot before an import/overwrite on the venue server.
+
+    Never blocks the request: if the backup itself fails (e.g. pg_dump not
+    installed, disk full) we log it and let the operation continue, since
+    refusing a legitimate import because the safety net failed would be
+    worse than the missing safety net itself.
+    """
+    if not getattr(settings, 'IS_LOCAL_EVENT_SERVER', False):
+        return
+    try:
+        from .. import local_backup
+
+        local_backup.create_backup(trigger=trigger)
+    except Exception:
+        logger.exception('Safety backup before %s failed', trigger)
+
 
 class OfflineSyncViewSet(viewsets.ViewSet):
     """Offline snapshot and results upload endpoints for competition manager.
@@ -51,6 +71,7 @@ class OfflineSyncViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'], url_path='event-pack/import')
     def import_event_pack(self, request):
+        _safety_backup_before_risky_action('pre_import')
         try:
             from ..sync.import_event_pack import import_event_pack
 
@@ -74,6 +95,7 @@ class OfflineSyncViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'], url_path='event-results/import')
     def import_event_results(self, request):
+        _safety_backup_before_risky_action('pre_import')
         try:
             from ..sync.import_event_results import import_event_results
 
@@ -164,3 +186,72 @@ class OfflineSyncViewSet(viewsets.ViewSet):
             'created': created,
             'failed': failed,
         })
+
+
+class LocalBackupViewSet(viewsets.ViewSet):
+    """Backup/restore ("time travel") panel for the local venue server.
+
+    Only functional when `settings.IS_LOCAL_EVENT_SERVER` is True (see
+    crud/settings_local.py). On the cloud deployment every action here
+    returns 404, so the feature is invisible outside of competition day.
+    """
+    permission_classes = [IsAdmin]
+
+    def _guard(self):
+        if not getattr(settings, 'IS_LOCAL_EVENT_SERVER', False):
+            return Response(
+                {'detail': 'Backup-urile locale sunt disponibile doar pe serverul local din sală.'},
+                status=404,
+            )
+        return None
+
+    def list(self, request):
+        guard = self._guard()
+        if guard is not None:
+            return guard
+        from .. import local_backup
+
+        try:
+            return Response({
+                'backups': local_backup.list_backups(),
+                'interval_minutes': getattr(settings, 'LOCAL_BACKUP_INTERVAL_MINUTES', None),
+            })
+        except local_backup.BackupError as exc:
+            return Response({'detail': str(exc)}, status=500)
+
+    def create(self, request):
+        guard = self._guard()
+        if guard is not None:
+            return guard
+        from .. import local_backup
+
+        try:
+            manifest = local_backup.create_backup(
+                trigger=local_backup.TRIGGER_MANUAL,
+                label=request.data.get('label'),
+                triggered_by=getattr(request.user, 'username', None),
+            )
+            return Response(manifest, status=201)
+        except local_backup.BackupError as exc:
+            return Response({'detail': str(exc)}, status=500)
+
+    @action(detail=False, methods=['post'], url_path='restore')
+    def restore(self, request):
+        guard = self._guard()
+        if guard is not None:
+            return guard
+        filename = request.data.get('filename')
+        if not filename:
+            return Response({'detail': 'filename este obligatoriu.'}, status=400)
+        from .. import local_backup
+
+        try:
+            report = local_backup.restore_backup(
+                filename,
+                triggered_by=getattr(request.user, 'username', None),
+            )
+            return Response(report)
+        except FileNotFoundError as exc:
+            return Response({'detail': str(exc)}, status=404)
+        except local_backup.BackupError as exc:
+            return Response({'detail': str(exc)}, status=500)

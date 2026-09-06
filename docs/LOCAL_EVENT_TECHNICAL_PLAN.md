@@ -1,5 +1,30 @@
 # FRVV Local Event + Cloud Sync Technical Plan
 
+> **Operator runbook:** for the step-by-step, non-technical guide to actually
+> run a competition on the venue LAN (start the local server, take/restore
+> backups, sync results back), see
+> [`docs/GHID_COMPETITIE_LOCALA.md`](./GHID_COMPETITIE_LOCALA.md).
+>
+> **Implementation status:** Phase 1 (event pack export/import, sync lock
+> state, `SyncCenterPage`) and Phase 2 (local deployment: `docker-compose.local.yml`,
+> `crud.settings_local`, PostgreSQL, backup/restore panel) are implemented.
+> Phases 3-5 (consensus scoring mode, offline device queue, cloud push of
+> raw/consensus events) remain planned, as described below.
+>
+> **Known limitation — new entities during results sync:** `sync_locked`
+> only blocks operational writes in the **cloud** copy of the event
+> (`Event.operational_lock_active`); the local copy created by
+> `import_event_pack` always starts with `sync_locked=False`, so athletes,
+> categories, matches, etc. can be freely created/edited on the local
+> server during the event. However, `import_event_results` intentionally
+> **rejects** any `athlete_id`/`category_id`/`match_id`/`team_id` that does
+> not already exist in cloud (see `backend/api/sync/import_event_results.py`)
+> — it only upserts results for entities that existed at export time. New
+> athletes/categories created locally during the event must be added to
+> cloud separately (re-export/re-import the event pack while online, or
+> manually recreate them in cloud after the event). See the "FAQ" section
+> of `docs/GHID_COMPETITIE_LOCALA.md` for the operator-facing explanation.
+
 ## Goal
 
 Define a concrete implementation plan for this repo so that:
@@ -797,11 +822,20 @@ Acceptance criteria:
 - a full event can be exported from cloud
 - local server can import it and reconstruct operational data
 
-## Phase 2 - Local deployment mode
+## Phase 2 - Local deployment mode — ✅ implemented
 
 Goal:
 
 - run backend + 3 apps locally on LAN
+
+Implemented as:
+
+- `backend/crud/settings_local.py` — local settings profile (PostgreSQL, WhiteNoise, `IS_LOCAL_EVENT_SERVER=True`)
+- `docker-compose.local.yml` + `backend/Dockerfile.local` — Postgres + backend + `backup-scheduler` containers
+- `backend/api/local_backup.py` + `LocalBackupViewSet` (`/api/local-backups/`) — on-demand and scheduled `pg_dump`/`pg_restore` snapshots, with an automatic pre-restore/pre-import safety backup
+- `apps/competition-admin/src/components/LocalBackupPanel.jsx` — backup/restore UI embedded in `SyncCenterPage`
+- frontend apps keep using `./scripts/start-all-apps.sh` (Vite dev servers already bind `0.0.0.0`, no separate reverse proxy/build step needed)
+- see `docs/GHID_COMPETITIE_LOCALA.md` for the operator runbook
 
 Backend/devops:
 

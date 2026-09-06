@@ -27,7 +27,13 @@ SECRET_KEY = 'django-insecure-vc)ijbblbx@-*fl+z7gl^z)qol&q9+-_1gu)ug=3vqhu+s#qu8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-LAN_HOST = '172.20.10.14'
+LAN_HOST = os.environ.get('LAN_HOST', '172.20.10.14')
+
+# Set to True (via a settings module such as crud.settings_local) when this
+# Django instance is the venue/LAN server used for offline competition-day
+# operation. Gates local-only features like the on-demand backup/restore
+# panel so they never show up by accident against the cloud deployment.
+IS_LOCAL_EVENT_SERVER = os.environ.get('IS_LOCAL_EVENT_SERVER', 'False') == 'True'
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', LAN_HOST]
 

@@ -24,6 +24,21 @@ from django.db import IntegrityError
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
+def system_info(request):
+    """Tells frontends whether this backend is the local venue/LAN server.
+
+    Used by competition-admin to conditionally show the local backup/restore
+    panel — it must stay hidden when talking to the cloud deployment.
+    """
+    return Response({
+        'is_local_event_server': getattr(settings, 'IS_LOCAL_EVENT_SERVER', False),
+        'lan_host': getattr(settings, 'LAN_HOST', None),
+        'backup_interval_minutes': getattr(settings, 'LOCAL_BACKUP_INTERVAL_MINUTES', None),
+    })
+
+
+@api_view(["GET"])
 def health(request):
     """Simple health endpoint used by CI readiness checks."""
     # Check database connectivity

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { competitionAPI, offlineAPI } from '@shared/lib/api';
 import { PageHeader, Card, Spinner } from '@shared/components/ui';
 import { getSyncLockMeta, getSyncModeMeta, getSyncStatusMeta } from '@shared/lib/syncStatus';
+import LocalBackupPanel from '../components/LocalBackupPanel';
 
 function downloadJson(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -502,6 +503,8 @@ export default function SyncCenterPage() {
           <p className="text-sm text-gray-500">Nu există încă evenimente în istoricul de sincronizare.</p>
         )}
       </Card>
+
+      <LocalBackupPanel />
       </div>
     </div>
   );
