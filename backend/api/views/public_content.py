@@ -161,7 +161,6 @@ class PublicRefereeSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
 
-
 class PublicDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentPage
@@ -326,17 +325,23 @@ class PublicStaffViewSet(viewsets.ViewSet):
 
 class PublicRefereeViewSet(viewsets.ViewSet):
     """GET /api/public/referees/ - federation referee directory
-    ('Arbitri' nav item). Only approved athletes flagged is_referee=True."""
+    ('Arbitri' nav item). Groups approved athletes flagged is_referee=True
+    into 'international' and 'national', mirroring the two sections on the
+    live vovinam.ro Arbitri page."""
     permission_classes = [AllowAny]
 
     def list(self, request):
-        queryset = (
+        base = (
             Athlete.objects.filter(status='approved', is_referee=True)
             .select_related('title', 'club')
             .order_by('last_name', 'first_name')
         )
-        serializer = PublicRefereeSerializer(queryset, many=True, context={'request': request})
-        return Response(serializer.data)
+        international = base.filter(referee_level='international')
+        national = base.filter(referee_level='national')
+        return Response({
+            'international': PublicRefereeSerializer(international, many=True, context={'request': request}).data,
+            'national': PublicRefereeSerializer(national, many=True, context={'request': request}).data,
+        })
 
 
 class PublicDocumentViewSet(viewsets.ViewSet):
