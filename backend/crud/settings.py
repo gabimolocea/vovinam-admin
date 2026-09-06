@@ -226,6 +226,11 @@ CORS_ALLOWED_ORIGINS = [
     f'http://{LAN_HOST}:5176',
     'http://localhost:5177',   # Public Display
     f'http://{LAN_HOST}:5177',
+    'http://localhost:5178',   # Public Registry
+    f'http://{LAN_HOST}:5178',
+    'http://localhost:5179',   # Public Site (vovinam.ro)
+    'http://127.0.0.1:5179',
+    f'http://{LAN_HOST}:5179',
 ]
 
 CORS_ALLOW_HEADERS = list(default_headers) + [
@@ -244,6 +249,11 @@ CSRF_TRUSTED_ORIGINS = [
     f'http://{LAN_HOST}:5176',
     'http://localhost:5177',
     f'http://{LAN_HOST}:5177',
+    'http://localhost:5178',
+    f'http://{LAN_HOST}:5178',
+    'http://localhost:5179',
+    'http://127.0.0.1:5179',
+    f'http://{LAN_HOST}:5179',
 ]
 
  # Allow credentials to be sent with CORS requests

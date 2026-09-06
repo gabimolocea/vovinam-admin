@@ -107,7 +107,7 @@ class PublicClubSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Club
-        fields = ['name', 'logo', 'city', 'address', 'mobile_number', 'website', 'coaches']
+        fields = ['id', 'name', 'logo', 'city', 'address', 'mobile_number', 'website', 'coaches']
 
     def get_coaches(self, obj):
         return [f'{coach.first_name} {coach.last_name}'.strip() for coach in obj.coaches.all()]

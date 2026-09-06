@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth, athleteAPI, onboardingAPI, publicContentAPI, cityAPI } from '@shared';
 import { Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle } from '../components/ui';
+import SearchableSelect from '../components/SearchableSelect';
 import Seo from '../components/Seo';
 
 const STATUS_LABELS = {
@@ -36,7 +37,7 @@ function RoleStep({ onChoose, busy }) {
  * to the existing self-service endpoint (AthleteViewSet.my_profile). */
 function AthleteProfileStep({ onSubmitted }) {
   const [clubs, setClubs] = useState([]);
-  const [cities, setCities] = useState([]);
+  const [selectedCity, setSelectedCity] = useState(null);
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -52,11 +53,20 @@ function AthleteProfileStep({ onSubmitted }) {
 
   useEffect(() => {
     publicContentAPI.clubs.list().then((res) => setClubs(res.data ?? [])).catch(() => {});
-    cityAPI.list({ page_size: 500 }).then((res) => setCities(res.data?.results ?? res.data ?? [])).catch(() => {});
   }, []);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  async function searchCities(query) {
+    const { data } = await cityAPI.list({ search: query });
+    return data ?? [];
+  }
+
+  function handleCityChange(city) {
+    setSelectedCity(city);
+    update('city', city?.id ?? '');
   }
 
   async function handleSubmit(e) {
@@ -128,12 +138,12 @@ function AthleteProfileStep({ onSubmitted }) {
             </label>
             <label className="flex flex-col gap-1 text-sm sm:col-span-2">
               <span className="font-medium">Localitate</span>
-              <select value={form.city} onChange={(e) => update('city', e.target.value)} className="site-form-input">
-                <option value="">Alege localitatea</option>
-                {cities.map((city) => (
-                  <option key={city.id} value={city.id}>{city.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={selectedCity}
+                onChange={handleCityChange}
+                onSearch={searchCities}
+                placeholder="Scrie pentru a căuta localitatea…"
+              />
             </label>
           </div>
 

@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from datetime import datetime, timedelta
+import unicodedata
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from django.db import models, transaction
@@ -72,6 +73,13 @@ def get_csrf_token(request):
     return Response({'csrfToken': get_token(request)})
 
 
+def _strip_diacritics(value):
+    """Lowercase + remove diacritics so 'Iasi' matches 'Iași' (SQLite's
+    icontains is case-insensitive but not accent-insensitive)."""
+    normalized = unicodedata.normalize('NFKD', value)
+    return normalized.encode('ascii', 'ignore').decode('ascii').lower()
+
+
 class CityViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
     queryset = City.objects.all()
@@ -79,6 +87,21 @@ class CityViewSet(viewsets.ViewSet):
 
     def list(self, request):
         queryset = City.objects.all()
+        search = request.query_params.get('search')
+        if search:
+            # Only cap/filter when a search combobox asks for it - other
+            # apps' plain <select> city pickers still rely on the full,
+            # unfiltered list() response and must keep working unchanged.
+            # Diacritic-insensitive: SQLite's icontains only strips case,
+            # so "Iasi" (no diacritics) wouldn't match "Iași" without this.
+            term = _strip_diacritics(search)
+            matches = []
+            for city in City.objects.only('id', 'name').iterator():
+                if term in _strip_diacritics(city.name):
+                    matches.append(city)
+                    if len(matches) >= 20:
+                        break
+            queryset = matches
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
