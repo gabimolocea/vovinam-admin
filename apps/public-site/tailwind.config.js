@@ -5,8 +5,19 @@ export default {
 		...config.theme,
 		extend: {
 			...config.theme.extend,
+			fontFamily: {
+				...config.theme.extend.fontFamily,
+				sans: ['Roboto', 'sans-serif'],
+				display: ['Roboto', 'sans-serif'],
+				mobile: ['Poppins', 'sans-serif'],
+			},
 			colors: {
 				...config.theme.extend.colors,
+				// Brand palette matched against the live vovinam.ro (Bricks theme) CSS variables.
+				'brand-navy': '#172642',
+				'brand-navy-dark': '#071225',
+				'brand-gold': '#edb654',
+				'brand-red': '#a61f33',
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
 				ring: 'hsl(var(--ring))',
