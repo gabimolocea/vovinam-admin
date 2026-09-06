@@ -2,6 +2,17 @@ from django.contrib import admin
 from django.urls import path, include
 from .views import *
 from . import views
+from .views.public_content import (
+    PublicNewsViewSet,
+    PublicVideoViewSet,
+    PublicAboutViewSet,
+    PublicContactViewSet,
+    PublicEventViewSet,
+    PublicClubViewSet,
+    PublicStaffViewSet,
+    PublicRefereeViewSet,
+    PublicDocumentViewSet,
+)
 from rest_framework.routers import DefaultRouter
 
 router = DefaultRouter()
@@ -126,6 +137,28 @@ urlpatterns = autocomplete_urlpatterns + [
     path('categories/<int:category_id>/generate-brackets/', views.generate_brackets, name='generate-brackets'),
     path('matches/<int:match_id>/advance-winner/', views.advance_match_winner, name='advance-match-winner'),
     
+    # -------------------------------------------------------------------
+    # Public, unauthenticated content endpoints for the new public-facing
+    # site (apps/public-site), replacing the WordPress vovinam.ro site.
+    # These are intentionally NOT behind authentication and only ever
+    # expose already-published content (see api/views/public_content.py).
+    # -------------------------------------------------------------------
+    path('public/news/', PublicNewsViewSet.as_view({'get': 'list'}), name='public-news-list'),
+    path('public/news/<slug:pk>/', PublicNewsViewSet.as_view({'get': 'retrieve'}), name='public-news-detail'),
+    path('public/videos/', PublicVideoViewSet.as_view({'get': 'list'}), name='public-video-list'),
+    path('public/about/', PublicAboutViewSet.as_view({'get': 'list'}), name='public-about-list'),
+    path('public/contact/', PublicContactViewSet.as_view({'post': 'create'}), name='public-contact-create'),
+    path('public/events/upcoming/', PublicEventViewSet.as_view({'get': 'upcoming'}), name='public-events-upcoming'),
+    path('public/events/', PublicEventViewSet.as_view({'get': 'list'}), name='public-events-list'),
+    path('public/events/<slug:pk>/', PublicEventViewSet.as_view({'get': 'retrieve'}), name='public-events-detail'),
+
+    # Federation directory pages, backing the 'Federație' and 'Competiție'
+    # dropdown nav items (full menu parity with the live vovinam.ro site).
+    path('public/clubs/', PublicClubViewSet.as_view({'get': 'list'}), name='public-clubs-list'),
+    path('public/staff/', PublicStaffViewSet.as_view({'get': 'list'}), name='public-staff-list'),
+    path('public/referees/', PublicRefereeViewSet.as_view({'get': 'list'}), name='public-referees-list'),
+    path('public/documents/', PublicDocumentViewSet.as_view({'get': 'list'}), name='public-documents-list'),
+
     # Router URLs (should come last to avoid conflicts)
     path('', include(router.urls)),  # This will handle the actual endpoints including athletes CRUD
     

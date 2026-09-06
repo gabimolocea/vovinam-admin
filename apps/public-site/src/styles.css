@@ -1,0 +1,139 @@
+/* Brand palette matched against the live vovinam.ro (Bricks theme) CSS custom
+   properties: navy #172642, dark navy #071225, gold #edb654, red #a61f33. */
+.public-site-app {
+  --background: 0 0% 100%;
+  --foreground: 219 48% 17%;
+  --card: 0 0% 100%;
+  --card-foreground: 219 48% 17%;
+  --primary: 219 48% 17%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 38 81% 63%;
+  --secondary-foreground: 219 48% 17%;
+  --muted: 220 25% 96%;
+  --muted-foreground: 220 15% 40%;
+  --accent: 38 60% 92%;
+  --accent-foreground: 219 48% 17%;
+  --destructive: 351 69% 39%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 20% 88%;
+  --input: 220 20% 82%;
+  --ring: 38 81% 63%;
+  min-height: 100vh;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Roboto', sans-serif;
+  font-weight: 500;
+}
+
+.public-site-app h1,
+.public-site-app h2,
+.public-site-app h3,
+.public-site-app h4,
+.public-site-app .font-display {
+  font-family: 'Roboto', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.public-site-app * {
+  border-color: hsl(var(--border));
+}
+
+.public-site-app .site-panel {
+  background-color: hsl(var(--card));
+}
+
+.public-site-app .prose-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.public-site-app .video-embed {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%; /* 16:9 */
+}
+
+.public-site-app .video-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0.5rem;
+}
+
+/* Header: white sticky bar with a soft shadow, matching the live theme. */
+.public-site-app .site-header {
+  background-color: #fff;
+  box-shadow: 5px 5px 15px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* Desktop nav: uppercase, right-aligned, gold underline on hover/active. */
+.public-site-app .site-nav-link {
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #172642;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.public-site-app .site-nav-link:hover,
+.public-site-app .site-nav-link.is-active {
+  color: #a61f33;
+  border-bottom-color: #edb654;
+}
+
+/* Submenu (desktop dropdown): dark navy background with a gold border. */
+.public-site-app .site-submenu {
+  background-color: #071225;
+  border: 2px solid #edb654;
+}
+
+.public-site-app .site-submenu-link {
+  color: #fff;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.public-site-app .site-submenu-link:hover {
+  color: #edb654;
+}
+
+/* Mobile menu overlay: full-screen dark navy panel, Poppins type. */
+.public-site-app .site-mobile-overlay {
+  background-color: #071225;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+}
+
+.public-site-app .site-mobile-link {
+  color: #fff;
+  text-transform: uppercase;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+}
+
+.public-site-app .site-mobile-link:hover,
+.public-site-app .site-mobile-link.is-active {
+  color: #edb654;
+}
+
+.public-site-app .site-footer {
+  background-color: #172642;
+  color: #fff;
+}
+
+.public-site-app .site-footer a:hover {
+  color: #edb654;
+}
+
+@media (max-width: 640px) {
+  .public-site-app main {
+    padding-top: 1rem;
+  }
+}

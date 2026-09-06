@@ -400,6 +400,14 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     expiration_date = models.DateField(_('Data expirării'), blank=True, null=True)
     is_coach = models.BooleanField(_('Antrenor'), default=False)
     is_referee = models.BooleanField(_('Arbitru'), default=False)
+    REFEREE_LEVEL_CHOICES = [
+        ('national', 'Arbitru național'),
+        ('international', 'Arbitru internațional'),
+    ]
+    referee_level = models.CharField(
+        _('Nivel arbitraj'), max_length=20, choices=REFEREE_LEVEL_CHOICES, blank=True, null=True,
+        help_text=_('Folosit pentru gruparea pe pagina publică Arbitri (internaționali/naționali).')
+    )
     
     # Documents
     profile_image = models.ImageField(
