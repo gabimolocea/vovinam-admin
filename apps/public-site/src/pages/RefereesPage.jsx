@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
+import Seo from '../components/Seo';
 
 export default function RefereesPage() {
   const [international, setInternational] = useState([]);
@@ -57,6 +58,11 @@ export default function RefereesPage() {
 
   return (
     <div className="flex flex-col gap-10">
+      <Seo
+        title="Arbitri"
+        description="Arbitrii internaționali și naționali acreditați de Federația Română de Vovinam Việt Võ Đạo."
+        path="/arbitri"
+      />
       <h1 className="font-display text-3xl font-semibold">Arbitri</h1>
 
       {error && <Alert variant="destructive">{error}</Alert>}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
+import Seo from '../components/Seo';
 
 /**
  * Renders a category of DocumentPage records ('regulament' or 'documente').
@@ -36,6 +37,11 @@ export default function DocumentsPage({ category, title }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <Seo
+        title={title}
+        description={`${title} - Federația Română de Vovinam Việt Võ Đạo.`}
+        path={`/${category}`}
+      />
       <h1 className="font-display text-3xl font-semibold">{title}</h1>
 
       {error && <Alert variant="destructive">{error}</Alert>}

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://vovinam.ro/sitemap.xml

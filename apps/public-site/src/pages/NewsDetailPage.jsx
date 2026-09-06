@@ -4,6 +4,8 @@ import { ArrowLeft } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Badge, Skeleton } from '../components/ui';
 import Lightbox from '../components/Lightbox';
+import Seo, { newsArticleJsonLd } from '../components/Seo';
+import { excerpt, DEFAULT_OG_IMAGE } from '../lib/seo';
 
 function formatDate(value) {
   if (!value) return '';
@@ -55,6 +57,14 @@ export default function NewsDetailPage() {
 
   return (
     <article className="flex flex-col gap-6">
+      <Seo
+        title={post.title}
+        description={excerpt(post.content)}
+        path={`/noutati/${slug}`}
+        image={post.featured_image || DEFAULT_OG_IMAGE}
+        type="article"
+        jsonLd={newsArticleJsonLd(post, `/noutati/${slug}`)}
+      />
       <Link to="/noutati" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" />Înapoi la noutăți
       </Link>

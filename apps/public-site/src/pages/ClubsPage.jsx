@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
+import Seo from '../components/Seo';
 
 export default function ClubsPage() {
   const [clubs, setClubs] = useState([]);
@@ -31,6 +32,11 @@ export default function ClubsPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <Seo
+        title="Cluburi afiliate"
+        description="Lista cluburilor sportive afiliate Federației Române de Vovinam Việt Võ Đạo, cu antrenori și localizare."
+        path="/cluburi"
+      />
       <h1 className="font-display text-3xl font-semibold">Cluburi afiliate</h1>
 
       {error && <Alert variant="destructive">{error}</Alert>}

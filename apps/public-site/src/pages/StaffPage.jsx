@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
+import Seo from '../components/Seo';
 
 export default function StaffPage() {
   const [council, setCouncil] = useState([]);
@@ -58,6 +59,11 @@ export default function StaffPage() {
 
   return (
     <div className="flex flex-col gap-10">
+      <Seo
+        title="Staff federație"
+        description="Consiliul actual și titlurile de Maestru acordate de Ministerul Sportului în cadrul Federației Române de Vovinam Việt Võ Đạo."
+        path="/staff"
+      />
       <h1 className="font-display text-3xl font-semibold">Staff federație</h1>
 
       {error && <Alert variant="destructive">{error}</Alert>}

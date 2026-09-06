@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Button, Card, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
 import { toEmbedUrl } from '../lib/video';
+import Seo from '../components/Seo';
 
 export default function VideosPage() {
   const [videos, setVideos] = useState([]);
@@ -37,6 +38,11 @@ export default function VideosPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <Seo
+        title="Video"
+        description="Materiale video oficiale ale Federației Române de Vovinam Việt Võ Đạo: competiții, seminarii și demonstrații."
+        path="/video"
+      />
       <h1 className="font-display text-3xl font-semibold">Video</h1>
 
       {error && <Alert variant="destructive">{error}</Alert>}

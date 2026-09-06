@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { CalendarDays, MapPin } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
+import Seo from '../components/Seo';
 
 const EVENT_TYPE_LABELS = {
   competition: 'Competiție',
@@ -58,6 +59,11 @@ export default function EventsCalendarPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <Seo
+        title="Competiții și evenimente"
+        description="Calendarul competițiilor, examenelor și seminariilor de pregătire organizate de Federația Română de Vovinam Việt Võ Đạo."
+        path="/competitii"
+      />
       <div>
         <h1 className="font-display text-3xl font-semibold">Competiții și evenimente</h1>
         <p className="mt-1 text-sm text-muted-foreground">Toate competițiile, examenele și stagiile organizate de federație, trecute și viitoare.</p>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
+import Seo from '../components/Seo';
 
 export default function AboutPage() {
   const [sections, setSections] = useState([]);
@@ -31,6 +32,11 @@ export default function AboutPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <Seo
+        title="Despre noi"
+        description="Despre Federația Română de Vovinam Việt Võ Đạo: istorie, misiune și structura federației."
+        path="/despre"
+      />
       <h1 className="font-display text-3xl font-semibold">Despre noi</h1>
 
       {error && <Alert variant="destructive">{error}</Alert>}

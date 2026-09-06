@@ -4,6 +4,7 @@ import { CalendarDays, MapPin, PlayCircle } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton } from '../components/ui';
 import { toEmbedUrl } from '../lib/video';
+import Seo, { organizationJsonLd } from '../components/Seo';
 
 function formatDate(value) {
   if (!value) return '';
@@ -64,6 +65,7 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col gap-12">
+      <Seo path="/" jsonLd={organizationJsonLd()} />
       <section className="text-center">
         <h1 className="font-display text-4xl font-semibold text-foreground">Vovinam Việt Võ Đạo România</h1>
         <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">

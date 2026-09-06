@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Input, Skeleton } from '../components/ui';
+import Seo from '../components/Seo';
 
 function formatDate(value) {
   if (!value) return '';
@@ -50,6 +51,11 @@ export default function NewsListPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <Seo
+        title="Noutăți"
+        description="Cele mai recente noutăți, comunicate și anunțuri ale Federației Române de Vovinam Việt Võ Đạo."
+        path="/noutati"
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-3xl font-semibold">Noutăți</h1>
         <form

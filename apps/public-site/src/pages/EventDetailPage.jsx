@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, MapPin } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Badge, Skeleton } from '../components/ui';
+import Seo, { sportsEventJsonLd } from '../components/Seo';
+import { excerpt, DEFAULT_OG_IMAGE } from '../lib/seo';
 
 const EVENT_TYPE_LABELS = {
   competition: 'Competiție',
@@ -69,6 +71,14 @@ export default function EventDetailPage() {
 
   return (
     <article className="flex flex-col gap-6">
+      <Seo
+        title={event.title}
+        description={event.description ? excerpt(event.description) : `${EVENT_TYPE_LABELS[event.event_type] || 'Eveniment'} organizat de Federația Română de Vovinam Việt Võ Đạo.`}
+        path={`/competitii/${slug}`}
+        image={event.featured_image || DEFAULT_OG_IMAGE}
+        type="article"
+        jsonLd={sportsEventJsonLd(event, `/competitii/${slug}`)}
+      />
       <Link to="/competitii" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" />Înapoi la competiții
       </Link>
