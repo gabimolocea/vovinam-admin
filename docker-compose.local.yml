@@ -49,6 +49,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-frvv_local_password}
       LOCAL_BACKUP_INTERVAL_MINUTES: ${LOCAL_BACKUP_INTERVAL_MINUTES:-15}
       LOCAL_BACKUP_RETENTION_COUNT: ${LOCAL_BACKUP_RETENTION_COUNT:-200}
+      CLOUD_SYNC_BASE_URL: ${CLOUD_SYNC_BASE_URL:-}
+      CLOUD_SYNC_USERNAME: ${CLOUD_SYNC_USERNAME:-}
+      CLOUD_SYNC_PASSWORD: ${CLOUD_SYNC_PASSWORD:-}
     volumes:
       - frvv_local_media:/app/media
       - frvv_local_backups:/app/local_backups

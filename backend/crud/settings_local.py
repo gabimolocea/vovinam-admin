@@ -64,6 +64,16 @@ LOCAL_BACKUP_INTERVAL_MINUTES = int(os.environ.get('LOCAL_BACKUP_INTERVAL_MINUTE
 # How many snapshots to keep before pruning the oldest ones (disk safety net).
 LOCAL_BACKUP_RETENTION_COUNT = int(os.environ.get('LOCAL_BACKUP_RETENTION_COUNT', '200'))
 
+# --- Optional: pull a fresh event pack directly from the cloud instance ---
+# When set, the "Resincronizează din cloud" button in SyncCenterPage can fetch
+# an up-to-date event pack (e.g. after adding a brand-new athlete/category in
+# cloud mid-event) without the operator manually downloading/uploading a file.
+# Leave these empty to disable the feature (the button then explains that a
+# manual file export/import is needed instead).
+CLOUD_SYNC_BASE_URL = os.environ.get('CLOUD_SYNC_BASE_URL', '')
+CLOUD_SYNC_USERNAME = os.environ.get('CLOUD_SYNC_USERNAME', '')
+CLOUD_SYNC_PASSWORD = os.environ.get('CLOUD_SYNC_PASSWORD', '')
+
 # Debug toolbar is noisy and unnecessary on the venue server.
 if 'debug_toolbar' in INSTALLED_APPS:
     INSTALLED_APPS.remove('debug_toolbar')

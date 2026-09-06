@@ -146,8 +146,8 @@ pasul 2, de ex. `192.168.1.50`):
 3. Apasă **„2. Marchează operarea locală"**.
 4. Deschide aplicația **locală** (`http://localhost:5173` sau
    `http://<LAN_HOST>:5173`), intră în evenimentul importat local, tab
-   Sincronizare → **„Importă event pack"** → alege fișierul descărcat la
-   pasul 2.
+   Sincronizare → secțiunea **„Acest server local (import event pack)"** →
+   **„Importă event pack (fișier)"** → alege fișierul descărcat la pasul 2.
 
 De acum, laptopul din sală are toate datele necesare și e complet
 independent de internet.
@@ -200,10 +200,20 @@ datele **înapoi** în cloud la final:
 - **Opțiune recomandată, dacă ai puțin internet (chiar și de pe telefon,
   câteva minute):** adaugă rapid sportivul nou (sau categoria nouă) direct
   în aplicația **cloud** — se poate face oricând, editarea unui sportiv nu
-  e blocată de sincronizare. Apoi refă exportul din cloud (pasul „1. Exportă
-  event pack") și reimportă-l în laptopul local — e sigur să repeți acest
-  pas oricând în timpul competiției, nu se pierde nimic din ce ai lucrat deja
-  local.
+  e blocată de sincronizare. Apoi, din aplicația **locală**, tab
+  Sincronizare → secțiunea **„Acest server local"** → apasă
+  **„Resincronizează din cloud"**. Cu un singur click, laptopul din sală
+  preia automat cea mai recentă versiune din cloud (fără să mai descarci/
+  încarci manual niciun fișier) și o importă. E sigur să repeți acest pas
+  oricând în timpul competiției — nu se pierde nimic din ce ai lucrat deja
+  local (meciuri, scoruri introduse rămân neatinse), iar înainte de import
+  se salvează automat un backup de siguranță.
+  - Butonul „Resincronizează din cloud" trebuie configurat o singură dată de
+    partea tehnică (🔧), completând `CLOUD_SYNC_BASE_URL`,
+    `CLOUD_SYNC_USERNAME` și `CLOUD_SYNC_PASSWORD` în `.env.local` (vezi
+    `.env.local.example`). Dacă nu e configurat, folosește varianta manuală
+    de mai jos (descarcă fișierul din cloud, apoi „Importă event pack
+    (fișier)" pe laptopul local).
 - **Dacă nu ai deloc internet:** continuă normal, adaugă sportivul/categoria
   direct local și lucrează cu ei toată ziua. La final, când te reconectezi la
   internet, **adaugă manual acel sportiv/acea categorie și în cloud** (ca de

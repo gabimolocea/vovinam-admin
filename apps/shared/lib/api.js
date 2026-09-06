@@ -377,6 +377,7 @@ export const offlineAPI = {
   competitionPack: (params) => api.get('/offline/competition-pack/', { params }),
   eventPack: (eventId) => api.get('/offline/event-pack/', { params: { event_id: eventId } }),
   importEventPack: (payload) => api.post('/offline/event-pack/import/', payload),
+  pullEventPackFromCloud: (eventId) => api.post('/offline/event-pack/pull-from-cloud/', { event_id: eventId }),
   eventResults: (eventId) => api.get('/offline/event-results/', { params: { event_id: eventId } }),
   importEventResults: (payload) => api.post('/offline/event-results/import/', payload),
   uploadResults: (data) => api.post('/offline/results/', data),

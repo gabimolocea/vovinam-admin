@@ -80,6 +80,46 @@ class OfflineSyncViewSet(viewsets.ViewSet):
             detail = getattr(exc, 'message_dict', None) or getattr(exc, 'detail', None) or str(exc)
             return Response({'detail': detail}, status=400)
 
+    @action(detail=False, methods=['post'], url_path='event-pack/pull-from-cloud')
+    def pull_event_pack_from_cloud(self, request):
+        """Re-fetch an event pack directly from the cloud instance and import it.
+
+        Only meaningful on the local venue server: lets an operator who just
+        added a brand-new athlete/category in cloud (while briefly online)
+        bring it down with one click, instead of a manual file export/import.
+        """
+        if not getattr(settings, 'IS_LOCAL_EVENT_SERVER', False):
+            return Response(
+                {'detail': 'Disponibil doar pe serverul local al competiției.'},
+                status=404,
+            )
+
+        event_id = request.data.get('event_id')
+        if not event_id:
+            return Response({'detail': 'event_id este obligatoriu.'}, status=400)
+
+        from ..sync.pull_from_cloud import (
+            CloudSyncError,
+            CloudSyncNotConfigured,
+            fetch_event_pack_from_cloud,
+        )
+
+        try:
+            payload = fetch_event_pack_from_cloud(int(event_id))
+        except CloudSyncNotConfigured as exc:
+            return Response({'detail': str(exc)}, status=400)
+        except CloudSyncError as exc:
+            return Response({'detail': str(exc)}, status=502)
+
+        _safety_backup_before_risky_action('pre_import')
+        try:
+            from ..sync.import_event_pack import import_event_pack
+
+            return Response(import_event_pack(payload), status=200)
+        except (DjangoValidationError, ValidationError) as exc:
+            detail = getattr(exc, 'message_dict', None) or getattr(exc, 'detail', None) or str(exc)
+            return Response({'detail': detail}, status=400)
+
     @action(detail=False, methods=['get'], url_path='event-results')
     def event_results(self, request):
         event_id = request.query_params.get('event_id')
