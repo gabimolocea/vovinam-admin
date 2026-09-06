@@ -52,6 +52,11 @@ export default function ClubsPage() {
                 <CardTitle as="h2" className="text-lg">{club.name}</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-1 text-sm text-muted-foreground">
+                {club.coaches?.length > 0 && (
+                  <span className="font-medium text-brand-navy">
+                    Antrenor{club.coaches.length > 1 ? 'i' : ''}: {club.coaches.join(', ')}
+                  </span>
+                )}
                 {club.city && <span>{club.city}</span>}
                 {club.address && <span>{club.address}</span>}
                 {club.mobile_number && <span>{club.mobile_number}</span>}

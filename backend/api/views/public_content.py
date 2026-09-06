@@ -118,13 +118,18 @@ class PublicEventDetailSerializer(PublicEventSerializer):
 
 
 class PublicClubSerializer(serializers.ModelSerializer):
-    """Public federation directory entry - business/contact info only, no
-    athlete/coach personal data (see PublicStaffSerializer for staff)."""
+    """Public federation directory entry - business/contact info only, plus
+    the coach's public name (no other athlete/coach personal data - see
+    PublicStaffSerializer for staff)."""
     city = serializers.CharField(source='city.name', read_only=True, default='')
+    coaches = serializers.SerializerMethodField()
 
     class Meta:
         model = Club
-        fields = ['name', 'logo', 'city', 'address', 'mobile_number', 'website']
+        fields = ['name', 'logo', 'city', 'address', 'mobile_number', 'website', 'coaches']
+
+    def get_coaches(self, obj):
+        return [f'{coach.first_name} {coach.last_name}'.strip() for coach in obj.coaches.all()]
 
 
 class PublicStaffSerializer(serializers.ModelSerializer):
@@ -300,7 +305,7 @@ class PublicClubViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
 
     def list(self, request):
-        queryset = Club.objects.select_related('city').order_by('display_order', 'name')
+        queryset = Club.objects.select_related('city').prefetch_related('coaches').order_by('display_order', 'name')
         serializer = PublicClubSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
