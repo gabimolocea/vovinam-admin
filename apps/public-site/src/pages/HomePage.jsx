@@ -30,8 +30,23 @@ export default function HomePage() {
           publicContentAPI.events.upcoming(),
         ]);
         if (!isMounted) return;
-        setNews(newsResponse.data?.results ?? []);
-        setVideos(videosResponse.data?.results ?? []);
+        let newsResults = newsResponse.data?.results ?? [];
+        let videosResults = videosResponse.data?.results ?? [];
+        // Fallback to the latest published items when nothing has been marked
+        // "featured" yet in admin (e.g. right after a fresh content import),
+        // so the homepage isn't empty while content curation catches up.
+        if (newsResults.length === 0) {
+          const latestNews = await publicContentAPI.news.list({ page_size: 4 });
+          if (!isMounted) return;
+          newsResults = latestNews.data?.results ?? [];
+        }
+        if (videosResults.length === 0) {
+          const latestVideos = await publicContentAPI.videos.list({ page_size: 2 });
+          if (!isMounted) return;
+          videosResults = latestVideos.data?.results ?? [];
+        }
+        setNews(newsResults);
+        setVideos(videosResults);
         setNextEvent(eventsResponse.data?.[0] ?? null);
       } catch {
         if (!isMounted) return;
