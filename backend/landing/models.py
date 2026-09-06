@@ -288,6 +288,44 @@ class Video(models.Model):
         return self.title
 
 
+class DocumentPage(models.Model):
+    """A downloadable/linkable document for the public site (e.g. the
+    competition regulation, or official federation documents). Backs the
+    'Regulament' and 'Documente' public nav items - both share this single
+    model, distinguished by `category`, to avoid two near-duplicate models."""
+    CATEGORY_CHOICES = [
+        ('regulament', _('Regulament')),
+        ('documente', _('Documente')),
+    ]
+
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True, help_text="URL-friendly version of the title")
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='documente')
+    description = CKEditor5Field('Description', config_name='default', blank=True)
+    file = models.FileField(
+        upload_to='documents/',
+        blank=True,
+        null=True,
+        help_text="PDF or other downloadable document",
+    )
+    external_url = models.URLField(
+        blank=True,
+        help_text="Use instead of/alongside 'file' if the document is hosted elsewhere",
+    )
+    published = models.BooleanField(default=False)
+    order = models.IntegerField(default=0, help_text="Order in which documents appear within their category")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['category', 'order', '-created_at']
+        verbose_name = _('Document')
+        verbose_name_plural = _('Documents')
+
+    def __str__(self):
+        return self.title
+
+
 class ContactMessage(models.Model):
     PRIORITY_CHOICES = [
         ('low', 'Low'),

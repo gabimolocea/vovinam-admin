@@ -8,6 +8,10 @@ from .views.public_content import (
     PublicAboutViewSet,
     PublicContactViewSet,
     PublicEventViewSet,
+    PublicClubViewSet,
+    PublicStaffViewSet,
+    PublicRefereeViewSet,
+    PublicDocumentViewSet,
 )
 from rest_framework.routers import DefaultRouter
 
@@ -145,6 +149,13 @@ urlpatterns = autocomplete_urlpatterns + [
     path('public/about/', PublicAboutViewSet.as_view({'get': 'list'}), name='public-about-list'),
     path('public/contact/', PublicContactViewSet.as_view({'post': 'create'}), name='public-contact-create'),
     path('public/events/upcoming/', PublicEventViewSet.as_view({'get': 'upcoming'}), name='public-events-upcoming'),
+
+    # Federation directory pages, backing the 'Federație' and 'Competiție'
+    # dropdown nav items (full menu parity with the live vovinam.ro site).
+    path('public/clubs/', PublicClubViewSet.as_view({'get': 'list'}), name='public-clubs-list'),
+    path('public/staff/', PublicStaffViewSet.as_view({'get': 'list'}), name='public-staff-list'),
+    path('public/referees/', PublicRefereeViewSet.as_view({'get': 'list'}), name='public-referees-list'),
+    path('public/documents/', PublicDocumentViewSet.as_view({'get': 'list'}), name='public-documents-list'),
 
     # Router URLs (should come last to avoid conflicts)
     path('', include(router.urls)),  # This will handle the actual endpoints including athletes CRUD

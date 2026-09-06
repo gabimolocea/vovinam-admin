@@ -30,7 +30,10 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from landing.models import AboutSection, ContactMessage, Event, NewsPost, NewsPostGallery, Video
+from api.models import Athlete, Club
+from landing.models import (
+    AboutSection, ContactMessage, DocumentPage, Event, NewsPost, NewsPostGallery, Video,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +105,55 @@ class PublicEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ['title', 'slug', 'event_type', 'start_date', 'end_date', 'address', 'city']
+
+
+class PublicClubSerializer(serializers.ModelSerializer):
+    """Public federation directory entry - business/contact info only, no
+    athlete/coach personal data (see PublicStaffSerializer for staff)."""
+    city = serializers.CharField(source='city.name', read_only=True, default='')
+
+    class Meta:
+        model = Club
+        fields = ['name', 'logo', 'city', 'address', 'mobile_number', 'website']
+
+
+class PublicStaffSerializer(serializers.ModelSerializer):
+    """Federation staff/leadership directory ('Staff' nav item) - built from
+    Athlete records that have a federation_role assigned. Deliberately
+    exposes only public-safe fields: name, role/title, club, photo. Never
+    CNP, phone, medical certificate, address, etc."""
+    full_name = serializers.SerializerMethodField()
+    federation_role = serializers.CharField(source='federation_role.name', read_only=True, default='')
+    title = serializers.CharField(source='title.name', read_only=True, default='')
+    club = serializers.CharField(source='club.name', read_only=True, default='')
+
+    class Meta:
+        model = Athlete
+        fields = ['full_name', 'federation_role', 'title', 'club', 'profile_image']
+
+    def get_full_name(self, obj):
+        return f'{obj.first_name} {obj.last_name}'.strip()
+
+
+class PublicRefereeSerializer(serializers.ModelSerializer):
+    """Referee directory ('Arbitri' nav item) - Athlete records flagged
+    is_referee=True. Same public-safe field restriction as staff."""
+    full_name = serializers.SerializerMethodField()
+    title = serializers.CharField(source='title.name', read_only=True, default='')
+    club = serializers.CharField(source='club.name', read_only=True, default='')
+
+    class Meta:
+        model = Athlete
+        fields = ['full_name', 'title', 'club', 'profile_image']
+
+    def get_full_name(self, obj):
+        return f'{obj.first_name} {obj.last_name}'.strip()
+
+
+class PublicDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DocumentPage
+        fields = ['title', 'slug', 'category', 'description', 'file', 'external_url', 'order', 'created_at']
 
 
 # ---------------------------------------------------------------------------
@@ -208,4 +260,59 @@ class PublicEventViewSet(viewsets.ViewSet):
             status='upcoming', start_date__gt=timezone.now()
         ).select_related('city').order_by('start_date')
         serializer = PublicEventSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class PublicClubViewSet(viewsets.ViewSet):
+    """GET /api/public/clubs/ - federation club directory ('Cluburi' nav item)."""
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        queryset = Club.objects.select_related('city').order_by('display_order', 'name')
+        serializer = PublicClubSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class PublicStaffViewSet(viewsets.ViewSet):
+    """GET /api/public/staff/ - federation staff/leadership directory
+    ('Staff' nav item). Only approved athletes with a federation_role."""
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        queryset = (
+            Athlete.objects.filter(status='approved')
+            .exclude(federation_role=None)
+            .select_related('federation_role', 'title', 'club')
+            .order_by('last_name', 'first_name')
+        )
+        serializer = PublicStaffSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class PublicRefereeViewSet(viewsets.ViewSet):
+    """GET /api/public/referees/ - federation referee directory
+    ('Arbitri' nav item). Only approved athletes flagged is_referee=True."""
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        queryset = (
+            Athlete.objects.filter(status='approved', is_referee=True)
+            .select_related('title', 'club')
+            .order_by('last_name', 'first_name')
+        )
+        serializer = PublicRefereeSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class PublicDocumentViewSet(viewsets.ViewSet):
+    """GET /api/public/documents/?category=regulament|documente - published
+    documents, backing both the 'Regulament' and 'Documente' nav items."""
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        queryset = DocumentPage.objects.filter(published=True).order_by('order', '-created_at')
+        category = request.query_params.get('category')
+        if category:
+            queryset = queryset.filter(category=category)
+        serializer = PublicDocumentSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)

@@ -13,6 +13,7 @@ from .models import (
     ContactInfoProxy,
     ContactMessageProxy,
     Video,
+    DocumentPage,
 )
 
 class NewsPostGalleryInline(admin.TabularInline):
@@ -199,6 +200,29 @@ class VideoAdmin(admin.ModelAdmin):
 
 
 admin.site.register(Video, VideoAdmin)
+
+
+class DocumentPageAdmin(admin.ModelAdmin):
+    list_display = ['title', 'category', 'published', 'order', 'created_at', 'updated_at']
+    list_filter = ['category', 'published', 'created_at']
+    search_fields = ['title', 'description']
+    prepopulated_fields = {'slug': ('title',)}
+    ordering = ['category', 'order', '-created_at']
+
+    fieldsets = (
+        (_('Informații document'), {
+            'fields': ('title', 'slug', 'category', 'description')
+        }),
+        (_('Fișier'), {
+            'fields': ('file', 'external_url')
+        }),
+        (_('Setări publicare'), {
+            'fields': ('published', 'order')
+        }),
+    )
+
+
+admin.site.register(DocumentPage, DocumentPageAdmin)
 
 
 # Keep the existing ContactMessage and ContactInfo admin classes...

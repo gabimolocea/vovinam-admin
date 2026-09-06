@@ -1,12 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink } from 'react-router-dom';
 
+// Full menu parity with the live vovinam.ro nav: Acasă / Noutăți / Evenimente
+// / Federație (dropdown) / Competiție (dropdown), plus Video and Contact -
+// two top-level items that don't exist on the live WP site but were kept
+// here since they were explicit, already-built Etapa 1 deliverables (see
+// PR #6 description for the full note on this decision).
 const NAV_LINKS = [
   { to: '/', label: 'Acasă', end: true },
   { to: '/noutati', label: 'Noutăți' },
   { to: '/video', label: 'Video' },
   { to: '/competitii', label: 'Evenimente' },
-  { to: '/despre', label: 'Despre' },
+  {
+    label: 'Federație',
+    children: [
+      { to: '/despre', label: 'Despre' },
+      { to: '/cluburi', label: 'Cluburi' },
+      { to: '/staff', label: 'Staff' },
+      { to: '/arbitri', label: 'Arbitri' },
+    ],
+  },
+  {
+    label: 'Competiție',
+    children: [
+      { to: '/regulament', label: 'Regulament' },
+      { to: '/documente', label: 'Documente' },
+    ],
+  },
   { to: '/contact', label: 'Contact' },
 ];
 
@@ -15,7 +35,100 @@ function desktopLinkClassName({ isActive }) {
 }
 
 function mobileLinkClassName({ isActive }) {
-  return `site-mobile-link block px-6 py-4 text-2xl ${isActive ? 'is-active' : ''}`;
+  return `site-mobile-link block px-6 py-3 text-xl ${isActive ? 'is-active' : ''}`;
+}
+
+function DesktopNavItem({ item }) {
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef(null);
+
+  if (!item.children) {
+    return (
+      <NavLink to={item.to} end={item.end} className={desktopLinkClassName}>
+        {item.label}
+      </NavLink>
+    );
+  }
+
+  function handleEnter() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpen(true);
+  }
+
+  function handleLeave() {
+    closeTimer.current = setTimeout(() => setOpen(false), 150);
+  }
+
+  return (
+    <div className="relative" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+      <button
+        type="button"
+        className="site-nav-link inline-flex h-9 items-center gap-1 px-3"
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {item.label}
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M1.5 4L6 8l4.5-4" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </button>
+      {open && (
+        <div className="site-submenu absolute left-0 top-full z-50 flex min-w-[10rem] flex-col py-2">
+          {item.children.map((child) => (
+            <NavLink
+              key={child.to}
+              to={child.to}
+              className="site-submenu-link px-4 py-2"
+              onClick={() => setOpen(false)}
+            >
+              {child.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MobileNavItem({ item, onNavigate }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!item.children) {
+    return (
+      <NavLink to={item.to} end={item.end} className={mobileLinkClassName} onClick={onNavigate}>
+        {item.label}
+      </NavLink>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        className="site-mobile-link flex w-full items-center justify-between px-6 py-3 text-xl"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {item.label}
+        <span aria-hidden="true">{expanded ? '−' : '+'}</span>
+      </button>
+      {expanded && (
+        <div className="flex flex-col">
+          {item.children.map((child) => (
+            <NavLink
+              key={child.to}
+              to={child.to}
+              className="site-mobile-link px-10 py-2 text-base"
+              onClick={onNavigate}
+            >
+              {child.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Layout() {
@@ -52,10 +165,8 @@ export default function Layout() {
           </Link>
 
           <nav className="hidden flex-1 items-center justify-end gap-1 md:flex" aria-label="Navigație principală">
-            {NAV_LINKS.map((link) => (
-              <NavLink key={link.to} to={link.to} end={link.end} className={desktopLinkClassName}>
-                {link.label}
-              </NavLink>
+            {NAV_LINKS.map((item) => (
+              <DesktopNavItem key={item.label} item={item} />
             ))}
           </nav>
 
@@ -87,16 +198,8 @@ export default function Layout() {
             </button>
           </div>
           <nav className="flex flex-1 flex-col justify-center" aria-label="Navigație mobilă">
-            {NAV_LINKS.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.end}
-                className={mobileLinkClassName}
-                onClick={() => setMobileOpen(false)}
-              >
-                {link.label}
-              </NavLink>
+            {NAV_LINKS.map((item) => (
+              <MobileNavItem key={item.label} item={item} onNavigate={() => setMobileOpen(false)} />
             ))}
           </nav>
         </div>
