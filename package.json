@@ -7,13 +7,14 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n admin,enroll,coach,referee,display,registry -c blue,green,magenta,yellow,cyan,white \"npm:dev:admin\" \"npm:dev:enroll\" \"npm:dev:coach\" \"npm:dev:referee\" \"npm:dev:display\" \"npm:dev:registry\"",
+    "dev": "concurrently -k -n admin,enroll,coach,referee,display,registry,site -c blue,green,magenta,yellow,cyan,white,gray \"npm:dev:admin\" \"npm:dev:enroll\" \"npm:dev:coach\" \"npm:dev:referee\" \"npm:dev:display\" \"npm:dev:registry\" \"npm:dev:site\"",
     "dev:admin": "npm run dev --workspace @vovinam/competition-admin",
     "dev:enroll": "npm run dev --workspace @vovinam/athlete-enrollment",
     "dev:coach": "npm run dev --workspace @vovinam/coach-dashboard",
     "dev:referee": "npm run dev --workspace @vovinam/referee-scoring",
     "dev:display": "npm run dev --workspace @vovinam/public-display",
     "dev:registry": "npm run dev --workspace @vovinam/public-registry",
+    "dev:site": "npm run dev --workspace @vovinam/public-site",
     "build": "npm run build --workspaces --if-present",
     "build:admin": "npm run build --workspace @vovinam/competition-admin",
     "build:enroll": "npm run build --workspace @vovinam/athlete-enrollment",
@@ -21,6 +22,7 @@
     "build:referee": "npm run build --workspace @vovinam/referee-scoring",
     "build:display": "npm run build --workspace @vovinam/public-display",
     "build:registry": "npm run build --workspace @vovinam/public-registry",
+    "build:site": "npm run build --workspace @vovinam/public-site",
     "preview": "npm run preview --workspaces --if-present",
     "lint": "eslint \"apps/*/src/**/*.{js,jsx}\"",
     "lint:fix": "eslint \"apps/*/src/**/*.{js,jsx}\" --fix",
