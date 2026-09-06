@@ -308,18 +308,20 @@ class PublicClubViewSet(viewsets.ViewSet):
 
 class PublicStaffViewSet(viewsets.ViewSet):
     """GET /api/public/staff/ - federation staff/leadership directory
-    ('Staff' nav item). Only approved athletes with a federation_role."""
+    ('Staff' nav item). Mirrors the two sections on the live vovinam.ro
+    staff page: the current council (athletes with a federation_role) and
+    the Ministry-of-Sport-awarded 'Maestru' title holders (athletes with a
+    title, whether or not they also sit on the council)."""
     permission_classes = [AllowAny]
 
     def list(self, request):
-        queryset = (
-            Athlete.objects.filter(status='approved')
-            .exclude(federation_role=None)
-            .select_related('federation_role', 'title', 'club')
-            .order_by('last_name', 'first_name')
-        )
-        serializer = PublicStaffSerializer(queryset, many=True, context={'request': request})
-        return Response(serializer.data)
+        base = Athlete.objects.filter(status='approved').select_related('federation_role', 'title', 'club')
+        council = base.exclude(federation_role=None).order_by('last_name', 'first_name')
+        masters = base.exclude(title=None).order_by('last_name', 'first_name')
+        return Response({
+            'council': PublicStaffSerializer(council, many=True, context={'request': request}).data,
+            'masters': PublicStaffSerializer(masters, many=True, context={'request': request}).data,
+        })
 
 
 class PublicRefereeViewSet(viewsets.ViewSet):
