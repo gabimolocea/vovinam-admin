@@ -381,3 +381,25 @@ export const offlineAPI = {
   importEventResults: (payload) => api.post('/offline/event-results/import/', payload),
   uploadResults: (data) => api.post('/offline/results/', data),
 };
+
+// ── Public site content (news, videos, about, contact, upcoming events) ──
+// These map to the unauthenticated `/api/public/*` endpoints used by the
+// new public-facing site (apps/public-site) that replaces vovinam.ro.
+export const publicContentAPI = {
+  news: {
+    list: (params) => api.get('/public/news/', { params }),
+    get: (slug) => api.get(`/public/news/${slug}/`),
+  },
+  videos: {
+    list: (params) => api.get('/public/videos/', { params }),
+  },
+  about: {
+    list: () => api.get('/public/about/'),
+  },
+  contact: {
+    submit: (data) => api.post('/public/contact/', data),
+  },
+  events: {
+    upcoming: () => api.get('/public/events/upcoming/'),
+  },
+};
