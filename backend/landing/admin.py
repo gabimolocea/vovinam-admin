@@ -12,6 +12,8 @@ from .models import (
     NewsComment,
     ContactInfoProxy,
     ContactMessageProxy,
+    Video,
+    DocumentPage,
 )
 
 class NewsPostGalleryInline(admin.TabularInline):
@@ -173,6 +175,55 @@ class AboutSectionAdmin(admin.ModelAdmin):
             'fields': ('order', 'is_active')
         }),
     )
+
+class VideoAdmin(admin.ModelAdmin):
+    list_display = ['title', 'published', 'featured', 'thumbnail_preview', 'created_at', 'updated_at']
+    list_filter = ['published', 'featured', 'created_at']
+    search_fields = ['title', 'description', 'url']
+    prepopulated_fields = {'slug': ('title',)}
+    ordering = ['-created_at']
+
+    fieldsets = (
+        (_('Informații video'), {
+            'fields': ('title', 'slug', 'url', 'thumbnail', 'description')
+        }),
+        (_('Setări publicare'), {
+            'fields': ('published', 'featured')
+        }),
+    )
+
+    def thumbnail_preview(self, obj):
+        if obj.thumbnail:
+            return format_html('<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />', obj.thumbnail.url)
+        return _('Fără miniatură')
+    thumbnail_preview.short_description = _('Previzualizare')
+
+
+admin.site.register(Video, VideoAdmin)
+
+
+class DocumentPageAdmin(admin.ModelAdmin):
+    list_display = ['title', 'category', 'published', 'order', 'created_at', 'updated_at']
+    list_filter = ['category', 'published', 'created_at']
+    search_fields = ['title', 'description']
+    prepopulated_fields = {'slug': ('title',)}
+    ordering = ['category', 'order', '-created_at']
+
+    fieldsets = (
+        (_('Informații document'), {
+            'fields': ('title', 'slug', 'category', 'description')
+        }),
+        (_('Fișier'), {
+            'fields': ('file', 'external_url')
+        }),
+        (_('Setări publicare'), {
+            'fields': ('published', 'order')
+        }),
+    )
+
+
+admin.site.register(DocumentPage, DocumentPageAdmin)
+
 
 # Keep the existing ContactMessage and ContactInfo admin classes...
 class ContactMessageAdmin(admin.ModelAdmin):
