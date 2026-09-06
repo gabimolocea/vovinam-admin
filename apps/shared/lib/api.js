@@ -40,6 +40,11 @@ export const authAPI = {
   register: (data) => api.post('/auth/register-enhanced/', data),
 };
 
+// ── Onboarding (post-registration: choose role, then complete profile) ──
+export const onboardingAPI = {
+  setRole: (role) => api.post('/onboarding/role/', { role }),
+};
+
 // ── Competitions / Events ─────────────────────────────
 export const competitionAPI = {
   list: (params) => api.get('/competitions/', { params }),
@@ -99,6 +104,8 @@ export const athleteAPI = {
   create: (data) => api.post('/athletes/', data),
   update: (id, data) => api.patch(`/athletes/${id}/`, data),
   myProfile: () => api.get('/athletes/my-profile/'),
+  createMyProfile: (data) => api.post('/athletes/my-profile/', data),
+  updateMyProfile: (data) => api.put('/athletes/my-profile/', data),
   approve: (id) => api.post(`/athletes/${id}/approve/`),
   process: (id, data) => api.post(`/athletes/${id}/process_application/`, data),
 };

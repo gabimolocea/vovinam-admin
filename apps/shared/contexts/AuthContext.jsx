@@ -44,6 +44,24 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  const register = async ({ email, password, passwordConfirm }) => {
+    const { data } = await authAPI.register({
+      email,
+      password,
+      password_confirm: passwordConfirm ?? password,
+    });
+    const access = data.tokens?.access || data.access;
+    const refresh = data.tokens?.refresh || data.refresh;
+    if (access) localStorage.setItem('authToken', access);
+    if (refresh) localStorage.setItem('refreshToken', refresh);
+    if (data.user) {
+      setUser(data.user);
+    } else {
+      await fetchUser();
+    }
+    return data;
+  };
+
   const logout = async () => {
     try {
       await authAPI.logout();
@@ -59,6 +77,7 @@ export function AuthProvider({ children }) {
     user,
     loading,
     login,
+    register,
     logout,
     refetchUser: fetchUser,
     isAdmin: user?.role === 'admin' || user?.is_admin === true || user?.is_staff === true || user?.is_superuser === true,

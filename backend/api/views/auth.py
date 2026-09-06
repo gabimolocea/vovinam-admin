@@ -16,6 +16,7 @@ from ..models import *
 from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
+from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 from django.core.files.base import ContentFile
 import logging
@@ -176,3 +177,36 @@ class UserProfileView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class OnboardingRoleView(APIView):
+    """Step 2 of the public onboarding wizard: choose account type.
+
+    POST body: {"role": "athlete" | "supporter"}. Deliberately whitelists
+    only these two values server-side - 'admin' is never accepted here,
+    admin accounts are only ever created via Django admin.
+
+    - 'supporter': no athlete profile needed, onboarding is complete
+      immediately (profile_completed=True).
+    - 'athlete': profile_completed stays False until the athlete profile
+      itself is submitted via POST /api/athletes/my-profile/ (which also
+      covers coaches - see AthleteViewSet.my_profile).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    ALLOWED_ROLES = ('athlete', 'supporter')
+
+    def post(self, request):
+        role = request.data.get('role')
+        if role not in self.ALLOWED_ROLES:
+            return Response(
+                {'error': f"role must be one of {self.ALLOWED_ROLES}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        user.role = role
+        if role == 'supporter':
+            user.profile_completed = True
+        user.save(update_fields=['role', 'profile_completed'])
+        return Response(UserProfileSerializer(user).data)

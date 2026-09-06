@@ -254,15 +254,15 @@ class CoachSimpleSerializer(serializers.ModelSerializer):
 class AthleteProfileSerializer(serializers.ModelSerializer):
     """Serializer for athlete profiles with approval workflow"""
     user = serializers.PrimaryKeyRelatedField(read_only=True)
-    club = serializers.PrimaryKeyRelatedField(queryset=Club.objects.all(), allow_null=True)
-    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), allow_null=True)
+    club = serializers.PrimaryKeyRelatedField(queryset=Club.objects.all(), allow_null=True, required=False)
+    city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), allow_null=True, required=False)
     reviewed_by = serializers.StringRelatedField(read_only=True)
     
     class Meta:
         model = Athlete
         fields = [
-            'id', 'user', 'first_name', 'last_name', 'license_series', 'cnp', 'date_of_birth',
-            'address', 'mobile_number', 'club', 'city', 'previous_experience',
+            'id', 'user', 'first_name', 'last_name', 'gender', 'license_series', 'cnp', 'date_of_birth',
+            'address', 'mobile_number', 'club', 'city', 'previous_experience', 'is_coach',
             'emergency_contact_name', 'emergency_contact_phone', 'status',
             'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes',
             'profile_image', 'medical_certificate'
@@ -272,6 +272,10 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
             'first_name': {'required': True},
             'last_name': {'required': True},
             'date_of_birth': {'required': True},
+            # `is_coach` is self-declared here at onboarding time (athlete says
+            # "I'm also a coach") but the profile still goes through the same
+            # admin approval as any other athlete before it's trusted.
+            'is_coach': {'required': False},
         }
     
     def to_representation(self, instance):

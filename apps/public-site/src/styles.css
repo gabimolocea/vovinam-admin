@@ -43,6 +43,24 @@
   background-color: hsl(var(--card));
 }
 
+/* Auth/onboarding form inputs: shared look for login, register and the
+   athlete onboarding wizard. */
+.public-site-app .site-form-input {
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid hsl(var(--border));
+  background-color: #fff;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #172642;
+}
+
+.public-site-app .site-form-input:focus {
+  outline: none;
+  border-color: #172642;
+  box-shadow: 0 0 0 2px rgba(23, 38, 66, 0.15);
+}
+
 .public-site-app .prose-content img {
   max-width: 100%;
   height: auto;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink } from 'react-router-dom';
+import { useAuth } from '@shared';
 
 // Full menu parity with the live vovinam.ro nav: Acasă / Noutăți / Evenimente
 // / Federație (dropdown) / Competiție (dropdown), plus Video - a top-level
@@ -131,6 +132,7 @@ function MobileNavItem({ item, onNavigate }) {
 }
 
 export default function Layout() {
+  const { isAuthenticated, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -167,6 +169,19 @@ export default function Layout() {
             {NAV_LINKS.map((item) => (
               <DesktopNavItem key={item.label} item={item} />
             ))}
+            {isAuthenticated ? (
+              <>
+                <NavLink to="/cont" className={desktopLinkClassName}>Contul meu</NavLink>
+                <button type="button" onClick={logout} className="site-nav-link inline-flex h-9 items-center px-3">
+                  Deconectare
+                </button>
+              </>
+            ) : (
+              <>
+                <NavLink to="/autentificare" className={desktopLinkClassName}>Autentificare</NavLink>
+                <NavLink to="/inregistrare" className={desktopLinkClassName}>Creează cont</NavLink>
+              </>
+            )}
           </nav>
 
           <button
@@ -200,6 +215,26 @@ export default function Layout() {
             {NAV_LINKS.map((item) => (
               <MobileNavItem key={item.label} item={item} onNavigate={() => setMobileOpen(false)} />
             ))}
+            {isAuthenticated ? (
+              <>
+                <NavLink to="/cont" className={mobileLinkClassName} onClick={() => setMobileOpen(false)}>Contul meu</NavLink>
+                <button
+                  type="button"
+                  className="site-mobile-link block w-full px-6 py-3 text-left text-xl"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    logout();
+                  }}
+                >
+                  Deconectare
+                </button>
+              </>
+            ) : (
+              <>
+                <NavLink to="/autentificare" className={mobileLinkClassName} onClick={() => setMobileOpen(false)}>Autentificare</NavLink>
+                <NavLink to="/inregistrare" className={mobileLinkClassName} onClick={() => setMobileOpen(false)}>Creează cont</NavLink>
+              </>
+            )}
           </nav>
         </div>
       )}

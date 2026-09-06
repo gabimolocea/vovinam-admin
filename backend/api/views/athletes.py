@@ -310,6 +310,13 @@ class AthleteViewSet(viewsets.ModelViewSet):
             serializer = AthleteProfileSerializer(data=request.data, context={'request': request})
             if serializer.is_valid():
                 athlete = serializer.save(user=user, status='pending')
+                # Onboarding is complete once the athlete/coach profile is
+                # submitted - admin approval (athlete.status) is tracked
+                # separately and doesn't block the user from using their
+                # account meanwhile.
+                user.role = 'athlete'
+                user.profile_completed = True
+                user.save(update_fields=['role', 'profile_completed'])
                 return Response(AthleteProfileSerializer(athlete).data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

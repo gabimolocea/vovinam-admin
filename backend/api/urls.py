@@ -127,6 +127,7 @@ urlpatterns = autocomplete_urlpatterns + [
     # New athlete workflow URLs (must come before router.urls for specific endpoints)
     path('auth/register-enhanced/', UserRegistrationView.as_view(), name='register-enhanced'),
     path('auth/profile-enhanced/', views.UserProfileView.as_view(), name='profile-enhanced'),
+    path('onboarding/role/', views.OnboardingRoleView.as_view(), name='onboarding-role'),
     # legacy route removed: use /api/athletes/my-profile/ (provided by AthleteViewSet.my_profile)
     path('admin-approvals/pending/', PendingApprovalsView.as_view(), name='pending-approvals'),
     

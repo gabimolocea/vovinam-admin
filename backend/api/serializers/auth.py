@@ -1,5 +1,8 @@
 from rest_framework import serializers
 from django.db.models import Q
+from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+import re
 from ..models import *
 from landing.models import Event
 
@@ -54,33 +57,56 @@ class UserLoginSerializer(serializers.Serializer):
 # =====================================
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    """Enhanced user registration with role selection"""
+    """Simple email+password registration.
+
+    Intentionally minimal: only email/password are collected up front. Role
+    selection (athlete/supporter) and the athlete profile itself (name, date
+    of birth, club, etc.) are filled in afterwards through the onboarding
+    steps (`OnboardingRoleView` + `AthleteViewSet.my_profile`), not here.
+    `username` is derived from the email since the model still requires a
+    unique username but the public-facing forms no longer ask for one.
+    """
     password_confirm = serializers.CharField(write_only=True)
-    
+
     class Meta:
         model = User
-        fields = [
-            'username', 'email', 'password', 'password_confirm', 'first_name', 'last_name',
-            'role', 'phone_number', 'date_of_birth'
-        ]
+        fields = ['email', 'password', 'password_confirm']
         extra_kwargs = {
             'password': {'write_only': True},
-            'role': {'required': True}
         }
-    
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('Există deja un cont cu acest email.')
+        return value
+
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError("Passwords don't match.")
-        
-        # Validate role
-        if attrs.get('role') not in ['athlete', 'supporter']:
-            raise serializers.ValidationError("Role must be either 'athlete' or 'supporter'.")
-        
+        validate_password(attrs['password'])
         return attrs
-    
+
+    def _generate_username(self, email):
+        base = re.sub(r'[^a-zA-Z0-9_.]', '', email.split('@')[0]) or 'user'
+        username = base
+        suffix = 0
+        while User.objects.filter(username=username).exists():
+            suffix += 1
+            username = f'{base}{suffix}'
+        return username
+
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
-        user = User.objects.create_user(**validated_data)
+        password = validated_data.pop('password')
+        email = validated_data['email']
+        user = User.objects.create_user(
+            username=self._generate_username(email),
+            email=email,
+            password=password,
+            first_name='',
+            last_name='',
+            role='user',
+        )
         return user
 
 
@@ -95,7 +121,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'phone_number', 'date_of_birth', 'profile_completed',
             'date_joined', 'is_active', 'managed_athletes'
         ]
-        read_only_fields = ['username', 'date_joined', 'is_active']
+        # `role` is read-only here: self-service role selection (athlete vs
+        # supporter, never admin) goes through OnboardingRoleView, which
+        # validates the value server-side. Letting this generic profile
+        # serializer accept an arbitrary `role` would let any authenticated
+        # user PUT their way to role='admin'.
+        read_only_fields = ['username', 'role', 'date_joined', 'is_active']
     
     def to_representation(self, instance):
         """Add computed fields"""
@@ -115,6 +146,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 'first_name': athlete.first_name,
                 'last_name': athlete.last_name,
                 'status': athlete.status,
+                'admin_notes': athlete.admin_notes,
                 'club': athlete.club_id if hasattr(athlete, 'club_id') else (athlete.club.id if athlete.club else None),
                 'is_coach': athlete.is_coach if hasattr(athlete, 'is_coach') else False,
                 'is_referee': athlete.is_referee if hasattr(athlete, 'is_referee') else False,
