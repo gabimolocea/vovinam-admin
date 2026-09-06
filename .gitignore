@@ -46,3 +46,6 @@ logs/
 
 # OS
 .DS_Store
+
+# Impeccable design-hook local cache (machine/session specific)
+.impeccable/
