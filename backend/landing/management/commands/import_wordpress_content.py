@@ -34,7 +34,16 @@ UPLOAD_URL_RE = re.compile(
     re.IGNORECASE,
 )
 # Matches the WordPress "resized" suffix (e.g. "-1024x685") right before the extension
-RESIZE_SUFFIX_RE = re.compile(r'-\d+x\d+(?=\.[a-zA-Z]+$)')
+RESIZE_SUFFIX_RE = re.compile(r'-(\d+)x(\d+)(?=\.[a-zA-Z]+$)')
+
+# Cap on the width we'll pick when several resized variants of the same image
+# are referenced in the post HTML (e.g. via srcset). WordPress keeps the raw
+# camera original (often 6000px+/several MB) available at the bare filename,
+# but the page itself never actually links to anything above ~2048px wide -
+# downloading the true original would be far heavier than anything a browser
+# ever renders, so we deliberately pick the largest *referenced* variant
+# instead of the unsized "canonical" filename.
+MAX_IMAGE_WIDTH = 2048
 
 
 class Command(BaseCommand):
@@ -202,22 +211,49 @@ class Command(BaseCommand):
         for match in UPLOAD_URL_RE.findall(content_html):
             image_urls.append(match)
 
-        # De-duplicate resized variants (e.g. "-1024x685", "-300x201") down to
-        # a single canonical (largest/original) URL per image, preserving order.
-        seen_canonical = set()
-        unique_urls = []
+        # De-duplicate resized variants (e.g. "-1024x685", "-300x201") of the
+        # same image down to a single URL. Group by the canonical (unsized)
+        # basename, then pick the largest width that was actually referenced
+        # in the HTML, capped at MAX_IMAGE_WIDTH. Never fabricate a URL by
+        # stripping the size suffix ourselves: the raw, unsized filename also
+        # resolves on WordPress but serves the untouched camera original
+        # (often 6000px+/several MB), which is never what the page renders
+        # and would make this import needlessly slow and heavy.
+        groups = {}
+        order = []
         for url in image_urls:
+            match = RESIZE_SUFFIX_RE.search(url)
             canonical = RESIZE_SUFFIX_RE.sub("", url)
-            if canonical in seen_canonical:
-                continue
-            seen_canonical.add(canonical)
-            unique_urls.append(canonical)
+            width = int(match.group(1)) if match else None
+            if canonical not in groups:
+                order.append(canonical)
+                groups[canonical] = []
+            groups[canonical].append((width, url))
+
+        unique_urls = []
+        for canonical in order:
+            candidates = groups[canonical]
+            sized = [(w, u) for w, u in candidates if w is not None and w <= MAX_IMAGE_WIDTH]
+            if sized:
+                _, best_url = max(sized, key=lambda pair: pair[0])
+            else:
+                # Only variant referenced has no size suffix (e.g. a small
+                # logo/icon WordPress never resized) - use it as-is.
+                _, best_url = candidates[0]
+            unique_urls.append(best_url)
 
         existing_filenames = set(
             NewsPostGallery.objects.filter(news_post=post)
             .values_list("image", flat=True)
         )
         existing_basenames = {name.rsplit("/", 1)[-1] for name in existing_filenames}
+        # A previously-imported featured_image must also count as "already
+        # downloaded", otherwise re-running the command re-adds it as a
+        # duplicate gallery item on every subsequent run (it's stored on
+        # NewsPost.featured_image, not in NewsPostGallery, so it would
+        # never show up in the query above).
+        if post.featured_image:
+            existing_basenames.add(post.featured_image.name.rsplit("/", 1)[-1])
 
         next_order = 0
         for url in unique_urls:
