@@ -395,7 +395,7 @@ export const localBackupAPI = {
   restore: (filename) => api.post('/local-backups/restore/', { filename }),
 };
 
-// ── Public site content (news, videos, about, contact, upcoming events) ──
+// ── Public site content (news, videos, about, upcoming events) ──
 // These map to the unauthenticated `/api/public/*` endpoints used by the
 // new public-facing site (apps/public-site) that replaces vovinam.ro.
 export const publicContentAPI = {
@@ -408,9 +408,6 @@ export const publicContentAPI = {
   },
   about: {
     list: () => api.get('/public/about/'),
-  },
-  contact: {
-    submit: (data) => api.post('/public/contact/', data),
   },
   events: {
     upcoming: () => api.get('/public/events/upcoming/'),

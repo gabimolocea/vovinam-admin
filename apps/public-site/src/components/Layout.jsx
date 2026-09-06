@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink } from 'react-router-dom';
 
 // Full menu parity with the live vovinam.ro nav: Acasă / Noutăți / Evenimente
-// / Federație (dropdown) / Competiție (dropdown), plus Video and Contact -
-// two top-level items that don't exist on the live WP site but were kept
-// here since they were explicit, already-built Etapa 1 deliverables (see
-// PR #6 description for the full note on this decision).
+// / Federație (dropdown) / Competiție (dropdown), plus Video - a top-level
+// item that doesn't exist on the live WP site but was kept here since it
+// was an explicit, already-built Etapa 1 deliverable (see PR #6
+// description for the full note on this decision).
 const NAV_LINKS = [
   { to: '/', label: 'Acasă', end: true },
   { to: '/noutati', label: 'Noutăți' },
@@ -27,7 +27,6 @@ const NAV_LINKS = [
       { to: '/documente', label: 'Documente' },
     ],
   },
-  { to: '/contact', label: 'Contact' },
 ];
 
 function desktopLinkClassName({ isActive }) {

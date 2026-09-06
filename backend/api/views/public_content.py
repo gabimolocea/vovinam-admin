@@ -15,12 +15,6 @@ content management tooling) so that:
 All views here are explicit `viewsets.ViewSet` subclasses (per this repo's
 convention - see other modules under `api/views/`), not `ModelViewSet`, and
 all use `permission_classes = [AllowAny]`.
-
-NOTE on rate limiting: this project does not currently define any DRF
-throttling classes/settings (see `REST_FRAMEWORK` in `crud/settings.py`).
-The public contact form (`POST /api/public/contact/`) is therefore NOT
-throttled at this stage - adding a throttling dependency/pattern is left for
-a later hardening pass, not part of this etapa.
 """
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -32,7 +26,7 @@ from rest_framework.response import Response
 
 from api.models import Athlete, Club
 from landing.models import (
-    AboutSection, ContactMessage, DocumentPage, Event, NewsPost, NewsPostGallery, Video,
+    AboutSection, DocumentPage, Event, NewsPost, NewsPostGallery, Video,
 )
 
 
@@ -82,19 +76,6 @@ class PublicAboutSectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = AboutSection
         fields = ['section_title', 'content', 'image', 'image_alt', 'order']
-
-
-class PublicContactMessageSerializer(serializers.ModelSerializer):
-    """Validates and creates a ContactMessage from the public contact form."""
-
-    class Meta:
-        model = ContactMessage
-        fields = ['name', 'email', 'phone', 'subject', 'message']
-
-    def validate_message(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError('Message cannot be empty.')
-        return value
 
 
 class PublicEventSerializer(serializers.ModelSerializer):
@@ -252,18 +233,6 @@ class PublicAboutViewSet(viewsets.ViewSet):
         queryset = AboutSection.objects.filter(is_active=True).order_by('order', 'id')
         serializer = PublicAboutSectionSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
-
-
-class PublicContactViewSet(viewsets.ViewSet):
-    """POST /api/public/contact/ - create a new contact message."""
-    permission_classes = [AllowAny]
-
-    def create(self, request):
-        serializer = PublicContactMessageSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({'detail': 'Mesajul a fost trimis cu succes.'}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PublicEventViewSet(viewsets.ViewSet):

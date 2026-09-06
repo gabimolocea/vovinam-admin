@@ -5,7 +5,6 @@ import NewsListPage from './pages/NewsListPage';
 import NewsDetailPage from './pages/NewsDetailPage';
 import VideosPage from './pages/VideosPage';
 import AboutPage from './pages/AboutPage';
-import ContactPage from './pages/ContactPage';
 import EventsCalendarPage from './pages/EventsCalendarPage';
 import EventDetailPage from './pages/EventDetailPage';
 import ClubsPage from './pages/ClubsPage';
@@ -22,7 +21,6 @@ export default function App() {
         <Route path="noutati/:slug" element={<NewsDetailPage />} />
         <Route path="video" element={<VideosPage />} />
         <Route path="despre" element={<AboutPage />} />
-        <Route path="contact" element={<ContactPage />} />
         <Route path="competitii" element={<EventsCalendarPage />} />
         <Route path="competitii/:slug" element={<EventDetailPage />} />
         <Route path="cluburi" element={<ClubsPage />} />
