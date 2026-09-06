@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { competitionAPI, offlineAPI } from '@shared/lib/api';
+import { competitionAPI, offlineAPI, systemAPI } from '@shared/lib/api';
 import { PageHeader, Card, Spinner } from '@shared/components/ui';
 import { getSyncLockMeta, getSyncModeMeta, getSyncStatusMeta } from '@shared/lib/syncStatus';
+import LocalBackupPanel from '../components/LocalBackupPanel';
 
 function downloadJson(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -57,6 +58,7 @@ export default function SyncCenterPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [isLocalServer, setIsLocalServer] = useState(false);
 
   const loadCompetition = async () => {
     const { data } = await competitionAPI.get(id);
@@ -66,6 +68,23 @@ export default function SyncCenterPage() {
   useEffect(() => {
     loadCompetition().finally(() => setLoading(false));
   }, [id]);
+
+  // Only the local venue server has an "import" side (it consumes an event
+  // pack) and can attempt a direct cloud pull. The cloud instance never
+  // shows these — this is the same is_local_event_server check used by
+  // LocalBackupPanel.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await systemAPI.info();
+        if (!cancelled) setIsLocalServer(Boolean(data.is_local_event_server));
+      } catch {
+        if (!cancelled) setIsLocalServer(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const steps = useMemo(() => {
     const status = comp?.local_sync_status || 'idle';
@@ -152,6 +171,48 @@ export default function SyncCenterPage() {
       setMessage('Evenimentul a fost marcat ca în desfășurare locală.');
     } catch (error) {
       setMessage(error.response?.data?.detail || 'Marcarea operării locale a eșuat.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleImportEventPack(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setBusy(true);
+    setMessage('');
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      await offlineAPI.importEventPack(payload);
+      await loadCompetition();
+      setMessage('Event pack-ul a fost importat cu succes pe acest server local.');
+    } catch (error) {
+      setMessage(error.response?.data?.detail || error.message || 'Importul event pack-ului a eșuat.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePullEventPackFromCloud() {
+    const confirmed = window.confirm(
+      'Se va prelua un event pack proaspăt direct din cloud (ex. cu un sportiv sau ' +
+      'o categorie adăugată acolo de curând) și se va importa aici.\n\n' +
+      'Înainte de import se salvează automat un backup de siguranță, deci poți ' +
+      'oricând reveni dacă ceva nu e cum trebuie.\n\nContinui?'
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setMessage('');
+    try {
+      await offlineAPI.pullEventPackFromCloud(id);
+      await loadCompetition();
+      setMessage('Resincronizare reușită: event pack-ul din cloud a fost importat aici.');
+    } catch (error) {
+      setMessage(error.response?.data?.detail || error.message || 'Resincronizarea din cloud a eșuat.');
     } finally {
       setBusy(false);
     }
@@ -468,6 +529,52 @@ export default function SyncCenterPage() {
             </div>
           </Card>
 
+          {isLocalServer ? (
+            <Card>
+              <h2 className="text-lg font-semibold text-gray-900">Acest server local (import event pack)</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Folosește aceste acțiuni direct pe laptopul din sală, atunci când
+                importi evenimentul pentru prima dată sau vrei să aduci sportivi/
+                categorii noi adăugate între timp în cloud.
+              </p>
+
+              <div className="mt-4 space-y-3">
+                <label className="block rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-4">
+                  <span className="block text-sm font-semibold text-gray-900">Importă event pack (fișier)</span>
+                  <span className="mt-1 block text-xs text-gray-500">
+                    Selectează fișierul JSON descărcat din aplicația cloud. Sigur de repetat oricând.
+                  </span>
+                  <input
+                    type="file"
+                    accept="application/json"
+                    onChange={handleImportEventPack}
+                    disabled={busy}
+                    className="mt-3 block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-200 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-gray-700 hover:file:bg-gray-300"
+                  />
+                </label>
+
+                <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50 px-4 py-4">
+                  <span className="block text-sm font-semibold text-blue-950">Resincronizează din cloud (fără fișier)</span>
+                  <span className="mt-1 block text-xs text-blue-900">
+                    Dacă ai internet chiar acum (ex. ai adăugat un sportiv nou sau o
+                    categorie nouă direct în cloud), acest buton preia automat un
+                    event pack proaspăt și îl importă aici, fără să mai descarci/
+                    încarci manual un fișier. Necesită ca serverul local să aibă
+                    configurate datele de conectare la cloud (vezi `.env.local`).
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handlePullEventPackFromCloud}
+                    disabled={busy}
+                    className="mt-3 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Resincronizează din cloud
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ) : null}
+
           <Card>
             <h2 className="text-lg font-semibold text-gray-900">Repere rapide</h2>
             <div className="mt-4 space-y-3 text-sm text-gray-700">
@@ -502,6 +609,8 @@ export default function SyncCenterPage() {
           <p className="text-sm text-gray-500">Nu există încă evenimente în istoricul de sincronizare.</p>
         )}
       </Card>
+
+      <LocalBackupPanel />
       </div>
     </div>
   );

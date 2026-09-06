@@ -29,7 +29,11 @@ test_*.py
 
 # Environment Variables
 .env
+.env.local
 deployment-config.txt
+
+# Local venue/LAN backups (pg_dump snapshots, never committed)
+backend/local_backups/
 
 # VSCode
 .vscode/
@@ -42,4 +46,6 @@ logs/
 
 # OS
 .DS_Store
+
+# Impeccable design-hook local cache (machine/session specific)
 .impeccable/

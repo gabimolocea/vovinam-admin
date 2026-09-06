@@ -377,9 +377,22 @@ export const offlineAPI = {
   competitionPack: (params) => api.get('/offline/competition-pack/', { params }),
   eventPack: (eventId) => api.get('/offline/event-pack/', { params: { event_id: eventId } }),
   importEventPack: (payload) => api.post('/offline/event-pack/import/', payload),
+  pullEventPackFromCloud: (eventId) => api.post('/offline/event-pack/pull-from-cloud/', { event_id: eventId }),
   eventResults: (eventId) => api.get('/offline/event-results/', { params: { event_id: eventId } }),
   importEventResults: (payload) => api.post('/offline/event-results/import/', payload),
   uploadResults: (data) => api.post('/offline/results/', data),
+};
+
+// ── System info (tells the frontend if this backend is the local/LAN venue server) ──
+export const systemAPI = {
+  info: () => api.get('/system-info/'),
+};
+
+// ── Local event backups ("time travel" panel, only functional on the venue server) ──
+export const localBackupAPI = {
+  list: () => api.get('/local-backups/'),
+  create: (label) => api.post('/local-backups/', { label }),
+  restore: (filename) => api.post('/local-backups/restore/', { filename }),
 };
 
 // ── Public site content (news, videos, about, contact, upcoming events) ──

@@ -56,6 +56,7 @@ router.register('event-enrollments', EventEnrollmentViewSet, basename='event-enr
 router.register('coaches', CoachesViewSet, basename='coach')
 # Offline competition sync endpoints
 router.register('offline', OfflineSyncViewSet, basename='offline')
+router.register('local-backups', LocalBackupViewSet, basename='local-backup')
 # PWA competition management endpoints
 router.register('competition-fields', CompetitionFieldViewSet, basename='competition-field')
 router.register('field-breaks', FieldBreakViewSet, basename='field-break')
@@ -132,6 +133,7 @@ urlpatterns = autocomplete_urlpatterns + [
     
     # Reference data endpoints (non-conflicting with router)
     path('sports/', views.sports_list, name='sports-list'),
+    path('system-info/', views.system_info, name='system-info'),
     
     # Bracket generation endpoints
     path('categories/<int:category_id>/generate-brackets/', views.generate_brackets, name='generate-brackets'),
