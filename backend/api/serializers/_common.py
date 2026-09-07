@@ -203,14 +203,19 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     annual_visas = serializers.SerializerMethodField()
     medical_visas = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
+    pending_profile_image = serializers.SerializerMethodField()
 
     class Meta(PublicAthleteSerializer.Meta):
         fields = PublicAthleteSerializer.Meta.fields + [
             'date_of_birth', 'grade_history', 'results', 'seminars', 'annual_visas', 'medical_visas', 'can_edit',
+            'profile_image_status', 'pending_profile_image', 'profile_image_admin_notes',
         ]
 
     def get_can_edit(self, obj):
         return can_edit_object(self.context.get('request'), obj, IsClubCoachOrAdmin)
+
+    def get_pending_profile_image(self, obj):
+        return _safe_file_url(getattr(obj, 'pending_profile_image', None))
 
     def get_grade_history(self, obj):
         entries = obj.grade_history.filter(status='approved').select_related('grade', 'event').order_by('-obtained_date')
@@ -225,8 +230,11 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
         ]
 
     def get_results(self, obj):
+        request = self.context.get('request')
+        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
+        status_filter = {} if is_own_profile else {'status': 'approved'}
         scores = CategoryAthleteScore.objects.filter(
-            Q(athlete=obj) | Q(team_members=obj), status='approved',
+            Q(athlete=obj) | Q(team_members=obj), **status_filter,
         ).distinct().select_related('category', 'category__event').order_by('-submitted_date')
         return [
             {
@@ -236,6 +244,9 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
                 'type': score.type,
                 'placement_claimed': score.placement_claimed,
                 'team_name': score.team_name,
+                'status': score.status,
+                'admin_notes': score.admin_notes if is_own_profile else None,
+                'certificate_image': _safe_file_url(score.certificate_image) if is_own_profile else None,
             }
             for score in scores
         ]

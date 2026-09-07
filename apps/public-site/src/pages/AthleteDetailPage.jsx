@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { athleteAPI } from '@shared/lib/api';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { useAuth, athleteAPI } from '@shared';
 import { Alert, Badge, Button, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 import GalleryTab from '../components/GalleryTab';
+import EditAthleteProfileForm from '../components/EditAthleteProfileForm';
+import ResultSubmissionForm from '../components/ResultSubmissionForm';
 import { ATHLETE_STATUS_LABELS } from '../lib/athletes';
 import { MapPin, Pencil } from 'lucide-react';
+
+const RESULT_STATUS_LABELS = {
+  pending: 'În așteptare',
+  approved: 'Aprobat',
+  rejected: 'Respins',
+  revision_required: 'Necesită completări',
+};
 
 const TABS = [
   { key: 'info', label: 'Info' },
@@ -29,8 +38,15 @@ function EmptyTab({ message }) {
   return <p className="py-6 text-center text-sm text-muted-foreground">{message}</p>;
 }
 
-export default function AthleteDetailPage() {
+/** `ownProfile`: renders the logged-in athlete's own profile (fetched via
+ * /athletes/my-profile-detail/, which - unlike the public /public/ endpoint -
+ * doesn't require status='approved') instead of a public athlete by :id.
+ * Used by "Contul meu" so a pending/rejected athlete can preview their
+ * profile exactly as it'll look once approved, without it being visible to
+ * anyone else. */
+export default function AthleteDetailPage({ ownProfile = false, showSeo = true }) {
   const { id } = useParams();
+  const { user, loading: authLoading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = TABS.some((t) => t.key === searchParams.get('tab')) ? searchParams.get('tab') : 'info';
 
@@ -39,19 +55,22 @@ export default function AthleteDetailPage() {
   const [error, setError] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [addingResult, setAddingResult] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    if (ownProfile && (authLoading || !user)) return undefined;
     let isMounted = true;
 
     async function load() {
       setLoading(true);
       setError('');
       try {
-        const response = await athleteAPI.getPublic(id);
+        const response = ownProfile ? await athleteAPI.myProfileDetail() : await athleteAPI.getPublic(id);
         if (isMounted) setAthlete(response.data);
       } catch {
-        if (isMounted) setError('Nu am putut încărca acest sportiv.');
+        if (isMounted) setError(ownProfile ? 'Nu am putut încărca profilul tău.' : 'Nu am putut încărca acest sportiv.');
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -61,7 +80,9 @@ export default function AthleteDetailPage() {
     return () => {
       isMounted = false;
     };
-  }, [id]);
+  }, [id, ownProfile, user, authLoading]);
+
+  if (ownProfile && !authLoading && !user) return <Navigate to="/cont" replace />;
 
   async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
@@ -71,7 +92,12 @@ export default function AthleteDetailPage() {
     setPhotoError('');
     try {
       const response = await athleteAPI.updatePhoto(athlete.id, file);
-      setAthlete((prev) => ({ ...prev, profile_image: response.data.profile_image }));
+      setAthlete((prev) => ({
+        ...prev,
+        profile_image: response.data.profile_image,
+        pending_profile_image: response.data.pending_profile_image,
+        profile_image_status: response.data.profile_image_status,
+      }));
     } catch {
       setPhotoError('Nu am putut încărca poza. Încearcă din nou.');
     } finally {
@@ -96,11 +122,32 @@ export default function AthleteDetailPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Seo
-        title={athlete.full_name}
-        description={`Profilul sportivului ${athlete.full_name}, Federația Română de Vovinam Việt Võ Đạo.`}
-        path={`/sportivi/${athlete.id}`}
-      />
+      {showSeo && (
+        <Seo
+          title={ownProfile ? 'Profilul meu' : athlete.full_name}
+          description={ownProfile ? undefined : `Profilul sportivului ${athlete.full_name}, Federația Română de Vovinam Việt Võ Đạo.`}
+          path={ownProfile ? '/cont/profil' : `/sportivi/${athlete.id}`}
+          noindex={ownProfile}
+        />
+      )}
+
+      {ownProfile && athlete.status === 'revision_required' && (
+        <Alert variant="destructive">
+          {athlete.admin_notes || 'Un administrator a cerut completări la profilul tău. Te rugăm să-l actualizezi.'}
+        </Alert>
+      )}
+      {ownProfile && athlete.status !== 'approved' && athlete.status !== 'revision_required' && (
+        <Alert>
+          Acesta este profilul tău așa cum va arăta public. Cât timp este <strong>{(ATHLETE_STATUS_LABELS[athlete.status] || athlete.status).toLowerCase()}</strong>, nu este vizibil pentru nimeni altcineva.
+        </Alert>
+      )}
+
+      {ownProfile && athlete.profile_image_status === 'pending' && (
+        <Alert>Noua ta poză de profil așteaptă aprobarea antrenorului sau a unui administrator. Poza curentă rămâne vizibilă până atunci.</Alert>
+      )}
+      {ownProfile && athlete.profile_image_status === 'rejected' && athlete.profile_image_admin_notes && (
+        <Alert variant="destructive">Poza de profil trimisă a fost respinsă: {athlete.profile_image_admin_notes}</Alert>
+      )}
 
       <div className="flex flex-col gap-6 rounded-xl bg-brand-navy p-6 text-white sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
@@ -158,7 +205,29 @@ export default function AthleteDetailPage() {
             </div>
           ))}
         </div>
+        {ownProfile && !editing && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-white/40 bg-transparent text-white hover:bg-white/10 sm:self-start"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editează profilul
+          </Button>
+        )}
       </div>
+
+      {editing && (
+        <EditAthleteProfileForm
+          athlete={athlete}
+          onCancel={() => setEditing(false)}
+          onSaved={(updated) => {
+            setAthlete((prev) => ({ ...prev, ...updated }));
+            setEditing(false);
+          }}
+        />
+      )}
 
       <div className="flex flex-wrap gap-2 border-b">
         {TABS.map(({ key, label }) => (
@@ -197,30 +266,59 @@ export default function AthleteDetailPage() {
       )}
 
       {tab === 'rezultate' && (
-        athlete.results.length === 0 ? <EmptyTab message="Niciun rezultat înregistrat." /> : (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Competiție</th>
-                  <th className="px-4 py-3 font-medium">Categorie</th>
-                  <th className="px-4 py-3 font-medium">Tip</th>
-                  <th className="px-4 py-3 font-medium">Rezultat</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {athlete.results.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-4 py-3">{r.competition || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{RESULT_TYPE_LABELS[r.type] || r.type}</td>
-                    <td className="px-4 py-3">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</td>
+        <div className="flex flex-col gap-4">
+          {ownProfile && !addingResult && (
+            <Button type="button" size="sm" className="w-fit" onClick={() => setAddingResult(true)}>
+              Adaugă rezultat
+            </Button>
+          )}
+          {ownProfile && addingResult && (
+            <ResultSubmissionForm
+              athleteId={athlete.id}
+              onCancel={() => setAddingResult(false)}
+              onSubmitted={async () => {
+                setAddingResult(false);
+                const response = await athleteAPI.myProfileDetail();
+                setAthlete(response.data);
+              }}
+            />
+          )}
+          {athlete.results.length === 0 ? <EmptyTab message="Niciun rezultat înregistrat." /> : (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full min-w-[560px] text-left text-sm">
+                <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Competiție</th>
+                    <th className="px-4 py-3 font-medium">Categorie</th>
+                    <th className="px-4 py-3 font-medium">Tip</th>
+                    <th className="px-4 py-3 font-medium">Rezultat</th>
+                    {ownProfile && <th className="px-4 py-3 font-medium">Status</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
+                </thead>
+                <tbody className="divide-y">
+                  {athlete.results.map((r) => (
+                    <tr key={r.id}>
+                      <td className="px-4 py-3">{r.competition || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{RESULT_TYPE_LABELS[r.type] || r.type}</td>
+                      <td className="px-4 py-3">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</td>
+                      {ownProfile && (
+                        <td className="px-4 py-3">
+                          <Badge variant={r.status === 'approved' ? 'default' : 'outline'}>
+                            {RESULT_STATUS_LABELS[r.status] || r.status}
+                          </Badge>
+                          {r.status === 'rejected' && r.admin_notes && (
+                            <p className="mt-1 text-xs text-muted-foreground">{r.admin_notes}</p>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       {tab === 'grade' && (
@@ -299,7 +397,7 @@ export default function AthleteDetailPage() {
         )
       )}
 
-      {tab === 'poze' && <GalleryTab athleteId={id} />}
+      {tab === 'poze' && <GalleryTab athleteId={athlete.id} />}
     </div>
   );
 }

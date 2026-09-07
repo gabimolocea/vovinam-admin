@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@shared';
+import { useAuth, onboardingAPI } from '@shared';
 import { Alert, Button } from '../components/ui';
 import Seo from '../components/Seo';
 import LoginForm from '../components/LoginForm';
@@ -14,8 +14,9 @@ const BENEFITS = [
 ];
 
 function RegisterForm() {
-  const { register } = useAuth();
+  const { register, refetchUser } = useAuth();
   const navigate = useNavigate();
+  const [accountType, setAccountType] = useState('athlete');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
@@ -34,7 +35,9 @@ function RegisterForm() {
     setBusy(true);
     try {
       await register({ email, password, passwordConfirm });
-      navigate('/cont', { replace: true });
+      await onboardingAPI.setRole(accountType);
+      await refetchUser();
+      navigate(accountType === 'athlete' ? '/onboarding/sportiv' : '/cont', { replace: true });
     } catch (err) {
       const data = err.response?.data;
       const firstError = data && typeof data === 'object' ? Object.values(data)[0] : null;
@@ -47,6 +50,28 @@ function RegisterForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {error && <Alert variant="destructive">{error}</Alert>}
+
+      <div className="flex flex-col gap-1 text-sm">
+        <span className="font-medium">Tip cont</span>
+        <div className="flex gap-3">
+          <Button
+            type="button"
+            className="flex-1"
+            variant={accountType === 'athlete' ? 'default' : 'secondary'}
+            onClick={() => setAccountType('athlete')}
+          >
+            Sportiv
+          </Button>
+          <Button
+            type="button"
+            className="flex-1"
+            variant={accountType === 'supporter' ? 'default' : 'secondary'}
+            onClick={() => setAccountType('supporter')}
+          >
+            Susținător
+          </Button>
+        </div>
+      </div>
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">Introdu adresa de email</span>

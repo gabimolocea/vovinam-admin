@@ -179,6 +179,34 @@ class UserProfileView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class ChangePasswordView(APIView):
+    """Lets the logged-in user change their own password from account
+    settings. Requires the current password to avoid a stolen/left-open
+    session being used to lock the real owner out."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from django.contrib.auth.password_validation import validate_password
+
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        if not current_password or not new_password:
+            return Response(
+                {'error': 'Parola curentă și noua parolă sunt obligatorii.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not request.user.check_password(current_password):
+            return Response({'error': 'Parola curentă este incorectă.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_password(new_password, user=request.user)
+        except DjangoValidationError as e:
+            return Response({'error': ' '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response({'message': 'Parola a fost schimbată cu succes.'})
+
+
 class OnboardingRoleView(APIView):
     """Step 2 of the public onboarding wizard: choose account type.
 

@@ -79,6 +79,38 @@ def create_notification(recipient, notification_type, title, message, related_re
     return notification
 
 
+def notify_profile_image_submitted(athlete):
+    """Notify the athlete's club coaches (or all admins if no coach) that a
+    new profile picture is awaiting approval."""
+    coaches = []
+    if athlete.club:
+        coaches = [c.user for c in athlete.club.coaches.filter(is_coach=True) if c.user]
+    recipients = coaches or list(User.objects.filter(role='admin'))
+    for recipient in recipients:
+        create_notification(
+            recipient=recipient,
+            notification_type='profile_image_submitted',
+            title='Poză de profil în așteptare',
+            message=f'{athlete.first_name} {athlete.last_name} a trimis o nouă poză de profil spre aprobare.',
+        )
+
+
+def notify_profile_image_reviewed(athlete, approved):
+    """Notify the athlete that their pending profile picture was approved/rejected."""
+    if not athlete.user:
+        return
+    create_notification(
+        recipient=athlete.user,
+        notification_type='profile_image_approved' if approved else 'profile_image_rejected',
+        title='Poză de profil aprobată' if approved else 'Poză de profil respinsă',
+        message=(
+            'Noua ta poză de profil a fost aprobată și este acum vizibilă public.'
+            if approved else
+            f'Noua ta poză de profil a fost respinsă.{" Motiv: " + athlete.profile_image_admin_notes if athlete.profile_image_admin_notes else ""}'
+        ),
+    )
+
+
 def create_result_submitted_notification(result):
     """Create notification when an athlete submits a result"""
     athlete = result.athlete

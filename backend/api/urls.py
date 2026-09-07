@@ -119,6 +119,7 @@ urlpatterns = autocomplete_urlpatterns + [
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/profile/', UserProfileView.as_view(), name='profile'),
     path('auth/me/', UserProfileView.as_view(), name='me'),  # Alias for /profile/
+    path('auth/change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('auth/session-check/', SessionCheckView.as_view(), name='session-check'),
     path('auth/session-login/', SessionLoginView.as_view(), name='session-login'),
     path('auth/session-logout/', SessionLogoutView.as_view(), name='session-logout'),

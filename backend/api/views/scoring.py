@@ -13,7 +13,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from ..serializers import *
 from ..models import *
-from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
+from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin, IsResultReviewerOrAdmin
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
@@ -564,9 +564,14 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
 
         if not hasattr(self.request.user, 'athlete'):
             raise ValidationError("Only athletes can submit competition results")
-        
-        # The serializer will handle setting the athlete and logging the activity
-        serializer.save()
+
+        # Athlete self-submissions must always start as pending (never trust a
+        # client-supplied status here) and must include the diploma/certificate
+        # photo, since that's the evidence the coach/admin reviews.
+        if not self.request.FILES.get('certificate_image') and not serializer.validated_data.get('certificate_image'):
+            raise ValidationError({'certificate_image': 'Este necesară o fotografie cu diploma pentru a trimite rezultatul spre aprobare.'})
+
+        serializer.save(status='pending')
 
     def update(self, request, *args, **kwargs):
         """Allow athletes to update their own scores, and coaches to update their club athletes' scores"""
@@ -632,7 +637,7 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         
         return super().destroy(request, *args, **kwargs)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def approve(self, request, pk=None):
         """Admin action to approve a score"""
         score = self.get_object()
@@ -649,7 +654,7 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def reject(self, request, pk=None):
         """Admin action to reject a score"""
         score = self.get_object()
@@ -666,7 +671,7 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def request_revision(self, request, pk=None):
         """Admin action to request revision on a score"""
         score = self.get_object()
@@ -682,6 +687,30 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
             })
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def extract_diploma(self, request):
+        """Best-effort AI reading of an uploaded diploma photo, returning
+        suggested competition/category/group/placement values so the athlete
+        can review and prefill the result submission form. Never creates or
+        modifies anything by itself."""
+        if not hasattr(request.user, 'athlete'):
+            return Response({'error': 'User does not have an athlete profile'}, status=status.HTTP_400_BAD_REQUEST)
+
+        image = request.FILES.get('image') or request.FILES.get('certificate_image')
+        if not image:
+            return Response({'error': 'Trimite o imagine cu diploma (câmpul "image").'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from ..diploma_ocr import extract_diploma_fields
+        try:
+            result = extract_diploma_fields(image)
+        except Exception:
+            logging.getLogger(__name__).exception('Diploma OCR failed')
+            return Response(
+                {'error': 'Nu am putut citi automat diploma. Completează câmpurile manual.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(result)
 
     @action(detail=False, methods=['get'])
     def my_results(self, request):
@@ -755,13 +784,23 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(scores, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'], permission_classes=[IsAdmin])
+    @action(detail=False, methods=['get'])
     def pending_review(self, request):
-        """Get all scores pending admin review (individual and team)"""
-        scores = CategoryAthleteScore.objects.filter(
-            status='pending', 
-            submitted_by_athlete=True
-        ).select_related('athlete', 'category__event').prefetch_related('team_members')
+        """Get scores pending review: all of them for admins, or just the
+        submitting coach's own club's athletes for club coaches."""
+        user = request.user
+        if user.is_admin:
+            scores = CategoryAthleteScore.objects.filter(status='pending', submitted_by_athlete=True)
+        elif hasattr(user, 'athlete') and user.athlete.is_coach and user.athlete.club and user.athlete.club.coaches.filter(pk=user.athlete.pk).exists():
+            club = user.athlete.club
+            scores = CategoryAthleteScore.objects.filter(
+                models.Q(athlete__club=club) | models.Q(team_members__club=club),
+                status='pending', submitted_by_athlete=True,
+            ).distinct()
+        else:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        scores = scores.select_related('athlete', 'category__event').prefetch_related('team_members')
         serializer = self.get_serializer(scores, many=True)
         return Response(serializer.data)
 
