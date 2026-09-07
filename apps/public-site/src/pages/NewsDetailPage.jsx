@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
@@ -6,6 +6,7 @@ import { Alert, Badge, Skeleton } from '../components/ui';
 import Lightbox from '../components/Lightbox';
 import Seo, { newsArticleJsonLd } from '../components/Seo';
 import { excerpt, DEFAULT_OG_IMAGE } from '../lib/seo';
+import { stripInlineGalleries } from '../lib/htmlContent';
 
 function formatDate(value) {
   if (!value) return '';
@@ -41,6 +42,8 @@ export default function NewsDetailPage() {
       isMounted = false;
     };
   }, [slug]);
+
+  const cleanContent = useMemo(() => stripInlineGalleries(post?.content), [post?.content]);
 
   if (loading) {
     return (
@@ -82,10 +85,16 @@ export default function NewsDetailPage() {
       </header>
 
       {post.featured_image && (
-        <img src={post.featured_image} alt={post.featured_image_alt || post.title} className="w-full rounded-lg object-cover" />
+        <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
+          <img
+            src={post.featured_image}
+            alt={post.featured_image_alt || post.title}
+            className="h-full w-full object-contain"
+          />
+        </div>
       )}
 
-      <div className="prose-content max-w-none" dangerouslySetInnerHTML={{ __html: post.content }} />
+      <div className="prose-content max-w-none" dangerouslySetInnerHTML={{ __html: cleanContent }} />
 
       {post.gallery_images?.length > 0 && (
         <section>

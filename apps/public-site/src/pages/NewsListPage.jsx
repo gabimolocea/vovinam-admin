@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Input, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
+import { stripInlineGalleries } from '../lib/htmlContent';
 
 function formatDate(value) {
   if (!value) return '';
@@ -88,7 +89,13 @@ export default function NewsListPage() {
             {news.map((post) => (
               <Card key={post.slug} className="flex flex-col">
                 {post.featured_image && (
-                  <img src={post.featured_image} alt={post.featured_image_alt || post.title} className="h-40 w-full rounded-t-lg object-cover" />
+                  <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
+                    <img
+                      src={post.featured_image}
+                      alt={post.featured_image_alt || post.title}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
                 )}
                 <CardHeader>
                   <CardTitle as="h2" className="text-lg">
@@ -97,7 +104,7 @@ export default function NewsListPage() {
                   <CardDescription>{formatDate(post.created_at)} · {post.author_name}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col justify-between gap-3">
-                  <p className="text-sm text-muted-foreground line-clamp-3" dangerouslySetInnerHTML={{ __html: post.excerpt }} />
+                  <p className="text-sm text-muted-foreground line-clamp-3" dangerouslySetInnerHTML={{ __html: stripInlineGalleries(post.excerpt) }} />
                   {post.tags && (
                     <div className="flex flex-wrap gap-1">
                       {post.tags.split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => (
