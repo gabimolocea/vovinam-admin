@@ -141,7 +141,7 @@ export const SelectContent = forwardRef(function SelectContent({ className, chil
         ref={ref}
         position={position}
         className={cn(
-          'relative z-50 max-h-80 min-w-[8rem] overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-md',
+          'relative z-50 max-h-80 min-w-[8rem] overflow-hidden rounded-md border border-border bg-white text-card-foreground shadow-md',
           position === 'popper' && 'w-[var(--radix-select-trigger-width)]',
           className,
         )}
