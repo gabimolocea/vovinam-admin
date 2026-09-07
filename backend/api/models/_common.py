@@ -399,6 +399,7 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     registered_date = models.DateField(_('Data înregistrării'), blank=True, null=True)
     expiration_date = models.DateField(_('Data expirării'), blank=True, null=True)
     is_coach = models.BooleanField(_('Antrenor'), default=False)
+    is_instructor = models.BooleanField(_('Instructor'), default=False)
     is_referee = models.BooleanField(_('Arbitru'), default=False)
     REFEREE_LEVEL_CHOICES = [
         ('national', 'Arbitru național'),

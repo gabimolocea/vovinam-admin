@@ -262,7 +262,7 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
         model = Athlete
         fields = [
             'id', 'user', 'first_name', 'last_name', 'gender', 'license_series', 'cnp', 'date_of_birth',
-            'address', 'mobile_number', 'club', 'city', 'previous_experience', 'is_coach',
+            'address', 'mobile_number', 'club', 'city', 'previous_experience', 'is_coach', 'is_instructor', 'is_referee',
             'emergency_contact_name', 'emergency_contact_phone', 'status',
             'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes',
             'profile_image', 'medical_certificate'
@@ -272,10 +272,13 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
             'first_name': {'required': True},
             'last_name': {'required': True},
             'date_of_birth': {'required': True},
-            # `is_coach` is self-declared here at onboarding time (athlete says
-            # "I'm also a coach") but the profile still goes through the same
-            # admin approval as any other athlete before it's trusted.
+            # `is_coach`/`is_instructor`/`is_referee` are self-declared here at
+            # onboarding time (athlete says "I'm also a coach/instructor/
+            # referee") but the profile still goes through the same admin
+            # approval as any other athlete before it's trusted.
             'is_coach': {'required': False},
+            'is_instructor': {'required': False},
+            'is_referee': {'required': False},
         }
     
     def to_representation(self, instance):

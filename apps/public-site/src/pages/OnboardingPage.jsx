@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { useAuth, athleteAPI, onboardingAPI, publicContentAPI, cityAPI } from '@shared';
+import { useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useAuth, onboardingAPI } from '@shared';
 import { Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle } from '../components/ui';
-import SearchableSelect from '../components/SearchableSelect';
 import Seo from '../components/Seo';
 
 const STATUS_LABELS = {
@@ -28,134 +28,6 @@ function RoleStep({ onChoose, busy }) {
         <Button className="flex-1" variant="secondary" disabled={busy} onClick={() => onChoose('supporter')}>
           Sunt susținător
         </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Step 2 (athlete/coach only): the actual Athlete profile form, submitted
- * to the existing self-service endpoint (AthleteViewSet.my_profile). */
-function AthleteProfileStep({ onSubmitted }) {
-  const [clubs, setClubs] = useState([]);
-  const [selectedCity, setSelectedCity] = useState(null);
-  const [form, setForm] = useState({
-    first_name: '',
-    last_name: '',
-    date_of_birth: '',
-    gender: '',
-    mobile_number: '',
-    club: '',
-    city: '',
-    is_coach: false,
-  });
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    publicContentAPI.clubs.list().then((res) => setClubs(res.data ?? [])).catch(() => {});
-  }, []);
-
-  function update(field, value) {
-    setForm((f) => ({ ...f, [field]: value }));
-  }
-
-  async function searchCities(query) {
-    const { data } = await cityAPI.list({ search: query });
-    return data ?? [];
-  }
-
-  function handleCityChange(city) {
-    setSelectedCity(city);
-    update('city', city?.id ?? '');
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
-    setBusy(true);
-    try {
-      const payload = {
-        ...form,
-        club: form.club || null,
-        city: form.city || null,
-      };
-      const { data } = await athleteAPI.createMyProfile(payload);
-      onSubmitted(data);
-    } catch (err) {
-      const data = err.response?.data;
-      const firstError = data && typeof data === 'object' ? Object.values(data)[0] : null;
-      setError((Array.isArray(firstError) ? firstError[0] : firstError) || 'Nu am putut trimite profilul. Verifică datele completate.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle as="h1">Profil sportiv</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Datele sunt trimise spre aprobare unui administrator FRVV. Poți bifa mai jos și dacă ești antrenor.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive">{error}</Alert>}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Prenume</span>
-              <input required value={form.first_name} onChange={(e) => update('first_name', e.target.value)} className="site-form-input" />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Nume</span>
-              <input required value={form.last_name} onChange={(e) => update('last_name', e.target.value)} className="site-form-input" />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Data nașterii</span>
-              <input type="date" required value={form.date_of_birth} onChange={(e) => update('date_of_birth', e.target.value)} className="site-form-input" />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Gen</span>
-              <select value={form.gender} onChange={(e) => update('gender', e.target.value)} className="site-form-input">
-                <option value="">Nespecificat</option>
-                <option value="male">Masculin</option>
-                <option value="female">Feminin</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Telefon mobil</span>
-              <input value={form.mobile_number} onChange={(e) => update('mobile_number', e.target.value)} className="site-form-input" />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Club</span>
-              <select value={form.club} onChange={(e) => update('club', e.target.value)} className="site-form-input">
-                <option value="">Alege clubul</option>
-                {clubs.map((club) => (
-                  <option key={club.id} value={club.id}>{club.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-              <span className="font-medium">Localitate</span>
-              <SearchableSelect
-                value={selectedCity}
-                onChange={handleCityChange}
-                onSearch={searchCities}
-                placeholder="Scrie pentru a căuta localitatea…"
-              />
-            </label>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.is_coach} onChange={(e) => update('is_coach', e.target.checked)} />
-            <span>Sunt și antrenor</span>
-          </label>
-
-          <Button type="submit" disabled={busy}>
-            {busy ? 'Se trimite…' : 'Trimite profilul spre aprobare'}
-          </Button>
-        </form>
       </CardContent>
     </Card>
   );
@@ -195,6 +67,7 @@ function StatusStep({ user, athlete }) {
 
 export default function OnboardingPage() {
   const { user, refetchUser, loading } = useAuth();
+  const navigate = useNavigate();
   const [choosingRole, setChoosingRole] = useState(false);
   const [roleError, setRoleError] = useState('');
 
@@ -206,6 +79,7 @@ export default function OnboardingPage() {
     try {
       await onboardingAPI.setRole(role);
       await refetchUser();
+      if (role === 'athlete') navigate('/onboarding/sportiv');
     } catch {
       setRoleError('Nu am putut salva alegerea. Încearcă din nou.');
     } finally {
@@ -216,13 +90,14 @@ export default function OnboardingPage() {
   const needsRoleChoice = user.role === 'user';
   const needsAthleteProfile = user.role === 'athlete' && !user.profile_completed;
 
+  if (needsAthleteProfile) return <Navigate to="/onboarding/sportiv" replace />;
+
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-6">
       <Seo title="Contul meu" path="/cont" noindex />
       {roleError && <Alert variant="destructive">{roleError}</Alert>}
       {needsRoleChoice && <RoleStep onChoose={chooseRole} busy={choosingRole} />}
-      {needsAthleteProfile && <AthleteProfileStep onSubmitted={refetchUser} />}
-      {!needsRoleChoice && !needsAthleteProfile && <StatusStep user={user} athlete={user.athlete} />}
+      {!needsRoleChoice && <StatusStep user={user} athlete={user.athlete} />}
     </div>
   );
 }
