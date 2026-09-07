@@ -1,4 +1,7 @@
 import { forwardRef } from 'react';
+import * as SelectPrimitive from '@radix-ui/react-select';
+import * as CheckboxPrimitive from '@radix-ui/react-checkbox';
+import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const buttonVariants = {
@@ -103,3 +106,89 @@ export function Textarea({ className, ...props }) {
 export function Label({ className, ...props }) {
   return <label className={cn('text-sm font-medium leading-none text-foreground', className)} {...props} />;
 }
+
+/**
+ * shadcn/ui-style Select built on Radix - use for any dropdown that should
+ * match the design system (e.g. gen, club) instead of a native <select>.
+ * Usage: <Select value={value} onValueChange={setValue}><SelectTrigger><SelectValue placeholder="…" /></SelectTrigger><SelectContent><SelectItem value="x">X</SelectItem></SelectContent></Select>
+ */
+export const Select = SelectPrimitive.Root;
+export const SelectValue = SelectPrimitive.Value;
+export const SelectGroup = SelectPrimitive.Group;
+
+export const SelectTrigger = forwardRef(function SelectTrigger({ className, children, ...props }, ref) {
+  return (
+    <SelectPrimitive.Trigger
+      ref={ref}
+      className={cn(
+        'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <SelectPrimitive.Icon asChild>
+        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+      </SelectPrimitive.Icon>
+    </SelectPrimitive.Trigger>
+  );
+});
+
+export const SelectContent = forwardRef(function SelectContent({ className, children, position = 'popper', ...props }, ref) {
+  return (
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Content
+        ref={ref}
+        position={position}
+        className={cn(
+          'relative z-50 max-h-80 min-w-[8rem] overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-md',
+          position === 'popper' && 'w-[var(--radix-select-trigger-width)]',
+          className,
+        )}
+        {...props}
+      >
+        <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+      </SelectPrimitive.Content>
+    </SelectPrimitive.Portal>
+  );
+});
+
+export const SelectItem = forwardRef(function SelectItem({ className, children, ...props }, ref) {
+  return (
+    <SelectPrimitive.Item
+      ref={ref}
+      className={cn(
+        'relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        <SelectPrimitive.ItemIndicator>
+          <Check className="h-4 w-4" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    </SelectPrimitive.Item>
+  );
+});
+
+/**
+ * shadcn/ui-style Checkbox built on Radix - controlled via `checked`/`onCheckedChange`.
+ */
+export const Checkbox = forwardRef(function Checkbox({ className, ...props }, ref) {
+  return (
+    <CheckboxPrimitive.Root
+      ref={ref}
+      className={cn(
+        'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
+        className,
+      )}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
+        <Check className="h-3.5 w-3.5" />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  );
+});
