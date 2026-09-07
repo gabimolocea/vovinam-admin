@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { publicContentAPI } from '@shared/lib/api';
-import { Alert, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
+import { Alert, EmptyState, Skeleton } from '../components/ui';
+import { PersonGrid } from '../components/PersonCard';
 import Seo from '../components/Seo';
 
 export default function RefereesPage() {
@@ -34,26 +35,6 @@ export default function RefereesPage() {
     };
   }, []);
 
-  const renderGrid = (people) => (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {people.map((person, i) => (
-        <Card key={`${person.full_name}-${i}`} className="overflow-hidden text-center">
-          {person.profile_image && (
-            <img src={person.profile_image} alt={person.full_name} className="h-40 w-full object-cover" />
-          )}
-          <CardHeader>
-            <CardTitle as="h2" className="text-base">{person.full_name}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-2">
-            {person.title && <span className="text-sm text-muted-foreground">{person.title}</span>}
-            {person.grade && <span className="text-xs font-medium uppercase tracking-wide text-brand-navy">{person.grade}</span>}
-            {person.club && <span className="text-sm text-muted-foreground">{person.club}</span>}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-
   const isEmpty = !loading && international.length === 0 && national.length === 0;
 
   return (
@@ -78,13 +59,13 @@ export default function RefereesPage() {
           {international.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="font-display text-xl font-semibold text-brand-navy">Arbitri internaționali</h2>
-              {renderGrid(international)}
+              <PersonGrid people={international} />
             </section>
           )}
           {national.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="font-display text-xl font-semibold text-brand-navy">Arbitri naționali</h2>
-              {renderGrid(national)}
+              <PersonGrid people={national} />
             </section>
           )}
         </>

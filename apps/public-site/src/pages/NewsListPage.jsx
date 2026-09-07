@@ -87,7 +87,12 @@ export default function NewsListPage() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {news.map((post) => (
-              <Card key={post.slug} className="flex flex-col">
+              <Card
+                key={post.slug}
+                as={Link}
+                to={`/noutati/${post.slug}`}
+                className="flex flex-col transition hover:border-primary/50 hover:shadow-md"
+              >
                 {post.featured_image && (
                   <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
                     <img
@@ -98,10 +103,8 @@ export default function NewsListPage() {
                   </div>
                 )}
                 <CardHeader>
-                  <CardTitle as="h2" className="text-lg">
-                    <Link to={`/noutati/${post.slug}`} className="hover:underline">{post.title}</Link>
-                  </CardTitle>
-                  <CardDescription>{formatDate(post.created_at)} · {post.author_name}</CardDescription>
+                  <CardTitle as="h2" className="text-lg">{post.title}</CardTitle>
+                  <CardDescription>{formatDate(post.created_at)}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col justify-between gap-3">
                   <p className="text-sm text-muted-foreground line-clamp-3" dangerouslySetInnerHTML={{ __html: stripInlineGalleries(post.excerpt) }} />

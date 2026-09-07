@@ -10,6 +10,8 @@ from .models import (
     ContactInfo,
     NewsPostGallery,
     NewsComment,
+    GalleryReaction,
+    GalleryComment,
     ContactInfoProxy,
     ContactMessageProxy,
     Video,
@@ -19,7 +21,8 @@ from .models import (
 class NewsPostGalleryInline(admin.TabularInline):
     model = NewsPostGallery
     extra = 1
-    fields = ['image', 'alt_text', 'caption', 'order']
+    fields = ['image', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
+    filter_horizontal = ['tagged_athletes', 'tagged_clubs']
     ordering = ['order']
 
 class NewsPostAdmin(admin.ModelAdmin):
@@ -287,12 +290,41 @@ class NewsPostGalleryAdmin(admin.ModelAdmin):
     list_filter = ['news_post', 'created_at']
     search_fields = ['news_post__title', 'alt_text', 'caption']
     ordering = ['news_post', 'order']
-    
+    filter_horizontal = ['tagged_athletes', 'tagged_clubs']
+    fields = ['news_post', 'image', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
+
     def image_preview(self, obj):
         if obj.image:
             return format_html('<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />', obj.image.url)
         return _('Fără imagine')
     image_preview.short_description = _('Previzualizare')
+
+
+class GalleryReactionAdmin(admin.ModelAdmin):
+    list_display = ['gallery_image', 'user', 'reaction_type', 'created_at']
+    list_filter = ['reaction_type', 'created_at']
+    search_fields = ['user__username', 'gallery_image__news_post__title']
+    raw_id_fields = ['gallery_image', 'user']
+
+
+class GalleryCommentAdmin(admin.ModelAdmin):
+    list_display = ['content_preview', 'author', 'gallery_image', 'is_approved', 'created_at']
+    list_filter = ['is_approved', 'created_at']
+    search_fields = ['content', 'author__username']
+    raw_id_fields = ['parent', 'gallery_image']
+    actions = ['approve_comments', 'disapprove_comments']
+
+    def content_preview(self, obj):
+        return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
+    content_preview.short_description = _('Comentariu')
+
+    def approve_comments(self, request, queryset):
+        queryset.update(is_approved=True)
+    approve_comments.short_description = _('Aprobă comentariile selectate')
+
+    def disapprove_comments(self, request, queryset):
+        queryset.update(is_approved=False)
+    disapprove_comments.short_description = _('Respinge comentariile selectate')
 
 
 class NewsCommentAdmin(admin.ModelAdmin):
@@ -338,3 +370,14 @@ class NewsCommentAdmin(admin.ModelAdmin):
         updated = queryset.update(is_approved=False)
         self.message_user(request, f"{updated} comentariu(e) respinse.")
     disapprove_comments.short_description = _('Respinge comentariile selectate')
+
+
+# NewsPost/gallery/comment admins were previously defined but never registered
+# (News content only existed via the WordPress import script). Registering
+# them here makes news creation/editing - and photo tagging - reachable from
+# /admin/, mirroring how Video/DocumentPage are registered directly above.
+admin.site.register(NewsPost, NewsPostAdmin)
+admin.site.register(NewsPostGallery, NewsPostGalleryAdmin)
+admin.site.register(NewsComment, NewsCommentAdmin)
+admin.site.register(GalleryReaction, GalleryReactionAdmin)
+admin.site.register(GalleryComment, GalleryCommentAdmin)

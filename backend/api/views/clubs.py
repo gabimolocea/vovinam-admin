@@ -28,6 +28,14 @@ class ClubViewSet(viewsets.ViewSet):
     queryset = Club.objects.all()
     serializer_class = ClubSerializer
 
+    def get_permissions(self):
+        # Club coaches may edit their own club's info (logo, description,
+        # social links, contact info); creation/deletion/reordering stay
+        # admin-only (IsAdminOrReadOnly, the class-level default).
+        if self.action in ['update', 'partial_update']:
+            return [IsClubCoachOrAdmin()]
+        return super().get_permissions()
+
     def list(self, request):
         # select_related('city') + prefetch_related(...) avoid N+1 queries:
         # to_representation() reads instance.city, and get_coaches()/get_athletes()
@@ -53,6 +61,7 @@ class ClubViewSet(viewsets.ViewSet):
 
     def update(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        self.check_object_permissions(request, instance)
         serializer = self.serializer_class(instance, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -61,6 +70,7 @@ class ClubViewSet(viewsets.ViewSet):
 
     def partial_update(self, request, pk=None):
         instance = self.queryset.get(pk=pk)
+        self.check_object_permissions(request, instance)
         serializer = self.serializer_class(instance, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()

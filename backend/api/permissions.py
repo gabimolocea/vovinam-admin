@@ -47,6 +47,25 @@ class IsOwnerOrAdmin(permissions.BasePermission):
         return request.user.is_admin
 
 
+def can_edit_object(request, obj, permission_class):
+    """Evaluate a DRF permission class's write-permission logic for `obj`
+    against `request`, without needing an actual write request. Used by
+    public read-only serializers to expose a `can_edit` flag so the
+    frontend knows whether to show edit affordances for the current user."""
+    if not request or not getattr(request, 'user', None) or not request.user.is_authenticated:
+        return False
+
+    class _WriteRequest:
+        method = 'PATCH'
+        user = request.user
+
+    perm = permission_class()
+    fake_request = _WriteRequest()
+    if not perm.has_permission(fake_request, None):
+        return False
+    return perm.has_object_permission(fake_request, None, obj)
+
+
 class IsClubCoachOrAdmin(permissions.BasePermission):
     """
     Custom permission to allow club coaches to manage their club and athletes,

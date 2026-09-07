@@ -6,6 +6,7 @@ import { AuthProvider } from '@shared';
 import App from './App';
 import '@shared/styles/index.css';
 import './styles.css';
+import './styles/ckeditor5-content.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

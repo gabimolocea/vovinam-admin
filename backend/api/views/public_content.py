@@ -21,12 +21,13 @@ from django.utils import timezone
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from ..permissions import can_edit_object, IsClubCoachOrAdmin
 from rest_framework.response import Response
 
-from api.models import Athlete, Club
+from api.models import Athlete, Club, medal_counts_for_club
 from landing.models import (
-    AboutSection, DocumentPage, Event, NewsPost, NewsPostGallery, Video,
+    AboutSection, DocumentPage, Event, GalleryComment, GalleryReaction, NewsPost, NewsPostGallery, Video,
 )
 
 
@@ -107,10 +108,52 @@ class PublicClubSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Club
-        fields = ['id', 'name', 'logo', 'city', 'address', 'mobile_number', 'website', 'coaches']
+        fields = ['id', 'slug', 'name', 'logo', 'city', 'address', 'mobile_number', 'website', 'coaches']
 
     def get_coaches(self, obj):
         return [f'{coach.first_name} {coach.last_name}'.strip() for coach in obj.coaches.all()]
+
+
+class PublicClubDetailSerializer(PublicClubSerializer):
+    """Adds the description/social links and aggregated medal counts used by
+    the club detail page. Athletes are fetched separately from
+    `/api/athletes/?club=<id>` (paginated), not embedded here."""
+    medals = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
+    coach_profiles = serializers.SerializerMethodField()
+
+    class Meta(PublicClubSerializer.Meta):
+        fields = PublicClubSerializer.Meta.fields + [
+            'description', 'facebook_url', 'instagram_url', 'tiktok_url', 'medals', 'can_edit', 'coach_profiles',
+        ]
+
+    def get_medals(self, obj):
+        try:
+            return medal_counts_for_club(obj)
+        except Exception:
+            return {'gold': 0, 'silver': 0, 'bronze': 0}
+
+    def get_can_edit(self, obj):
+        return can_edit_object(self.context.get('request'), obj, IsClubCoachOrAdmin)
+
+    def get_coach_profiles(self, obj):
+        """Richer coach cards for the club detail page (id + photo + grade),
+        linking each coach through to their athlete profile."""
+        request = self.context.get('request')
+        coaches = obj.coaches.select_related('current_grade', 'title')
+        return [
+            {
+                'id': coach.id,
+                'full_name': f'{coach.first_name} {coach.last_name}'.strip(),
+                'profile_image': (
+                    request.build_absolute_uri(coach.profile_image.url)
+                    if request and coach.profile_image else None
+                ),
+                'grade': coach.current_grade.name if coach.current_grade else '',
+                'title': coach.title.name if coach.title else '',
+            }
+            for coach in coaches
+        ]
 
 
 class PublicStaffSerializer(serializers.ModelSerializer):
@@ -126,7 +169,7 @@ class PublicStaffSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Athlete
-        fields = ['full_name', 'federation_role', 'title', 'grade', 'club', 'profile_image']
+        fields = ['id', 'full_name', 'federation_role', 'title', 'grade', 'club', 'profile_image']
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
@@ -142,7 +185,7 @@ class PublicRefereeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Athlete
-        fields = ['full_name', 'title', 'grade', 'club', 'profile_image']
+        fields = ['id', 'full_name', 'title', 'grade', 'club', 'profile_image']
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
@@ -151,6 +194,77 @@ class PublicDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentPage
         fields = ['title', 'slug', 'category', 'description', 'file', 'external_url', 'order', 'created_at']
+
+
+class PublicGalleryCommentSerializer(serializers.ModelSerializer):
+    """Comment on a tagged gallery photo - Facebook-style thread, one level
+    of replies (mirrors NewsComment/PublicNewsCommentSerializer conventions)."""
+    author_name = serializers.SerializerMethodField()
+    replies = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GalleryComment
+        fields = ['id', 'author_name', 'content', 'parent', 'created_at', 'replies']
+
+    def get_author_name(self, obj):
+        return obj.author.get_full_name() or obj.author.username
+
+    def get_replies(self, obj):
+        if obj.is_reply:
+            return []
+        return PublicGalleryCommentSerializer(obj.get_replies(), many=True, context=self.context).data
+
+
+class PublicGalleryTagSerializer(serializers.Serializer):
+    """Minimal tag reference - links a photo tag through to the athlete's
+    or club's public profile."""
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    slug = serializers.CharField(required=False)
+
+
+class PublicGalleryPhotoSerializer(serializers.ModelSerializer):
+    """Tagged gallery photo, Facebook-style: shows who's tagged plus
+    aggregate like/dislike counts, the current user's own reaction, and a
+    comment count. Full comment thread is fetched separately (paginated) via
+    the `comments` action so the feed/tab list stays light."""
+    tagged_athletes = serializers.SerializerMethodField()
+    tagged_clubs = serializers.SerializerMethodField()
+    like_count = serializers.IntegerField(read_only=True)
+    dislike_count = serializers.IntegerField(read_only=True)
+    comment_count = serializers.SerializerMethodField()
+    my_reaction = serializers.SerializerMethodField()
+    news_post_title = serializers.CharField(source='news_post.title', read_only=True)
+    news_post_slug = serializers.CharField(source='news_post.slug', read_only=True)
+
+    class Meta:
+        model = NewsPostGallery
+        fields = [
+            'id', 'image', 'alt_text', 'caption', 'created_at',
+            'news_post_title', 'news_post_slug',
+            'tagged_athletes', 'tagged_clubs',
+            'like_count', 'dislike_count', 'comment_count', 'my_reaction',
+        ]
+
+    def get_tagged_athletes(self, obj):
+        return [
+            {'id': a.id, 'name': f'{a.first_name} {a.last_name}'.strip()}
+            for a in obj.tagged_athletes.all()
+        ]
+
+    def get_tagged_clubs(self, obj):
+        return [{'id': c.id, 'name': c.name, 'slug': c.slug} for c in obj.tagged_clubs.all()]
+
+    def get_comment_count(self, obj):
+        return obj.comments.filter(is_approved=True).count()
+
+    def get_my_reaction(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return None
+        reaction = next((r for r in obj.reactions.all() if r.user_id == user.id), None)
+        return reaction.reaction_type if reaction else None
 
 
 # ---------------------------------------------------------------------------
@@ -270,12 +384,26 @@ class PublicEventViewSet(viewsets.ViewSet):
 
 
 class PublicClubViewSet(viewsets.ViewSet):
-    """GET /api/public/clubs/ - federation club directory ('Cluburi' nav item)."""
+    """
+    GET /api/public/clubs/       - federation club directory ('Cluburi' nav item)
+    GET /api/public/clubs/<slug>/ - club detail page (info + medal totals;
+                                    athletes are fetched separately via
+                                    /api/athletes/?club=<id>)
+    """
     permission_classes = [AllowAny]
 
+    def get_queryset(self):
+        return Club.objects.select_related('city').prefetch_related('coaches')
+
     def list(self, request):
-        queryset = Club.objects.select_related('city').prefetch_related('coaches').order_by('display_order', 'name')
+        queryset = self.get_queryset().order_by('display_order', 'name')
         serializer = PublicClubSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        # `pk` here is actually the club slug (see api/urls.py routing).
+        instance = get_object_or_404(self.get_queryset(), slug=pk)
+        serializer = PublicClubDetailSerializer(instance, context={'request': request})
         return Response(serializer.data)
 
 
@@ -330,3 +458,104 @@ class PublicDocumentViewSet(viewsets.ViewSet):
             queryset = queryset.filter(category=category)
         serializer = PublicDocumentSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
+
+
+class PublicGalleryViewSet(viewsets.ViewSet):
+    """Tagged photo gallery, Facebook-style: powers the 'Poze' tab on club
+    and athlete public profiles, plus the full-screen lightbox (like/dislike
+    + threaded comments).
+
+    GET  /api/public/gallery/?athlete=<id>|club=<slug>  - paginated list of
+         photos tagged with that athlete/club, newest first (AllowAny).
+    GET  /api/public/gallery/<id>/                       - single photo, for
+         opening the lightbox directly (AllowAny).
+    POST /api/public/gallery/<id>/react/    {type: like|dislike}
+         - toggle the current user's reaction (IsAuthenticated). Posting the
+           same type again removes it (un-react); a different type switches it.
+    GET  /api/public/gallery/<id>/comments/ - approved comments, threaded (AllowAny).
+    POST /api/public/gallery/<id>/comments/ {content, parent?}
+         - add a comment (IsAuthenticated).
+    """
+    pagination_class = PublicContentPagination
+
+    def get_permissions(self):
+        if self.action in ('react', 'add_comment'):
+            return [IsAuthenticated()]
+        return [AllowAny()]
+
+    def get_queryset(self):
+        return (
+            NewsPostGallery.objects.select_related('news_post')
+            .prefetch_related('tagged_athletes', 'tagged_clubs', 'reactions')
+            .order_by('-created_at')
+        )
+
+    def list(self, request):
+        queryset = self.get_queryset()
+        athlete_id = request.query_params.get('athlete')
+        club_slug = request.query_params.get('club')
+        if athlete_id:
+            queryset = queryset.filter(tagged_athletes__id=athlete_id)
+        elif club_slug:
+            queryset = queryset.filter(tagged_clubs__slug=club_slug)
+        else:
+            return Response({'detail': 'Specifică athlete sau club.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = PublicGalleryPhotoSerializer(page, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        photo = get_object_or_404(self.get_queryset(), pk=pk)
+        serializer = PublicGalleryPhotoSerializer(photo, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def react(self, request, pk=None):
+        photo = get_object_or_404(NewsPostGallery, pk=pk)
+        reaction_type = request.data.get('type')
+        if reaction_type not in ('like', 'dislike'):
+            return Response({'detail': "type trebuie să fie 'like' sau 'dislike'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing = GalleryReaction.objects.filter(gallery_image=photo, user=request.user).first()
+        if existing and existing.reaction_type == reaction_type:
+            existing.delete()
+            my_reaction = None
+        elif existing:
+            existing.reaction_type = reaction_type
+            existing.save(update_fields=['reaction_type'])
+            my_reaction = reaction_type
+        else:
+            GalleryReaction.objects.create(gallery_image=photo, user=request.user, reaction_type=reaction_type)
+            my_reaction = reaction_type
+
+        return Response({
+            'my_reaction': my_reaction,
+            'like_count': photo.reactions.filter(reaction_type='like').count(),
+            'dislike_count': photo.reactions.filter(reaction_type='dislike').count(),
+        })
+
+    @action(detail=True, methods=['get', 'post'], url_path='comments')
+    def comments(self, request, pk=None):
+        photo = get_object_or_404(NewsPostGallery, pk=pk)
+        if request.method == 'GET':
+            top_level = photo.comments.filter(is_approved=True, parent=None).select_related('author')
+            serializer = PublicGalleryCommentSerializer(top_level, many=True, context={'request': request})
+            return Response(serializer.data)
+
+        return self.add_comment(request, photo)
+
+    def add_comment(self, request, photo):
+        content = (request.data.get('content') or '').strip()
+        if not content:
+            return Response({'detail': 'Comentariul nu poate fi gol.'}, status=status.HTTP_400_BAD_REQUEST)
+        parent_id = request.data.get('parent')
+        parent = None
+        if parent_id:
+            parent = get_object_or_404(GalleryComment, pk=parent_id, gallery_image=photo)
+        comment = GalleryComment.objects.create(
+            gallery_image=photo, author=request.user, content=content[:1000], parent=parent,
+        )
+        serializer = PublicGalleryCommentSerializer(comment, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

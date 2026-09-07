@@ -31,8 +31,8 @@ export const Button = forwardRef(function Button(
   );
 });
 
-export const Card = forwardRef(function Card({ className, ...props }, ref) {
-  return <div ref={ref} className={cn('site-panel rounded-lg border border-border text-card-foreground shadow-sm', className)} {...props} />;
+export const Card = forwardRef(function Card({ className, as: Component = 'div', ...props }, ref) {
+  return <Component ref={ref} className={cn('site-panel rounded-lg border border-border text-card-foreground shadow-sm', className)} {...props} />;
 });
 
 export function CardHeader({ className, ...props }) {

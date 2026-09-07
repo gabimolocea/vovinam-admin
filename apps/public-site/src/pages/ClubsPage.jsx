@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
@@ -50,7 +51,12 @@ export default function ClubsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {clubs.map((club) => (
-            <Card key={club.name} className="overflow-hidden">
+            <Card
+              key={club.id ?? club.name}
+              as={club.slug ? Link : 'div'}
+              to={club.slug ? `/cluburi/${club.slug}` : undefined}
+              className="overflow-hidden transition hover:border-primary/50 hover:shadow-md"
+            >
               {club.logo && (
                 <img src={club.logo} alt={club.name} className="h-32 w-full object-cover" />
               )}

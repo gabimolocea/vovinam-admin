@@ -11,6 +11,7 @@ from ._common import (
     _safe_file_url,
 )
 class ClubSerializer(serializers.ModelSerializer):
+    slug = serializers.SlugField(read_only=True)
     city = serializers.PrimaryKeyRelatedField(queryset=City.objects.all(), allow_null=True, required=False)
     logo = serializers.ImageField(required=False, allow_null=True)
     coach_ids = serializers.PrimaryKeyRelatedField(queryset=Athlete.objects.all(), many=True, required=False, write_only=True, source='coaches')
@@ -19,7 +20,11 @@ class ClubSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Club
-        fields = ['id', 'name', 'address', 'mobile_number', 'website', 'coaches', 'coach_ids', 'city', 'logo', 'athletes', 'display_order']
+        fields = [
+            'id', 'name', 'slug', 'description', 'address', 'mobile_number', 'website',
+            'facebook_url', 'instagram_url', 'tiktok_url',
+            'coaches', 'coach_ids', 'city', 'logo', 'athletes', 'display_order',
+        ]
 
     def get_athletes(self, obj):
         """Return limited summary of athletes"""
