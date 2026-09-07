@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const buttonVariants = {
@@ -116,12 +116,14 @@ export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
 export const SelectGroup = SelectPrimitive.Group;
 
-export const SelectTrigger = forwardRef(function SelectTrigger({ className, children, ...props }, ref) {
+export const SelectTrigger = forwardRef(function SelectTrigger({ className, size = 'default', children, ...props }, ref) {
   return (
     <SelectPrimitive.Trigger
       ref={ref}
+      data-slot="select-trigger"
+      data-size={size}
       className={cn(
-        'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+        'flex w-fit items-center justify-between gap-2 whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 w-full',
         className,
       )}
       {...props}
@@ -134,22 +136,45 @@ export const SelectTrigger = forwardRef(function SelectTrigger({ className, chil
   );
 });
 
-export const SelectContent = forwardRef(function SelectContent({ className, children, position = 'popper', ...props }, ref) {
+export const SelectContent = forwardRef(function SelectContent({ className, children, position = 'popper', align = 'center', ...props }, ref) {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         ref={ref}
+        data-slot="select-content"
         position={position}
+        align={align}
         className={cn(
-          'relative z-50 max-h-80 min-w-[8rem] overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-md',
-          position === 'popper' && 'w-[var(--radix-select-trigger-width)]',
+          'relative z-50 max-h-[var(--radix-select-content-available-height)] min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-md',
+          position === 'popper' &&
+            'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
           className,
         )}
         {...props}
       >
-        <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+        <SelectScrollUpButton />
+        <SelectPrimitive.Viewport
+          className={cn(
+            'p-1',
+            position === 'popper' && 'h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1',
+          )}
+        >
+          {children}
+        </SelectPrimitive.Viewport>
+        <SelectScrollDownButton />
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
+  );
+});
+
+export const SelectLabel = forwardRef(function SelectLabel({ className, ...props }, ref) {
+  return (
+    <SelectPrimitive.Label
+      ref={ref}
+      data-slot="select-label"
+      className={cn('px-2 py-1.5 text-xs text-muted-foreground', className)}
+      {...props}
+    />
   );
 });
 
@@ -157,19 +182,57 @@ export const SelectItem = forwardRef(function SelectItem({ className, children, 
   return (
     <SelectPrimitive.Item
       ref={ref}
+      data-slot="select-item"
       className={cn(
-        'relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className,
       )}
       {...props}
     >
-      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
           <Check className="h-4 w-4" />
         </SelectPrimitive.ItemIndicator>
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
     </SelectPrimitive.Item>
+  );
+});
+
+export const SelectSeparator = forwardRef(function SelectSeparator({ className, ...props }, ref) {
+  return (
+    <SelectPrimitive.Separator
+      ref={ref}
+      data-slot="select-separator"
+      className={cn('pointer-events-none -mx-1 my-1 h-px bg-border', className)}
+      {...props}
+    />
+  );
+});
+
+export const SelectScrollUpButton = forwardRef(function SelectScrollUpButton({ className, ...props }, ref) {
+  return (
+    <SelectPrimitive.ScrollUpButton
+      ref={ref}
+      data-slot="select-scroll-up-button"
+      className={cn('flex cursor-default items-center justify-center py-1', className)}
+      {...props}
+    >
+      <ChevronUp className="h-4 w-4" />
+    </SelectPrimitive.ScrollUpButton>
+  );
+});
+
+export const SelectScrollDownButton = forwardRef(function SelectScrollDownButton({ className, ...props }, ref) {
+  return (
+    <SelectPrimitive.ScrollDownButton
+      ref={ref}
+      data-slot="select-scroll-down-button"
+      className={cn('flex cursor-default items-center justify-center py-1', className)}
+      {...props}
+    >
+      <ChevronDown className="h-4 w-4" />
+    </SelectPrimitive.ScrollDownButton>
   );
 });
 
@@ -180,13 +243,17 @@ export const Checkbox = forwardRef(function Checkbox({ className, ...props }, re
   return (
     <CheckboxPrimitive.Root
       ref={ref}
+      data-slot="checkbox"
       className={cn(
-        'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
+        'peer h-4 w-4 shrink-0 rounded-[4px] border border-input shadow-xs outline-none transition-shadow focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
         className,
       )}
       {...props}
     >
-      <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
+      <CheckboxPrimitive.Indicator
+        data-slot="checkbox-indicator"
+        className="grid place-content-center text-current transition-none"
+      >
         <Check className="h-3.5 w-3.5" />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
