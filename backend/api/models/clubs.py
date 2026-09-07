@@ -23,7 +23,9 @@ from ..managers import AthleteManager
 from .core import City
 class Club(models.Model):
     name = models.CharField(_('Nume'), max_length=100, unique=True)
+    slug = models.SlugField(_('Slug'), max_length=110, unique=True, blank=True, null=True, help_text=_('Generat automat din nume; folosit în URL-ul public al clubului.'))
     logo = models.ImageField(_('Siglă'), upload_to='club_logos/', blank=True, null=True)  # Optional logo field
+    description = models.TextField(_('Descriere'), blank=True, null=True, help_text=_('Text afișat pe tab-ul "Info" al paginii publice a clubului.'))
     city = models.ForeignKey(
         City, 
         on_delete=models.SET_NULL,  # Changed from CASCADE to SET_NULL for data safety
@@ -35,6 +37,9 @@ class Club(models.Model):
     address = models.TextField(_('Adresă'), blank=True, null=True)
     mobile_number = models.CharField(_('Telefon mobil'), max_length=15, blank=True, null=True)
     website = models.URLField(_('Website'), max_length=200, blank=True, null=True)
+    facebook_url = models.URLField(_('Facebook'), max_length=200, blank=True, null=True)
+    instagram_url = models.URLField(_('Instagram'), max_length=200, blank=True, null=True)
+    tiktok_url = models.URLField(_('TikTok'), max_length=200, blank=True, null=True)
     coaches = models.ManyToManyField(
         'Athlete', 
         verbose_name=_('Antrenori'),
@@ -56,3 +61,14 @@ class Club(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name) or 'club'
+            slug = base_slug
+            counter = 1
+            while Club.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                counter += 1
+                slug = f'{base_slug}-{counter}'
+            self.slug = slug
+        super().save(*args, **kwargs)

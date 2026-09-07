@@ -33,14 +33,20 @@ def athlete_detail(request, pk):
     function-based view ensures a stable URL for public athlete pages.
     """
     try:
-        athlete = Athlete.objects.select_related('club__city', 'city', 'current_grade').get(
+        athlete = Athlete.objects.select_related('club__city', 'city', 'current_grade').prefetch_related(
+            'grade_history__grade', 'grade_history__event',
+            'seminar_participations__event',
+            'visas',
+            'category_scores__category__event',
+            'team_results__category__event',
+        ).get(
             pk=pk,
             status='approved',
             is_deleted=False,
         )
     except Athlete.DoesNotExist:
         return Response({'detail': 'Not found.'}, status=404)
-    serializer = PublicAthleteSerializer(athlete, context={'request': request})
+    serializer = PublicAthleteDetailSerializer(athlete, context={'request': request})
     return Response(serializer.data)
 
 

@@ -101,8 +101,14 @@ export const groupAPI = {
 export const athleteAPI = {
   list: (params) => api.get('/athletes/', { params }),
   get: (id) => api.get(`/athletes/${id}/`),
+  getPublic: (id) => api.get(`/athletes/${id}/public/`),
   create: (data) => api.post('/athletes/', data),
   update: (id, data) => api.patch(`/athletes/${id}/`, data),
+  updatePhoto: (id, file) => {
+    const formData = new FormData();
+    formData.append('profile_image', file);
+    return api.patch(`/athletes/${id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
   myProfile: () => api.get('/athletes/my-profile/'),
   createMyProfile: (data) => api.post('/athletes/my-profile/', data),
   updateMyProfile: (data) => api.put('/athletes/my-profile/', data),
@@ -423,6 +429,7 @@ export const publicContentAPI = {
   },
   clubs: {
     list: () => api.get('/public/clubs/'),
+    get: (slug) => api.get(`/public/clubs/${slug}/`),
   },
   staff: {
     list: () => api.get('/public/staff/'),
@@ -432,5 +439,13 @@ export const publicContentAPI = {
   },
   documents: {
     list: (params) => api.get('/public/documents/', { params }),
+  },
+  gallery: {
+    listByAthlete: (athleteId, params) => api.get('/public/gallery/', { params: { ...params, athlete: athleteId } }),
+    listByClub: (clubSlug, params) => api.get('/public/gallery/', { params: { ...params, club: clubSlug } }),
+    get: (id) => api.get(`/public/gallery/${id}/`),
+    react: (id, type) => api.post(`/public/gallery/${id}/react/`, { type }),
+    comments: (id) => api.get(`/public/gallery/${id}/comments/`),
+    addComment: (id, content, parent) => api.post(`/public/gallery/${id}/comments/`, { content, parent }),
   },
 };

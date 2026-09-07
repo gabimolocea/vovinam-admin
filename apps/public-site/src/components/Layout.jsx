@@ -1,22 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink } from 'react-router-dom';
-import { useAuth } from '@shared';
+import { ExternalLink } from 'lucide-react';
+import AccountNavItem from './AccountNavItem';
+import { Button } from './ui';
 
 // Full menu parity with the live vovinam.ro nav: Acasă / Noutăți / Evenimente
-// / Federație (dropdown) / Competiție (dropdown), plus Video - a top-level
-// item that doesn't exist on the live WP site but was kept here since it
-// was an explicit, already-built Etapa 1 deliverable (see PR #6
-// description for the full note on this decision).
+// / Federație (dropdown) / Competiție (dropdown). "Video" is temporarily
+// hidden from the header nav (route/page still exist, just unlinked).
 const NAV_LINKS = [
   { to: '/', label: 'Acasă', end: true },
   { to: '/noutati', label: 'Noutăți' },
-  { to: '/video', label: 'Video' },
   { to: '/competitii', label: 'Evenimente' },
   {
     label: 'Federație',
     children: [
       { to: '/despre', label: 'Despre' },
       { to: '/cluburi', label: 'Cluburi' },
+      { to: '/sportivi', label: 'Sportivi' },
       { to: '/staff', label: 'Staff' },
       { to: '/arbitri', label: 'Arbitri' },
     ],
@@ -132,7 +132,6 @@ function MobileNavItem({ item, onNavigate }) {
 }
 
 export default function Layout() {
-  const { isAuthenticated, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -169,19 +168,7 @@ export default function Layout() {
             {NAV_LINKS.map((item) => (
               <DesktopNavItem key={item.label} item={item} />
             ))}
-            {isAuthenticated ? (
-              <>
-                <NavLink to="/cont" className={desktopLinkClassName}>Contul meu</NavLink>
-                <button type="button" onClick={logout} className="site-nav-link inline-flex h-9 items-center px-3">
-                  Deconectare
-                </button>
-              </>
-            ) : (
-              <>
-                <NavLink to="/autentificare" className={desktopLinkClassName}>Autentificare</NavLink>
-                <NavLink to="/inregistrare" className={desktopLinkClassName}>Creează cont</NavLink>
-              </>
-            )}
+            <AccountNavItem />
           </nav>
 
           <button
@@ -215,26 +202,7 @@ export default function Layout() {
             {NAV_LINKS.map((item) => (
               <MobileNavItem key={item.label} item={item} onNavigate={() => setMobileOpen(false)} />
             ))}
-            {isAuthenticated ? (
-              <>
-                <NavLink to="/cont" className={mobileLinkClassName} onClick={() => setMobileOpen(false)}>Contul meu</NavLink>
-                <button
-                  type="button"
-                  className="site-mobile-link block w-full px-6 py-3 text-left text-xl"
-                  onClick={() => {
-                    setMobileOpen(false);
-                    logout();
-                  }}
-                >
-                  Deconectare
-                </button>
-              </>
-            ) : (
-              <>
-                <NavLink to="/autentificare" className={mobileLinkClassName} onClick={() => setMobileOpen(false)}>Autentificare</NavLink>
-                <NavLink to="/inregistrare" className={mobileLinkClassName} onClick={() => setMobileOpen(false)}>Creează cont</NavLink>
-              </>
-            )}
+            <AccountNavItem mobile onNavigate={() => setMobileOpen(false)} />
           </nav>
         </div>
       )}
@@ -244,8 +212,35 @@ export default function Layout() {
       </main>
 
       <footer className="site-footer">
-        <div className="mx-auto w-full max-w-6xl px-4 py-8 text-sm">
-          <p>© {new Date().getFullYear()} Federația Română de Vovinam Việt Võ Đạo. Toate drepturile rezervate.</p>
+        <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
+          <div>
+            <h3 className="site-footer-heading">Resurse</h3>
+            <ul className="mt-3 flex flex-col gap-2">
+              <li><Link to="/documente" className="site-footer-link">Sponsori</Link></li>
+              <li><Link to="/noutati" className="site-footer-link">Anunțuri</Link></li>
+              <li><Link to="/regulament" className="site-footer-link">Regulament</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="site-footer-heading">Urmăriți-ne</h3>
+            <ul className="mt-3 flex flex-col gap-2">
+              <li><a href="#" className="site-footer-social"><ExternalLink className="h-3.5 w-3.5" />Facebook</a></li>
+              <li><a href="#" className="site-footer-social"><ExternalLink className="h-3.5 w-3.5" />Instagram</a></li>
+              <li><a href="#" className="site-footer-social"><ExternalLink className="h-3.5 w-3.5" />YouTube</a></li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="site-footer-heading">Susțineți-ne</h3>
+            <p className="site-footer-link mt-3">
+              Fiecare donație contribuie la dezvoltarea sportivilor și la promovarea Vovinam Việt Võ Đạo în România.
+            </p>
+            <Button as={Link} to="/despre" size="sm" className="mt-4">Sponsorizează-ne</Button>
+          </div>
+        </div>
+        <div className="site-footer-bottom">
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4">
+            <p>© {new Date().getFullYear()} Federația Română de Vovinam Việt Võ Đạo. Toate drepturile rezervate.</p>
+          </div>
         </div>
       </footer>
     </div>

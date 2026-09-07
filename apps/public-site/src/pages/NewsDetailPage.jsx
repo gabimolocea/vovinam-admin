@@ -74,7 +74,7 @@ export default function NewsDetailPage() {
 
       <header>
         <h1 className="font-display text-3xl font-semibold">{post.title}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{formatDate(post.created_at)} · {post.author_name}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{formatDate(post.created_at)}</p>
         {post.tags && (
           <div className="mt-3 flex flex-wrap gap-1">
             {post.tags.split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => (
@@ -94,7 +94,7 @@ export default function NewsDetailPage() {
         </div>
       )}
 
-      <div className="prose-content max-w-none" dangerouslySetInnerHTML={{ __html: cleanContent }} />
+      <div className="prose-content ck-content max-w-none" dangerouslySetInnerHTML={{ __html: cleanContent }} />
 
       {post.gallery_images?.length > 0 && (
         <section>

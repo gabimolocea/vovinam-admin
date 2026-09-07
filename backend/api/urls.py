@@ -11,6 +11,7 @@ from .views.public_content import (
     PublicStaffViewSet,
     PublicRefereeViewSet,
     PublicDocumentViewSet,
+    PublicGalleryViewSet,
 )
 from rest_framework.routers import DefaultRouter
 
@@ -156,9 +157,20 @@ urlpatterns = autocomplete_urlpatterns + [
     # Federation directory pages, backing the 'Federație' and 'Competiție'
     # dropdown nav items (full menu parity with the live vovinam.ro site).
     path('public/clubs/', PublicClubViewSet.as_view({'get': 'list'}), name='public-clubs-list'),
+    path('public/clubs/<slug:pk>/', PublicClubViewSet.as_view({'get': 'retrieve'}), name='public-clubs-detail'),
     path('public/staff/', PublicStaffViewSet.as_view({'get': 'list'}), name='public-staff-list'),
     path('public/referees/', PublicRefereeViewSet.as_view({'get': 'list'}), name='public-referees-list'),
     path('public/documents/', PublicDocumentViewSet.as_view({'get': 'list'}), name='public-documents-list'),
+
+    # Tagged photo gallery ('Poze' tab on club/athlete profiles + lightbox).
+    path('public/gallery/', PublicGalleryViewSet.as_view({'get': 'list'}), name='public-gallery-list'),
+    path('public/gallery/<int:pk>/', PublicGalleryViewSet.as_view({'get': 'retrieve'}), name='public-gallery-detail'),
+    path('public/gallery/<int:pk>/react/', PublicGalleryViewSet.as_view({'post': 'react'}), name='public-gallery-react'),
+    path(
+        'public/gallery/<int:pk>/comments/',
+        PublicGalleryViewSet.as_view({'get': 'comments', 'post': 'comments'}),
+        name='public-gallery-comments',
+    ),
 
     # Router URLs (should come last to avoid conflicts)
     path('', include(router.urls)),  # This will handle the actual endpoints including athletes CRUD

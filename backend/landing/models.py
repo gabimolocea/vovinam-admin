@@ -394,6 +394,18 @@ class NewsPostGallery(models.Model):
         default=0, 
         help_text="Order in which images appear in gallery"
     )
+    tagged_athletes = models.ManyToManyField(
+        'api.Athlete',
+        blank=True,
+        related_name='tagged_photos',
+        help_text="Athletes tagged in this photo - shown on their public profile 'Poze' tab",
+    )
+    tagged_clubs = models.ManyToManyField(
+        'api.Club',
+        blank=True,
+        related_name='tagged_photos',
+        help_text="Clubs tagged in this photo - shown on the club's public 'Poze' tab",
+    )
     created_at = models.DateTimeField(default=timezone.now)
     
     class Meta:
@@ -403,6 +415,65 @@ class NewsPostGallery(models.Model):
     
     def __str__(self):
         return f"{self.news_post.title} - Image {self.order}"
+
+    @property
+    def like_count(self):
+        return self.reactions.filter(reaction_type='like').count()
+
+    @property
+    def dislike_count(self):
+        return self.reactions.filter(reaction_type='dislike').count()
+
+
+class GalleryReaction(models.Model):
+    """Like/dislike on a NewsPostGallery photo, Facebook-style. One reaction
+    per user per photo (switching type just updates the row)."""
+    REACTION_CHOICES = [
+        ('like', 'Like'),
+        ('dislike', 'Dislike'),
+    ]
+    gallery_image = models.ForeignKey(NewsPostGallery, related_name='reactions', on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    reaction_type = models.CharField(max_length=10, choices=REACTION_CHOICES)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ('gallery_image', 'user')
+        verbose_name = _('Photo Reaction')
+        verbose_name_plural = _('Photo Reactions')
+
+    def __str__(self):
+        return f"{self.user} {self.reaction_type}d photo #{self.gallery_image_id}"
+
+
+class GalleryComment(models.Model):
+    """Comments on a NewsPostGallery photo - mirrors NewsComment (threaded,
+    auto-approved for staff/admin, moderatable)."""
+    gallery_image = models.ForeignKey(NewsPostGallery, related_name='comments', on_delete=models.CASCADE)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField(max_length=1000, help_text="Comment content (1000 chars max)")
+    parent = models.ForeignKey(
+        'self', null=True, blank=True, related_name='replies', on_delete=models.CASCADE,
+        help_text="Parent comment for threaded replies",
+    )
+    is_approved = models.BooleanField(default=True, help_text="Whether the comment is approved for display")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = _('Photo Comment')
+        verbose_name_plural = _('Photo Comments')
+
+    def __str__(self):
+        return f"Comment by {self.author.username} on photo #{self.gallery_image_id}"
+
+    @property
+    def is_reply(self):
+        return self.parent is not None
+
+    def get_replies(self):
+        return self.replies.filter(is_approved=True)
 
 
 class NewsComment(models.Model):

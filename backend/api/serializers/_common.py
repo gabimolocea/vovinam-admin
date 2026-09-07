@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.db.models import Q
 from ..models import *
+from ..permissions import can_edit_object, IsClubCoachOrAdmin
 from landing.models import Event
 
 
@@ -96,7 +97,7 @@ class ClubMinimalSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Club
-        fields = ['id', 'name', 'city']
+        fields = ['id', 'name', 'slug', 'city']
 
     def get_city(self, obj):
         try:
@@ -168,17 +169,105 @@ class PublicAthleteSerializer(serializers.ModelSerializer):
     city = CityMinimalSerializer(read_only=True)
     current_grade = GradeMinimalSerializer(read_only=True)
     full_name = serializers.SerializerMethodField()
+    medals = serializers.SerializerMethodField()
 
     class Meta:
         model = Athlete
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'gender',
             'club', 'city', 'current_grade', 'is_coach', 'is_referee',
-            'profile_image',
+            'profile_image', 'status', 'medals',
         ]
 
     def get_full_name(self, obj):
         return _person_name(obj)
+
+    def get_medals(self, obj):
+        try:
+            return medal_counts_for_athlete(obj)
+        except Exception:
+            return {'gold': 0, 'silver': 0, 'bronze': 0}
+
+
+class PublicAthleteDetailSerializer(PublicAthleteSerializer):
+    """Full public athlete detail page - adds the tab data (results, grade
+    history, seminars, visas) on top of PublicAthleteSerializer's basic
+    fields. Still deliberately excludes CNP, address, medical certificate,
+    emergency contacts and any other private/workflow-only data - see
+    AthleteDetailSerializer (serializers/athletes.py) for the authenticated
+    equivalent used by admin tooling."""
+    date_of_birth = serializers.DateField(read_only=True)
+    grade_history = serializers.SerializerMethodField()
+    results = serializers.SerializerMethodField()
+    seminars = serializers.SerializerMethodField()
+    annual_visas = serializers.SerializerMethodField()
+    medical_visas = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
+
+    class Meta(PublicAthleteSerializer.Meta):
+        fields = PublicAthleteSerializer.Meta.fields + [
+            'date_of_birth', 'grade_history', 'results', 'seminars', 'annual_visas', 'medical_visas', 'can_edit',
+        ]
+
+    def get_can_edit(self, obj):
+        return can_edit_object(self.context.get('request'), obj, IsClubCoachOrAdmin)
+
+    def get_grade_history(self, obj):
+        entries = obj.grade_history.filter(status='approved').select_related('grade', 'event').order_by('-obtained_date')
+        return [
+            {
+                'id': entry.id,
+                'grade': GradeMinimalSerializer(entry.grade).data if entry.grade else None,
+                'obtained_date': _safe_scalar(entry.obtained_date),
+                'event': entry.event.title if entry.event else None,
+            }
+            for entry in entries
+        ]
+
+    def get_results(self, obj):
+        scores = CategoryAthleteScore.objects.filter(
+            Q(athlete=obj) | Q(team_members=obj), status='approved',
+        ).distinct().select_related('category', 'category__event').order_by('-submitted_date')
+        return [
+            {
+                'id': score.id,
+                'category': score.category.name if score.category else None,
+                'competition': score.category.event.title if score.category and score.category.event else None,
+                'type': score.type,
+                'placement_claimed': score.placement_claimed,
+                'team_name': score.team_name,
+            }
+            for score in scores
+        ]
+
+    def get_seminars(self, obj):
+        entries = obj.seminar_participations.filter(status='approved').select_related('event').order_by('-event__start_date')
+        return [
+            {
+                'id': entry.id,
+                'event': entry.event.title if entry.event else None,
+                'start_date': _safe_scalar(entry.event.start_date) if entry.event else None,
+                'end_date': _safe_scalar(entry.event.end_date) if entry.event else None,
+                'place': entry.event.address if entry.event else None,
+            }
+            for entry in entries
+        ]
+
+    def _visas(self, obj, visa_type):
+        entries = obj.visas.filter(status='approved', visa_type=visa_type).order_by('-issued_date')
+        return [
+            {
+                'id': entry.id,
+                'issued_date': _safe_scalar(entry.issued_date),
+            }
+            for entry in entries
+        ]
+
+    def get_annual_visas(self, obj):
+        return self._visas(obj, 'annual')
+
+    def get_medical_visas(self, obj):
+        return self._visas(obj, 'medical')
 
 
 class TeamMinimalSerializer(serializers.ModelSerializer):

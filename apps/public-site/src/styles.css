@@ -122,6 +122,28 @@
   color: #edb654;
 }
 
+/* Account popover (header "Cont" quick login) - light card with a caret,
+   distinct from the dark nav submenus since it hosts form inputs. */
+.public-site-app .site-account-popover {
+  background-color: #fff;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 30px rgba(7, 18, 37, 0.18);
+}
+
+.public-site-app .site-account-popover::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  right: 24px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-left: 1px solid hsl(var(--border));
+  border-top: 1px solid hsl(var(--border));
+  transform: rotate(45deg);
+}
+
 /* Mobile menu overlay: full-screen dark navy panel, Poppins type. */
 .public-site-app .site-mobile-overlay {
   background-color: #071225;
@@ -141,6 +163,88 @@
   color: #edb654;
 }
 
+/* Homepage hero carousel: full-bleed image slides with a dark gradient
+   scrim so the title/CTA stay legible over any photo. The real photo is
+   shown whole (object-contain) over a blurred, darkened copy of itself
+   that fills the frame, with side gradients blending it into the navy
+   brand color so there's no empty/cropped edges. */
+.public-site-app .site-hero-media img,
+.public-site-app .site-hero-fallback {
+  background-color: #071225;
+}
+
+.public-site-app .site-hero-bg {
+  filter: blur(24px) brightness(0.55) saturate(1.1);
+  transform: scale(1.15);
+}
+
+.public-site-app .site-hero-bg-scrim {
+  background-color: rgba(7, 18, 37, 0.35);
+}
+
+.public-site-app .site-hero-side-fade {
+  width: 18%;
+  pointer-events: none;
+}
+
+.public-site-app .site-hero-side-fade-left {
+  background: linear-gradient(90deg, #071225 0%, rgba(7, 18, 37, 0) 100%);
+}
+
+.public-site-app .site-hero-side-fade-right {
+  background: linear-gradient(270deg, #071225 0%, rgba(7, 18, 37, 0) 100%);
+}
+
+.public-site-app .site-hero-fallback {
+  background-image: linear-gradient(135deg, #172642, #071225);
+}
+
+.public-site-app .site-hero-scrim {
+  background: linear-gradient(0deg, rgba(7, 18, 37, 0.85) 0%, rgba(7, 18, 37, 0.25) 55%, rgba(7, 18, 37, 0.05) 100%);
+}
+
+.public-site-app .site-hero-arrow {
+  display: flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  backdrop-filter: blur(2px);
+  transition: background-color 0.15s ease;
+}
+
+.public-site-app .site-hero-arrow:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.public-site-app .site-hero-dot {
+  height: 0.5rem;
+  width: 0.5rem;
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.5);
+  transition: background-color 0.15s ease, width 0.15s ease;
+}
+
+.public-site-app .site-hero-dot.is-active {
+  width: 1.5rem;
+  background-color: #edb654;
+}
+
+/* Light full-bleed content band (e.g. Parteneri) between the regular
+   constrained sections. */
+.public-site-app .site-band {
+  background-color: hsl(var(--muted));
+}
+
+.public-site-app .site-partner-badge {
+  background-color: #172642;
+  color: #edb654;
+}
+
+/* Footer: dark navy with three link columns above a slim copyright bar. */
 .public-site-app .site-footer {
   background-color: #172642;
   color: #fff;
@@ -148,6 +252,33 @@
 
 .public-site-app .site-footer a:hover {
   color: #edb654;
+}
+
+.public-site-app .site-footer-heading {
+  color: #edb654;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.public-site-app .site-footer-link {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.875rem;
+}
+
+.public-site-app .site-footer-social {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.875rem;
+}
+
+.public-site-app .site-footer-bottom {
+  background-color: #071225;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 @media (max-width: 640px) {

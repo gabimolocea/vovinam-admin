@@ -549,6 +549,40 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
     
 
 
+def _placement_counts(queryset):
+    """Group an approved CategoryAthleteScore queryset by placement_claimed
+    into gold/silver/bronze counts."""
+    return {
+        'gold': queryset.filter(placement_claimed='1st').count(),
+        'silver': queryset.filter(placement_claimed='2nd').count(),
+        'bronze': queryset.filter(placement_claimed='3rd').count(),
+    }
+
+
+def medal_counts_for_athlete(athlete):
+    """Approved podium results for a single athlete, whether earned
+    individually or as a member of a team result."""
+    from django.db.models import Q
+    queryset = CategoryAthleteScore.objects.filter(
+        Q(athlete=athlete) | Q(team_members=athlete),
+        status='approved',
+    ).distinct()
+    return _placement_counts(queryset)
+
+
+def medal_counts_for_club(club):
+    """Approved podium results aggregated for every athlete of a club
+    (individual results plus team results with at least one club member).
+    Each result is counted once, even if several team members belong to
+    this club."""
+    from django.db.models import Q
+    queryset = CategoryAthleteScore.objects.filter(
+        Q(athlete__club=club) | Q(team_members__club=club),
+        status='approved',
+    ).distinct()
+    return _placement_counts(queryset)
+
+
 class CategoryTeamScore(models.Model):
     """
     Stores referee scores for teams in a category.
