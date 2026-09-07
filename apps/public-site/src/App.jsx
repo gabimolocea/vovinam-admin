@@ -16,6 +16,7 @@ import RefereesPage from './pages/RefereesPage';
 import DocumentsPage from './pages/DocumentsPage';
 import AccountPage from './pages/AccountPage';
 import AthleteOnboardingPage from './pages/AthleteOnboardingPage';
+import ApprovalsPage from './pages/ApprovalsPage';
 
 export default function App() {
   return (
@@ -39,7 +40,9 @@ export default function App() {
         <Route path="autentificare" element={<Navigate to="/cont" replace />} />
         <Route path="inregistrare" element={<Navigate to="/cont?mode=register" replace />} />
         <Route path="cont" element={<AccountPage />} />
+        <Route path="cont/profil" element={<AthleteDetailPage ownProfile />} />
         <Route path="onboarding/sportiv" element={<AthleteOnboardingPage />} />
+        <Route path="cont/aprobari" element={<ApprovalsPage />} />
       </Route>
     </Routes>
   );

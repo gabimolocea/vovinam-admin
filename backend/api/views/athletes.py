@@ -21,6 +21,7 @@ from django.core.files.base import ContentFile
 import logging
 from pathlib import Path
 from django.db import IntegrityError
+from ..notification_utils import notify_profile_image_submitted, notify_profile_image_reviewed
 
 
 @api_view(['GET'])
@@ -235,7 +236,8 @@ class AthleteViewSet(viewsets.ModelViewSet):
         # Allow: the athlete's own account, an admin, or a supporter explicitly
         # granted can_edit=True on their SupporterAthleteRelation. Previously
         # `can_edit` was stored but never checked anywhere, so it had no effect.
-        is_owner_or_admin = athlete.user == request.user or (request.user and request.user.is_admin)
+        is_admin = bool(request.user and request.user.is_admin)
+        is_owner_or_admin = athlete.user == request.user or is_admin
         is_authorized_supporter = (
             not is_owner_or_admin
             and request.user
@@ -247,12 +249,69 @@ class AthleteViewSet(viewsets.ModelViewSet):
         if not is_owner_or_admin and not is_authorized_supporter:
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer_class = AthleteSerializer if request.user and request.user.is_admin else AthleteProfileSerializer
-        serializer = serializer_class(athlete, data=request.data, partial=partial, context={'request': request})
+        # A new profile picture uploaded by anyone other than an admin is
+        # staged for approval (club coach or admin) instead of being applied
+        # directly — pull it out of the payload before it reaches the
+        # serializer, which would otherwise save it straight to `profile_image`.
+        data = request.data
+        pending_image = None
+        if not is_admin:
+            pending_image = request.FILES.get('profile_image')
+            if pending_image is not None:
+                data = request.data.copy()
+                del data['profile_image']
+
+        serializer_class = AthleteSerializer if is_admin else AthleteProfileSerializer
+        serializer = serializer_class(athlete, data=data, partial=partial, context={'request': request})
         if serializer.is_valid():
             updated = serializer.save()
+            if pending_image is not None:
+                updated.submit_profile_image(pending_image)
+                try:
+                    notify_profile_image_submitted(updated)
+                except Exception:
+                    logging.getLogger(__name__).exception('Failed to notify about pending profile image')
             return Response(AthleteDetailSerializer(updated).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsClubCoachOrAdmin])
+    def approve_image(self, request, pk=None):
+        """Club coach or admin approves an athlete's pending profile picture."""
+        athlete = self.get_object()
+        if not athlete.pending_profile_image:
+            return Response({'error': 'Nu există nicio imagine în așteptare.'}, status=status.HTTP_400_BAD_REQUEST)
+        athlete.approve_profile_image(request.user, request.data.get('notes', ''))
+        try:
+            notify_profile_image_reviewed(athlete, approved=True)
+        except Exception:
+            logging.getLogger(__name__).exception('Failed to notify about approved profile image')
+        return Response(AthleteDetailSerializer(athlete).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsClubCoachOrAdmin])
+    def reject_image(self, request, pk=None):
+        """Club coach or admin rejects an athlete's pending profile picture."""
+        athlete = self.get_object()
+        if not athlete.pending_profile_image:
+            return Response({'error': 'Nu există nicio imagine în așteptare.'}, status=status.HTTP_400_BAD_REQUEST)
+        athlete.reject_profile_image(request.user, request.data.get('notes', ''))
+        try:
+            notify_profile_image_reviewed(athlete, approved=False)
+        except Exception:
+            logging.getLogger(__name__).exception('Failed to notify about rejected profile image')
+        return Response(AthleteDetailSerializer(athlete).data)
+
+    @action(detail=False, methods=['get'])
+    def pending_image_approvals(self, request):
+        """List athletes with a pending profile picture change, scoped to the
+        requesting coach's club (or all clubs, for admins)."""
+        if request.user.is_admin:
+            queryset = Athlete.objects.filter(profile_image_status='pending')
+        elif hasattr(request.user, 'athlete') and request.user.athlete.is_coach and request.user.athlete.club:
+            queryset = Athlete.objects.filter(profile_image_status='pending', club=request.user.athlete.club)
+        else:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        serializer = AthleteDetailSerializer(queryset.order_by('-profile_image_submitted_date'), many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
@@ -292,6 +351,27 @@ class AthleteViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_path='my-profile-detail')
+    def my_profile_detail(self, request):
+        """Returns the current user's athlete profile in the same rich shape
+        used by the public athlete detail page (medals, results, grade
+        history, seminars, visas, can_edit) - regardless of approval status,
+        so a user can view/manage their own "Contul meu" page exactly like
+        their eventual public profile while it's still pending review.
+        """
+        try:
+            athlete = Athlete.objects.select_related('club__city', 'city', 'current_grade').prefetch_related(
+                'grade_history__grade', 'grade_history__event',
+                'seminar_participations__event',
+                'visas',
+                'category_scores__category__event',
+                'team_results__category__event',
+            ).get(user=request.user, is_deleted=False)
+        except Athlete.DoesNotExist:
+            return Response({'error': 'No athlete profile found'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = PublicAthleteDetailSerializer(athlete, context={'request': request})
+        return Response(serializer.data)
+
     @action(detail=False, methods=['get', 'post', 'put'], permission_classes=[permissions.IsAuthenticated], url_path='my-profile')
     def my_profile(self, request):
         """Convenience endpoint for the current user's athlete profile.
@@ -304,7 +384,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
         if request.method == 'GET':
             try:
                 athlete = Athlete.objects.get(user=user)
-                serializer = AthleteProfileSerializer(athlete)
+                serializer = AthleteProfileSerializer(athlete, context={'request': request})
                 return Response(serializer.data)
             except Athlete.DoesNotExist:
                 return Response({'error': 'No athlete profile found'}, status=status.HTTP_404_NOT_FOUND)
@@ -323,7 +403,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
                 user.role = 'athlete'
                 user.profile_completed = True
                 user.save(update_fields=['role', 'profile_completed'])
-                return Response(AthleteProfileSerializer(athlete).data, status=status.HTTP_201_CREATED)
+                return Response(AthleteProfileSerializer(athlete, context={'request': request}).data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         if request.method == 'PUT':
@@ -341,7 +421,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
                 # If the athlete was in revision_required and user updated, resubmit
                 if updated.status == 'revision_required':
                     updated.resubmit()
-                return Response(AthleteProfileSerializer(updated).data)
+                return Response(AthleteProfileSerializer(updated, context={'request': request}).data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

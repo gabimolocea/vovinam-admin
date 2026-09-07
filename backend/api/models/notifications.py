@@ -42,6 +42,9 @@ class Notification(models.Model):
         ('supporter_request', 'Cerere relație susținător'),
         ('supporter_approved', 'Relație susținător aprobată'),
         ('supporter_rejected', 'Relație susținător respinsă'),
+        ('profile_image_submitted', 'Poză de profil trimisă spre aprobare'),
+        ('profile_image_approved', 'Poză de profil aprobată'),
+        ('profile_image_rejected', 'Poză de profil respinsă'),
     ]
     
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name=_('Destinatar'), related_name='notifications')

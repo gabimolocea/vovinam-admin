@@ -9,7 +9,7 @@ import { ChevronDown, LogOut, User } from 'lucide-react';
  * out, or account/logout links when signed in. Closes on outside click,
  * Escape, or successful login/navigation. */
 export default function AccountNavItem({ mobile = false, onNavigate }) {
-  const { isAuthenticated, logout, user } = useAuth();
+  const { isAuthenticated, logout, user, isAdmin, isCoach } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -52,8 +52,18 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
     if (isAuthenticated) {
       return (
         <>
+          {user?.role !== 'supporter' && (
+            <Link to="/cont/profil" className="site-mobile-link block px-6 py-3 text-xl" onClick={onNavigate}>
+              Vezi Profil
+            </Link>
+          )}
+          {(isAdmin || isCoach) && (
+            <Link to="/cont/aprobari" className="site-mobile-link block px-6 py-3 text-xl" onClick={onNavigate}>
+              Aprobări
+            </Link>
+          )}
           <Link to="/cont" className="site-mobile-link block px-6 py-3 text-xl" onClick={onNavigate}>
-            Contul meu
+            Setări
           </Link>
           <button
             type="button"
@@ -91,8 +101,18 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
         </button>
         {open && (
           <div className="site-submenu absolute right-0 top-full z-50 flex min-w-[10rem] flex-col py-2">
+            {user?.role !== 'supporter' && (
+              <Link to="/cont/profil" className="site-submenu-link px-4 py-2" onClick={() => setOpen(false)}>
+                Vezi Profil
+              </Link>
+            )}
+            {(isAdmin || isCoach) && (
+              <Link to="/cont/aprobari" className="site-submenu-link px-4 py-2" onClick={() => setOpen(false)}>
+                Aprobări
+              </Link>
+            )}
             <Link to="/cont" className="site-submenu-link px-4 py-2" onClick={() => setOpen(false)}>
-              Contul meu
+              Setări
             </Link>
             <button
               type="button"

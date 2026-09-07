@@ -36,11 +36,12 @@ export function AuthProvider({ children }) {
     const refresh = data.tokens?.refresh || data.refresh;
     if (access) localStorage.setItem('authToken', access);
     if (refresh) localStorage.setItem('refreshToken', refresh);
-    if (data.user) {
-      setUser(data.user);
-    } else {
-      await fetchUser();
-    }
+    // Always refetch via /auth/me/ instead of trusting the login response's
+    // `user` payload: that one is serialized without `profile_completed`
+    // (see UserSerializer vs UserProfileSerializer), so using it directly
+    // made `profile_completed` look falsy on every login and incorrectly
+    // sent already-onboarded athletes back through /onboarding/sportiv.
+    await fetchUser();
     return data;
   };
 
@@ -54,11 +55,9 @@ export function AuthProvider({ children }) {
     const refresh = data.tokens?.refresh || data.refresh;
     if (access) localStorage.setItem('authToken', access);
     if (refresh) localStorage.setItem('refreshToken', refresh);
-    if (data.user) {
-      setUser(data.user);
-    } else {
-      await fetchUser();
-    }
+    // Same reasoning as login(): fetch the canonical /auth/me/ shape rather
+    // than the registration response's `user` payload.
+    await fetchUser();
     return data;
   };
 
@@ -81,9 +80,9 @@ export function AuthProvider({ children }) {
     logout,
     refetchUser: fetchUser,
     isAdmin: user?.role === 'admin' || user?.is_admin === true || user?.is_staff === true || user?.is_superuser === true,
-    isCoach: user?.is_coach ?? false,
+    isCoach: user?.athlete?.is_coach ?? false,
     isAthlete: user?.role === 'athlete',
-    isReferee: user?.is_referee ?? false,
+    isReferee: user?.athlete?.is_referee ?? false,
     isAuthenticated: !!user,
   };
 

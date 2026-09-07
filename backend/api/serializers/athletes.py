@@ -8,6 +8,7 @@ from ._common import (
     CityMinimalSerializer,
     ClubMinimalSerializer,
     GradeMinimalSerializer,
+    PublicAthleteDetailSerializer,
     UserMinimalSerializer,
     _person_name,
     _safe_file_url,
@@ -38,10 +39,12 @@ class AthleteDetailSerializer(serializers.ModelSerializer):
             'emergency_contact_name', 'emergency_contact_phone',
             'previous_experience',
             'club', 'city', 'current_grade',
-            'federation_role', 'federation_role_name', 'title', 'title_name', 'is_coach', 'is_referee',
+            'federation_role', 'federation_role_name', 'title', 'title_name', 'is_coach', 'is_instructor', 'is_referee',
             'status', 'registered_date', 'expiration_date',
             'status_display', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name',
             'admin_notes', 'approved_date', 'approved_by', 'profile_image', 'medical_certificate',
+            'pending_profile_image', 'profile_image_status', 'profile_image_submitted_date',
+            'profile_image_reviewed_date', 'profile_image_admin_notes',
             'grade_history', 'visas', 'event_participations',
             'created_at', 'updated_at'
         ]

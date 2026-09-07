@@ -178,3 +178,40 @@ class IsAthleteOwnerCoachOrAdmin(permissions.BasePermission):
             pass
         
         return False
+
+
+class IsResultReviewerOrAdmin(permissions.BasePermission):
+    """
+    Permission for reviewing (approve/reject/request_revision) athlete-submitted
+    results. Unlike IsAthleteOwnerCoachOrAdmin, this deliberately excludes the
+    submitting athlete themselves — only their club coach or an admin may
+    review/approve a result, never the athlete who submitted it.
+    """
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        if request.user.is_admin:
+            return True
+
+        try:
+            reviewer_athlete = request.user.athlete
+        except Exception:
+            return False
+
+        if not reviewer_athlete.is_coach or not reviewer_athlete.club:
+            return False
+
+        if not reviewer_athlete.club.coaches.filter(pk=reviewer_athlete.pk).exists():
+            return False
+
+        # The result belongs to an athlete in the coach's club
+        if getattr(obj, 'athlete_id', None) and obj.athlete.club_id == reviewer_athlete.club_id:
+            return True
+
+        # Team result: any team member belongs to the coach's club
+        if hasattr(obj, 'team_members') and obj.team_members.filter(club=reviewer_athlete.club).exists():
+            return True
+
+        return False

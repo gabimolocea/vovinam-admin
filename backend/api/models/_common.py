@@ -416,6 +416,27 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         upload_to='profile_images/', blank=True, null=True, default='profile_images/default.png'
     )  # Optional profile image with default
     medical_certificate = models.FileField(_('Certificat medical'), upload_to='medical_certificates/', blank=True, null=True)
+
+    # Profile picture change approval workflow. When an athlete uploads a new
+    # profile picture themselves, it is staged here instead of overwriting
+    # `profile_image` directly, and needs approval from their club coach or an
+    # admin before it becomes the athlete's public picture.
+    PROFILE_IMAGE_STATUS_CHOICES = APPROVAL_STATUS_CHOICES
+    pending_profile_image = models.ImageField(
+        _('Imagine profil în așteptare'), upload_to='profile_images/pending/', blank=True, null=True,
+        help_text=_('Poză nouă trimisă de sportiv, în așteptarea aprobării antrenorului clubului sau a unui administrator.')
+    )
+    profile_image_status = models.CharField(
+        _('Stare imagine profil'), max_length=20, choices=PROFILE_IMAGE_STATUS_CHOICES, default='approved',
+        help_text=_('"pending" cât timp o poză nouă trimisă de sportiv așteaptă aprobare.')
+    )
+    profile_image_submitted_date = models.DateTimeField(_('Data trimiterii imaginii'), blank=True, null=True)
+    profile_image_reviewed_date = models.DateTimeField(_('Data revizuirii imaginii'), blank=True, null=True)
+    profile_image_reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, verbose_name=_('Imagine revizuită de'), blank=True, null=True,
+        related_name='reviewed_profile_images'
+    )
+    profile_image_admin_notes = models.TextField(_('Note despre imaginea de profil'), blank=True, null=True)
     
     # Approval workflow (merged from AthleteProfile)
     status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='pending')
@@ -552,6 +573,47 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
                 status_label = visa.visa_status if visa else 'Lipsă'
                 warnings.append(f'Viza {label.lower()} este {status_label.lower()}.')
         return warnings
+
+    def submit_profile_image(self, image_file):
+        """Stage a newly-uploaded profile picture for approval instead of
+        overwriting `profile_image` directly. Called when the athlete
+        themselves uploads a new picture (admin uploads still apply
+        immediately elsewhere)."""
+        from django.utils import timezone
+
+        self.pending_profile_image = image_file
+        self.profile_image_status = 'pending'
+        self.profile_image_submitted_date = timezone.now()
+        self.profile_image_reviewed_date = None
+        self.profile_image_reviewed_by = None
+        self.profile_image_admin_notes = None
+        self.save()
+        return self
+
+    def approve_profile_image(self, admin_user, notes=''):
+        from django.utils import timezone
+
+        if not self.pending_profile_image:
+            raise ValueError('Nu există nicio imagine în așteptare.')
+        self.profile_image = self.pending_profile_image
+        self.pending_profile_image = None
+        self.profile_image_status = 'approved'
+        self.profile_image_reviewed_date = timezone.now()
+        self.profile_image_reviewed_by = admin_user
+        self.profile_image_admin_notes = notes
+        self.save()
+        return self
+
+    def reject_profile_image(self, admin_user, notes=''):
+        from django.utils import timezone
+
+        self.pending_profile_image = None
+        self.profile_image_status = 'rejected'
+        self.profile_image_reviewed_date = timezone.now()
+        self.profile_image_reviewed_by = admin_user
+        self.profile_image_admin_notes = notes
+        self.save()
+        return self
 
     def __str__(self):
         club_name = f", {self.club.name}" if self.club else ""

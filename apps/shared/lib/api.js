@@ -38,6 +38,19 @@ export const authAPI = {
   me: () => api.get('/auth/me/'),
   sessionCheck: () => api.get('/auth/session-check/'),
   register: (data) => api.post('/auth/register-enhanced/', data),
+  updateProfile: (data) => api.put('/auth/me/', data),
+  changePassword: (currentPassword, newPassword) => api.post('/auth/change-password/', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  }),
+};
+
+// ── Notification settings ────────────────────────────
+export const notificationSettingsAPI = {
+  // NotificationSettings rows are auto-created per user (signal on User
+  // creation), so this list is always exactly the caller's own settings.
+  get: () => api.get('/notification-settings/').then((res) => ({ ...res, data: res.data?.results?.[0] ?? res.data?.[0] ?? null })),
+  update: (id, data) => api.patch(`/notification-settings/${id}/`, data),
 };
 
 // ── Onboarding (post-registration: choose role, then complete profile) ──
@@ -110,10 +123,19 @@ export const athleteAPI = {
     return api.patch(`/athletes/${id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
   myProfile: () => api.get('/athletes/my-profile/'),
+  myProfileDetail: () => api.get('/athletes/my-profile-detail/'),
   createMyProfile: (data) => api.post('/athletes/my-profile/', data),
   updateMyProfile: (data) => api.put('/athletes/my-profile/', data),
+  updateMyProfilePhoto: (file) => {
+    const formData = new FormData();
+    formData.append('profile_image', file);
+    return api.put('/athletes/my-profile/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
   approve: (id) => api.post(`/athletes/${id}/approve/`),
   process: (id, data) => api.post(`/athletes/${id}/process_application/`, data),
+  approveImage: (id, notes) => api.post(`/athletes/${id}/approve_image/`, { notes }),
+  rejectImage: (id, notes) => api.post(`/athletes/${id}/reject_image/`, { notes }),
+  pendingImageApprovals: () => api.get('/athletes/pending_image_approvals/'),
 };
 
 // ── Clubs ─────────────────────────────────────────────
@@ -260,11 +282,14 @@ export const scoreAPI = {
   get: (id) => api.get(`/category-athlete-score/${id}/`),
   create: (data) => api.post('/category-athlete-score/', data),
   update: (id, data) => api.patch(`/category-athlete-score/${id}/`, data),
-  approve: (id, data) => api.post(`/category-athlete-score/${id}/approve/`, data),
-  reject: (id, data) => api.post(`/category-athlete-score/${id}/reject/`, data),
+  approve: (id, data) => api.post(`/category-athlete-score/${id}/approve/`, { action: 'approve', ...data }),
+  reject: (id, data) => api.post(`/category-athlete-score/${id}/reject/`, { action: 'reject', ...data }),
   pendingReview: () => api.get('/category-athlete-score/pending_review/'),
   myResults: () => api.get('/category-athlete-score/my_results/'),
   allResults: (params) => api.get('/category-athlete-score/all_results/', { params }),
+  extractDiploma: (formData) => api.post('/category-athlete-score/extract_diploma/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
 };
 
 // ── Monitor / Display ─────────────────────────────────
