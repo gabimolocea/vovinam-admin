@@ -176,7 +176,7 @@ class PublicAthleteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'gender',
             'club', 'city', 'current_grade', 'is_coach', 'is_referee',
-            'profile_image', 'status', 'medals',
+            'profile_image', 'medals',
         ]
 
     def get_full_name(self, obj):
