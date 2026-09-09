@@ -83,12 +83,23 @@ from ._common import (
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    """Admin for base Category model to support autocomplete"""
+    """Admin for base Category model to support autocomplete.
+
+    Hidden from the admin index/menu (via get_model_perms) since editors
+    should use the type-specific screens instead (Categorii individuale /
+    pe echipe / luptă). It stays registered so autocomplete_fields that
+    reference the base Category model keep working.
+    """
     form = CategoryAdminForm
     inlines = [CategoryFieldAssignmentInline]
     list_display = ('id', 'name_link', 'group', 'event')
     search_fields = ('name', 'event__title')
     list_filter = ('event', 'group')
+
+    def get_model_perms(self, request):
+        # Hides this ModelAdmin from the admin index/app list while keeping
+        # its URLs (including autocomplete) fully functional.
+        return {}
 
     def name_link(self, obj):
         url = reverse('admin:api_category_change', args=(obj.pk,))
