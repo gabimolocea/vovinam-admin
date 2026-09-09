@@ -21,7 +21,7 @@ class BracketVisualizer:
     def get_bracket_html(self):
         """Generate bracket visualization HTML"""
         if not self.matches.exists():
-            return format_html(
+            return mark_safe(
                 '<div style="padding: 20px; background: #f0f0f0; border-radius: 4px;">'
                 '<p style="margin: 0; color: #666;">No matches scheduled yet</p>'
                 '</div>'
@@ -146,7 +146,7 @@ def bracket_visualization_readonly_field(self, obj):
             bracket_display.short_description = "Tournament Bracket"
     """
     if not obj:
-        return format_html(
+        return mark_safe(
             '<div style="padding: 20px; background: #f0f0f0; border-radius: 4px;">'
             '<p style="margin: 0; color: #999;">Save the category first to view bracket</p>'
             '</div>'

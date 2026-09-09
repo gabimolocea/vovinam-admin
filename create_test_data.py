@@ -132,7 +132,6 @@ def create_test_data():
                 'last_name': last_name,
                 'role': 'athlete',
                 'date_of_birth': dob,
-                'city': club.city
             }
         )
         if created:

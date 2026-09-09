@@ -1846,7 +1846,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(1)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<span style="color: #999;">Fără scor</span>')
+            return mark_safe('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='R2')
@@ -1856,7 +1856,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(2)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<span style="color: #999;">Fără scor</span>')
+            return mark_safe('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='R3')
@@ -1866,7 +1866,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(3)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<span style="color: #999;">Fără scor</span>')
+            return mark_safe('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='R4')
@@ -1876,7 +1876,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(4)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<span style="color: #999;">Fără scor</span>')
+            return mark_safe('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='R5')
@@ -1886,7 +1886,7 @@ class CategoryTeamScoreInline(admin.TabularInline):
             score = obj.get_referee_score(5)
             if score is not None:
                 return format_html('{:.2f}', score)
-            return format_html('<span style="color: #999;">Fără scor</span>')
+            return mark_safe('<span style="color: #999;">Fără scor</span>')
         return '-'
     
     @admin.display(description='Total')
