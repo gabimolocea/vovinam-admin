@@ -10,6 +10,11 @@ from io import BytesIO
 
 GEONAMES_RO_URL = "https://download.geonames.org/export/dump/RO.zip"
 GEONAMES_ADMIN1_URL = "https://download.geonames.org/export/dump/admin1CodesASCII.txt"
+# Called synchronously from a post_migrate signal at container startup - a slow
+# or unreachable geonames.org must fail fast so the caller can fall back to the
+# bundled fixture, instead of stalling migrate (and blocking the deploy's
+# health checks) indefinitely.
+REQUEST_TIMEOUT_SECONDS = 8
 
 
 class Command(BaseCommand):
@@ -29,15 +34,15 @@ class Command(BaseCommand):
 
         try:
             try:
-                with urllib.request.urlopen(GEONAMES_RO_URL) as response:
+                with urllib.request.urlopen(GEONAMES_RO_URL, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                     data = response.read()
             except Exception:
                 context = ssl._create_unverified_context()
-                with urllib.request.urlopen(GEONAMES_RO_URL, context=context) as response:
+                with urllib.request.urlopen(GEONAMES_RO_URL, context=context, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                     data = response.read()
         except Exception as exc:
             self.stderr.write(self.style.ERROR(f"Failed to download: {exc}"))
-            return
+            raise
 
         try:
             with zipfile.ZipFile(BytesIO(data)) as zf:
@@ -45,21 +50,21 @@ class Command(BaseCommand):
                     text = fh.read().decode("utf-8")
         except Exception as exc:
             self.stderr.write(self.style.ERROR(f"Failed to read RO.txt: {exc}"))
-            return
+            raise
 
         # Load admin1 (county) codes for Romania
         self.stdout.write("Downloading admin1 codes...")
         try:
             try:
-                with urllib.request.urlopen(GEONAMES_ADMIN1_URL) as response:
+                with urllib.request.urlopen(GEONAMES_ADMIN1_URL, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                     admin1_text = response.read().decode("utf-8")
             except Exception:
                 context = ssl._create_unverified_context()
-                with urllib.request.urlopen(GEONAMES_ADMIN1_URL, context=context) as response:
+                with urllib.request.urlopen(GEONAMES_ADMIN1_URL, context=context, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                     admin1_text = response.read().decode("utf-8")
         except Exception as exc:
             self.stderr.write(self.style.ERROR(f"Failed to download admin1 codes: {exc}"))
-            return
+            raise
 
         admin1_map = {}
         for row in csv.reader(admin1_text.splitlines(), delimiter="\t"):
