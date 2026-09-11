@@ -11,9 +11,12 @@ export default function PartnersSection() {
           <h2 className="text-fluid-h2 font-display shrink-0 font-bold text-[#00334d]">Parteneri</h2>
           <span className="h-px flex-1 bg-[#edb654]" aria-hidden="true" />
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-6 lg:flex-nowrap lg:gap-8">
+        {/* Mobile/tablet: horizontally-scrollable snap carousel (swipe
+            through logos one at a time) instead of wrapping them onto
+            several stacked rows. Desktop: single centered row, no scroll. */}
+        <div className="site-scrollbar-hide flex w-full snap-x snap-mandatory gap-6 overflow-x-auto px-4 pb-1 lg:flex-nowrap lg:justify-center lg:gap-8 lg:overflow-visible lg:px-0 lg:pb-0">
           {PARTNER_LOGOS.map((src, index) => (
-            <div key={src} className="flex h-[120px] w-[213px] shrink-0 items-center justify-center">
+            <div key={src} className="flex h-16 w-28 shrink-0 snap-center items-center justify-center sm:h-20 sm:w-36">
               <img src={src} alt={`Partener ${index + 1}`} className="max-h-full max-w-full rounded-2xl object-contain" />
             </div>
           ))}
