@@ -29,7 +29,7 @@ export default function HomePage() {
         const [heroResponse, newsResponse, videosResponse, eventsResponse] = await Promise.all([
           publicContentAPI.news.list({ featured: true, page_size: 5 }),
           publicContentAPI.news.list({ featured: true, page_size: 3 }),
-          publicContentAPI.videos.list({ featured: true, page_size: 2 }),
+          publicContentAPI.videos.list({ featured: true, page_size: 8 }),
           publicContentAPI.events.upcoming(),
         ]);
         if (!isMounted) return;
@@ -50,7 +50,7 @@ export default function HomePage() {
           newsResults = latestNews.data?.results ?? [];
         }
         if (videosResults.length === 0) {
-          const latestVideos = await publicContentAPI.videos.list({ page_size: 2 });
+          const latestVideos = await publicContentAPI.videos.list({ page_size: 8 });
           if (!isMounted) return;
           videosResults = latestVideos.data?.results ?? [];
         }
@@ -134,20 +134,23 @@ export default function HomePage() {
           <Button as={Link} to="/video" variant="ghost" size="sm">Vezi toate</Button>
         </div>
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="aspect-video" />)}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="aspect-video" />)}
           </div>
         ) : videos.length === 0 ? (
           <p className="text-muted-foreground">Nu există materiale video momentan.</p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="site-scrollbar-hide flex snap-x snap-mandatory gap-4 overflow-x-auto pb-1">
             {videos.map((video) => (
-              <Card key={video.slug} className="overflow-hidden">
+              <Card key={video.slug} className="w-[85%] shrink-0 snap-center overflow-hidden sm:w-[55%] lg:w-[32%]">
                 <div className="video-embed">
                   <iframe src={toEmbedUrl(video.url)} title={video.title} allowFullScreen loading="lazy" />
                 </div>
                 <CardHeader>
-                  <CardTitle as="h3" className="flex items-center gap-2 text-base"><PlayCircle className="h-4 w-4" />{video.title}</CardTitle>
+                  <CardTitle as="h3" className="flex items-center gap-2 text-base">
+                    <PlayCircle className="h-4 w-4 shrink-0" />
+                    <span className="line-clamp-2">{video.title}</span>
+                  </CardTitle>
                 </CardHeader>
               </Card>
             ))}
