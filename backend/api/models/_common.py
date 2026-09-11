@@ -740,7 +740,7 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
     
     def approve(self, admin_user, notes=''):
         """Approve the athlete-submitted grade"""
-        self._transition_status('approved', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_grade_status(status, actor, message))
+        self._transition_status('approved', admin_user, notes, on_success=lambda obj, status, actor, message: self._after_grade_approved(status, actor, message))
 
     def reject(self, admin_user, notes=''):
         """Reject the athlete-submitted grade"""
@@ -753,6 +753,12 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
     def _notify_grade_status(self, status, admin_user, notes):
         from ..notification_utils import create_grade_status_notification
         create_grade_status_notification(self, status, admin_user, notes)
+
+    def _after_grade_approved(self, status, admin_user, notes):
+        self._notify_grade_status(status, admin_user, notes)
+        if self.certificate_image:
+            from ..media_utils import compress_image_field
+            compress_image_field(self.certificate_image)
 
 
 # Yearly Medical Visa
