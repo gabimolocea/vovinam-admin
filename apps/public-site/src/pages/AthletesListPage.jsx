@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { athleteAPI } from '@shared/lib/api';
-import { Alert, Button, EmptyState, Input, Skeleton } from '../components/ui';
+import {
+  Alert, Button, EmptyState, Input, Skeleton,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '../components/ui';
 import Breadcrumbs from '../components/Breadcrumbs';
 import Seo from '../components/Seo';
 import AthletesTable from '../components/AthletesTable';
@@ -10,9 +13,9 @@ export default function AthletesListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
   const q = searchParams.get('q') || '';
+  const ordering = searchParams.get('ordering') === 'grade' ? 'grade' : 'name';
 
   const [athletes, setAthletes] = useState([]);
-  const [count, setCount] = useState(0);
   const [hasNext, setHasNext] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -29,10 +32,10 @@ export default function AthletesListPage() {
           page_size: 20,
           page,
           q: q || undefined,
+          ordering,
         });
         if (!isMounted) return;
         setAthletes(response.data?.results ?? []);
-        setCount(response.data?.count ?? 0);
         setHasNext(Boolean(response.data?.next));
       } catch {
         if (!isMounted) return;
@@ -46,7 +49,16 @@ export default function AthletesListPage() {
     return () => {
       isMounted = false;
     };
-  }, [page, q]);
+  }, [page, q, ordering]);
+
+  function updateParams(patch) {
+    const next = new URLSearchParams(searchParams);
+    Object.entries(patch).forEach(([key, value]) => {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    });
+    setSearchParams(next);
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -59,24 +71,32 @@ export default function AthletesListPage() {
       <Breadcrumbs items={[{ label: 'Federație', to: '/despre' }, { label: 'Sportivi' }]} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-3xl font-semibold">Sportivi</h1>
-          <p className="text-sm text-muted-foreground">{count} sportivi</p>
+        <h1 className="font-display text-3xl font-semibold">Sportivi</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={ordering} onValueChange={(value) => updateParams({ ordering: value === 'name' ? null : value, page: null })}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Sortează după" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Nume (A-Z)</SelectItem>
+              <SelectItem value="grade">Grad</SelectItem>
+            </SelectContent>
+          </Select>
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const value = new FormData(event.currentTarget).get('q');
+              updateParams({ q: value ? String(value) : null, page: null });
+            }}
+          >
+            <Input name="q" defaultValue={q} placeholder="Caută după nume, club, grad…" className="w-64" />
+            <Button type="submit" size="sm" variant="outline">Caută</Button>
+            {q && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => updateParams({ q: null, page: null })}>Resetează</Button>
+            )}
+          </form>
         </div>
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const value = new FormData(event.currentTarget).get('q');
-            setSearchParams(value ? { q: String(value) } : {});
-          }}
-        >
-          <Input name="q" defaultValue={q} placeholder="Caută după nume, club, grad…" className="w-64" />
-          <Button type="submit" size="sm" variant="outline">Caută</Button>
-          {q && (
-            <Button type="button" size="sm" variant="ghost" onClick={() => setSearchParams({})}>Resetează</Button>
-          )}
-        </form>
       </div>
 
       {error && <Alert variant="destructive">{error}</Alert>}
@@ -96,7 +116,7 @@ export default function AthletesListPage() {
               size="sm"
               variant="outline"
               disabled={page <= 1}
-              onClick={() => setSearchParams({ ...(q ? { q } : {}), page: String(page - 1) })}
+              onClick={() => updateParams({ page: String(page - 1) })}
             >
               Anterior
             </Button>
@@ -104,7 +124,7 @@ export default function AthletesListPage() {
               size="sm"
               variant="outline"
               disabled={!hasNext}
-              onClick={() => setSearchParams({ ...(q ? { q } : {}), page: String(page + 1) })}
+              onClick={() => updateParams({ page: String(page + 1) })}
             >
               Următor
             </Button>

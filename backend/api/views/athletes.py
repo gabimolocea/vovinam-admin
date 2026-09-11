@@ -172,7 +172,14 @@ class AthleteViewSet(viewsets.ModelViewSet):
             elif age_group == 'senior':
                 queryset = queryset.filter(date_of_birth__lte=years_ago(21))
 
-        queryset = queryset.order_by('last_name', 'first_name', 'id')
+        ordering = request.query_params.get('ordering')
+        if ordering == 'grade':
+            # Highest-ranked belt first; athletes without a grade yet sort last.
+            queryset = queryset.order_by(
+                models.F('current_grade__rank_order').desc(nulls_last=True), 'last_name', 'first_name', 'id'
+            )
+        else:
+            queryset = queryset.order_by('last_name', 'first_name', 'id')
 
         serializer = self.get_serializer_class()
         paginate = str(request.query_params.get('paginate', '')).lower() in ('1', 'true', 'yes')
