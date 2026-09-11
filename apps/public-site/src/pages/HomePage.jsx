@@ -75,7 +75,9 @@ export default function HomePage() {
   return (
     <div className="flex flex-col gap-12">
       <Seo path="/" jsonLd={organizationJsonLd()} />
-      {heroSlides.length > 0 ? (
+      {loading ? (
+        <Skeleton className="site-full-bleed -mt-8 h-[560px] w-full rounded-none lg:h-[620px]" />
+      ) : heroSlides.length > 0 ? (
         <HeroCarousel slides={heroSlides} />
       ) : (
         <section className="text-center">

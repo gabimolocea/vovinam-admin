@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, onboardingAPI, authAPI, notificationSettingsAPI } from '@shared';
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input, Label } from '../components/ui';
+import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input, Label, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 
 /** Step 1: choose account type. Never offers 'admin' - self-service accounts
@@ -277,7 +277,15 @@ export default function OnboardingPage() {
   const [choosingRole, setChoosingRole] = useState(false);
   const [roleError, setRoleError] = useState('');
 
-  if (loading || !user) return null;
+  if (loading) {
+    return (
+      <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+  if (!user) return null;
 
   async function chooseRole(role) {
     setRoleError('');
