@@ -297,7 +297,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         />
       )}
 
-      <div className="site-full-bleed relative overflow-hidden" style={{ backgroundColor: '#0c223d' }}>
+      <div className={`site-full-bleed relative overflow-hidden ${ownProfile ? 'pt-8 lg:pt-10' : ''}`} style={{ backgroundColor: '#0c223d' }}>
         {!ownProfile && (
           <Breadcrumbs
             items={[
@@ -310,7 +310,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         )}
 
         {ownProfile && athlete.status && athlete.status !== 'approved' && athlete.status !== 'revision_required' && (
-          <div className="relative mx-auto w-full max-w-6xl px-4 pt-6">
+          <div className="relative mx-auto w-full max-w-6xl px-4">
             <Alert variant="info">
               Acesta este profilul tău așa cum va arăta public. Cât timp este <strong>{(ATHLETE_STATUS_LABELS[athlete.status] || athlete.status).toLowerCase()}</strong>, nu este vizibil pentru nimeni altcineva.
             </Alert>
