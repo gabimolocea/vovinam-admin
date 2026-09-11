@@ -25,8 +25,8 @@ ENV VITE_API_BASE_URL=${VITE_API_BASE_URL} \
 
 RUN npm run build --workspace @vovinam/public-site
 
-# Stage 2: Django backend
-FROM python:3.11-slim
+# Stage 2: Django backend - Django 6.1 requires Python >=3.12
+FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
