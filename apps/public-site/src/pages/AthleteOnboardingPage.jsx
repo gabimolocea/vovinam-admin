@@ -33,7 +33,9 @@ export default function AthleteOnboardingPage() {
     emergency_contact_name: '',
     emergency_contact_phone: '',
   });
+  const [isLicensed, setIsLicensed] = useState(true);
   const [licenseImage, setLicenseImage] = useState(null);
+  const [licenseRequestDocument, setLicenseRequestDocument] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -66,6 +68,12 @@ export default function AthleteOnboardingPage() {
     update('city', city?.id ?? '');
   }
 
+  function handleLicenseStatusChange(licensed) {
+    setIsLicensed(licensed);
+    setLicenseImage(null);
+    setLicenseRequestDocument(null);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
@@ -75,14 +83,41 @@ export default function AthleteOnboardingPage() {
       setError('Introdu data nașterii completă, în formatul zz.luna.an (ex: 15.03.1995).');
       return;
     }
+    if (!form.gender) {
+      setError('Alege genul.');
+      return;
+    }
+    if (!form.club) {
+      setError('Alege clubul.');
+      return;
+    }
+    if (!form.city) {
+      setError('Alege localitatea.');
+      return;
+    }
+    if (isLicensed && !licenseImage) {
+      setError('Încarcă poza legitimației.');
+      return;
+    }
+    if (!isLicensed && !licenseRequestDocument) {
+      setError('Încarcă cererea de legitimare.');
+      return;
+    }
 
     setBusy(true);
     try {
+      const { license_series, ...formFields } = form;
       const payload = new FormData();
-      Object.entries({ ...form, date_of_birth: isoDate }).forEach(([key, value]) => {
+      Object.entries({ ...formFields, date_of_birth: isoDate }).forEach(([key, value]) => {
         if (value) payload.append(key, value);
       });
-      if (licenseImage) payload.append('license_image', licenseImage);
+      payload.append('is_licensed', isLicensed ? 'true' : 'false');
+      if (isLicensed) {
+        if (license_series) payload.append('license_series', license_series);
+        if (licenseImage) payload.append('license_image', licenseImage);
+      } else if (licenseRequestDocument) {
+        payload.append('license_request_document', licenseRequestDocument);
+      }
       await athleteAPI.createMyProfile(payload);
       await refetchUser();
       navigate('/cont', { replace: true });
@@ -101,6 +136,32 @@ export default function AthleteOnboardingPage() {
       <h1 className="font-display text-3xl font-semibold leading-snug tracking-normal">Profil sportiv</h1>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <Alert variant="destructive">{error}</Alert>}
+
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Stare legitimare</span>
+          <div className="flex gap-3">
+            {[
+              { value: true, label: 'Sunt sportiv legitimat' },
+              { value: false, label: 'Doresc legitimație' },
+            ].map((option) => (
+              <label
+                key={String(option.value)}
+                className={`flex flex-1 cursor-pointer items-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition ${
+                  isLicensed === option.value ? 'border-[#0a4c75] bg-[#0a4c75]/5' : 'border-border'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="isLicensed"
+                  checked={isLicensed === option.value}
+                  onChange={() => handleLicenseStatusChange(option.value)}
+                  className="h-4 w-4 accent-[#0a4c75]"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
@@ -136,7 +197,7 @@ export default function AthleteOnboardingPage() {
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="mobile_number">Telefon mobil</Label>
-            <Input id="mobile_number" value={form.mobile_number} onChange={(e) => update('mobile_number', e.target.value)} />
+            <Input id="mobile_number" required value={form.mobile_number} onChange={(e) => update('mobile_number', e.target.value)} />
           </div>
           <div className="flex flex-col gap-1">
             <Label>Club</Label>
@@ -164,29 +225,52 @@ export default function AthleteOnboardingPage() {
             <Label htmlFor="cnp">CNP</Label>
             <Input
               id="cnp"
+              required
               inputMode="numeric"
               maxLength={13}
               value={form.cnp}
               onChange={(e) => update('cnp', e.target.value.replace(/\D/g, ''))}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="license_series">Serie legitimație</Label>
-            <Input id="license_series" value={form.license_series} onChange={(e) => update('license_series', e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1 sm:col-span-2">
-            <Label htmlFor="license_image">Poză legitimație</Label>
-            <Input
-              id="license_image"
-              type="file"
-              accept="image/*"
-              onChange={(e) => setLicenseImage(e.target.files?.[0] ?? null)}
-            />
-          </div>
+          {isLicensed ? (
+            <>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="license_series">Serie legitimație</Label>
+                <Input
+                  id="license_series"
+                  required
+                  value={form.license_series}
+                  onChange={(e) => update('license_series', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1 sm:col-span-2">
+                <Label htmlFor="license_image">Poză legitimație</Label>
+                <Input
+                  id="license_image"
+                  type="file"
+                  required
+                  accept="image/*"
+                  onChange={(e) => setLicenseImage(e.target.files?.[0] ?? null)}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <Label htmlFor="license_request_document">Cerere de legitimare</Label>
+              <Input
+                id="license_request_document"
+                type="file"
+                required
+                accept="image/*,.pdf"
+                onChange={(e) => setLicenseRequestDocument(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          )}
           <div className="flex flex-col gap-1">
             <Label htmlFor="emergency_contact_name">Contact de urgență - nume</Label>
             <Input
               id="emergency_contact_name"
+              required
               value={form.emergency_contact_name}
               onChange={(e) => update('emergency_contact_name', e.target.value)}
             />
@@ -195,6 +279,7 @@ export default function AthleteOnboardingPage() {
             <Label htmlFor="emergency_contact_phone">Contact de urgență - telefon</Label>
             <Input
               id="emergency_contact_phone"
+              required
               value={form.emergency_contact_phone}
               onChange={(e) => update('emergency_contact_phone', e.target.value)}
             />

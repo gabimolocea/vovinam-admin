@@ -336,8 +336,10 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     first_name = models.CharField(_('Prenume'), max_length=100)
     last_name = models.CharField(_('Nume'), max_length=100)
     gender = models.CharField(_('Gen'), max_length=20, choices=GENDER_CHOICES, blank=True, null=True)
+    is_licensed = models.BooleanField(_('Sportiv legitimat'), default=True)
     license_series = models.CharField(_('Serie legitimație'), max_length=50, blank=True, null=True)
     license_image = models.ImageField(_('Poză legitimație'), upload_to='license_images/', blank=True, null=True)
+    license_request_document = models.FileField(_('Cerere de legitimare'), upload_to='license_requests/', blank=True, null=True)
     cnp = models.CharField(_('CNP'), max_length=13, blank=True, null=True)
     date_of_birth = models.DateField(_('Data nașterii'), blank=True, null=True)
     team_place = models.CharField(_('Loc obținut cu echipa'), max_length=50, blank=True, null=True)  # Place awarded to the athlete in a team competition
