@@ -28,7 +28,12 @@ export default function AthleteOnboardingPage() {
     mobile_number: '',
     club: '',
     city: '',
+    cnp: '',
+    license_series: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
   });
+  const [licenseImage, setLicenseImage] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -73,12 +78,11 @@ export default function AthleteOnboardingPage() {
 
     setBusy(true);
     try {
-      const payload = {
-        ...form,
-        date_of_birth: isoDate,
-        club: form.club || null,
-        city: form.city || null,
-      };
+      const payload = new FormData();
+      Object.entries({ ...form, date_of_birth: isoDate }).forEach(([key, value]) => {
+        if (value) payload.append(key, value);
+      });
+      if (licenseImage) payload.append('license_image', licenseImage);
       await athleteAPI.createMyProfile(payload);
       await refetchUser();
       navigate('/cont', { replace: true });
@@ -154,6 +158,45 @@ export default function AthleteOnboardingPage() {
               onChange={handleCityChange}
               onSearch={searchCities}
               placeholder="Scrie pentru a căuta localitatea…"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="cnp">CNP</Label>
+            <Input
+              id="cnp"
+              inputMode="numeric"
+              maxLength={13}
+              value={form.cnp}
+              onChange={(e) => update('cnp', e.target.value.replace(/\D/g, ''))}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="license_series">Serie legitimație</Label>
+            <Input id="license_series" value={form.license_series} onChange={(e) => update('license_series', e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <Label htmlFor="license_image">Poză legitimație</Label>
+            <Input
+              id="license_image"
+              type="file"
+              accept="image/*"
+              onChange={(e) => setLicenseImage(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="emergency_contact_name">Contact de urgență - nume</Label>
+            <Input
+              id="emergency_contact_name"
+              value={form.emergency_contact_name}
+              onChange={(e) => update('emergency_contact_name', e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="emergency_contact_phone">Contact de urgență - telefon</Label>
+            <Input
+              id="emergency_contact_phone"
+              value={form.emergency_contact_phone}
+              onChange={(e) => update('emergency_contact_phone', e.target.value)}
             />
           </div>
         </div>
