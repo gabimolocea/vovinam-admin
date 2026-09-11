@@ -49,7 +49,7 @@ class SEOModel(models.Model):
 
 class NewsPost(SEOModel):
     title = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True, help_text="URL-friendly version of the title")
+    slug = models.SlugField(max_length=255, unique=True, help_text="URL-friendly version of the title")
     content = CKEditor5Field('Content', config_name='extends')  # Updated field
     excerpt = CKEditor5Field('Excerpt', config_name='default', blank=True)  # Updated field
     featured_image = models.ImageField(upload_to='news/', blank=True, null=True)
@@ -105,7 +105,7 @@ class Event(SEOModel):
     ]
 
     title = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True, help_text="URL-friendly version of the title")
+    slug = models.SlugField(max_length=255, unique=True, help_text="URL-friendly version of the title")
     description = CKEditor5Field('Description', config_name='extends', blank=True)  # Updated field
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
@@ -277,7 +277,7 @@ class AboutSection(models.Model):
 class Video(models.Model):
     """A YouTube/Vimeo video featured on the public site."""
     title = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True, help_text="URL-friendly version of the title")
+    slug = models.SlugField(max_length=255, unique=True, help_text="URL-friendly version of the title")
     url = models.URLField(
         help_text="Full YouTube or Vimeo video URL (e.g. https://www.youtube.com/watch?v=... or https://vimeo.com/...)"
     )
@@ -308,7 +308,7 @@ class DocumentPage(models.Model):
     ]
 
     title = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True, help_text="URL-friendly version of the title")
+    slug = models.SlugField(max_length=255, unique=True, help_text="URL-friendly version of the title")
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='documente')
     description = CKEditor5Field('Description', config_name='default', blank=True)
     file = models.FileField(
