@@ -1,8 +1,73 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@shared';
+import { useAuth, authAPI } from '@shared';
 import { Alert, Button } from './ui';
 import { Eye, EyeOff } from 'lucide-react';
+
+/** Inline "forgot password" mini-form - swaps in for the login fields when
+ * open, rather than navigating away, so it works the same in the compact
+ * header popover as on the full /cont page. */
+function ForgotPasswordForm({ compact, onBack }) {
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      await authAPI.requestPasswordReset(email);
+      setSent(true);
+    } catch {
+      setError('Nu am putut trimite emailul de resetare. Încearcă din nou.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className={`flex flex-col ${compact ? 'gap-3' : 'gap-4'}`}>
+        <Alert variant="success">
+          Dacă adresa <strong>{email}</strong> există în sistem, vei primi un email cu un link de resetare a parolei.
+        </Alert>
+        <button type="button" onClick={onBack} className="text-center text-sm font-medium text-brand-red underline">
+          Înapoi la autentificare
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className={`flex flex-col ${compact ? 'gap-3' : 'gap-4'}`}>
+      {error && <Alert variant="destructive">{error}</Alert>}
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium">Introdu adresa de email a contului tău</span>
+        <input
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="site-form-input"
+        />
+      </label>
+      <Button
+        type="submit"
+        disabled={busy}
+        className="h-auto rounded-lg bg-[#da3b26] py-3 text-base font-bold uppercase tracking-wide text-white hover:bg-[#da3b26]/90"
+        style={{ fontFamily: "'Roboto Condensed', sans-serif" }}
+      >
+        {busy ? 'Se trimite…' : 'Trimite link de resetare'}
+      </Button>
+      <button type="button" onClick={onBack} className="text-center text-sm font-medium text-muted-foreground underline">
+        Înapoi la autentificare
+      </button>
+    </form>
+  );
+}
 
 /** Shared login form used both in the header "Cont" popover and on the
  * full /cont page. `compact` tightens spacing for the popover context. */
@@ -14,7 +79,7 @@ export default function LoginForm({ onSuccess, compact = false, showForgotPasswo
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [forgotNotice, setForgotNotice] = useState(false);
+  const [showForgotForm, setShowForgotForm] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -32,6 +97,10 @@ export default function LoginForm({ onSuccess, compact = false, showForgotPasswo
     } finally {
       setBusy(false);
     }
+  }
+
+  if (showForgotForm) {
+    return <ForgotPasswordForm compact={compact} onBack={() => setShowForgotForm(false)} />;
   }
 
   return (
@@ -72,21 +141,23 @@ export default function LoginForm({ onSuccess, compact = false, showForgotPasswo
         </div>
       </label>
 
-      <Button type="submit" disabled={busy}>
+      <Button
+        type="submit"
+        disabled={busy}
+        className="h-auto rounded-lg bg-[#da3b26] py-3 text-base font-bold uppercase tracking-wide text-white hover:bg-[#da3b26]/90"
+        style={{ fontFamily: "'Roboto Condensed', sans-serif" }}
+      >
         {busy ? 'Se autentifică…' : 'Autentificare'}
       </Button>
 
       {showForgotPassword && (
-        <div className="flex flex-col items-center gap-1 text-center text-sm">
-          <button type="button" onClick={() => setForgotNotice(true)} className="font-medium text-brand-red underline">
-            Ai uitat parola?
-          </button>
-          {forgotNotice && (
-            <span className="text-xs text-muted-foreground">
-              Contactează un administrator al federației pentru resetarea parolei.
-            </span>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowForgotForm(true)}
+          className="text-center text-sm font-medium text-brand-red underline"
+        >
+          Ai uitat parola?
+        </button>
       )}
     </form>
   );

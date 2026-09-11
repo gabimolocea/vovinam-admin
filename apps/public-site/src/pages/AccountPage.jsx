@@ -1,17 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, onboardingAPI } from '@shared';
 import { Alert, Button } from '../components/ui';
 import Seo from '../components/Seo';
+import Breadcrumbs from '../components/Breadcrumbs';
 import LoginForm from '../components/LoginForm';
 import OnboardingPage from './OnboardingPage';
-import { Check } from 'lucide-react';
-
-const BENEFITS = [
-  'Îți gestionezi profilul de sportiv sau antrenor și pagina clubului',
-  'Urmărești în timp real statusul cererilor (aprobare, grade, vize)',
-  'Depui rezultate, participări la seminarii și vize anuale mai rapid',
-];
 
 function RegisterForm() {
   const { register, refetchUser } = useAuth();
@@ -54,22 +48,27 @@ function RegisterForm() {
       <div className="flex flex-col gap-1 text-sm">
         <span className="font-medium">Tip cont</span>
         <div className="flex gap-3">
-          <Button
-            type="button"
-            className="flex-1"
-            variant={accountType === 'athlete' ? 'default' : 'secondary'}
-            onClick={() => setAccountType('athlete')}
-          >
-            Sportiv
-          </Button>
-          <Button
-            type="button"
-            className="flex-1"
-            variant={accountType === 'supporter' ? 'default' : 'secondary'}
-            onClick={() => setAccountType('supporter')}
-          >
-            Susținător
-          </Button>
+          {[
+            { value: 'athlete', label: 'Sportiv' },
+            { value: 'supporter', label: 'Susținător/Părinte/Tutore' },
+          ].map((option) => (
+            <label
+              key={option.value}
+              className={`flex flex-1 cursor-pointer items-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition ${
+                accountType === option.value ? 'border-[#0a4c75] bg-[#0a4c75]/5' : 'border-border'
+              }`}
+            >
+              <input
+                type="radio"
+                name="accountType"
+                value={option.value}
+                checked={accountType === option.value}
+                onChange={() => setAccountType(option.value)}
+                className="h-4 w-4 accent-[#0a4c75]"
+              />
+              {option.label}
+            </label>
+          ))}
         </div>
       </div>
 
@@ -110,7 +109,12 @@ function RegisterForm() {
         />
       </label>
 
-      <Button type="submit" disabled={busy}>
+      <Button
+        type="submit"
+        disabled={busy}
+        className="h-auto rounded-lg bg-[#da3b26] py-3 text-base font-bold uppercase tracking-wide text-white hover:bg-[#da3b26]/90"
+        style={{ fontFamily: "'Roboto Condensed', sans-serif" }}
+      >
         {busy ? 'Se creează contul…' : 'Înregistrare'}
       </Button>
     </form>
@@ -118,32 +122,44 @@ function RegisterForm() {
 }
 
 function AuthGate() {
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('mode') === 'register' ? 'register' : 'login');
+
   return (
-    <div className="grid gap-10 lg:grid-cols-2">
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-3">
-          <h1 className="font-display text-2xl font-semibold sm:text-3xl">De ce să-ți creezi cont?</h1>
-          <ul className="flex flex-col gap-2">
-            {BENEFITS.map((benefit) => (
-              <li key={benefit} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand-red" />
-                <span>{benefit}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+    <>
+      <Breadcrumbs items={[{ label: 'Contul meu' }]} showCurrent />
 
-        <div className="flex flex-col gap-4">
-          <h2 className="font-display text-xl font-semibold">Vreau un cont nou</h2>
-          <RegisterForm />
-        </div>
+      <div className="mx-auto mt-8 flex w-full max-w-2xl flex-col gap-8">
+        {/* shadcn-style tab list (bg-muted pill, active trigger gets a
+            white/shadowed "chip") rather than two full-size block buttons. */}
+        <div role="tablist" className="inline-flex h-12 w-fit items-center justify-center rounded-lg bg-[#e9ecef] p-1.5">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'login'}
+          onClick={() => setActiveTab('login')}
+          className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-6 py-2 text-base font-bold uppercase tracking-wide transition-all ${
+            activeTab === 'login' ? 'bg-white text-[#00334d] shadow-sm' : 'text-muted-foreground hover:text-[#00334d]'
+          }`}
+        >
+          Autentificare
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'register'}
+          onClick={() => setActiveTab('register')}
+          className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-6 py-2 text-base font-bold uppercase tracking-wide transition-all ${
+            activeTab === 'register' ? 'bg-white text-[#00334d] shadow-sm' : 'text-muted-foreground hover:text-[#00334d]'
+          }`}
+        >
+          Înregistrare
+        </button>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-xl border p-6 lg:self-start">
-        <h2 className="font-display text-xl font-semibold">Am deja cont</h2>
-        <LoginForm />
+      {activeTab === 'login' ? <LoginForm /> : <RegisterForm />}
       </div>
-    </div>
+    </>
   );
 }
 

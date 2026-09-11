@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { eventAPI, categoryAPI, scoreAPI } from '@shared';
 import {
-  Alert, Button, Input, Label,
+  Alert, Button, Label,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui';
 import { Sparkles } from 'lucide-react';
+
+const GENDER_LABELS = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
 
 const PLACEMENT_OPTIONS = [
   { value: '1st', label: '🥇 Locul 1' },
@@ -17,7 +19,7 @@ const PLACEMENT_OPTIONS = [
  * optionally pre-fill the competiție/categorie/loc fields from it using the
  * `extract_diploma` AI endpoint - the athlete still reviews/corrects the
  * suggestion before submitting, and the coach/admin still has to approve. */
-export default function ResultSubmissionForm({ athleteId, onSubmitted, onCancel }) {
+export default function ResultSubmissionForm({ athleteId, athleteGender, onSubmitted, onCancel }) {
   const [events, setEvents] = useState([]);
   const [categories, setCategories] = useState([]);
   const [eventId, setEventId] = useState('');
@@ -40,6 +42,10 @@ export default function ResultSubmissionForm({ athleteId, onSubmitted, onCancel 
     }
     categoryAPI.list({ event: eventId }).then((res) => setCategories(res.data?.results ?? res.data ?? [])).catch(() => {});
   }, [eventId]);
+
+  const visibleCategories = (athleteGender === 'male' || athleteGender === 'female')
+    ? categories.filter((cat) => cat.gender === athleteGender || cat.gender === 'mixt')
+    : categories;
 
   async function handleAiAutofill() {
     if (!certificateFile) {
@@ -101,17 +107,18 @@ export default function ResultSubmissionForm({ athleteId, onSubmitted, onCancel 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-xl border p-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {error && <Alert variant="destructive">{error}</Alert>}
 
       <div className="flex flex-col gap-1">
         <Label htmlFor="certificate_image">Poză diplomă / certificat</Label>
-        <Input
+        <input
           id="certificate_image"
           type="file"
           accept="image/*"
           required
           onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
+          className="site-form-input"
         />
         <Button
           type="button"
@@ -134,7 +141,7 @@ export default function ResultSubmissionForm({ athleteId, onSubmitted, onCancel 
             <SelectTrigger><SelectValue placeholder="Alege competiția" /></SelectTrigger>
             <SelectContent className="bg-white">
               {events.map((ev) => (
-                <SelectItem key={ev.id} value={String(ev.id)}>{ev.title}</SelectItem>
+                <SelectItem key={ev.id} value={String(ev.id)}>{ev.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -144,11 +151,14 @@ export default function ResultSubmissionForm({ athleteId, onSubmitted, onCancel 
           <Select value={categoryId} onValueChange={setCategoryId} disabled={!eventId}>
             <SelectTrigger><SelectValue placeholder="Alege categoria" /></SelectTrigger>
             <SelectContent className="bg-white">
-              {categories.map((cat) => (
-                <SelectItem key={cat.id} value={String(cat.id)}>
-                  {cat.name}{cat.group_name ? ` (${cat.group_name})` : ''}
-                </SelectItem>
-              ))}
+              {visibleCategories.map((cat) => {
+                const details = [cat.group_name, GENDER_LABELS[cat.gender]].filter(Boolean).join(', ');
+                return (
+                  <SelectItem key={cat.id} value={String(cat.id)}>
+                    {cat.name}{details ? ` (${details})` : ''}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>

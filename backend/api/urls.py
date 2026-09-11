@@ -49,6 +49,7 @@ router.register('notification-settings', NotificationSettingsViewSet, basename='
 router.register('grade-submissions', GradeHistorySubmissionViewSet, basename='grade-submission')
 router.register('seminar-submissions', TrainingSeminarParticipationViewSet, basename='seminar-submission')
 router.register('event-participations', TrainingSeminarParticipationViewSet, basename='event-participation')
+router.register('visa-submissions', VisaSubmissionViewSet, basename='visa-submission')
 
 # Import the new event enrollment viewset
 from .views import EventEnrollmentViewSet
@@ -117,6 +118,8 @@ urlpatterns = autocomplete_urlpatterns + [
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/login/', LoginView.as_view(), name='login'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
+    path('auth/password-reset/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('auth/password-reset-confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     path('auth/profile/', UserProfileView.as_view(), name='profile'),
     path('auth/me/', UserProfileView.as_view(), name='me'),  # Alias for /profile/
     path('auth/change-password/', ChangePasswordView.as_view(), name='change-password'),
@@ -149,6 +152,12 @@ urlpatterns = autocomplete_urlpatterns + [
     # -------------------------------------------------------------------
     path('public/news/', PublicNewsViewSet.as_view({'get': 'list'}), name='public-news-list'),
     path('public/news/<slug:pk>/', PublicNewsViewSet.as_view({'get': 'retrieve'}), name='public-news-detail'),
+    path('public/news/<slug:pk>/react/', PublicNewsViewSet.as_view({'post': 'react'}), name='public-news-react'),
+    path(
+        'public/news/<slug:pk>/comments/',
+        PublicNewsViewSet.as_view({'get': 'comments', 'post': 'comments'}),
+        name='public-news-comments',
+    ),
     path('public/videos/', PublicVideoViewSet.as_view({'get': 'list'}), name='public-video-list'),
     path('public/about/', PublicAboutViewSet.as_view({'get': 'list'}), name='public-about-list'),
     path('public/events/upcoming/', PublicEventViewSet.as_view({'get': 'upcoming'}), name='public-events-upcoming'),

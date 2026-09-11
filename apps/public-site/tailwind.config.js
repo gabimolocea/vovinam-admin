@@ -9,7 +9,6 @@ export default {
 				...config.theme.extend.fontFamily,
 				sans: ['Roboto', 'sans-serif'],
 				display: ['Roboto', 'sans-serif'],
-				mobile: ['Poppins', 'sans-serif'],
 			},
 			colors: {
 				...config.theme.extend.colors,
@@ -17,7 +16,7 @@ export default {
 				'brand-navy': '#172642',
 				'brand-navy-dark': '#071225',
 				'brand-gold': '#edb654',
-				'brand-red': '#a61f33',
+				'brand-red': '#da3b26',
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
 				ring: 'hsl(var(--ring))',

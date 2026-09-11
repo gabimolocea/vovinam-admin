@@ -3,6 +3,42 @@ Utility functions for creating and managing notifications
 """
 from django.utils import timezone
 from .models import Notification, User, NotificationSettings
+from .email_utils import send_status_email
+from .whatsapp_utils import send_whatsapp_status_message
+
+# Status-change notification types (approved/rejected/revision_required) are
+# the only ones that also go out over email/WhatsApp - submissions and admin
+# notices stay in-app only. Each entry maps a type prefix to the
+# NotificationSettings email field to check and the profile tab it should
+# link to (mirrors the frontend's NotificationBell.jsx linkFor()).
+STATUS_CHANGE_CHANNELS = {
+    'result': {'email_field': 'email_on_result_status_change', 'tab': 'rezultate'},
+    'grade': {'email_field': 'email_on_grade_status_change', 'tab': 'grade'},
+    'seminar': {'email_field': 'email_on_seminar_status_change', 'tab': 'seminarii'},
+    'visa': {'email_field': 'email_on_visa_status_change', 'tab': 'vize'},
+}
+STATUS_SUFFIXES = ('_approved', '_rejected', '_revision_required')
+
+
+def _send_status_channels(recipient, settings, notification_type, title, message):
+    """Send the email/WhatsApp side-channels for a status-change notification,
+    if the recipient's settings and contact info allow it. Never raises -
+    email_utils/whatsapp_utils already swallow their own failures."""
+    prefix = next((p for p in STATUS_CHANGE_CHANNELS if notification_type.startswith(p)), None)
+    suffix = next((s for s in STATUS_SUFFIXES if notification_type.endswith(s)), None)
+    if not prefix or not suffix:
+        return
+
+    channel = STATUS_CHANGE_CHANNELS[prefix]
+    cta_path = f'/cont/profil?tab={channel["tab"]}'
+
+    if getattr(settings, channel['email_field'], True):
+        send_status_email(recipient, title, message, cta_label='Vezi profilul meu', cta_path=cta_path)
+
+    if settings.notify_via_whatsapp:
+        phone = recipient.phone_number or getattr(getattr(recipient, 'athlete', None), 'mobile_number', None)
+        if phone:
+            send_whatsapp_status_message(phone, title, message)
 
 
 def create_notification(recipient, notification_type, title, message, related_result=None, related_competition=None, action_data=None):
@@ -75,8 +111,53 @@ def create_notification(recipient, notification_type, title, message, related_re
     
     # Create the notification
     notification = Notification.objects.create(**notification_data)
-    
+
+    _send_status_channels(recipient, settings, notification_type, title, message)
+
     return notification
+
+
+def notify_welcome_email(user):
+    """Sent once, right after self-service registration - both the plain and
+    "enhanced" /auth/register* endpoints share UserRegistrationSerializer, so
+    its create() is the single hook point for both."""
+    send_status_email(
+        user,
+        title='Bine ai venit la Federația Română de Vovinam Việt Võ Đạo!',
+        message=(
+            'Contul tău a fost creat cu succes.\n\n'
+            'Următorul pas este să completezi profilul tău de sportiv, ca să poți trimite '
+            'rezultate, examene de grad, participări la seminarii și vize medicale spre aprobare.'
+        ),
+        cta_label='Completează profilul',
+        cta_path='/cont',
+    )
+
+
+def notify_account_approved(athlete):
+    """Sent when an athlete's profile/account is approved (Athlete.approve())
+    - distinct from the per-submission result/grade/seminar/visa approvals,
+    and from notify_profile_image_reviewed below (which only covers the
+    separate profile-picture approval)."""
+    if not athlete.user:
+        return
+    create_notification(
+        recipient=athlete.user,
+        notification_type='account_approved',
+        title='Cont aprobat',
+        message='Profilul tău de sportiv a fost verificat și aprobat. Este acum vizibil public pe site.',
+    )
+    send_status_email(
+        athlete.user,
+        title='Contul tău a fost aprobat!',
+        message=(
+            'Profilul tău de sportiv a fost verificat și aprobat de un administrator.\n\n'
+            'Este acum vizibil public pe site și poți trimite rezultate, examene de grad, '
+            'participări la seminarii și vize medicale spre aprobare.'
+        ),
+        cta_label='Vezi profilul meu',
+        cta_path='/cont/profil',
+    )
 
 
 def notify_profile_image_submitted(athlete):
@@ -119,13 +200,14 @@ def create_result_submitted_notification(result):
     entity = getattr(result.category, 'event_or_competition', None) or result.category.competition
     entity_name = getattr(entity, 'name', None) or getattr(entity, 'title', None) or 'N/A'
     entity_date = getattr(entity, 'date', None) or getattr(entity, 'start_date', None) or None
+    placement_suffix = f' - {result.get_placement_claimed_display()}' if result.placement_claimed else ''
 
     # Notification for the athlete (confirmation)
     create_notification(
         recipient=athlete.user,
         notification_type='result_submitted',
-        title='Result Submitted Successfully',
-        message=f'Your result for {result.category.name} in {entity_name} has been submitted and is pending review.',
+        title='Rezultat trimis cu succes',
+        message=f'Rezultatul tău la {result.category.name} de la {entity_name}{placement_suffix} a fost trimis și așteaptă aprobare.',
         related_result=result,
         action_data={
             'category_name': result.category.name,
@@ -144,8 +226,8 @@ def create_result_submitted_notification(result):
         create_notification(
             recipient=admin,
             notification_type='result_submitted',
-            title='New Result Submitted for Review',
-            message=f'{athlete.first_name} {athlete.last_name} submitted a result for {result.category.name} in {entity_name}.',
+            title='Rezultat nou trimis spre aprobare',
+            message=f'{athlete.first_name} {athlete.last_name} a trimis un rezultat la {result.category.name} de la {entity_name}.',
             related_result=result,
             action_data={
                 'athlete_name': f'{athlete.first_name} {athlete.last_name}',
@@ -170,33 +252,38 @@ def create_result_status_notification(result, new_status, admin_user, admin_note
     entity_name = getattr(entity, 'name', None) or getattr(entity, 'title', None) or 'N/A'
     entity_date = getattr(entity, 'date', None) or getattr(entity, 'start_date', None) or None
 
+    # State exactly what result this is about - the claimed placement (e.g.
+    # "Locul 1"), not just the category name, so "ce rezultat a fost aprobat"
+    # is answered without opening the site.
+    placement_suffix = f' - {result.get_placement_claimed_display()}' if result.placement_claimed else ''
+
     # Map status to notification type and messages
     status_mapping = {
         'approved': {
             'type': 'result_approved',
-            'title': '🎉 Result Approved!',
-            'message': f'Congratulations! Your result for {result.category.name} in {entity_name} has been approved.',
+            'title': 'Rezultat aprobat!',
+            'message': f'Felicitări! Rezultatul tău la {result.category.name} de la {entity_name}{placement_suffix} a fost aprobat.',
         },
         'rejected': {
             'type': 'result_rejected',
-            'title': 'Result Rejected',
-            'message': f'Your result for {result.category.name} in {entity_name} has been rejected.',
+            'title': 'Rezultat respins',
+            'message': f'Rezultatul tău la {result.category.name} de la {entity_name}{placement_suffix} a fost respins.',
         },
         'revision_required': {
             'type': 'result_revision_required',
-            'title': 'Result Revision Required',
-            'message': f'Your result for {result.category.name} in {entity_name} requires revision.',
+            'title': 'Rezultat - sunt necesare completări',
+            'message': f'Rezultatul tău la {result.category.name} de la {entity_name}{placement_suffix} necesită completări.',
         }
     }
-    
+
     status_info = status_mapping.get(new_status)
     if not status_info:
         return
-    
+
     # Add admin notes to message if provided
     message = status_info['message']
     if admin_notes:
-        message += f'\n\nAdmin notes: {admin_notes}'
+        message += f'\n\nNote administrator: {admin_notes}'
 
     action_data = {
         'category_name': result.category.name,
@@ -236,11 +323,11 @@ def create_competition_notification(competition, notification_type='competition_
     competition_name = getattr(competition, 'name', None) or getattr(competition, 'title', str(competition))
 
     if notification_type == 'competition_created':
-        title = 'New Competition Available'
-        message = f'A new competition "{competition_name}" has been created and is available for registration.'
+        title = 'Competiție nouă disponibilă'
+        message = f'Competiția „{competition_name}” a fost creată și este disponibilă pentru înscriere.'
     else:
-        title = 'Competition Updated'
-        message = f'The competition "{competition_name}" has been updated. Please check for any changes.'
+        title = 'Competiție actualizată'
+        message = f'Competiția „{competition_name}” a fost actualizată. Verifică eventualele modificări.'
     
     start_date = getattr(competition, 'start_date', None)
     for athlete in athletes:
@@ -283,8 +370,8 @@ def create_grade_submitted_notification(grade_history):
     create_notification(
         recipient=athlete.user,
         notification_type='grade_submitted',
-        title='Grade Exam Submitted Successfully',
-        message=f'Your grade exam submission for {grade_history.grade.name} has been submitted and is pending review.',
+        title='Examen de grad trimis cu succes',
+        message=f'Cererea ta de examen de grad pentru {grade_history.grade.name} a fost trimisă și așteaptă aprobare.',
         action_data={
             'grade_name': grade_history.grade.name,
                 'event': grade_history.event.id if getattr(grade_history, 'event', None) else None,
@@ -300,8 +387,8 @@ def create_grade_submitted_notification(grade_history):
         create_notification(
             recipient=admin,
             notification_type='grade_submitted',
-            title='New Grade Exam Submitted for Review',
-            message=f'{athlete.first_name} {athlete.last_name} submitted a grade exam for {grade_history.grade.name}.',
+            title='Examen de grad nou trimis spre aprobare',
+            message=f'{athlete.first_name} {athlete.last_name} a trimis o cerere de examen de grad pentru {grade_history.grade.name}.',
             action_data={
                 'athlete_name': f'{athlete.first_name} {athlete.last_name}',
                 'grade_name': grade_history.grade.name,
@@ -321,30 +408,30 @@ def create_grade_status_notification(grade_history, new_status, admin_user, admi
     status_mapping = {
         'approved': {
             'type': 'grade_approved',
-            'title': '🎉 Grade Exam Approved!',
-            'message': f'Congratulations! Your grade exam for {grade_history.grade.name} has been approved.',
+            'title': 'Examen de grad aprobat!',
+            'message': f'Felicitări! Examenul tău de grad pentru {grade_history.grade.name} a fost aprobat.',
         },
         'rejected': {
             'type': 'grade_rejected',
-            'title': 'Grade Exam Rejected',
-            'message': f'Your grade exam submission for {grade_history.grade.name} has been rejected.',
+            'title': 'Examen de grad respins',
+            'message': f'Cererea ta de examen de grad pentru {grade_history.grade.name} a fost respinsă.',
         },
         'revision_required': {
             'type': 'grade_revision_required',
-            'title': 'Grade Exam Revision Required',
-            'message': f'Your grade exam submission for {grade_history.grade.name} requires revision.',
+            'title': 'Examen de grad - sunt necesare completări',
+            'message': f'Cererea ta de examen de grad pentru {grade_history.grade.name} necesită completări.',
         }
     }
-    
+
     status_info = status_mapping.get(new_status)
     if not status_info:
         return
-    
+
     # Add admin notes to message if provided
     message = status_info['message']
     if admin_notes:
-        message += f'\n\nAdmin notes: {admin_notes}'
-    
+        message += f'\n\nNote administrator: {admin_notes}'
+
     # Create notification for the athlete
     create_notification(
         recipient=athlete.user,
@@ -377,8 +464,8 @@ def create_seminar_submitted_notification(participation):
         create_notification(
             recipient=athlete.user,
             notification_type='seminar_submitted',
-            title='Seminar Participation Submitted Successfully',
-            message=f'Your participation submission for "{event.title}" has been submitted and is pending review.',
+            title='Participare la seminar trimisă cu succes',
+            message=f'Cererea ta de participare la „{event.title}” a fost trimisă și așteaptă aprobare.',
             action_data={
                 'event_id': event.pk,
                 'event_name': event.title,
@@ -391,8 +478,8 @@ def create_seminar_submitted_notification(participation):
         create_notification(
             recipient=athlete.user,
             notification_type='seminar_submitted',
-            title='Seminar Participation Submitted Successfully',
-            message=f'Your participation submission for "{seminar.name}" has been submitted and is pending review.' if seminar else 'Your participation submission has been submitted and is pending review.',
+            title='Participare la seminar trimisă cu succes',
+            message=f'Cererea ta de participare la „{seminar.name}” a fost trimisă și așteaptă aprobare.' if seminar else 'Cererea ta de participare a fost trimisă și așteaptă aprobare.',
             action_data={
                 'seminar_name': seminar.name if seminar else None,
                 'seminar_start_date': seminar.start_date.isoformat() if seminar and seminar.start_date else None,
@@ -407,8 +494,8 @@ def create_seminar_submitted_notification(participation):
         create_notification(
             recipient=admin,
             notification_type='seminar_submitted',
-            title='New Seminar Participation Submitted for Review',
-            message=(f'{athlete.first_name} {athlete.last_name} submitted participation for "{event.title}".' if event else f'{athlete.first_name} {athlete.last_name} submitted participation for "{seminar.name}".'),
+            title='Participare la seminar nouă trimisă spre aprobare',
+            message=(f'{athlete.first_name} {athlete.last_name} a trimis o cerere de participare la „{event.title}”.' if event else f'{athlete.first_name} {athlete.last_name} a trimis o cerere de participare la „{seminar.name}”.'),
             action_data=(
                 {
                     'athlete_name': f'{athlete.first_name} {athlete.last_name}',
@@ -438,29 +525,29 @@ def create_seminar_status_notification(participation, new_status, admin_user, ad
     status_mapping = {
         'approved': {
             'type': 'seminar_approved',
-            'title': '🎉 Seminar Participation Approved!',
-            'message': f'Congratulations! Your participation in "{seminar.name}" has been approved.',
+            'title': 'Participare la seminar aprobată!',
+            'message': f'Felicitări! Participarea ta la „{seminar.name}” a fost aprobată.',
         },
         'rejected': {
             'type': 'seminar_rejected',
-            'title': 'Seminar Participation Rejected',
-            'message': f'Your participation submission for "{seminar.name}" has been rejected.',
+            'title': 'Participare la seminar respinsă',
+            'message': f'Cererea ta de participare la „{seminar.name}” a fost respinsă.',
         },
         'revision_required': {
             'type': 'seminar_revision_required',
-            'title': 'Seminar Participation Revision Required',
-            'message': f'Your participation submission for "{seminar.name}" requires revision.',
+            'title': 'Participare la seminar - sunt necesare completări',
+            'message': f'Cererea ta de participare la „{seminar.name}” necesită completări.',
         }
     }
-    
+
     status_info = status_mapping.get(new_status)
     if not status_info:
         return
-    
+
     # Add admin notes to message if provided
     message = status_info['message']
     if admin_notes:
-        message += f'\n\nAdmin notes: {admin_notes}'
+        message += f'\n\nNote administrator: {admin_notes}'
     
     # Create notification for the athlete
     # Prefer event when available
@@ -497,3 +584,76 @@ def create_seminar_status_notification(participation, new_status, admin_user, ad
                 'new_status': new_status
             }
         )
+
+
+VISA_TYPE_LABELS = {'medical': 'medicală', 'annual': 'anuală'}
+
+
+def create_visa_submitted_notification(visa):
+    """Create notification when an athlete submits a visa (medical/annual)"""
+    athlete = visa.athlete
+    type_label = VISA_TYPE_LABELS.get(visa.visa_type, visa.visa_type)
+
+    create_notification(
+        recipient=athlete.user,
+        notification_type='visa_submitted',
+        title='Viză trimisă cu succes',
+        message=f'Viza ta {type_label} a fost trimisă și așteaptă aprobare.',
+        action_data={'visa_id': visa.pk, 'visa_type': visa.visa_type, 'issued_date': visa.issued_date.isoformat() if visa.issued_date else None},
+    )
+
+    admin_users = User.objects.filter(role='admin')
+    for admin in admin_users:
+        create_notification(
+            recipient=admin,
+            notification_type='visa_submitted',
+            title='Viză nouă trimisă spre aprobare',
+            message=f'{athlete.first_name} {athlete.last_name} a trimis o viză {type_label} spre aprobare.',
+            action_data={'athlete_name': f'{athlete.first_name} {athlete.last_name}', 'visa_id': visa.pk, 'visa_type': visa.visa_type},
+        )
+
+
+def create_visa_status_notification(visa, new_status, admin_user, admin_notes=''):
+    """Create notification when a visa's approval status changes"""
+    athlete = visa.athlete
+    type_label = VISA_TYPE_LABELS.get(visa.visa_type, visa.visa_type)
+
+    status_mapping = {
+        'approved': {
+            'type': 'visa_approved',
+            'title': 'Viză aprobată!',
+            'message': f'Viza ta {type_label} a fost aprobată.',
+        },
+        'rejected': {
+            'type': 'visa_rejected',
+            'title': 'Viză respinsă',
+            'message': f'Viza ta {type_label} a fost respinsă.',
+        },
+        'revision_required': {
+            'type': 'visa_revision_required',
+            'title': 'Viză - sunt necesare completări',
+            'message': f'Viza ta {type_label} necesită completări.',
+        },
+    }
+
+    status_info = status_mapping.get(new_status)
+    if not status_info:
+        return
+
+    message = status_info['message']
+    if admin_notes:
+        message += f'\n\nNote administrator: {admin_notes}'
+
+    create_notification(
+        recipient=athlete.user,
+        notification_type=status_info['type'],
+        title=status_info['title'],
+        message=message,
+        action_data={
+            'visa_id': visa.pk,
+            'visa_type': visa.visa_type,
+            'reviewed_by': str(admin_user) if admin_user else 'Admin',
+            'admin_notes': admin_notes,
+            'new_status': new_status,
+        },
+    )

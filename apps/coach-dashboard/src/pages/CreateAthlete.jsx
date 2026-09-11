@@ -155,7 +155,7 @@ export default function CreateAthlete() {
       if (profileImage) fd.append('profile_image', profileImage);
       if (medicalCert) fd.append('medical_certificate', medicalCert);
 
-      const athlete = await api.post('/athletes/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const athlete = await api.post('/athletes/', fd);
 
       // Create grade history entry if a grade was selected
       if (gradeForm.grade) {

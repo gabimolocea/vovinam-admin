@@ -25,21 +25,40 @@ async function fetchAllPages(path) {
   return results;
 }
 
+// The API is unreachable during a fresh container build (no backend running
+// in the build stage yet, or a transient network hiccup) - degrade to "no
+// dynamic routes" instead of hard-failing the whole frontend build, since a
+// missing sitemap entry/prerendered page is far cheaper than a broken deploy.
 export async function fetchAllNews() {
-  return fetchAllPages('/public/news/');
+  try {
+    return await fetchAllPages('/public/news/');
+  } catch (err) {
+    console.warn(`[fetch-content] Could not fetch news from ${API_BASE}, continuing without it:`, err.message);
+    return [];
+  }
 }
 
 export async function fetchAllEvents() {
-  return fetchAllPages('/public/events/');
+  try {
+    return await fetchAllPages('/public/events/');
+  } catch (err) {
+    console.warn(`[fetch-content] Could not fetch events from ${API_BASE}, continuing without it:`, err.message);
+    return [];
+  }
 }
 
 // The events list endpoint omits the rich-text `description` field (only
 // the detail endpoint returns it), so the prerender script needs one extra
 // fetch per event to build an accurate meta description.
 export async function fetchEventDetail(slug) {
-  const response = await fetch(`${API_BASE}/public/events/${slug}/`);
-  if (!response.ok) return null;
-  return response.json();
+  try {
+    const response = await fetch(`${API_BASE}/public/events/${slug}/`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (err) {
+    console.warn(`[fetch-content] Could not fetch event detail for "${slug}", continuing without it:`, err.message);
+    return null;
+  }
 }
 
 export function getApiBase() {

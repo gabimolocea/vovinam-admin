@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { athleteAPI } from '@shared/lib/api';
 import { Alert, Button, EmptyState, Input, Skeleton } from '../components/ui';
+import Breadcrumbs from '../components/Breadcrumbs';
 import Seo from '../components/Seo';
 import AthletesTable from '../components/AthletesTable';
 
@@ -55,6 +56,8 @@ export default function AthletesListPage() {
         path="/sportivi"
       />
 
+      <Breadcrumbs items={[{ label: 'Federație', to: '/despre' }, { label: 'Sportivi' }]} />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold">Sportivi</h1>
@@ -86,7 +89,7 @@ export default function AthletesListPage() {
         <EmptyState title="Niciun sportiv găsit" message={q ? `Nu există sportivi pentru „${q}”.` : 'Reveniți mai târziu.'} />
       ) : (
         <>
-          <AthletesTable athletes={athletes} />
+          <AthletesTable athletes={athletes} showStatus={false} showResults={false} />
 
           <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
             <Button

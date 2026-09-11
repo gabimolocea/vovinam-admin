@@ -82,6 +82,15 @@ class NewsPost(SEOModel):
     def __str__(self):
         return self.title
 
+    @property
+    def like_count(self):
+        return self.reactions.filter(reaction_type='like').count()
+
+    @property
+    def dislike_count(self):
+        return self.reactions.filter(reaction_type='dislike').count()
+
+
 class Event(SEOModel):
     SYNC_MODE_CHOICES = [
         ('cloud', _('Cloud')),
@@ -517,9 +526,31 @@ class NewsComment(models.Model):
     @property
     def is_reply(self):
         return self.parent is not None
-    
+
     def get_replies(self):
         return self.replies.filter(is_approved=True)
+
+
+class NewsReaction(models.Model):
+    """Like/dislike on a NewsPost article, Facebook-style. One reaction per
+    user per post (switching type just updates the row) - mirrors
+    GalleryReaction."""
+    REACTION_CHOICES = [
+        ('like', 'Like'),
+        ('dislike', 'Dislike'),
+    ]
+    news_post = models.ForeignKey(NewsPost, related_name='reactions', on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    reaction_type = models.CharField(max_length=10, choices=REACTION_CHOICES)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ('news_post', 'user')
+        verbose_name = _('Article Reaction')
+        verbose_name_plural = _('Article Reactions')
+
+    def __str__(self):
+        return f"{self.user} {self.reaction_type}d {self.news_post.title}"
 
 
 # Proxy models to create a separate admin "Contact" section without moving

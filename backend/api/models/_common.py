@@ -409,7 +409,18 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         _('Nivel arbitraj'), max_length=20, choices=REFEREE_LEVEL_CHOICES, blank=True, null=True,
         help_text=_('Folosit pentru gruparea pe pagina publică Arbitri (internaționali/naționali).')
     )
-    
+
+    # Medals won at competitions the federation doesn't organize/score in-app
+    # (European and World championships), entered manually by an admin -
+    # unlike the national medal count, which is computed automatically from
+    # approved CategoryAthleteScore results (see medal_counts_for_athlete).
+    european_medals_gold = models.PositiveIntegerField(_('Medalii aur - European'), default=0)
+    european_medals_silver = models.PositiveIntegerField(_('Medalii argint - European'), default=0)
+    european_medals_bronze = models.PositiveIntegerField(_('Medalii bronz - European'), default=0)
+    world_medals_gold = models.PositiveIntegerField(_('Medalii aur - Mondial'), default=0)
+    world_medals_silver = models.PositiveIntegerField(_('Medalii argint - Mondial'), default=0)
+    world_medals_bronze = models.PositiveIntegerField(_('Medalii bronz - Mondial'), default=0)
+
     # Documents
     profile_image = models.ImageField(
         _('Imagine profil'),
@@ -507,8 +518,12 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         """Approve the athlete profile"""
         self.approved_date = timezone.now()  # Legacy field
         self.approved_by = admin_user  # Legacy field
-        self._transition_status('approved', admin_user, set_notes=False)
-    
+        self._transition_status('approved', admin_user, set_notes=False, on_success=lambda obj, status, actor, notes: self._notify_account_approved())
+
+    def _notify_account_approved(self):
+        from ..notification_utils import notify_account_approved
+        notify_account_approved(self)
+
     def reject(self, admin_user, reason=None):
         """Reject the athlete profile"""
         # Clear legacy approval metadata so `can_add_results`/downstream checks
@@ -756,6 +771,7 @@ class Visa(ApprovalWorkflowMixin, models.Model):
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='visas')
     visa_type = models.CharField(_('Tip viză'), max_length=10, choices=VISA_TYPE_CHOICES)
     issued_date = models.DateField(_('Data emiterii'), blank=True, null=True)
+    submitted_by_athlete = models.BooleanField(_('Trimis de sportiv'), default=False, help_text=_('Bifat dacă a fost trimis chiar de sportiv.'))
 
     # Fields that may be used for either type
     document = models.FileField(_('Document'), upload_to='visa_documents/', null=True, blank=True)
@@ -814,18 +830,33 @@ class Visa(ApprovalWorkflowMixin, models.Model):
         return 'Valid' if self.is_valid() else 'Expired'
 
     def save(self, *args, **kwargs):
-        # NOTE: this used to also force status back to 'approved' on every
-        # save() whenever `submitted_by_athlete` wasn't set — but Visa has no
-        # such field/param, so that branch was always true and silently
-        # reset any pending/rejected/revision_required status back to
-        # 'approved' on the very next save (e.g. from an approve()/reject()
-        # call). The field's `default='approved'` already covers the normal
-        # admin-created case, so no override is needed here anymore.
+        # Keep athlete self-submissions pending until reviewed, same as
+        # GradeHistory/TrainingSeminarParticipation. The field's
+        # `default='approved'` already covers the normal admin-created case,
+        # so admin-created visas are unaffected.
+        if not self.pk and self.submitted_by_athlete:
+            self.status = 'pending'
         super().save(*args, **kwargs)
 
     def __str__(self):
         status = 'Valid' if self.is_valid() else 'Expired'
         return f"{self.get_visa_type_display()} pentru {self.athlete} - {status}"
+
+    def approve(self, admin_user, notes=''):
+        """Approve the athlete-submitted visa"""
+        self._transition_status('approved', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_visa_status(status, actor, message))
+
+    def reject(self, admin_user, notes=''):
+        """Reject the athlete-submitted visa"""
+        self._transition_status('rejected', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_visa_status(status, actor, message))
+
+    def request_revision(self, admin_user, notes=''):
+        """Request revision of the athlete-submitted visa"""
+        self._transition_status('revision_required', admin_user, notes, on_success=lambda obj, status, actor, message: self._notify_visa_status(status, actor, message))
+
+    def _notify_visa_status(self, status, admin_user, notes):
+        from ..notification_utils import create_visa_status_notification
+        create_visa_status_notification(self, status, admin_user, notes)
 
 
 # Training Seminars

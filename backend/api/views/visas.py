@@ -121,4 +121,93 @@ class MedicalVisaViewSet(viewsets.ViewSet):
         return Response(status=204)
 
 
+class VisaSubmissionViewSet(viewsets.ModelViewSet):
+    """ViewSet for athlete visa (medical/annual) submissions with approval
+    workflow - mirrors GradeHistorySubmissionViewSet/TrainingSeminarParticipationViewSet."""
+    serializer_class = VisaSubmissionSerializer
+    permission_classes = [IsAthleteOwnerCoachOrAdmin]
+
+    def perform_create(self, serializer):
+        try:
+            serializer.save()
+        except IntegrityError:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            raise DRFValidationError({'issued_date': 'Ai trimis deja o viză de acest tip pentru această dată.'})
+
+    def get_queryset(self):
+        qs = Visa.objects.select_related('athlete')
+        user = self.request.user
+
+        if getattr(user, 'is_admin', False) or getattr(user, 'role', None) == 'admin':
+            pass
+        elif hasattr(user, 'athlete') and user.athlete:
+            if user.athlete.is_coach and user.athlete.club_id:
+                qs = qs.filter(athlete__club_id=user.athlete.club_id)
+            else:
+                qs = qs.filter(athlete=user.athlete)
+        else:
+            return Visa.objects.none()
+
+        visa_type = self.request.query_params.get('visa_type')
+        if visa_type:
+            qs = qs.filter(visa_type=visa_type)
+
+        athlete_id = self.request.query_params.get('athlete')
+        if athlete_id:
+            qs = qs.filter(athlete_id=athlete_id)
+
+        return qs.order_by('-submitted_date')
+
+    @action(detail=False, methods=['post'])
+    def extract_diploma(self, request):
+        """Best-effort AI reading of an uploaded medical/annual visa photo,
+        returning a suggested issued date so the athlete can review and
+        prefill the visa submission form. Never creates or modifies
+        anything by itself."""
+        if not hasattr(request.user, 'athlete'):
+            return Response({'error': 'User does not have an athlete profile'}, status=status.HTTP_400_BAD_REQUEST)
+
+        image = request.FILES.get('image')
+        if not image:
+            return Response({'error': 'Trimite o imagine cu legitimația (câmpul "image").'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from ..diploma_ocr import extract_visa_certificate_fields
+        try:
+            result = extract_visa_certificate_fields(image)
+        except Exception:
+            logging.getLogger(__name__).exception('Visa certificate OCR failed')
+            return Response(
+                {'error': 'Nu am putut citi automat legitimația. Completează câmpurile manual.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(result)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def approve(self, request, pk=None):
+        visa = self.get_object()
+        serializer = VisaApprovalSerializer(data=request.data)
+        if serializer.is_valid():
+            visa.approve(request.user, serializer.validated_data.get('notes', ''))
+            return Response({'message': 'Visa approved successfully', 'status': visa.status})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def reject(self, request, pk=None):
+        visa = self.get_object()
+        serializer = VisaApprovalSerializer(data=request.data)
+        if serializer.is_valid():
+            visa.reject(request.user, serializer.validated_data.get('notes', ''))
+            return Response({'message': 'Visa rejected successfully', 'status': visa.status})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def request_revision(self, request, pk=None):
+        visa = self.get_object()
+        serializer = VisaApprovalSerializer(data=request.data)
+        if serializer.is_valid():
+            visa.request_revision(request.user, serializer.validated_data.get('notes', ''))
+            return Response({'message': 'Revision requested successfully', 'status': visa.status})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 # TrainingSeminarViewSet removed - use Events API instead

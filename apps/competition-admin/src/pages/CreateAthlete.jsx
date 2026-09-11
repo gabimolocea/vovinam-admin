@@ -146,7 +146,7 @@ export default function CreateAthlete() {
       if (profileImage) fd.append('profile_image', profileImage);
       if (medicalCert) fd.append('medical_certificate', medicalCert);
 
-      await api.post('/athletes/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await api.post('/athletes/', fd);
       navigate('/');
     } catch (err) {
       const data = err.response?.data;

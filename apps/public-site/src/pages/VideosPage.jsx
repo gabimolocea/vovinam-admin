@@ -3,6 +3,7 @@ import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Button, Card, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
 import { toEmbedUrl } from '../lib/video';
 import Seo from '../components/Seo';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 export default function VideosPage() {
   const [videos, setVideos] = useState([]);
@@ -43,6 +44,7 @@ export default function VideosPage() {
         description="Materiale video oficiale ale Federației Române de Vovinam Việt Võ Đạo: competiții, seminarii și demonstrații."
         path="/video"
       />
+      <Breadcrumbs items={[{ label: 'Video' }]} />
       <h1 className="font-display text-3xl font-semibold">Video</h1>
 
       {error && <Alert variant="destructive">{error}</Alert>}

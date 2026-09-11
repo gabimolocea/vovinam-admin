@@ -13,8 +13,21 @@ export const STATUS_LABELS = {
 export function formatEventDateRange(start, end) {
   const startDate = new Date(start);
   const endDate = new Date(end);
-  const options = { day: 'numeric', month: 'long', year: 'numeric' };
-  const startLabel = startDate.toLocaleDateString('ro-RO', options);
-  const endLabel = endDate.toLocaleDateString('ro-RO', options);
-  return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
+  const fullOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+
+  if (startDate.toDateString() === endDate.toDateString()) {
+    return startDate.toLocaleDateString('ro-RO', fullOptions);
+  }
+
+  const endLabel = endDate.toLocaleDateString('ro-RO', fullOptions);
+
+  if (startDate.getFullYear() !== endDate.getFullYear()) {
+    return `${startDate.toLocaleDateString('ro-RO', fullOptions)} – ${endLabel}`;
+  }
+
+  if (startDate.getMonth() !== endDate.getMonth()) {
+    return `${startDate.toLocaleDateString('ro-RO', { day: 'numeric', month: 'long' })} – ${endLabel}`;
+  }
+
+  return `${startDate.toLocaleDateString('ro-RO', { day: 'numeric' })} – ${endLabel}`;
 }

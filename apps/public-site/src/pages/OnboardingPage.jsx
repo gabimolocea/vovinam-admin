@@ -53,25 +53,21 @@ function AccountTab({ user, refetchUser }) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle as="h2">Cont</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4 text-sm">
-        <p><span className="font-medium">Tip cont:</span> {isSupporter ? 'Susținător' : 'Sportiv / antrenor'}</p>
+    <div className="flex flex-col gap-4">
+      <h2 className="font-display text-lg font-bold text-[#00334d]">Cont</h2>
+      <p className="text-sm"><span className="font-medium">Tip cont:</span> {isSupporter ? 'Susținător' : 'Sportiv / antrenor'}</p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-          <Label htmlFor="account-email">Adresă de email</Label>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input id="account-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="sm:flex-1" />
-            <Button type="submit" disabled={busy || email === user.email}>
-              {busy ? 'Se salvează…' : 'Salvează email'}
-            </Button>
-          </div>
-          {message && <Alert variant={message.type}>{message.text}</Alert>}
-        </form>
-      </CardContent>
-    </Card>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <Label htmlFor="account-email">Adresă de email</Label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input id="account-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="sm:flex-1" />
+          <Button type="submit" disabled={busy || email === user.email}>
+            {busy ? 'Se salvează…' : 'Salvează email'}
+          </Button>
+        </div>
+        {message && <Alert variant={message.type}>{message.text}</Alert>}
+      </form>
+    </div>
   );
 }
 
@@ -105,47 +101,43 @@ function PasswordTab() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle as="h2">Parolă</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-          <Label htmlFor="account-current-password">Parolă curentă</Label>
-          <Input
-            id="account-current-password"
-            type="password"
-            required
-            autoComplete="current-password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-          />
-          <Label htmlFor="account-new-password">Parolă nouă</Label>
-          <Input
-            id="account-new-password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
-          <Label htmlFor="account-new-password-confirm">Confirmă parola nouă</Label>
-          <Input
-            id="account-new-password-confirm"
-            type="password"
-            required
-            autoComplete="new-password"
-            value={newPasswordConfirm}
-            onChange={(e) => setNewPasswordConfirm(e.target.value)}
-          />
-          <Button type="submit" disabled={busy} className="self-start">
-            {busy ? 'Se schimbă…' : 'Schimbă parola'}
-          </Button>
-          {message && <Alert variant={message.type}>{message.text}</Alert>}
-        </form>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-4">
+      <h2 className="font-display text-lg font-bold text-[#00334d]">Parolă</h2>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <Label htmlFor="account-current-password">Parolă curentă</Label>
+        <Input
+          id="account-current-password"
+          type="password"
+          required
+          autoComplete="current-password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+        />
+        <Label htmlFor="account-new-password">Parolă nouă</Label>
+        <Input
+          id="account-new-password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+        />
+        <Label htmlFor="account-new-password-confirm">Confirmă parola nouă</Label>
+        <Input
+          id="account-new-password-confirm"
+          type="password"
+          required
+          autoComplete="new-password"
+          value={newPasswordConfirm}
+          onChange={(e) => setNewPasswordConfirm(e.target.value)}
+        />
+        <Button type="submit" disabled={busy} className="self-start">
+          {busy ? 'Se schimbă…' : 'Schimbă parola'}
+        </Button>
+        {message && <Alert variant={message.type}>{message.text}</Alert>}
+      </form>
+    </div>
   );
 }
 
@@ -154,8 +146,17 @@ const NOTIFICATION_FIELDS = [
     group: 'Email',
     items: [
       ['email_on_result_status_change', 'Schimbarea stării unui rezultat'],
+      ['email_on_grade_status_change', 'Schimbarea stării unui examen de grad'],
+      ['email_on_seminar_status_change', 'Schimbarea stării unei participări la seminar'],
+      ['email_on_visa_status_change', 'Schimbarea stării unei vize'],
       ['email_on_competition_updates', 'Actualizări ale competițiilor'],
       ['email_on_system_announcements', 'Anunțuri de sistem'],
+    ],
+  },
+  {
+    group: 'WhatsApp',
+    items: [
+      ['notify_via_whatsapp', 'Trimite-mi și un mesaj WhatsApp la schimbarea stării unei cereri'],
     ],
   },
   {
@@ -165,6 +166,14 @@ const NOTIFICATION_FIELDS = [
       ['notify_result_approved', 'Rezultat aprobat'],
       ['notify_result_rejected', 'Rezultat respins'],
       ['notify_result_revision_required', 'Rezultat cu completări solicitate'],
+      ['notify_grade_submitted', 'Examen de grad trimis'],
+      ['notify_grade_approved', 'Examen de grad aprobat'],
+      ['notify_grade_rejected', 'Examen de grad respins'],
+      ['notify_grade_revision_required', 'Examen de grad cu completări solicitate'],
+      ['notify_seminar_submitted', 'Participare la seminar trimisă'],
+      ['notify_seminar_approved', 'Participare la seminar aprobată'],
+      ['notify_seminar_rejected', 'Participare la seminar respinsă'],
+      ['notify_seminar_revision_required', 'Participare la seminar cu completări solicitate'],
       ['notify_competition_created', 'Competiție nouă'],
       ['notify_competition_updated', 'Competiție actualizată'],
       ['notify_system_announcements', 'Anunțuri de sistem'],
@@ -199,26 +208,22 @@ function NotificationsTab() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle as="h2">Notificări</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        {error && <Alert variant="destructive">{error}</Alert>}
-        {!settings && !error && <p className="text-sm text-muted-foreground">Se încarcă…</p>}
-        {settings && NOTIFICATION_FIELDS.map(({ group, items }) => (
-          <div key={group} className="flex flex-col gap-2">
-            <span className="text-sm font-medium">{group}</span>
-            {items.map(([field, label]) => (
-              <label key={field} className="flex items-center gap-2 text-sm">
-                <Checkbox checked={!!settings[field]} disabled={busyField === field} onCheckedChange={() => toggle(field)} />
-                {label}
-              </label>
-            ))}
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-5">
+      <h2 className="font-display text-lg font-bold text-[#00334d]">Notificări</h2>
+      {error && <Alert variant="destructive">{error}</Alert>}
+      {!settings && !error && <p className="text-sm text-muted-foreground">Se încarcă…</p>}
+      {settings && NOTIFICATION_FIELDS.map(({ group, items }) => (
+        <div key={group} className="flex flex-col gap-2">
+          <span className="text-sm font-medium">{group}</span>
+          {items.map(([field, label]) => (
+            <label key={field} className="flex items-center gap-2 text-sm">
+              <Checkbox checked={!!settings[field]} disabled={busyField === field} onCheckedChange={() => toggle(field)} />
+              {label}
+            </label>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 

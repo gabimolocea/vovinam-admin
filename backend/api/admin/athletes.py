@@ -114,6 +114,17 @@ class AthleteAdmin(admin.ModelAdmin):
         ('Flux de aprobare', {
             'fields': ('status', 'submitted_date_display', 'reviewed_date_display', 'reviewed_by', 'add_enrolled_event_link', 'add_grade_history_link')
         }),
+        ('Medalii internaționale (Campionat European / Mondial)', {
+            'description': (
+                'Medaliile de la competițiile naționale se calculează automat din rezultatele aprobate. '
+                'Federația nu organizează/scorează în aplicație Campionatul European sau Mondial, așa că '
+                'medaliile obținute acolo se introduc manual aici.'
+            ),
+            'fields': (
+                ('european_medals_gold', 'european_medals_silver', 'european_medals_bronze'),
+                ('world_medals_gold', 'world_medals_silver', 'world_medals_bronze'),
+            ),
+        }),
     )
 
     def get_queryset(self, request):

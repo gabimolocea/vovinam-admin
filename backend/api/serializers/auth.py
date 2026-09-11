@@ -107,6 +107,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             last_name='',
             role='user',
         )
+        from ..notification_utils import notify_welcome_email
+        notify_welcome_email(user)
         return user
 
 

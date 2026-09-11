@@ -89,6 +89,30 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
             return TrainingSeminarParticipation.objects.all().select_related('event', 'athlete')
         return TrainingSeminarParticipation.objects.none()
     
+    @action(detail=False, methods=['post'])
+    def extract_diploma(self, request):
+        """Best-effort AI reading of an uploaded seminar certificate photo,
+        returning a suggested seminar event so the athlete can review and
+        prefill the participation submission form. Never creates or
+        modifies anything by itself."""
+        if not hasattr(request.user, 'athlete'):
+            return Response({'error': 'User does not have an athlete profile'}, status=status.HTTP_400_BAD_REQUEST)
+
+        image = request.FILES.get('image') or request.FILES.get('participation_certificate')
+        if not image:
+            return Response({'error': 'Trimite o imagine cu certificatul (câmpul "image").'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from ..diploma_ocr import extract_seminar_certificate_fields
+        try:
+            result = extract_seminar_certificate_fields(image)
+        except Exception:
+            logging.getLogger(__name__).exception('Seminar certificate OCR failed')
+            return Response(
+                {'error': 'Nu am putut citi automat certificatul. Completează câmpurile manual.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(result)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
         """Admin action to approve a seminar participation"""

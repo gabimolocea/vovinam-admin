@@ -25,9 +25,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from ..permissions import can_edit_object, IsClubCoachOrAdmin
 from rest_framework.response import Response
 
-from api.models import Athlete, Club, medal_counts_for_club
+from api.models import Athlete, Club, medal_counts_for_club, trophy_counts_for_club
 from landing.models import (
-    AboutSection, DocumentPage, Event, GalleryComment, GalleryReaction, NewsPost, NewsPostGallery, Video,
+    AboutSection, DocumentPage, Event, GalleryComment, GalleryReaction, NewsComment, NewsPost, NewsPostGallery,
+    NewsReaction, Video,
 )
 
 
@@ -35,6 +36,17 @@ from landing.models import (
 # Serializers (dedicated to the public surface - deliberately expose only
 # fields that are safe for an anonymous, public audience)
 # ---------------------------------------------------------------------------
+
+def _club_summary(club, request):
+    """Shared {name, logo} shape for a club reference on public person cards,
+    so the frontend can render the crest without a second lookup."""
+    if not club:
+        return None
+    return {
+        'name': club.name,
+        'logo': request.build_absolute_uri(club.logo.url) if request and club.logo else None,
+    }
+
 
 class PublicNewsPostGallerySerializer(serializers.ModelSerializer):
     class Meta:
@@ -45,12 +57,16 @@ class PublicNewsPostGallerySerializer(serializers.ModelSerializer):
 class PublicNewsPostListSerializer(serializers.ModelSerializer):
     """Lightweight serializer used for the news list endpoint."""
     author_name = serializers.SerializerMethodField()
+    like_count = serializers.IntegerField(read_only=True)
+    dislike_count = serializers.IntegerField(read_only=True)
+    comment_count = serializers.SerializerMethodField()
 
     class Meta:
         model = NewsPost
         fields = [
             'title', 'slug', 'excerpt', 'featured_image', 'featured_image_alt',
             'tags', 'featured', 'author_name', 'created_at',
+            'like_count', 'dislike_count', 'comment_count',
         ]
 
     def get_author_name(self, obj):
@@ -58,13 +74,47 @@ class PublicNewsPostListSerializer(serializers.ModelSerializer):
             return ''
         return obj.author.get_full_name() or obj.author.username
 
+    def get_comment_count(self, obj):
+        return obj.comments.filter(is_approved=True).count()
+
 
 class PublicNewsPostDetailSerializer(PublicNewsPostListSerializer):
-    """Full serializer used for the news detail endpoint - adds content + gallery."""
+    """Full serializer used for the news detail endpoint - adds content,
+    gallery, and (like the gallery photo serializer) the current user's own
+    reaction, so the article page can render the like/dislike buttons in
+    the right state without a second request."""
     gallery_images = PublicNewsPostGallerySerializer(many=True, read_only=True)
+    my_reaction = serializers.SerializerMethodField()
 
     class Meta(PublicNewsPostListSerializer.Meta):
-        fields = PublicNewsPostListSerializer.Meta.fields + ['content', 'gallery_images']
+        fields = PublicNewsPostListSerializer.Meta.fields + ['content', 'gallery_images', 'my_reaction']
+
+    def get_my_reaction(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return None
+        reaction = next((r for r in obj.reactions.all() if r.user_id == user.id), None)
+        return reaction.reaction_type if reaction else None
+
+
+class PublicNewsCommentSerializer(serializers.ModelSerializer):
+    """Comment on a news article - Facebook-style thread, one level of
+    replies (mirrors PublicGalleryCommentSerializer)."""
+    author_name = serializers.SerializerMethodField()
+    replies = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NewsComment
+        fields = ['id', 'author_name', 'content', 'parent', 'created_at', 'replies']
+
+    def get_author_name(self, obj):
+        return obj.author.get_full_name() or obj.author.username
+
+    def get_replies(self, obj):
+        if obj.is_reply:
+            return []
+        return PublicNewsCommentSerializer(obj.get_replies(), many=True, context=self.context).data
 
 
 class PublicVideoSerializer(serializers.ModelSerializer):
@@ -119,17 +169,24 @@ class PublicClubDetailSerializer(PublicClubSerializer):
     the club detail page. Athletes are fetched separately from
     `/api/athletes/?club=<id>` (paginated), not embedded here."""
     medals = serializers.SerializerMethodField()
+    trophies = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     coach_profiles = serializers.SerializerMethodField()
 
     class Meta(PublicClubSerializer.Meta):
         fields = PublicClubSerializer.Meta.fields + [
-            'description', 'facebook_url', 'instagram_url', 'tiktok_url', 'medals', 'can_edit', 'coach_profiles',
+            'description', 'facebook_url', 'instagram_url', 'tiktok_url', 'medals', 'trophies', 'can_edit', 'coach_profiles',
         ]
 
     def get_medals(self, obj):
         try:
             return medal_counts_for_club(obj)
+        except Exception:
+            return {'gold': 0, 'silver': 0, 'bronze': 0}
+
+    def get_trophies(self, obj):
+        try:
+            return trophy_counts_for_club(obj)
         except Exception:
             return {'gold': 0, 'silver': 0, 'bronze': 0}
 
@@ -165,7 +222,7 @@ class PublicStaffSerializer(serializers.ModelSerializer):
     federation_role = serializers.CharField(source='federation_role.name', read_only=True, default='')
     title = serializers.CharField(source='title.name', read_only=True, default='')
     grade = serializers.CharField(source='current_grade.name', read_only=True, default='')
-    club = serializers.CharField(source='club.name', read_only=True, default='')
+    club = serializers.SerializerMethodField()
 
     class Meta:
         model = Athlete
@@ -174,6 +231,9 @@ class PublicStaffSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
 
+    def get_club(self, obj):
+        return _club_summary(obj.club, self.context.get('request'))
+
 
 class PublicRefereeSerializer(serializers.ModelSerializer):
     """Referee directory ('Arbitri' nav item) - Athlete records flagged
@@ -181,7 +241,7 @@ class PublicRefereeSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     title = serializers.CharField(source='title.name', read_only=True, default='')
     grade = serializers.CharField(source='current_grade.name', read_only=True, default='')
-    club = serializers.CharField(source='club.name', read_only=True, default='')
+    club = serializers.SerializerMethodField()
 
     class Meta:
         model = Athlete
@@ -189,6 +249,9 @@ class PublicRefereeSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
+
+    def get_club(self, obj):
+        return _club_summary(obj.club, self.context.get('request'))
 
 class PublicDocumentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -283,14 +346,34 @@ class PublicContentPagination(PageNumberPagination):
 
 class PublicNewsViewSet(viewsets.ViewSet):
     """
-    GET /api/public/news/           - paginated list of published news posts
-    GET /api/public/news/<slug>/    - detail of a single published news post
+    GET  /api/public/news/           - paginated list of published news posts
+    GET  /api/public/news/<slug>/    - detail of a single published news post
+    POST /api/public/news/<slug>/react/    {type: like|dislike}
+         - toggle the current user's reaction (IsAuthenticated). Posting the
+           same type again removes it (un-react); a different type switches
+           it. Mirrors PublicGalleryViewSet.react.
+    GET  /api/public/news/<slug>/comments/ - approved comments, threaded (AllowAny).
+    POST /api/public/news/<slug>/comments/ {content, parent?}
+         - add a comment (IsAuthenticated).
     """
-    permission_classes = [AllowAny]
     pagination_class = PublicContentPagination
 
+    def get_permissions(self):
+        # `add_comment` is a plain helper, not a routed action - a POST to
+        # the `comments` action needs its own check since that action also
+        # serves GET (public reads), which `self.action == 'comments'`
+        # alone can't distinguish. (This same fix applies to both the news
+        # and gallery viewsets, which shared the original, buggy check.)
+        if self.action == 'react' or (self.action == 'comments' and self.request.method == 'POST'):
+            return [IsAuthenticated()]
+        return [AllowAny()]
+
     def get_queryset(self):
-        return NewsPost.objects.filter(published=True).select_related('author').prefetch_related('gallery_images')
+        return (
+            NewsPost.objects.filter(published=True)
+            .select_related('author')
+            .prefetch_related('gallery_images', 'reactions')
+        )
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -316,6 +399,55 @@ class PublicNewsViewSet(viewsets.ViewSet):
         instance = get_object_or_404(self.get_queryset(), slug=pk)
         serializer = PublicNewsPostDetailSerializer(instance, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def react(self, request, pk=None):
+        post = get_object_or_404(self.get_queryset(), slug=pk)
+        reaction_type = request.data.get('type')
+        if reaction_type not in ('like', 'dislike'):
+            return Response({'detail': "type trebuie să fie 'like' sau 'dislike'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing = NewsReaction.objects.filter(news_post=post, user=request.user).first()
+        if existing and existing.reaction_type == reaction_type:
+            existing.delete()
+            my_reaction = None
+        elif existing:
+            existing.reaction_type = reaction_type
+            existing.save(update_fields=['reaction_type'])
+            my_reaction = reaction_type
+        else:
+            NewsReaction.objects.create(news_post=post, user=request.user, reaction_type=reaction_type)
+            my_reaction = reaction_type
+
+        return Response({
+            'my_reaction': my_reaction,
+            'like_count': post.reactions.filter(reaction_type='like').count(),
+            'dislike_count': post.reactions.filter(reaction_type='dislike').count(),
+        })
+
+    @action(detail=True, methods=['get', 'post'], url_path='comments')
+    def comments(self, request, pk=None):
+        post = get_object_or_404(self.get_queryset(), slug=pk)
+        if request.method == 'GET':
+            top_level = post.comments.filter(is_approved=True, parent=None).select_related('author')
+            serializer = PublicNewsCommentSerializer(top_level, many=True, context={'request': request})
+            return Response(serializer.data)
+
+        return self.add_comment(request, post)
+
+    def add_comment(self, request, post):
+        content = (request.data.get('content') or '').strip()
+        if not content:
+            return Response({'detail': 'Comentariul nu poate fi gol.'}, status=status.HTTP_400_BAD_REQUEST)
+        parent_id = request.data.get('parent')
+        parent = None
+        if parent_id:
+            parent = get_object_or_404(NewsComment, pk=parent_id, news_post=post)
+        comment = NewsComment.objects.create(
+            news_post=post, author=request.user, content=content[:1000], parent=parent,
+        )
+        serializer = PublicNewsCommentSerializer(comment, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class PublicVideoViewSet(viewsets.ViewSet):
@@ -407,6 +539,60 @@ class PublicClubViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
 
+# Explicit display order for the federation staff/referee directories,
+# matching the curated ordering on the live vovinam.ro site (which isn't
+# alphabetical and isn't derivable from any other field - e.g. Răzvan
+# Niculescu leads the council list but trails the masters list). Keyed by
+# (first_name, last_name); anyone not listed sorts after everyone who is.
+_COUNCIL_ORDER = [
+    ('Florin', 'Macovei'),
+    ('Angel', 'Mititelu'),
+    ('Răzvan', 'Rusov'),
+    ('Răzvan', 'Niculescu'),
+    ('Lăcrămioara', 'Ciobotaru'),
+]
+_MASTERS_ORDER = [
+    ('Florin', 'Macovei'),
+    ('Angel', 'Mititelu'),
+    ('Vasile', 'Ichim'),
+    ('Geluța', 'Ciobotaru'),
+    ('Lăcrămioara', 'Ciobotaru'),
+    ('Adrian', 'Teleman'),
+    ('Sinodor', 'Socea'),
+    ('Răzvan', 'Niculescu'),
+]
+_REFEREE_INTERNATIONAL_ORDER = [
+    ('Florin', 'Macovei'),
+    ('Angel', 'Mititelu'),
+    ('Răzvan', 'Rusov'),
+    ('Vasile', 'Ichim'),
+    ('Geluța', 'Ciobotaru'),
+    ('Lăcrămioara', 'Ciobotaru'),
+    ('Adrian', 'Teleman'),
+    ('Sinodor', 'Socea'),
+]
+_REFEREE_NATIONAL_ORDER = [
+    ('Răzvan', 'Niculescu'),
+    ('Gabriel', 'Molocea'),
+    ('Gabriel', 'Popilciuc'),
+    ('George', 'Prisacariu'),
+    ('Robert', 'Tomulescu'),
+    ('Marian', 'Hriban'),
+    ('Ștefan', 'Zaharescu'),
+    ('Vlăduț', 'Băcanu'),
+]
+
+
+def _in_curated_order(queryset, order_pairs):
+    """Sort a queryset of Athletes by a curated (first_name, last_name)
+    order list, matching vovinam.ro. Anyone not in the list keeps their
+    relative last/first-name order and sorts after everyone listed."""
+    rank = {pair: i for i, pair in enumerate(order_pairs)}
+    people = list(queryset)
+    people.sort(key=lambda a: (rank.get((a.first_name, a.last_name), len(order_pairs)), a.last_name, a.first_name))
+    return people
+
+
 class PublicStaffViewSet(viewsets.ViewSet):
     """GET /api/public/staff/ - federation staff/leadership directory
     ('Staff' nav item). Mirrors the two sections on the live vovinam.ro
@@ -417,8 +603,8 @@ class PublicStaffViewSet(viewsets.ViewSet):
 
     def list(self, request):
         base = Athlete.objects.filter(status='approved').select_related('federation_role', 'title', 'club')
-        council = base.exclude(federation_role=None).order_by('last_name', 'first_name')
-        masters = base.exclude(title=None).order_by('last_name', 'first_name')
+        council = _in_curated_order(base.exclude(federation_role=None), _COUNCIL_ORDER)
+        masters = _in_curated_order(base.exclude(title=None), _MASTERS_ORDER)
         return Response({
             'council': PublicStaffSerializer(council, many=True, context={'request': request}).data,
             'masters': PublicStaffSerializer(masters, many=True, context={'request': request}).data,
@@ -433,13 +619,9 @@ class PublicRefereeViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
 
     def list(self, request):
-        base = (
-            Athlete.objects.filter(status='approved', is_referee=True)
-            .select_related('title', 'club')
-            .order_by('last_name', 'first_name')
-        )
-        international = base.filter(referee_level='international')
-        national = base.filter(referee_level='national')
+        base = Athlete.objects.filter(status='approved', is_referee=True).select_related('title', 'club')
+        international = _in_curated_order(base.filter(referee_level='international'), _REFEREE_INTERNATIONAL_ORDER)
+        national = _in_curated_order(base.filter(referee_level='national'), _REFEREE_NATIONAL_ORDER)
         return Response({
             'international': PublicRefereeSerializer(international, many=True, context={'request': request}).data,
             'national': PublicRefereeSerializer(national, many=True, context={'request': request}).data,
@@ -479,7 +661,12 @@ class PublicGalleryViewSet(viewsets.ViewSet):
     pagination_class = PublicContentPagination
 
     def get_permissions(self):
-        if self.action in ('react', 'add_comment'):
+        # `add_comment` is a plain helper, not a routed action - a POST to
+        # the `comments` action needs its own check since that action also
+        # serves GET (public reads), which `self.action == 'comments'`
+        # alone can't distinguish. (This same fix applies to both the news
+        # and gallery viewsets, which shared the original, buggy check.)
+        if self.action == 'react' or (self.action == 'comments' and self.request.method == 'POST'):
             return [IsAuthenticated()]
         return [AllowAny()]
 

@@ -27,18 +27,18 @@ class NotificationSerializer(serializers.ModelSerializer):
         diff = now - obj.created_at
         
         if diff < timedelta(minutes=1):
-            return "Just now"
+            return "Acum"
         elif diff < timedelta(hours=1):
             minutes = int(diff.total_seconds() / 60)
-            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+            return f"acum {minutes} minut{'e' if minutes != 1 else ''}"
         elif diff < timedelta(days=1):
             hours = int(diff.total_seconds() / 3600)
-            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+            return f"acum {hours} {'oră' if hours == 1 else 'ore'}"
         elif diff < timedelta(days=7):
             days = diff.days
-            return f"{days} day{'s' if days > 1 else ''} ago"
+            return f"acum {days} {'zi' if days == 1 else 'zile'}"
         else:
-            return obj.created_at.strftime('%B %d, %Y')
+            return obj.created_at.strftime('%d.%m.%Y')
 
 
 class NotificationSettingsSerializer(serializers.ModelSerializer):
@@ -47,9 +47,13 @@ class NotificationSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationSettings
         fields = [
-            'id', 'user', 'email_on_result_status_change', 'email_on_competition_updates',
-            'email_on_system_announcements', 'notify_result_submitted', 'notify_result_approved',
-            'notify_result_rejected', 'notify_result_revision_required', 'notify_competition_created',
+            'id', 'user', 'email_on_result_status_change', 'email_on_grade_status_change',
+            'email_on_seminar_status_change', 'email_on_visa_status_change', 'email_on_competition_updates',
+            'email_on_system_announcements', 'notify_via_whatsapp', 'notify_result_submitted',
+            'notify_result_approved', 'notify_result_rejected', 'notify_result_revision_required',
+            'notify_grade_submitted', 'notify_grade_approved', 'notify_grade_rejected',
+            'notify_grade_revision_required', 'notify_seminar_submitted', 'notify_seminar_approved',
+            'notify_seminar_rejected', 'notify_seminar_revision_required', 'notify_competition_created',
             'notify_competition_updated', 'notify_system_announcements', 'created_at', 'updated_at'
         ]
         read_only_fields = ['user', 'created_at', 'updated_at']

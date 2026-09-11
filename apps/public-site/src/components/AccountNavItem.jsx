@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@shared';
 import LoginForm from './LoginForm';
-import { ChevronDown, LogOut, User } from 'lucide-react';
+import { ChevronDown, LogOut } from 'lucide-react';
 
 /** Header "Cont" dropdown - mirrors the pattern seen on most e-commerce
  * sites (Altex, etc.): a compact quick-login form in a popover when signed
@@ -53,21 +53,21 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
       return (
         <>
           {user?.role !== 'supporter' && (
-            <Link to="/cont/profil" className="site-mobile-link block px-6 py-3 text-xl" onClick={onNavigate}>
+            <Link to="/cont/profil" className="site-mobile-row block px-4 py-4 text-base" onClick={onNavigate}>
               Vezi Profil
             </Link>
           )}
           {(isAdmin || isCoach) && (
-            <Link to="/cont/aprobari" className="site-mobile-link block px-6 py-3 text-xl" onClick={onNavigate}>
+            <Link to="/cont/aprobari" className="site-mobile-row block px-4 py-4 text-base" onClick={onNavigate}>
               Aprobări
             </Link>
           )}
-          <Link to="/cont" className="site-mobile-link block px-6 py-3 text-xl" onClick={onNavigate}>
+          <Link to="/cont" className="site-mobile-row block px-4 py-4 text-base" onClick={onNavigate}>
             Setări
           </Link>
           <button
             type="button"
-            className="site-mobile-link block w-full px-6 py-3 text-left text-xl"
+            className="site-mobile-row block w-full px-4 py-4 text-left text-base uppercase"
             onClick={() => {
               if (onNavigate) onNavigate();
               logout();
@@ -79,9 +79,15 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
       );
     }
     return (
-      <Link to="/cont" className="site-mobile-link block px-6 py-3 text-xl" onClick={onNavigate}>
-        Cont
-      </Link>
+      <div className="relative z-10 -mt-8 px-4">
+        <Link
+          to="/cont"
+          className="text-fluid-button flex items-center justify-center gap-2 rounded-lg bg-[#da3b26] px-4 py-4 uppercase tracking-wide text-white transition hover:bg-[#da3b26]/90"
+          onClick={onNavigate}
+        >
+          Contul meu
+        </Link>
+      </div>
     );
   }
 
@@ -90,33 +96,32 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
       <div className="relative" ref={containerRef} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
         <button
           type="button"
-          className="site-nav-link inline-flex h-9 items-center gap-1.5 px-3"
+          className="text-fluid-button ml-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#da3b26] px-4 uppercase tracking-wide text-white transition hover:bg-[#da3b26]/90"
           aria-expanded={open}
           aria-haspopup="true"
           onClick={() => setOpen((v) => !v)}
         >
-          <User className="h-4 w-4" />
           {user?.athlete?.first_name || 'Contul meu'}
           <ChevronDown className="h-3 w-3" />
         </button>
         {open && (
-          <div className="site-submenu absolute right-0 top-full z-50 flex min-w-[10rem] flex-col py-2">
+          <div className="site-account-popover absolute right-0 top-full z-50 mt-2 flex min-w-[12rem] flex-col gap-1 p-2">
             {user?.role !== 'supporter' && (
-              <Link to="/cont/profil" className="site-submenu-link px-4 py-2" onClick={() => setOpen(false)}>
+              <Link to="/cont/profil" className="site-account-menu-link" onClick={() => setOpen(false)}>
                 Vezi Profil
               </Link>
             )}
             {(isAdmin || isCoach) && (
-              <Link to="/cont/aprobari" className="site-submenu-link px-4 py-2" onClick={() => setOpen(false)}>
+              <Link to="/cont/aprobari" className="site-account-menu-link" onClick={() => setOpen(false)}>
                 Aprobări
               </Link>
             )}
-            <Link to="/cont" className="site-submenu-link px-4 py-2" onClick={() => setOpen(false)}>
+            <Link to="/cont" className="site-account-menu-link" onClick={() => setOpen(false)}>
               Setări
             </Link>
             <button
               type="button"
-              className="site-submenu-link flex items-center gap-1.5 px-4 py-2 text-left"
+              className="site-account-menu-link flex items-center gap-1.5 text-left"
               onClick={() => {
                 setOpen(false);
                 logout();
@@ -134,13 +139,12 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
     <div className="relative" ref={containerRef} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
       <button
         type="button"
-        className="site-nav-link inline-flex h-9 items-center gap-1.5 px-3"
+        className="text-fluid-button ml-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#da3b26] px-4 uppercase tracking-wide text-white transition hover:bg-[#da3b26]/90"
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
       >
-        <User className="h-4 w-4" />
-        Cont
+        Contul meu
         <ChevronDown className="h-3 w-3" />
       </button>
       {open && (

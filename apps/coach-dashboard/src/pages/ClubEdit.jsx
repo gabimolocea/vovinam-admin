@@ -104,7 +104,7 @@ export default function ClubEdit() {
         const fd = new FormData();
         Object.entries(form).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined) fd.append(k, v); });
         fd.append('logo', logo);
-        res = await clubAPI.update(clubId, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+        res = await clubAPI.update(clubId, fd);
       } else {
         const payload = Object.fromEntries(Object.entries(form).filter(([, v]) => v !== '' && v !== null && v !== undefined));
         res = await clubAPI.update(clubId, payload);

@@ -1,8 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink } from 'react-router-dom';
-import { ExternalLink } from 'lucide-react';
+import { ChevronRight, Heart, Menu, X } from 'lucide-react';
 import AccountNavItem from './AccountNavItem';
+import NotificationBell from './NotificationBell';
 import { Button } from './ui';
+
+const SOCIAL_LINKS = [
+  { href: '#', label: 'Facebook', icon: '/footer-facebook.png' },
+  { href: '#', label: 'LinkedIn', icon: '/footer-linkedin.png' },
+  { href: '#', label: 'YouTube', icon: '/footer-youtube.png' },
+];
+
+// Audience-facing pages the header surfaces separately from the main nav -
+// mirrors the "Resources for..." utility row on usavolleyball.org, using
+// only sections that actually exist on this site.
+const RESOURCE_LINKS = [
+  { to: '/staff', label: 'Antrenori' },
+  { to: '/sportivi', label: 'Sportivi' },
+  { to: '/arbitri', label: 'Arbitri' },
+];
+
+const UTILITY_LINKS = [
+  { to: '/documente', label: 'Documente' },
+  { to: '/regulament', label: 'Regulament' },
+];
 
 // Full menu parity with the live vovinam.ro nav: Acasă / Noutăți / Evenimente
 // / Federație (dropdown) / Competiție (dropdown). "Video" is temporarily
@@ -10,7 +31,7 @@ import { Button } from './ui';
 const NAV_LINKS = [
   { to: '/', label: 'Acasă', end: true },
   { to: '/noutati', label: 'Noutăți' },
-  { to: '/competitii', label: 'Evenimente' },
+  { to: '/calendar', label: 'Calendar' },
   {
     label: 'Federație',
     children: [
@@ -24,6 +45,7 @@ const NAV_LINKS = [
   {
     label: 'Competiție',
     children: [
+      { to: '/competitie', label: 'Prezentare' },
       { to: '/regulament', label: 'Regulament' },
       { to: '/documente', label: 'Documente' },
     ],
@@ -35,7 +57,7 @@ function desktopLinkClassName({ isActive }) {
 }
 
 function mobileLinkClassName({ isActive }) {
-  return `site-mobile-link block px-6 py-3 text-xl ${isActive ? 'is-active' : ''}`;
+  return `site-mobile-link block px-4 py-3 text-xl ${isActive ? 'is-active' : ''}`;
 }
 
 function DesktopNavItem({ item }) {
@@ -74,12 +96,12 @@ function DesktopNavItem({ item }) {
         </svg>
       </button>
       {open && (
-        <div className="site-submenu absolute left-0 top-full z-50 flex min-w-[10rem] flex-col py-2">
+        <div className="site-submenu absolute left-0 top-full z-50 flex min-w-[18rem] flex-col py-3">
           {item.children.map((child) => (
             <NavLink
               key={child.to}
               to={child.to}
-              className="site-submenu-link px-4 py-2"
+              className="site-submenu-link px-6 py-3.5"
               onClick={() => setOpen(false)}
             >
               {child.label}
@@ -96,30 +118,35 @@ function MobileNavItem({ item, onNavigate }) {
 
   if (!item.children) {
     return (
-      <NavLink to={item.to} end={item.end} className={mobileLinkClassName} onClick={onNavigate}>
+      <NavLink
+        to={item.to}
+        end={item.end}
+        className="site-mobile-row flex items-center justify-between px-4 py-4 text-[16px]"
+        onClick={onNavigate}
+      >
         {item.label}
       </NavLink>
     );
   }
 
   return (
-    <div>
+    <div className="site-mobile-row">
       <button
         type="button"
-        className="site-mobile-link flex w-full items-center justify-between px-6 py-3 text-xl"
+        className="flex w-full items-center justify-between px-4 py-4 text-[16px] uppercase text-white"
         aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
       >
         {item.label}
-        <span aria-hidden="true">{expanded ? '−' : '+'}</span>
+        <ChevronRight className={`h-5 w-5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
       </button>
       {expanded && (
-        <div className="flex flex-col">
+        <div className="flex flex-col pb-2">
           {item.children.map((child) => (
             <NavLink
               key={child.to}
               to={child.to}
-              className="site-mobile-link px-10 py-2 text-base"
+              className="site-mobile-link px-8 py-2 text-base"
               onClick={onNavigate}
             >
               {child.label}
@@ -132,15 +159,38 @@ function MobileNavItem({ item, onNavigate }) {
 }
 
 export default function Layout() {
-  const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const headerRef = useRef(null);
 
+  // Publishes the header's real rendered height as a CSS var so the
+  // mobile drawer can start exactly below it (`top: var(--mobile-header-h)`)
+  // instead of covering it - the header stays visible while the drawer
+  // is open, same technique as the --scrollbar-w var below.
   useEffect(() => {
-    function onScroll() {
-      setScrolled(window.scrollY > 8);
+    function updateHeaderHeight() {
+      if (headerRef.current) {
+        document.documentElement.style.setProperty('--mobile-header-h', `${headerRef.current.offsetHeight}px`);
+      }
     }
-    window.addEventListener('scroll', onScroll);
-    return () => window.removeEventListener('scroll', onScroll);
+    updateHeaderHeight();
+    window.addEventListener('resize', updateHeaderHeight);
+    return () => window.removeEventListener('resize', updateHeaderHeight);
+  }, []);
+
+  // Full-bleed sections break out of `main` using 100vw, but `100vw`
+  // includes the scrollbar while the page's own (scrollbar-free) width
+  // doesn't - that ~15px gap is what makes them a few px wider/offset
+  // vs naturally full-width elements like <footer>. Publish the real
+  // scrollbar width as a CSS var so those sections can subtract it back
+  // out (see `.site-full-bleed` in styles.css).
+  useEffect(() => {
+    function updateScrollbarWidth() {
+      const width = window.innerWidth - document.documentElement.clientWidth;
+      document.documentElement.style.setProperty('--scrollbar-w', `${width}px`);
+    }
+    updateScrollbarWidth();
+    window.addEventListener('resize', updateScrollbarWidth);
+    return () => window.removeEventListener('resize', updateScrollbarWidth);
   }, []);
 
   useEffect(() => {
@@ -153,94 +203,217 @@ export default function Layout() {
   return (
     <div className="public-site-app flex min-h-screen flex-col">
       <header
-        className={`site-header sticky top-0 z-40 transition-shadow ${scrolled ? 'shadow-md' : 'shadow-none'}`}
+        ref={headerRef}
+        className="site-header sticky top-0 z-40"
       >
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-2">
-          <Link to="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
-            <img
-              src="/frvv-logo.png"
-              alt="Federația Română de Vovinam Việt Võ Đạo"
-              className="h-12 w-auto sm:h-16"
-            />
+        <div className="site-header-utility hidden lg:block">
+          <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-1.5">
+            <div className="flex items-center gap-4">
+              <span className="site-utility-label">Resurse pentru:</span>
+              {RESOURCE_LINKS.map((link) => (
+                <Link key={link.to} to={link.to} className="site-utility-link">{link.label}</Link>
+              ))}
+            </div>
+            <div className="flex items-center gap-4">
+              {UTILITY_LINKS.map((link) => (
+                <Link key={link.to} to={link.to} className="site-utility-link">{link.label}</Link>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile/tablet closed-state bar: hamburger left, centered logo.
+            The right-hand spacer keeps the logo visually centered against
+            the hamburger's width. */}
+        <div className="flex w-full items-center justify-between gap-3 px-4 py-2 lg:hidden">
+          <button
+            type="button"
+            className={`-ml-4 -my-2 flex w-14 shrink-0 self-stretch items-center justify-center ${
+              mobileOpen ? 'site-mobile-toggle' : 'text-foreground'
+            }`}
+            aria-label={mobileOpen ? 'Închide meniul' : 'Deschide meniul'}
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen((v) => !v)}
+          >
+            {mobileOpen ? <X className="h-6 w-6" aria-hidden="true" /> : <Menu className="h-6 w-6" aria-hidden="true" />}
+          </button>
+          <Link to="/" className="flex min-w-0 flex-1 items-center justify-center gap-2" onClick={() => setMobileOpen(false)}>
+            <div className="relative h-10 w-10 shrink-0">
+              <img src="/footer-crest-outer.svg" alt="" className="absolute inset-0 h-full w-full" />
+              <img
+                src="/footer-crest-inner.svg"
+                alt=""
+                className="absolute left-1/2 top-1/2 h-[90%] w-[83%] -translate-x-1/2 -translate-y-1/2"
+              />
+            </div>
+            <span className="font-display text-xs font-bold uppercase leading-tight text-foreground">
+              Federația Română
+              <br />
+              de Vovinam Viet-Vo-Dao
+            </span>
+          </Link>
+          <div className="flex w-14 shrink-0 items-center justify-center">
+            <NotificationBell />
+          </div>
+        </div>
+
+        <div className="mx-auto hidden w-full max-w-7xl items-center justify-between gap-3 px-4 py-2 lg:flex">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="relative h-[clamp(3rem,2.17rem+3.53vw,5rem)] w-[clamp(3rem,2.17rem+3.53vw,5rem)] shrink-0">
+              <img src="/footer-crest-outer.svg" alt="" className="absolute inset-0 h-full w-full" />
+              <img
+                src="/footer-crest-inner.svg"
+                alt=""
+                className="absolute left-1/2 top-1/2 h-[90%] w-[83%] -translate-x-1/2 -translate-y-1/2"
+              />
+            </div>
+            <span className="text-fluid-logo font-display font-bold uppercase leading-tight text-foreground">
+              Federația Română
+              <br />
+              de Vovinam Viet-Vo-Dao
+            </span>
           </Link>
 
-          <nav className="hidden flex-1 items-center justify-end gap-1 md:flex" aria-label="Navigație principală">
+          <nav className="flex flex-1 items-center justify-end gap-1" aria-label="Navigație principală">
             {NAV_LINKS.map((item) => (
               <DesktopNavItem key={item.label} item={item} />
             ))}
+            <NotificationBell />
             <AccountNavItem />
           </nav>
-
-          <button
-            type="button"
-            className="site-nav-link inline-flex h-10 w-10 items-center justify-center md:hidden"
-            aria-label="Deschide meniul"
-            aria-expanded={mobileOpen}
-            onClick={() => setMobileOpen(true)}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
         </div>
       </header>
 
-      {mobileOpen && (
-        <div className="site-mobile-overlay fixed inset-0 z-50 flex flex-col overflow-y-auto md:hidden">
-          <div className="flex items-center justify-between px-4 py-3">
-            <img src="/frvv-logo.png" alt="FRVV" className="h-10 w-auto" />
-            <button
-              type="button"
-              className="site-mobile-link inline-flex h-10 w-10 items-center justify-center text-3xl"
-              aria-label="Închide meniul"
+      {/* Slide-in drawer: starts right below the header (which stays
+          visible/fixed above it, see --mobile-header-h) and slides in
+          from the left. Always mounted so the transform transition can
+          animate; aria-hidden keeps it out of the a11y tree while closed. */}
+      <div
+        className={`site-mobile-overlay fixed inset-x-0 bottom-0 z-50 flex flex-col overflow-y-auto transition-transform duration-300 ease-out lg:hidden ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+        style={{ top: 'var(--mobile-header-h, 0px)' }}
+        aria-hidden={!mobileOpen}
+      >
+        <nav className="site-mobile-nav flex flex-col pb-12" aria-label="Navigație mobilă">
+          {NAV_LINKS.map((item) => (
+            <MobileNavItem key={item.label} item={item} onNavigate={() => setMobileOpen(false)} />
+          ))}
+        </nav>
+
+        <div className="site-mobile-secondary flex flex-col">
+          <AccountNavItem mobile onNavigate={() => setMobileOpen(false)} />
+          {UTILITY_LINKS.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className="site-mobile-row px-4 py-4 text-base"
               onClick={() => setMobileOpen(false)}
             >
-              ×
-            </button>
-          </div>
-          <nav className="flex flex-1 flex-col justify-center" aria-label="Navigație mobilă">
-            {NAV_LINKS.map((item) => (
-              <MobileNavItem key={item.label} item={item} onNavigate={() => setMobileOpen(false)} />
-            ))}
-            <AccountNavItem mobile onNavigate={() => setMobileOpen(false)} />
-          </nav>
-        </div>
-      )}
+              {link.label}
+            </Link>
+          ))}
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+          <p className="site-mobile-section-label px-4 pt-6">Resurse pentru</p>
+          {RESOURCE_LINKS.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className="site-mobile-row px-4 py-4 text-base"
+              onClick={() => setMobileOpen(false)}
+            >
+              {link.label}
+            </Link>
+          ))}
+
+          <p className="site-mobile-section-label px-4 pb-2 pt-6">Urmărește FRVV</p>
+          <div className="flex gap-4 px-4 pb-8">
+            {SOCIAL_LINKS.map((social) => (
+              <a key={social.label} href={social.href} aria-label={social.label} className="shrink-0">
+                <img src={social.icon} alt="" className="h-9 w-9 rounded-full" />
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-8">
         <Outlet />
       </main>
 
-      <footer className="site-footer">
-        <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
-          <div>
-            <h3 className="site-footer-heading">Resurse</h3>
-            <ul className="mt-3 flex flex-col gap-2">
-              <li><Link to="/documente" className="site-footer-link">Sponsori</Link></li>
-              <li><Link to="/noutati" className="site-footer-link">Anunțuri</Link></li>
-              <li><Link to="/regulament" className="site-footer-link">Regulament</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="site-footer-heading">Urmăriți-ne</h3>
-            <ul className="mt-3 flex flex-col gap-2">
-              <li><a href="#" className="site-footer-social"><ExternalLink className="h-3.5 w-3.5" />Facebook</a></li>
-              <li><a href="#" className="site-footer-social"><ExternalLink className="h-3.5 w-3.5" />Instagram</a></li>
-              <li><a href="#" className="site-footer-social"><ExternalLink className="h-3.5 w-3.5" />YouTube</a></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="site-footer-heading">Susțineți-ne</h3>
-            <p className="site-footer-link mt-3">
-              Fiecare donație contribuie la dezvoltarea sportivilor și la promovarea Vovinam Việt Võ Đạo în România.
-            </p>
-            <Button as={Link} to="/despre" size="sm" className="mt-4">Sponsorizează-ne</Button>
-          </div>
+      <footer className="site-footer relative isolate mt-16">
+        {/* mt-16 guarantees clearance for the crest badge below, which
+            pokes up 64px (half its own height) above the footer's top
+            border on every page - without this, pages whose last section
+            has little/no bottom padding (e.g. a full-bleed content grid)
+            would have the badge overlap real content instead of blank
+            space. */}
+        {/* Crest badge straddles the gold top border: half over the section
+            above, half over the navy footer (matches Figma node 233:722). */}
+        <div className="absolute left-1/2 top-0 z-10 h-24 w-24 -translate-x-1/2 -translate-y-1/2">
+          <img src="/footer-crest-outer.svg" alt="" className="absolute inset-0 h-full w-full" />
+          <img
+            src="/footer-crest-inner.svg"
+            alt="Emblema Federației Române de Vovinam Việt Võ Đạo"
+            className="absolute left-1/2 top-1/2 h-[90%] w-[83%] -translate-x-1/2 -translate-y-1/2"
+          />
         </div>
-        <div className="site-footer-bottom">
-          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4">
-            <p>© {new Date().getFullYear()} Federația Română de Vovinam Việt Võ Đạo. Toate drepturile rezervate.</p>
+
+        <div className="pt-10 lg:pt-6">
+          <div className="site-footer-divider mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-8 lg:flex-row lg:items-start lg:justify-between">
+            <p className="max-w-lg text-sm leading-[1.3] text-white lg:max-w-md">
+              Folosirea fără acordul Federației Române de Vovinam Viet-Vo-Dao a denumirii integrale sau parțiale
+              „Vovinam”, „Viet-Vo-Dao” pe teritoriul României, atrage consecințele legale asupra autorilor.
+              Federația Română de Vovinam Viet-Vo-Dao este membră a Federației Europene de Vovinam
+              Viet-Vo-Dao(EVVF) și a Federației Mondiale de Vovinam Viet-Vo-Dao(WVVF), fiind unica entitate
+              recunoscută de către Ministerul Sportului pentru a reprezenta România la toate evenimentele
+              oficiale internaționale.{' '}
+              <Link to="/documente" className="underline hover:text-secondary">
+                Certificat de înregistrare a mărcii.
+              </Link>
+            </p>
+
+            <div className="flex flex-wrap gap-10 lg:flex-nowrap">
+              <div className="shrink-0">
+                <h3 className="site-footer-heading">Resurse</h3>
+                <ul className="mt-4 flex flex-col gap-4">
+                  <li><Link to="/sportivi" className="site-footer-link">Sportivi</Link></li>
+                  <li><Link to="/staff" className="site-footer-link">Antrenori</Link></li>
+                  <li><Link to="/arbitri" className="site-footer-link">Arbitri</Link></li>
+                </ul>
+              </div>
+
+              <div className="shrink-0">
+                <h3 className="site-footer-heading whitespace-nowrap">Urmărește-ne:</h3>
+                <div className="mt-4 flex gap-4">
+                  {SOCIAL_LINKS.map((social) => (
+                    <a key={social.label} href={social.href} aria-label={social.label} className="shrink-0">
+                      <img src={social.icon} alt="" className="h-8 w-8" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex shrink-0 flex-col items-start gap-4">
+                <h3 className="site-footer-heading whitespace-nowrap">Susține-ne!</h3>
+                <Button
+                  as={Link}
+                  to="/despre"
+                  className="text-fluid-button w-full max-w-[240px] gap-2 bg-[#da3b26] uppercase text-white hover:bg-[#da3b26]/90"
+                >
+                  <Heart className="h-4 w-4 fill-current" />
+                  Sponsorizează
+                </Button>
+                <a href="/despre" className="w-[212px] text-center text-base text-white underline">
+                  Sponsorizare one-time
+                </a>
+              </div>
+            </div>
           </div>
+
+          <p className="px-4 py-5 text-center text-sm text-white">
+            © {new Date().getFullYear()} Federația Română de Vovinam Viet-Vo-Dao. Toate drepturile rezervate.
+          </p>
         </div>
       </footer>
     </div>

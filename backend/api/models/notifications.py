@@ -36,6 +36,10 @@ class Notification(models.Model):
         ('seminar_approved', 'Participare la seminar aprobată'),
         ('seminar_rejected', 'Participare la seminar respinsă'),
         ('seminar_revision_required', 'Participare la seminar cu revizie solicitată'),
+        ('visa_submitted', 'Viză trimisă'),
+        ('visa_approved', 'Viză aprobată'),
+        ('visa_rejected', 'Viză respinsă'),
+        ('visa_revision_required', 'Viză cu revizie solicitată'),
         ('competition_created', 'Competiție creată'),
         ('competition_updated', 'Competiție actualizată'),
         ('system_announcement', 'Anunț de sistem'),
@@ -45,6 +49,7 @@ class Notification(models.Model):
         ('profile_image_submitted', 'Poză de profil trimisă spre aprobare'),
         ('profile_image_approved', 'Poză de profil aprobată'),
         ('profile_image_rejected', 'Poză de profil respinsă'),
+        ('account_approved', 'Cont aprobat'),
     ]
     
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name=_('Destinatar'), related_name='notifications')
@@ -105,8 +110,16 @@ class NotificationSettings(models.Model):
     
     # Email notification preferences
     email_on_result_status_change = models.BooleanField(_('Email la schimbarea stării rezultatului'), default=True)
+    email_on_grade_status_change = models.BooleanField(_('Email la schimbarea stării gradului'), default=True)
+    email_on_seminar_status_change = models.BooleanField(_('Email la schimbarea stării participării la seminar'), default=True)
+    email_on_visa_status_change = models.BooleanField(_('Email la schimbarea stării vizei'), default=True)
     email_on_competition_updates = models.BooleanField(_('Email la actualizări ale competiției'), default=True)
     email_on_system_announcements = models.BooleanField(_('Email la anunțuri de sistem'), default=True)
+
+    # WhatsApp - a single opt-in toggle covering the same status-change
+    # events as the email preferences above, sent only when the user has a
+    # phone number on file (see User.phone_number / Athlete.mobile_number).
+    notify_via_whatsapp = models.BooleanField(_('Notifică prin WhatsApp'), default=False)
     
     # In-app notification preferences
     notify_result_submitted = models.BooleanField(_('Notifică rezultat trimis'), default=True)

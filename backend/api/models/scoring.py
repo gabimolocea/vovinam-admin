@@ -583,6 +583,72 @@ def medal_counts_for_club(club):
     return _placement_counts(queryset)
 
 
+def trophy_counts_by_club():
+    """Ranks clubs within every competition by their medal table (most gold,
+    ties broken by silver then bronze - the same rule used for Olympic-style
+    country rankings) and credits the top 3 clubs of each competition with a
+    1st/2nd/3rd place trophy ('cupă'). Returns
+    {club_id: {'gold': N, 'silver': N, 'bronze': N}} where gold/silver/bronze
+    here mean 1st/2nd/3rd place *in the competition's club ranking* - not
+    medal color, which is a separate per-athlete concept (see
+    medal_counts_for_club).
+
+    Computed across every competition at once, rather than per-club, since
+    ranking a single competition still requires looking at every club's
+    result in it - there's no cheaper per-club shortcut."""
+    from collections import defaultdict
+    from landing.models import Event
+
+    placement_to_medal = {'1st': 'gold', '2nd': 'silver', '3rd': 'bronze'}
+    trophy_places = ['gold', 'silver', 'bronze']
+    trophies = defaultdict(lambda: {'gold': 0, 'silver': 0, 'bronze': 0})
+
+    competition_ids = Event.objects.filter(event_type='competition').values_list('id', flat=True)
+    for competition_id in competition_ids:
+        scores = (
+            CategoryAthleteScore.objects
+            .filter(category__event_id=competition_id, status='approved', placement_claimed__in=placement_to_medal.keys())
+            .select_related('athlete__club')
+            .prefetch_related('team_members__club')
+        )
+
+        club_medals = defaultdict(lambda: {'gold': 0, 'silver': 0, 'bronze': 0})
+        for score in scores:
+            club_ids = set()
+            if score.athlete_id and score.athlete.club_id:
+                club_ids.add(score.athlete.club_id)
+            for member in score.team_members.all():
+                if member.club_id:
+                    club_ids.add(member.club_id)
+
+            medal = placement_to_medal[score.placement_claimed]
+            for club_id in club_ids:
+                club_medals[club_id][medal] += 1
+
+        if not club_medals:
+            continue
+
+        ranked_club_ids = sorted(
+            club_medals.keys(),
+            key=lambda club_id: (
+                -club_medals[club_id]['gold'],
+                -club_medals[club_id]['silver'],
+                -club_medals[club_id]['bronze'],
+                club_id,
+            ),
+        )
+        for place_index, club_id in enumerate(ranked_club_ids[:3]):
+            trophies[club_id][trophy_places[place_index]] += 1
+
+    return dict(trophies)
+
+
+def trophy_counts_for_club(club):
+    """This club's 1st/2nd/3rd place trophy ('cupă') counts. See
+    `trophy_counts_by_club` for the ranking rule."""
+    return trophy_counts_by_club().get(club.id, {'gold': 0, 'silver': 0, 'bronze': 0})
+
+
 class CategoryTeamScore(models.Model):
     """
     Stores referee scores for teams in a category.

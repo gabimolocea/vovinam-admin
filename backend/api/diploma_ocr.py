@@ -1,13 +1,14 @@
 """
-AI-assisted diploma reading for the athlete result-submission form.
+AI-assisted certificate reading for athlete self-submission forms (results,
+grade exams, seminar participation).
 
-Given a photo of a competition diploma/certificate, asks Claude (vision) to
-read the competition name, category, age group and placement off it, then
-fuzzy-matches those free-text guesses against the actual Event/Category/Group
-records in the database so the frontend can prefill the submission form.
-This is a best-effort convenience feature: the athlete always reviews/edits
-the suggested fields before submitting, and the diploma photo itself is
-always stored and reviewed by a coach/admin regardless of what the AI read.
+Given a photo of a diploma/certificate, asks Claude (vision) to read the
+relevant fields off it, then fuzzy-matches those free-text guesses against
+the actual Event/Category/Grade records in the database so the frontend can
+prefill the submission form. This is a best-effort convenience feature: the
+athlete always reviews/edits the suggested fields before submitting, and the
+certificate photo itself is always stored and reviewed by a coach/admin
+regardless of what the AI read.
 """
 import base64
 import difflib
@@ -24,7 +25,7 @@ PLACEMENT_MAP = {
     '3': '3rd', 'iii': '3rd', 'locul 3': '3rd', 'locul iii': '3rd', 'bronze': '3rd', 'bronz': '3rd',
 }
 
-EXTRACTION_PROMPT = """Această imagine este o diplomă sau un certificat de la o competiție de Vovinam. \
+RESULT_EXTRACTION_PROMPT = """Această imagine este o diplomă sau un certificat de la o competiție de Vovinam. \
 Extrage următoarele informații și răspunde STRICT cu un obiect JSON valid, fără alt text, cu exact aceste chei:
 {
   "competition_name": string sau null (numele competiției/evenimentului),
@@ -32,6 +33,35 @@ Extrage următoarele informații și răspunde STRICT cu un obiect JSON valid, f
   "group_name": string sau null (grupa de vârstă, dacă apare),
   "placement": string sau null (locul obținut, ca text: ex "1", "locul 2", "III"),
   "athlete_name": string sau null (numele sportivului de pe diplomă, dacă apare)
+}
+Dacă un câmp nu apare clar pe imagine, folosește null pentru acel câmp."""
+
+GRADE_EXTRACTION_PROMPT = """Această imagine este un certificat de grad (centură/dan) de Vovinam. \
+Extrage următoarele informații și răspunde STRICT cu un obiect JSON valid, fără alt text, cu exact aceste chei:
+{
+  "grade_name": string sau null (gradul obținut, de exemplu "Centura Galbenă" sau "1 Dang"),
+  "exam_event_name": string sau null (numele examenului/evenimentului la care a fost obținut gradul, dacă apare),
+  "obtained_date": string sau null (data obținerii gradului, așa cum apare pe certificat),
+  "athlete_name": string sau null (numele sportivului de pe certificat, dacă apare)
+}
+Dacă un câmp nu apare clar pe imagine, folosește null pentru acel câmp."""
+
+SEMINAR_EXTRACTION_PROMPT = """Această imagine este un certificat de participare la un stagiu/seminar de Vovinam. \
+Extrage următoarele informații și răspunde STRICT cu un obiect JSON valid, fără alt text, cu exact aceste chei:
+{
+  "seminar_name": string sau null (numele stagiului/seminarului),
+  "start_date": string sau null (data de început, așa cum apare pe certificat),
+  "end_date": string sau null (data de sfârșit, așa cum apare pe certificat),
+  "athlete_name": string sau null (numele sportivului de pe certificat, dacă apare)
+}
+Dacă un câmp nu apare clar pe imagine, folosește null pentru acel câmp."""
+
+VISA_EXTRACTION_PROMPT = """Această imagine este o legitimație sau o dovadă a unui control medical pentru un \
+sportiv de Vovinam. Extrage următoarele informații și răspunde STRICT cu un obiect JSON valid, fără alt text, \
+cu exact aceste chei:
+{
+  "issued_date": string sau null (data la care a fost făcut controlul/emisă legitimația, așa cum apare pe imagine),
+  "athlete_name": string sau null (numele sportivului, dacă apare)
 }
 Dacă un câmp nu apare clar pe imagine, folosește null pentru acel câmp."""
 
@@ -57,11 +87,23 @@ def normalize_placement(raw):
     return PLACEMENT_MAP.get(key)
 
 
-def extract_diploma_fields(image_file):
-    """Call Claude vision on the uploaded diploma image and return a dict with
-    raw AI guesses plus DB-matched suggestions. Raises RuntimeError if the AI
-    call itself fails (missing key, network, etc.) — callers should catch this
-    and degrade gracefully to an empty/manual form."""
+def normalize_date(raw):
+    """Best-effort parse of a free-text date read off a certificate into
+    'YYYY-MM-DD'. Returns None if it can't confidently parse it - the
+    athlete fills the date in manually in that case."""
+    if not raw:
+        return None
+    from dateutil import parser as date_parser
+    try:
+        return date_parser.parse(str(raw), dayfirst=True, fuzzy=True).date().isoformat()
+    except (ValueError, OverflowError):
+        return None
+
+
+def _call_claude_vision(image_file, prompt):
+    """Send `image_file` to Claude vision with `prompt` and return the
+    parsed JSON dict (or {} if the response wasn't valid JSON). Raises
+    RuntimeError if the AI call itself fails (missing key, network, etc.)."""
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError('AI diploma reading is not configured (missing ANTHROPIC_API_KEY).')
 
@@ -82,7 +124,7 @@ def extract_diploma_fields(image_file):
             'role': 'user',
             'content': [
                 {'type': 'image', 'source': {'type': 'base64', 'media_type': media_type, 'data': b64}},
-                {'type': 'text', 'text': EXTRACTION_PROMPT},
+                {'type': 'text', 'text': prompt},
             ],
         }],
     )
@@ -93,10 +135,16 @@ def extract_diploma_fields(image_file):
         if raw_text.lower().startswith('json'):
             raw_text = raw_text[4:]
     try:
-        parsed = json.loads(raw_text)
+        return json.loads(raw_text)
     except (ValueError, json.JSONDecodeError):
-        logger.warning('Diploma OCR: could not parse AI response as JSON: %r', raw_text)
-        parsed = {}
+        logger.warning('Certificate OCR: could not parse AI response as JSON: %r', raw_text)
+        return {}
+
+
+def extract_diploma_fields(image_file):
+    """Call Claude vision on an uploaded competition diploma image and
+    return a dict with raw AI guesses plus DB-matched suggestions."""
+    parsed = _call_claude_vision(image_file, RESULT_EXTRACTION_PROMPT)
 
     from .models import Category
     from landing.models import Event
@@ -129,5 +177,79 @@ def extract_diploma_fields(image_file):
             'category_name': category_name,
             'group_id': group_id,
             'placement_claimed': normalize_placement(parsed.get('placement')),
+        },
+    }
+
+
+def extract_grade_certificate_fields(image_file):
+    """Call Claude vision on an uploaded grade certificate image and return
+    a dict with raw AI guesses plus DB-matched suggestions (grade, exam
+    event, obtained date)."""
+    parsed = _call_claude_vision(image_file, GRADE_EXTRACTION_PROMPT)
+
+    from .models import Grade
+    from landing.models import Event
+
+    grades = list(Grade.objects.values_list('id', 'name'))
+    grade_id, grade_name = _best_match(parsed.get('grade_name'), grades)
+
+    events = list(Event.objects.filter(event_type='examination').values_list('id', 'title'))
+    event_id, event_title = _best_match(parsed.get('exam_event_name'), events)
+
+    return {
+        'raw': {
+            'grade_name': parsed.get('grade_name'),
+            'exam_event_name': parsed.get('exam_event_name'),
+            'obtained_date': parsed.get('obtained_date'),
+            'athlete_name': parsed.get('athlete_name'),
+        },
+        'suggested': {
+            'grade_id': grade_id,
+            'grade_name': grade_name,
+            'event_id': event_id,
+            'event_title': event_title,
+            'obtained_date': normalize_date(parsed.get('obtained_date')),
+        },
+    }
+
+
+def extract_seminar_certificate_fields(image_file):
+    """Call Claude vision on an uploaded seminar/stagiu certificate image
+    and return a dict with raw AI guesses plus a DB-matched suggested
+    event."""
+    parsed = _call_claude_vision(image_file, SEMINAR_EXTRACTION_PROMPT)
+
+    from landing.models import Event
+
+    events = list(Event.objects.filter(event_type='training_seminar').values_list('id', 'title'))
+    event_id, event_title = _best_match(parsed.get('seminar_name'), events)
+
+    return {
+        'raw': {
+            'seminar_name': parsed.get('seminar_name'),
+            'start_date': parsed.get('start_date'),
+            'end_date': parsed.get('end_date'),
+            'athlete_name': parsed.get('athlete_name'),
+        },
+        'suggested': {
+            'event_id': event_id,
+            'event_title': event_title,
+        },
+    }
+
+
+def extract_visa_certificate_fields(image_file):
+    """Call Claude vision on an uploaded medical/annual visa photo and
+    return a dict with the raw AI guess plus a normalized suggested
+    issued date."""
+    parsed = _call_claude_vision(image_file, VISA_EXTRACTION_PROMPT)
+
+    return {
+        'raw': {
+            'issued_date': parsed.get('issued_date'),
+            'athlete_name': parsed.get('athlete_name'),
+        },
+        'suggested': {
+            'issued_date': normalize_date(parsed.get('issued_date')),
         },
     }

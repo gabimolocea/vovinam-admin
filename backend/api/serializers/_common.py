@@ -97,7 +97,7 @@ class ClubMinimalSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Club
-        fields = ['id', 'name', 'slug', 'city']
+        fields = ['id', 'name', 'slug', 'city', 'logo']
 
     def get_city(self, obj):
         try:
@@ -170,13 +170,14 @@ class PublicAthleteSerializer(serializers.ModelSerializer):
     current_grade = GradeMinimalSerializer(read_only=True)
     full_name = serializers.SerializerMethodField()
     medals = serializers.SerializerMethodField()
+    international_medals = serializers.SerializerMethodField()
 
     class Meta:
         model = Athlete
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'gender',
             'club', 'city', 'current_grade', 'is_coach', 'is_referee',
-            'profile_image', 'medals',
+            'profile_image', 'medals', 'international_medals',
         ]
 
     def get_full_name(self, obj):
@@ -187,6 +188,23 @@ class PublicAthleteSerializer(serializers.ModelSerializer):
             return medal_counts_for_athlete(obj)
         except Exception:
             return {'gold': 0, 'silver': 0, 'bronze': 0}
+
+    def get_international_medals(self, obj):
+        """Medals from competitions the federation doesn't organize/score
+        in-app (European and World championships) - entered manually by an
+        admin on the Athlete record, unlike `medals` above."""
+        return {
+            'european': {
+                'gold': obj.european_medals_gold,
+                'silver': obj.european_medals_silver,
+                'bronze': obj.european_medals_bronze,
+            },
+            'world': {
+                'gold': obj.world_medals_gold,
+                'silver': obj.world_medals_silver,
+                'bronze': obj.world_medals_bronze,
+            },
+        }
 
 
 class PublicAthleteDetailSerializer(PublicAthleteSerializer):
@@ -218,13 +236,19 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
         return _safe_file_url(getattr(obj, 'pending_profile_image', None))
 
     def get_grade_history(self, obj):
-        entries = obj.grade_history.filter(status='approved').select_related('grade', 'event').order_by('-obtained_date')
+        request = self.context.get('request')
+        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
+        status_filter = {} if is_own_profile else {'status': 'approved'}
+        entries = obj.grade_history.filter(**status_filter).select_related('grade', 'event').order_by('-obtained_date')
         return [
             {
                 'id': entry.id,
                 'grade': GradeMinimalSerializer(entry.grade).data if entry.grade else None,
                 'obtained_date': _safe_scalar(entry.obtained_date),
                 'event': entry.event.title if entry.event else None,
+                'status': entry.status if is_own_profile else None,
+                'admin_notes': entry.admin_notes if is_own_profile else None,
+                'certificate_image': _safe_file_url(entry.certificate_image) if is_own_profile else None,
             }
             for entry in entries
         ]
@@ -252,7 +276,10 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
         ]
 
     def get_seminars(self, obj):
-        entries = obj.seminar_participations.filter(status='approved').select_related('event').order_by('-event__start_date')
+        request = self.context.get('request')
+        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
+        status_filter = {} if is_own_profile else {'status': 'approved'}
+        entries = obj.seminar_participations.filter(**status_filter).select_related('event').order_by('-event__start_date')
         return [
             {
                 'id': entry.id,
@@ -260,16 +287,25 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
                 'start_date': _safe_scalar(entry.event.start_date) if entry.event else None,
                 'end_date': _safe_scalar(entry.event.end_date) if entry.event else None,
                 'place': entry.event.address if entry.event else None,
+                'status': entry.status if is_own_profile else None,
+                'admin_notes': entry.admin_notes if is_own_profile else None,
+                'certificate_image': _safe_file_url(entry.participation_certificate) if is_own_profile else None,
             }
             for entry in entries
         ]
 
     def _visas(self, obj, visa_type):
-        entries = obj.visas.filter(status='approved', visa_type=visa_type).order_by('-issued_date')
+        request = self.context.get('request')
+        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
+        status_filter = {} if is_own_profile else {'status': 'approved'}
+        entries = obj.visas.filter(visa_type=visa_type, **status_filter).order_by('-issued_date')
         return [
             {
                 'id': entry.id,
                 'issued_date': _safe_scalar(entry.issued_date),
+                'status': entry.status if is_own_profile else None,
+                'admin_notes': entry.admin_notes if is_own_profile else None,
+                'certificate_image': _safe_file_url(entry.image) if is_own_profile else None,
             }
             for entry in entries
         ]

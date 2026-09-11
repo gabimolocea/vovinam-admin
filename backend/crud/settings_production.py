@@ -27,6 +27,18 @@ DATABASES['default'] = dj_database_url.config(
 # Static files - use WhiteNoise for serving
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 
+# The built public-site (Vite `dist/`, copied into the image at
+# frontend_build/ by the root Dockerfile) is served as-is at the site root -
+# separate from Django's own /static/ (admin, DRF, CKEditor) - since its
+# asset references are root-relative (/assets/..., /frvv-logo.png) rather
+# than under /static/. WHITENOISE_INDEX_FILE lets prerendered per-route
+# folders (frontend_build/arbitri/index.html, etc.) resolve when a crawler
+# requests the bare path; the SPA fallback for routes with no prerendered
+# folder is still handled by crud.urls's catch-all view rendering
+# templates/index.html (also copied there by the Dockerfile).
+WHITENOISE_ROOT = os.path.join(BASE_DIR, 'frontend_build')
+WHITENOISE_INDEX_FILE = True
+
 # Media files configuration
 # Use DigitalOcean Spaces (S3-compatible) for persistent media storage in production
 USE_SPACES = os.getenv('USE_SPACES', 'False') == 'True'

@@ -173,6 +173,30 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
         out_serializer = self.get_serializer(instance)
         return Response(out_serializer.data, status=status.HTTP_201_CREATED)
     
+    @action(detail=False, methods=['post'])
+    def extract_diploma(self, request):
+        """Best-effort AI reading of an uploaded grade certificate photo,
+        returning suggested grade/exam event/obtained date values so the
+        athlete can review and prefill the grade submission form. Never
+        creates or modifies anything by itself."""
+        if not hasattr(request.user, 'athlete'):
+            return Response({'error': 'User does not have an athlete profile'}, status=status.HTTP_400_BAD_REQUEST)
+
+        image = request.FILES.get('image') or request.FILES.get('certificate_image')
+        if not image:
+            return Response({'error': 'Trimite o imagine cu certificatul (câmpul "image").'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from ..diploma_ocr import extract_grade_certificate_fields
+        try:
+            result = extract_grade_certificate_fields(image)
+        except Exception:
+            logging.getLogger(__name__).exception('Grade certificate OCR failed')
+            return Response(
+                {'error': 'Nu am putut citi automat certificatul. Completează câmpurile manual.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(result)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
         """Admin action to approve a grade history"""

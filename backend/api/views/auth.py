@@ -22,6 +22,12 @@ from django.core.files.base import ContentFile
 import logging
 from pathlib import Path
 from django.db import IntegrityError
+from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoPasswordValidationError
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from ..email_utils import send_status_email
 
 
 class RegisterView(APIView):
@@ -58,6 +64,69 @@ class LoginView(APIView):
                 }
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordResetRequestView(APIView):
+    """Step 1 of self-service password reset: POST {"email"}. Always returns
+    a generic 200 regardless of whether the email is registered, so this
+    endpoint can't be used to enumerate accounts - only sends the reset
+    email when a matching, usable-password account exists."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = (request.data.get('email') or '').strip().lower()
+        generic_response = Response({
+            'message': 'Dacă adresa de email există în sistem, vei primi un link de resetare a parolei.',
+        })
+        if not email:
+            return Response({'error': 'Adresa de email este obligatorie.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user or not user.has_usable_password():
+            return generic_response
+
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        reset_path = f'/reseteaza-parola?uid={uid}&token={token}'
+        send_status_email(
+            user,
+            title='Resetare parolă',
+            message='Am primit o cerere de resetare a parolei contului tău. Dacă nu ai cerut tu asta, poți ignora acest email - parola ta rămâne neschimbată.\n\nLinkul de mai jos este valabil o perioadă limitată.',
+            cta_label='Resetează parola',
+            cta_path=reset_path,
+        )
+        return generic_response
+
+
+class PasswordResetConfirmView(APIView):
+    """Step 2: POST {"uid", "token", "new_password"} - validates the token
+    from the emailed link and sets the new password."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        uid = request.data.get('uid')
+        token = request.data.get('token')
+        new_password = request.data.get('new_password')
+
+        if not uid or not token or not new_password:
+            return Response({'error': 'Cerere invalidă.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(pk=force_str(urlsafe_base64_decode(uid)))
+        except (User.DoesNotExist, ValueError, TypeError, OverflowError):
+            return Response({'error': 'Link de resetare invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not default_token_generator.check_token(user, token):
+            return Response({'error': 'Link de resetare invalid sau expirat. Cere unul nou.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            validate_password(new_password, user=user)
+        except DjangoPasswordValidationError as exc:
+            return Response({'error': ' '.join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+        return Response({'message': 'Parola a fost resetată cu succes.'})
 
 
 class LogoutView(APIView):

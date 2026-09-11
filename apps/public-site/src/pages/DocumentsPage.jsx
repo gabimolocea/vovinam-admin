@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '../components/ui';
+import Breadcrumbs from '../components/Breadcrumbs';
 import Seo from '../components/Seo';
 
 /**
@@ -42,6 +43,7 @@ export default function DocumentsPage({ category, title }) {
         description={`${title} - Federația Română de Vovinam Việt Võ Đạo.`}
         path={`/${category}`}
       />
+      <Breadcrumbs items={[{ label: title }]} />
       <h1 className="font-display text-3xl font-semibold">{title}</h1>
 
       {error && <Alert variant="destructive">{error}</Alert>}

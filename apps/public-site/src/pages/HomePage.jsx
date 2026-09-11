@@ -1,19 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PlayCircle } from 'lucide-react';
+import { ArrowRight, PlayCircle } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Alert, Button, Card, CardDescription, CardHeader, CardTitle, Skeleton } from '../components/ui';
 import { toEmbedUrl } from '../lib/video';
-import EventCard from '../components/EventCard';
 import HeroCarousel from '../components/HeroCarousel';
+import NewsCard from '../components/NewsCard';
 import AboutVovinamSection from '../components/AboutVovinamSection';
 import PartnersSection from '../components/PartnersSection';
+import NextEventSection from '../components/NextEventSection';
 import Seo, { organizationJsonLd } from '../components/Seo';
-
-function formatDate(value) {
-  if (!value) return '';
-  return new Date(value).toLocaleDateString('ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
-}
 
 export default function HomePage() {
   const [heroSlides, setHeroSlides] = useState([]);
@@ -83,7 +79,7 @@ export default function HomePage() {
         <HeroCarousel slides={heroSlides} />
       ) : (
         <section className="text-center">
-          <h1 className="font-display text-4xl font-semibold text-foreground">Vovinam Việt Võ Đạo România</h1>
+          <h1 className="text-fluid-display font-display font-semibold text-foreground">Vovinam Việt Võ Đạo România</h1>
           <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">
             Noutăți, competiții și materiale video ale Federației Române de Vovinam Việt Võ Đạo.
           </p>
@@ -92,58 +88,47 @@ export default function HomePage() {
 
       {error && <Alert variant="destructive">{error}</Alert>}
 
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-2xl font-semibold">Noutăți recente</h2>
-          <Button as={Link} to="/noutati" variant="ghost" size="sm">Vezi toate</Button>
+      <section className="site-full-bleed -mt-16 bg-[#e9ecef] pb-12 pt-12 sm:pb-16 sm:pt-16">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-6">
+            <h2 className="text-fluid-h2 font-display shrink-0 font-bold text-[#00334d]">Noutăți</h2>
+            <span className="hidden h-px flex-1 bg-[#edb654] sm:block" aria-hidden="true" />
+            <Link
+              to="/noutati"
+              className="text-fluid-button ml-auto hidden items-center gap-2 rounded-lg border-2 !border-[#0a4c75] bg-transparent px-4 py-3 font-bold uppercase text-[#0a4c75] transition hover:bg-[#0a4c75]/5 sm:ml-0 sm:inline-flex"
+            >
+              Toate noutățile
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="grid gap-4 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-80" />)}
+            </div>
+          ) : news.length === 0 ? (
+            <p className="text-muted-foreground">Nu există noutăți momentan.</p>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-3">
+              {news.map((post) => <NewsCard key={post.slug} post={post} />)}
+            </div>
+          )}
+
+          <Link
+            to="/noutati"
+            className="text-fluid-button inline-flex items-center justify-center gap-2 rounded-lg border-2 !border-[#0a4c75] bg-transparent px-4 py-3 font-bold uppercase text-[#0a4c75] transition hover:bg-[#0a4c75]/5 sm:hidden"
+          >
+            Toate noutățile
+            <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
-        {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48" />)}
-          </div>
-        ) : news.length === 0 ? (
-          <p className="text-muted-foreground">Nu există noutăți momentan.</p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {news.map((post) => (
-              <Card
-                key={post.slug}
-                as={Link}
-                to={`/noutati/${post.slug}`}
-                className="transition hover:border-primary/50 hover:shadow-md"
-              >
-                {post.featured_image && (
-                  <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
-                    <img
-                      src={post.featured_image}
-                      alt={post.featured_image_alt || post.title}
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-                )}
-                <CardHeader>
-                  <CardTitle as="h3" className="text-base">{post.title}</CardTitle>
-                  <CardDescription>{formatDate(post.created_at)}</CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        )}
       </section>
 
-      {nextEvent && (
-        <section>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-display text-2xl font-semibold">Următorul eveniment</h2>
-            <Button as={Link} to="/competitii" variant="ghost" size="sm">Vezi toate</Button>
-          </div>
-          <EventCard event={nextEvent} />
-        </section>
-      )}
+      <NextEventSection event={nextEvent} />
 
       <section>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-2xl font-semibold">Video</h2>
+          <h2 className="text-fluid-h2 font-display font-semibold">Video</h2>
           <Button as={Link} to="/video" variant="ghost" size="sm">Vezi toate</Button>
         </div>
         {loading ? (

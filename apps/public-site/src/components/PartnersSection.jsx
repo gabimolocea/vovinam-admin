@@ -1,25 +1,20 @@
-const PARTNERS = [
-  { name: 'Ministerul Sportului', initials: 'MS' },
-  { name: 'Comitetul Olimpic și Sportiv Român', initials: 'COSR' },
-  { name: 'Federația Europeană de Vovinam Việt Võ Đạo', initials: 'EVVF' },
-  { name: 'Federația Mondială de Vovinam Việt Võ Đạo', initials: 'WVVF' },
-];
+const PARTNER_LOGOS = ['/partner-1.png', '/partner-2.png', '/partner-3.png', '/partner-4.png', '/partner-5.png'];
 
-/** Static partners strip for the homepage. No CMS-managed partner/logo
- * model exists yet, so organizations are listed as monogram badges rather
- * than placeholder logo boxes; swap in real logos here once available. */
+/** Partners strip for the homepage, matching Figma node 225:22553: a
+ * "Parteneri" heading flanked by gold rule lines, above a row of logos. */
 export default function PartnersSection() {
   return (
-    <section className="site-band relative left-1/2 right-1/2 -mx-[50vw] w-screen py-10">
-      <div className="mx-auto w-full max-w-6xl px-4">
-        <h2 className="font-display text-center text-lg font-semibold uppercase tracking-wide">Parteneri</h2>
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-8">
-          {PARTNERS.map((partner) => (
-            <div key={partner.initials} className="flex flex-col items-center gap-2" title={partner.name}>
-              <span className="site-partner-badge flex h-16 w-16 items-center justify-center rounded-full text-sm font-bold">
-                {partner.initials}
-              </span>
-              <span className="max-w-[9rem] text-center text-xs text-muted-foreground">{partner.name}</span>
+    <section className="site-full-bleed bg-white py-16">
+      <div className="mx-auto flex w-full max-w-7xl flex-col items-center gap-16 px-4">
+        <div className="flex w-full items-center gap-12">
+          <span className="h-px flex-1 bg-[#edb654]" aria-hidden="true" />
+          <h2 className="text-fluid-h2 font-display shrink-0 font-bold text-[#00334d]">Parteneri</h2>
+          <span className="h-px flex-1 bg-[#edb654]" aria-hidden="true" />
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-6 lg:flex-nowrap lg:gap-8">
+          {PARTNER_LOGOS.map((src, index) => (
+            <div key={src} className="flex h-[120px] w-[213px] shrink-0 items-center justify-center">
+              <img src={src} alt={`Partener ${index + 1}`} className="max-h-full max-w-full rounded-2xl object-contain" />
             </div>
           ))}
         </div>

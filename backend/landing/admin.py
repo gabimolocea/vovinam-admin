@@ -10,6 +10,7 @@ from .models import (
     ContactInfo,
     NewsPostGallery,
     NewsComment,
+    NewsReaction,
     GalleryReaction,
     GalleryComment,
     ContactInfoProxy,
@@ -307,6 +308,13 @@ class GalleryReactionAdmin(admin.ModelAdmin):
     raw_id_fields = ['gallery_image', 'user']
 
 
+class NewsReactionAdmin(admin.ModelAdmin):
+    list_display = ['news_post', 'user', 'reaction_type', 'created_at']
+    list_filter = ['reaction_type', 'created_at']
+    search_fields = ['user__username', 'news_post__title']
+    raw_id_fields = ['news_post', 'user']
+
+
 class GalleryCommentAdmin(admin.ModelAdmin):
     list_display = ['content_preview', 'author', 'gallery_image', 'is_approved', 'created_at']
     list_filter = ['is_approved', 'created_at']
@@ -381,3 +389,4 @@ admin.site.register(NewsPostGallery, NewsPostGalleryAdmin)
 admin.site.register(NewsComment, NewsCommentAdmin)
 admin.site.register(GalleryReaction, GalleryReactionAdmin)
 admin.site.register(GalleryComment, GalleryCommentAdmin)
+admin.site.register(NewsReaction, NewsReactionAdmin)

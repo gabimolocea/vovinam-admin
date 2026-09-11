@@ -1,0 +1,10 @@
+{% extends "emails/base_email.txt" %}
+
+{% block content %}Bună, {{ recipient_name }},
+
+{{ title }}
+
+{{ message }}
+{% if cta_url %}
+{{ cta_label|default:"Vezi detalii" }}: {{ cta_url }}
+{% endif %}{% endblock %}

@@ -6,24 +6,26 @@ import { PersonGrid } from '../components/PersonCard';
 import Seo from '../components/Seo';
 import AthletesTable from '../components/AthletesTable';
 import GalleryTab from '../components/GalleryTab';
+import Breadcrumbs from '../components/Breadcrumbs';
+import MedalIcon from '../components/MedalIcon';
+import TrophyIcon from '../components/TrophyIcon';
 import { ExternalLink, Globe, MapPin, Pencil, Phone } from 'lucide-react';
 
 const SOCIAL_LINKS = [
   { key: 'facebook_url', label: 'Facebook', Icon: ExternalLink },
   { key: 'instagram_url', label: 'Instagram', Icon: ExternalLink },
   { key: 'tiktok_url', label: 'TikTok', Icon: ExternalLink },
-  { key: 'website', label: 'Website', Icon: Globe },
 ];
 
-function MedalBadge({ emoji, label, value }) {
-  return (
-    <div className="flex flex-col items-center gap-1 rounded-lg bg-white/10 px-4 py-2 text-white">
-      <span className="text-2xl leading-none">{emoji}</span>
-      <span className="text-lg font-semibold leading-none">{value}</span>
-      <span className="text-[10px] uppercase tracking-wide text-white/70">{label}</span>
-    </div>
-  );
-}
+// Same Romanian-flag ribbon used for an athlete's national medals - a
+// club's medal count is likewise aggregated from national competitions.
+const NATIONAL_RIBBON = ['#002B7F', '#FCD116', '#CE1126'];
+
+const TABS = [
+  { key: 'info', label: 'Info' },
+  { key: 'sportivi', label: 'Sportivi' },
+  { key: 'poze', label: 'Poze' },
+];
 
 export default function ClubDetailPage() {
   const { slug } = useParams();
@@ -111,7 +113,28 @@ export default function ClubDetailPage() {
   }
 
   const medals = club.medals || { gold: 0, silver: 0, bronze: 0 };
+  const trophies = club.trophies || { gold: 0, silver: 0, bronze: 0 };
   const socialLinks = SOCIAL_LINKS.filter(({ key }) => club[key]);
+  const contactLinks = [
+    club.address && {
+      key: 'address',
+      value: club.address,
+      Icon: MapPin,
+      href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(club.address)}`,
+    },
+    club.mobile_number && {
+      key: 'mobile_number',
+      value: club.mobile_number,
+      Icon: Phone,
+      href: `tel:${club.mobile_number.replace(/\s+/g, '')}`,
+    },
+    club.website && {
+      key: 'website',
+      value: club.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''),
+      Icon: Globe,
+      href: club.website,
+    },
+  ].filter(Boolean);
 
   function startEditing() {
     setForm({
@@ -143,82 +166,117 @@ export default function ClubDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col">
       <Seo
         title={club.name}
         description={club.description || `Pagina clubului ${club.name}, afiliat Federației Române de Vovinam Việt Võ Đạo.`}
         path={`/cluburi/${club.slug}`}
       />
 
-      <div className="overflow-hidden rounded-xl bg-brand-navy text-white">
-        <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
+      <div className="site-full-bleed" style={{ backgroundColor: '#0c223d' }}>
+        <Breadcrumbs
+          items={[
+            { label: 'Federație', to: '/despre' },
+            { label: 'Cluburi', to: '/cluburi' },
+            { label: club.name },
+          ]}
+          overlay
+        />
+
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-6 px-4 py-10 text-center lg:flex-row lg:items-center lg:justify-between lg:py-14 lg:text-left">
+          <div className="flex w-full flex-col items-center gap-4 lg:w-auto lg:flex-row">
             {club.logo ? (
-              <img src={club.logo} alt={club.name} className="h-20 w-20 rounded-lg bg-white object-contain p-1" />
+              <img src={club.logo} alt={club.name} className="h-40 w-40 shrink-0 object-contain" />
             ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-white/10 text-2xl font-semibold">
+              <div className="flex h-40 w-40 shrink-0 items-center justify-center rounded-lg bg-white/10 text-2xl font-display font-bold text-white/40">
                 {club.name?.[0]}
               </div>
             )}
-            <div className="flex flex-col gap-1">
-              <h1 className="font-display text-2xl font-semibold sm:text-3xl">{club.name}</h1>
-              {club.city && <span className="flex items-center gap-1 text-sm text-white/70"><MapPin className="h-4 w-4" /> {club.city}</span>}
+            <div className="flex flex-1 flex-col items-center gap-1.5 text-center lg:items-start lg:text-left">
+              <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">{club.name}</h1>
+              {(contactLinks.length > 0 || socialLinks.length > 0) && (
+                <div className="flex flex-wrap justify-center gap-2 pt-1 lg:justify-start">
+                  {contactLinks.map(({ key, value, Icon, href }) => (
+                    <a
+                      key={key}
+                      href={href}
+                      {...(href.startsWith('tel:') ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
+                      className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs text-white/90 transition hover:bg-white/20"
+                    >
+                      <Icon className="h-3.5 w-3.5" /> {value}
+                    </a>
+                  ))}
+                  {socialLinks.map(({ key, label, Icon }) => (
+                    <a
+                      key={key}
+                      href={club[key]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs text-white/90 transition hover:bg-white/20"
+                    >
+                      <Icon className="h-3.5 w-3.5" /> {label}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-          <div className="flex gap-3">
-            <MedalBadge emoji="🥇" label="Aur" value={medals.gold} />
-            <MedalBadge emoji="🥈" label="Argint" value={medals.silver} />
-            <MedalBadge emoji="🥉" label="Bronz" value={medals.bronze} />
-          </div>
-        </div>
-
-        {socialLinks.length > 0 && (
-          <div className="flex flex-wrap gap-2 border-t border-white/10 bg-black/10 px-6 py-3">
-            {socialLinks.map(({ key, label, Icon }) => (
-              <a
-                key={key}
-                href={club[key]}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs text-white/90 transition hover:bg-white/20"
+          <div className="flex w-full flex-wrap items-center justify-center gap-4 lg:w-auto lg:justify-start">
+            <div className="flex flex-col items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-white/50">Medalii</span>
+              <div className="flex items-center gap-2">
+                {['gold', 'silver', 'bronze'].map((tierKey) => (
+                  <div key={tierKey} className="flex items-center rounded-md bg-white/10 px-2 py-1.5">
+                    <MedalIcon tier={tierKey} ribbonColors={NATIONAL_RIBBON} count={medals[tierKey]} className="h-9 w-7" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-white/50">Cupe</span>
+              <div className="flex items-center gap-2">
+                {['gold', 'silver', 'bronze'].map((tierKey) => (
+                  <div key={tierKey} className="flex items-center rounded-md bg-white/10 px-2 py-1.5">
+                    <TrophyIcon tier={tierKey} count={trophies[tierKey]} className="h-9 w-8" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            {club.can_edit && tab === 'info' && !isEditing && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-white/40 bg-transparent text-white hover:bg-white/10"
+                onClick={startEditing}
               >
-                <Icon className="h-3.5 w-3.5" /> {label}
-              </a>
-            ))}
+                <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editează
+              </Button>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-b">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setSearchParams({})}
-            className={`border-b-2 px-4 py-2 text-sm font-medium transition ${tab === 'info' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            Info
-          </button>
-          <button
-            type="button"
-            onClick={() => setSearchParams({ tab: 'sportivi' })}
-            className={`border-b-2 px-4 py-2 text-sm font-medium transition ${tab === 'sportivi' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            Sportivi
-          </button>
-          <button
-            type="button"
-            onClick={() => setSearchParams({ tab: 'poze' })}
-            className={`border-b-2 px-4 py-2 text-sm font-medium transition ${tab === 'poze' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            Poze
-          </button>
+      <div className="site-full-bleed bg-[#e9ecef]">
+        <div className="mx-auto flex w-full max-w-6xl items-center gap-1.5 px-4 py-1.5">
+          {TABS.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => setSearchParams(key === 'info' ? {} : { tab: key })}
+              className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-bold uppercase tracking-wide transition-all ${
+                tab === key ? 'bg-white text-[#00334d] shadow-sm' : 'text-[#00334d]/60 hover:text-[#00334d]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        {club.can_edit && tab === 'info' && !isEditing && (
-          <Button size="sm" variant="outline" onClick={startEditing} className="gap-1.5">
-            <Pencil className="h-3.5 w-3.5" /> Editează
-          </Button>
-        )}
       </div>
+
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6">
 
       {tab === 'info' && isEditing ? (
         <form onSubmit={handleSave} className="flex flex-col gap-4">
@@ -266,20 +324,6 @@ export default function ClubDetailPage() {
       ) : tab === 'info' ? (
         <div className="flex flex-col gap-4">
           {club.description && <p className="whitespace-pre-line text-sm leading-relaxed">{club.description}</p>}
-          <dl className="grid gap-3 sm:grid-cols-2">
-            {club.address && (
-              <div className="flex items-start gap-2 text-sm">
-                <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <span>{club.address}</span>
-              </div>
-            )}
-            {club.mobile_number && (
-              <div className="flex items-start gap-2 text-sm">
-                <Phone className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <span>{club.mobile_number}</span>
-              </div>
-            )}
-          </dl>
           {club.coach_profiles?.length > 0 && (
             <div className="flex flex-col gap-2">
               <h2 className="font-display text-lg font-semibold">Antrenor{club.coach_profiles.length > 1 ? 'i' : ''}</h2>
@@ -309,6 +353,7 @@ export default function ClubDetailPage() {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

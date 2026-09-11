@@ -1,0 +1,5 @@
+Federația Română de Vovinam Việt Võ Đạo
+
+{% block content %}{% endblock %}
+--
+Poți schimba preferințele de notificare din Contul meu > Notificări: {{ settings_url }}

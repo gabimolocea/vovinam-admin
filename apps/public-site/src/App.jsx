@@ -7,6 +7,7 @@ import VideosPage from './pages/VideosPage';
 import AboutPage from './pages/AboutPage';
 import EventsCalendarPage from './pages/EventsCalendarPage';
 import EventDetailPage from './pages/EventDetailPage';
+import CompetitionPage from './pages/CompetitionPage';
 import ClubsPage from './pages/ClubsPage';
 import ClubDetailPage from './pages/ClubDetailPage';
 import AthletesListPage from './pages/AthletesListPage';
@@ -15,6 +16,7 @@ import StaffPage from './pages/StaffPage';
 import RefereesPage from './pages/RefereesPage';
 import DocumentsPage from './pages/DocumentsPage';
 import AccountPage from './pages/AccountPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import AthleteOnboardingPage from './pages/AthleteOnboardingPage';
 import ApprovalsPage from './pages/ApprovalsPage';
 
@@ -27,8 +29,9 @@ export default function App() {
         <Route path="noutati/:slug" element={<NewsDetailPage />} />
         <Route path="video" element={<VideosPage />} />
         <Route path="despre" element={<AboutPage />} />
-        <Route path="competitii" element={<EventsCalendarPage />} />
-        <Route path="competitii/:slug" element={<EventDetailPage />} />
+        <Route path="calendar" element={<EventsCalendarPage />} />
+        <Route path="calendar/:slug" element={<EventDetailPage />} />
+        <Route path="competitie" element={<CompetitionPage />} />
         <Route path="cluburi" element={<ClubsPage />} />
         <Route path="cluburi/:slug" element={<ClubDetailPage />} />
         <Route path="sportivi" element={<AthletesListPage />} />
@@ -40,6 +43,7 @@ export default function App() {
         <Route path="autentificare" element={<Navigate to="/cont" replace />} />
         <Route path="inregistrare" element={<Navigate to="/cont?mode=register" replace />} />
         <Route path="cont" element={<AccountPage />} />
+        <Route path="reseteaza-parola" element={<ResetPasswordPage />} />
         <Route path="cont/profil" element={<AthleteDetailPage ownProfile />} />
         <Route path="onboarding/sportiv" element={<AthleteOnboardingPage />} />
         <Route path="cont/aprobari" element={<ApprovalsPage />} />

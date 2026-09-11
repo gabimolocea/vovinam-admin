@@ -24,7 +24,7 @@ DEFAULT_GRADES = [
     {'rank_order': 14, 'name': 'CENTURĂ GALBENĂ, 1 DANG', 'grade_type': 'superior'},
     {'rank_order': 15, 'name': 'CENTURĂ GALBENĂ, 2 DANG', 'grade_type': 'superior'},
     {'rank_order': 16, 'name': 'CENTURĂ GALBENĂ, 3 DANG', 'grade_type': 'superior'},
-    {'rank_order': 17, 'name': 'CENTURĂ ROŞIE, MARGINE GALBENĂ', 'grade_type': 'superior'},
+    {'rank_order': 17, 'name': 'CENTURĂ ROŞIE, 4 DANG', 'grade_type': 'superior'},
     {'rank_order': 18, 'name': 'CENTURĂ ROŞIE, 5 DANG', 'grade_type': 'superior'},
     {'rank_order': 19, 'name': 'CENTURĂ ROŞIE, 6 DANG', 'grade_type': 'superior'},
     {'rank_order': 20, 'name': 'CENTURĂ ROŞIE, 7 DANG', 'grade_type': 'superior'},

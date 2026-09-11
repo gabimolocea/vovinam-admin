@@ -77,7 +77,7 @@ export default function EditAthleteProfileForm({ athlete, onCancel, onSaved }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-xl border p-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {error && <Alert variant="destructive">{error}</Alert>}
 
       <div className="grid gap-4 sm:grid-cols-2">

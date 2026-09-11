@@ -422,6 +422,34 @@ SIMPLE_JWT = {
 }
 
 # ============================================================================
+# EMAIL (Amazon SES) - transactional emails for result/grade/seminar/visa
+# status changes. Falls back to the console backend (prints to the runserver
+# log instead of sending) when SES credentials aren't set, so local dev and
+# an unconfigured deploy never crash on a missing email provider.
+# ============================================================================
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Federația Română de Vovinam <notificari@vovinam.ro>')
+AWS_SES_ACCESS_KEY_ID = os.environ.get('AWS_SES_ACCESS_KEY_ID', '')
+AWS_SES_SECRET_ACCESS_KEY = os.environ.get('AWS_SES_SECRET_ACCESS_KEY', '')
+AWS_SES_REGION_NAME = os.environ.get('AWS_SES_REGION_NAME', 'eu-central-1')
+
+if AWS_SES_ACCESS_KEY_ID and AWS_SES_SECRET_ACCESS_KEY:
+    EMAIL_BACKEND = 'api.email_backend.SESEmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# Public URL of the public-site frontend, used to build absolute links inside
+# emails/WhatsApp messages (e.g. "see your approved result").
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5183')
+
+# ============================================================================
+# WHATSAPP (Meta Cloud API) - optional status-change notifications. No-ops
+# gracefully (see api/whatsapp_utils.py) when unconfigured.
+# ============================================================================
+WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN', '')
+WHATSAPP_PHONE_NUMBER_ID = os.environ.get('WHATSAPP_PHONE_NUMBER_ID', '')
+WHATSAPP_TEMPLATE_NAME = os.environ.get('WHATSAPP_TEMPLATE_NAME', 'stare_notificare')
+
+# ============================================================================
 # DJANGO CHANNELS CONFIGURATION
 # ============================================================================
 

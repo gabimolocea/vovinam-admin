@@ -5,7 +5,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
 });
 
 // Attach JWT token to every request
@@ -41,6 +40,12 @@ export const authAPI = {
   updateProfile: (data) => api.put('/auth/me/', data),
   changePassword: (currentPassword, newPassword) => api.post('/auth/change-password/', {
     current_password: currentPassword,
+    new_password: newPassword,
+  }),
+  requestPasswordReset: (email) => api.post('/auth/password-reset/', { email }),
+  confirmPasswordReset: (uid, token, newPassword) => api.post('/auth/password-reset-confirm/', {
+    uid,
+    token,
     new_password: newPassword,
   }),
 };
@@ -91,13 +96,9 @@ export const categoryAPI = {
 export const diplomaTemplateAPI = {
   list: (params) => api.get('/diploma-templates/', { params }),
   get: (id) => api.get(`/diploma-templates/${id}/`),
-  create: (formData) => api.post('/diploma-templates/', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
+  create: (formData) => api.post('/diploma-templates/', formData),
   duplicate: (id) => api.post(`/diploma-templates/${id}/duplicate/`),
-  update: (id, data) => api.patch(`/diploma-templates/${id}/`, data, data instanceof FormData ? {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  } : undefined),
+  update: (id, data) => api.patch(`/diploma-templates/${id}/`, data),
   delete: (id) => api.delete(`/diploma-templates/${id}/`),
 };
 
@@ -120,7 +121,7 @@ export const athleteAPI = {
   updatePhoto: (id, file) => {
     const formData = new FormData();
     formData.append('profile_image', file);
-    return api.patch(`/athletes/${id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return api.patch(`/athletes/${id}/`, formData);
   },
   myProfile: () => api.get('/athletes/my-profile/'),
   myProfileDetail: () => api.get('/athletes/my-profile-detail/'),
@@ -129,7 +130,7 @@ export const athleteAPI = {
   updateMyProfilePhoto: (file) => {
     const formData = new FormData();
     formData.append('profile_image', file);
-    return api.put('/athletes/my-profile/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return api.put('/athletes/my-profile/', formData);
   },
   approve: (id) => api.post(`/athletes/${id}/approve/`),
   process: (id, data) => api.post(`/athletes/${id}/process_application/`, data),
@@ -287,9 +288,7 @@ export const scoreAPI = {
   pendingReview: () => api.get('/category-athlete-score/pending_review/'),
   myResults: () => api.get('/category-athlete-score/my_results/'),
   allResults: (params) => api.get('/category-athlete-score/all_results/', { params }),
-  extractDiploma: (formData) => api.post('/category-athlete-score/extract_diploma/', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
+  extractDiploma: (formData) => api.post('/category-athlete-score/extract_diploma/', formData),
 };
 
 // ── Monitor / Display ─────────────────────────────────
@@ -345,6 +344,15 @@ export const visaAPI = {
     list: (params) => api.get('/medical-visas/', { params }),
     create: (data) => api.post('/medical-visas/', data),
   },
+  submissions: {
+    list: (params) => api.get('/visa-submissions/', { params }),
+    create: (data) => api.post('/visa-submissions/', data),
+    update: (id, data) => api.patch(`/visa-submissions/${id}/`, data),
+    delete: (id) => api.delete(`/visa-submissions/${id}/`),
+    approve: (id, data) => api.post(`/visa-submissions/${id}/approve/`, data),
+    reject: (id, data) => api.post(`/visa-submissions/${id}/reject/`, data),
+    extractDiploma: (formData) => api.post('/visa-submissions/extract_diploma/', formData),
+  },
 };
 
 // ── Grade History ─────────────────────────────────────
@@ -357,6 +365,20 @@ export const gradeHistoryAPI = {
     delete: (id) => api.delete(`/grade-submissions/${id}/`),
     approve: (id, data) => api.post(`/grade-submissions/${id}/approve/`, data),
     reject: (id, data) => api.post(`/grade-submissions/${id}/reject/`, data),
+    extractDiploma: (formData) => api.post('/grade-submissions/extract_diploma/', formData),
+  },
+};
+
+// ── Seminar participation ─────────────────────────────
+export const seminarAPI = {
+  submissions: {
+    list: (params) => api.get('/seminar-submissions/', { params }),
+    create: (data) => api.post('/seminar-submissions/', data),
+    update: (id, data) => api.patch(`/seminar-submissions/${id}/`, data),
+    delete: (id) => api.delete(`/seminar-submissions/${id}/`),
+    approve: (id, data) => api.post(`/seminar-submissions/${id}/approve/`, data),
+    reject: (id, data) => api.post(`/seminar-submissions/${id}/reject/`, data),
+    extractDiploma: (formData) => api.post('/seminar-submissions/extract_diploma/', formData),
   },
 };
 
@@ -440,6 +462,9 @@ export const publicContentAPI = {
   news: {
     list: (params) => api.get('/public/news/', { params }),
     get: (slug) => api.get(`/public/news/${slug}/`),
+    react: (slug, type) => api.post(`/public/news/${slug}/react/`, { type }),
+    comments: (slug) => api.get(`/public/news/${slug}/comments/`),
+    addComment: (slug, content, parent) => api.post(`/public/news/${slug}/comments/`, { content, parent }),
   },
   videos: {
     list: (params) => api.get('/public/videos/', { params }),

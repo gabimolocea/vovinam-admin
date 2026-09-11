@@ -19,7 +19,7 @@ export default function AboutVovinamSection() {
         <p className="text-xs font-bold uppercase tracking-wide text-secondary-foreground/70">
           Practică arta marțială vietnameză
         </p>
-        <h2 className="font-display mt-1 text-2xl font-semibold sm:text-3xl">Ce este Vovinam?</h2>
+        <h2 className="text-fluid-h2 font-display mt-1 font-semibold">Ce este Vovinam?</h2>
         <p className="mt-3 max-w-xl text-muted-foreground">
           Vovinam Việt Võ Đạo este o artă marțială vietnameză ce îmbină tradiția cu modernitatea,
           oferind practicanților putere fizică, echilibru mental și valori morale.
