@@ -297,7 +297,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         />
       )}
 
-      <div className={`site-full-bleed relative overflow-hidden ${ownProfile ? 'pt-8 lg:pt-10' : ''}`} style={{ backgroundColor: '#0c223d' }}>
+      <div className={`site-full-bleed relative overflow-hidden ${ownProfile ? 'pt-4 lg:pt-5' : ''}`} style={{ backgroundColor: '#0c223d' }}>
         {!ownProfile && (
           <Breadcrumbs
             items={[
@@ -317,14 +317,14 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
           </div>
         )}
 
-        <div className="relative mx-auto flex w-full max-w-6xl flex-col items-center gap-4 px-4 py-5 text-center lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:py-14 lg:text-left">
+        <div className="relative mx-auto flex w-full max-w-6xl flex-col items-center gap-3 px-4 py-4 text-center lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:py-6 lg:text-left">
           {/* Simplified landscape layout: just the photo and details side
               by side, no card border/fill - reads as part of the hero
               itself rather than a boxed panel on top of it. Centered on
               mobile/tablet (stacked, and more compact than the lg+ row
               layout); side by side and left-aligned from lg up. */}
-          <div className="flex w-full flex-col items-center gap-2.5 lg:w-auto lg:flex-row lg:gap-4">
-            <div className="relative aspect-[3/2] w-40 shrink-0 bg-white/10 sm:w-48 lg:w-64">
+          <div className="flex w-full flex-col items-center gap-2 lg:w-auto lg:flex-row lg:gap-3">
+            <div className="relative aspect-[3/2] w-28 shrink-0 bg-white/10 sm:w-32 lg:w-40">
               {athlete.profile_image ? (
                 <img src={athlete.profile_image} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
               ) : (
@@ -369,7 +369,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
               )}
             </div>
             <div className="flex flex-1 flex-col items-center gap-1 text-center lg:items-start lg:gap-1.5 lg:text-left">
-              <h1 className="font-display text-xl font-bold text-white sm:text-2xl lg:text-3xl">{athlete.full_name}</h1>
+              <h1 className="font-display text-lg font-bold text-white sm:text-xl lg:text-2xl">{athlete.full_name}</h1>
               {athlete.current_grade?.name && <BeltBadge grade={athlete.current_grade.name} />}
               {photoError && <span className="text-xs text-red-300">{photoError}</span>}
             </div>

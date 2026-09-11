@@ -3,6 +3,7 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, onboardingAPI, authAPI, notificationSettingsAPI } from '@shared';
 import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input, Label, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 /** Step 1: choose account type. Never offers 'admin' - self-service accounts
  * are only ever athlete/coach or supporter, matched by OnboardingRoleView's
@@ -306,12 +307,32 @@ export default function OnboardingPage() {
 
   if (needsAthleteProfile) return <Navigate to="/onboarding/sportiv" replace />;
 
+  if (needsRoleChoice) {
+    return (
+      <div className="mx-auto flex max-w-lg flex-col gap-6 pt-10 sm:pt-16">
+        <Seo title="Setări" path="/cont" noindex />
+        {roleError && <Alert variant="destructive">{roleError}</Alert>}
+        <RoleStep onChoose={chooseRole} busy={choosingRole} />
+      </div>
+    );
+  }
+
   return (
-    <div className={needsRoleChoice ? 'mx-auto flex max-w-lg flex-col gap-6' : 'flex flex-col gap-6'}>
+    <div className="flex flex-col">
       <Seo title="Setări" path="/cont" noindex />
-      {roleError && <Alert variant="destructive">{roleError}</Alert>}
-      {needsRoleChoice && <RoleStep onChoose={chooseRole} busy={choosingRole} />}
-      {!needsRoleChoice && <StatusStep user={user} refetchUser={refetchUser} />}
+
+      <Breadcrumbs items={[{ label: 'Contul meu' }]} showCurrent />
+
+      <div className="site-full-bleed bg-[#e9ecef]">
+        <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:py-16">
+          <h1 className="text-fluid-h2 font-display font-bold text-[#00334d]">Contul meu</h1>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-6 pt-8">
+        {roleError && <Alert variant="destructive">{roleError}</Alert>}
+        <StatusStep user={user} refetchUser={refetchUser} />
+      </div>
     </div>
   );
 }
