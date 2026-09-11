@@ -22,6 +22,11 @@ class CityAdminSearchTests(TestCase):
             username='cityadmin', email='cityadmin@example.com', password='x'
         )
         self.client.force_login(self.admin_user)
+        # The api.City post_migrate signal seeds a fallback set of major
+        # cities (including these three) into every fresh database, test
+        # runs included - clear it so this test's assertions about exactly
+        # which cities match/rank aren't affected by that unrelated data.
+        City.objects.all().delete()
         self.bucuresti = City.objects.create(name='București')
         self.brasov = City.objects.create(name='Brașov')
         self.cluj = City.objects.create(name='Cluj-Napoca')
