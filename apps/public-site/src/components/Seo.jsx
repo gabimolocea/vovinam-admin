@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { SITE_NAME, SITE_URL, DEFAULT_DESCRIPTION, DEFAULT_OG_IMAGE, absoluteUrl } from '../lib/seo';
+import { SITE_NAME, SITE_URL, DEFAULT_DESCRIPTION, DEFAULT_OG_IMAGE, IS_NON_PRODUCTION_HOST, absoluteUrl } from '../lib/seo';
 
 /**
  * Per-page SEO tags: <title>, meta description, canonical link, Open
@@ -24,13 +24,14 @@ export default function Seo({
 }) {
   const fullTitle = title ? `${title} · ${SITE_NAME}` : SITE_NAME;
   const url = absoluteUrl(path);
+  const shouldNoindex = noindex || IS_NON_PRODUCTION_HOST;
 
   return (
     <Helmet>
       <title>{fullTitle}</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={url} />
-      {noindex && <meta name="robots" content="noindex, nofollow" />}
+      {shouldNoindex && <meta name="robots" content="noindex, nofollow" />}
 
       <meta property="og:site_name" content={SITE_NAME} />
       <meta property="og:type" content={type} />
