@@ -141,14 +141,19 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-[#dce0e5] bg-white shadow-lg sm:w-96">
-          <div className="flex items-center justify-between border-b border-[#dce0e5] px-4 py-3">
-            <span className="font-display text-sm font-bold text-[#00334d]">Notificări</span>
+        <div className="site-submenu absolute right-0 top-full z-50 mt-2 w-80 shadow-lg sm:w-96">
+          <div className="flex items-center justify-between border-b border-white/15 px-4 py-3">
+            <span
+              className="text-sm font-bold uppercase tracking-wide text-white"
+              style={{ fontFamily: "'Roboto Condensed', sans-serif" }}
+            >
+              Notificări
+            </span>
             {unreadCount > 0 && (
               <button
                 type="button"
                 onClick={handleMarkAllRead}
-                className="flex items-center gap-1 text-xs font-medium text-[#0a4c75] hover:underline"
+                className="flex items-center gap-1 text-xs font-medium text-white/70 hover:text-[#edb654] hover:underline"
               >
                 <CheckCheck className="h-3.5 w-3.5" /> Marchează toate ca citite
               </button>
@@ -157,9 +162,9 @@ export default function NotificationBell() {
 
           <div className="max-h-96 overflow-y-auto">
             {loading ? (
-              <p className="px-4 py-6 text-center text-sm text-muted-foreground">Se încarcă…</p>
+              <p className="px-4 py-6 text-center text-sm text-white/60">Se încarcă…</p>
             ) : notifications.length === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nu ai notificări.</p>
+              <p className="px-4 py-6 text-center text-sm text-white/60">Nu ai notificări.</p>
             ) : (
               notifications.map((notification) => {
                 const { Icon, className } = styleFor(notification.notification_type);
@@ -168,17 +173,17 @@ export default function NotificationBell() {
                     key={notification.id}
                     to={linkFor(notification)}
                     onClick={() => handleItemClick(notification)}
-                    className={`flex gap-3 border-b border-[#dce0e5] px-4 py-3 transition last:border-0 hover:bg-[#f8f9fa] ${
-                      notification.is_read ? '' : 'bg-[#0a4c75]/5'
+                    className={`flex gap-3 border-b border-white/10 px-4 py-3 transition last:border-0 hover:bg-white/5 ${
+                      notification.is_read ? '' : 'bg-white/[0.06]'
                     }`}
                   >
                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${className}`}>
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="flex-1 text-sm">
-                      <span className="block font-medium text-[#00334d]">{notification.title}</span>
-                      <span className="mt-0.5 block text-[#00334d]/70">{notification.message}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">{notification.time_since_created}</span>
+                      <span className="block font-medium text-white">{notification.title}</span>
+                      <span className="mt-0.5 block text-white/70">{notification.message}</span>
+                      <span className="mt-1 block text-xs text-white/50">{notification.time_since_created}</span>
                     </span>
                     {!notification.is_read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#da3b26]" />}
                   </Link>

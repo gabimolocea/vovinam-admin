@@ -105,23 +105,23 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
           <ChevronDown className="h-3 w-3" />
         </button>
         {open && (
-          <div className="site-account-popover absolute right-0 top-full z-50 mt-2 flex min-w-[12rem] flex-col gap-1 p-2">
+          <div className="site-submenu absolute right-0 top-full z-50 mt-2 flex min-w-[14rem] flex-col py-3">
             {user?.role !== 'supporter' && (
-              <Link to="/cont/profil" className="site-account-menu-link" onClick={() => setOpen(false)}>
+              <Link to="/cont/profil" className="site-submenu-link px-6 py-3.5" onClick={() => setOpen(false)}>
                 Vezi Profil
               </Link>
             )}
             {(isAdmin || isCoach) && (
-              <Link to="/cont/aprobari" className="site-account-menu-link" onClick={() => setOpen(false)}>
+              <Link to="/cont/aprobari" className="site-submenu-link px-6 py-3.5" onClick={() => setOpen(false)}>
                 Aprobări
               </Link>
             )}
-            <Link to="/cont" className="site-account-menu-link" onClick={() => setOpen(false)}>
+            <Link to="/cont" className="site-submenu-link px-6 py-3.5" onClick={() => setOpen(false)}>
               Setări
             </Link>
             <button
               type="button"
-              className="site-account-menu-link flex items-center gap-1.5 text-left"
+              className="site-submenu-link flex items-center gap-1.5 px-6 py-3.5 text-left"
               onClick={() => {
                 setOpen(false);
                 logout();
