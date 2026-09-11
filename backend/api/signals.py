@@ -309,14 +309,17 @@ for model in _models_to_log():
 
 @receiver(post_migrate)
 def seed_default_cities(sender, **kwargs):
+    # Runs synchronously during `migrate` at every container startup - must
+    # never depend on an external network call (geonames.org can trickle
+    # data slowly enough to blow past any per-read timeout without ever
+    # tripping it, which previously stalled deploys until the health check
+    # gave up). The full, live GeoNames dataset can still be pulled in
+    # on-demand via `manage.py import_ro_cities` when actually needed.
     if getattr(sender, "name", None) != "api":
         return
     if City.objects.exists():
         return
-    try:
-        call_command("import_ro_cities")
-    except Exception:
-        call_command("loaddata", "ro_cities_fallback")
+    call_command("loaddata", "ro_cities_fallback")
 
 
 @receiver(post_migrate)
