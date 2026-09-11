@@ -368,9 +368,14 @@ export default function Layout() {
               Viet-Vo-Dao(EVVF) și a Federației Mondiale de Vovinam Viet-Vo-Dao(WVVF), fiind unica entitate
               recunoscută de către Ministerul Sportului pentru a reprezenta România la toate evenimentele
               oficiale internaționale.{' '}
-              <Link to="/documente" className="underline hover:text-secondary">
+              <a
+                href="/certificat-inregistrare-marca.jpg"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-secondary"
+              >
                 Certificat de înregistrare a mărcii.
-              </Link>
+              </a>
             </p>
 
             <div className="flex flex-wrap gap-10 lg:flex-nowrap">
