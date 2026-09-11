@@ -46,8 +46,13 @@ if not settings.DEBUG:
         # Catch-all route for React (must be last)
         # Serve index.html for all non-API routes (React Router)
         urlpatterns += [
-            re_path(r'^(?!api/|admin/|media/|static/|health/|ckeditor5/).*$', 
-                    TemplateView.as_view(template_name='index.html'), 
+            # Match the prefix with OR without its trailing slash (e.g. bare
+            # "admin", no slash) so a request like /admin doesn't fall
+            # through to the SPA (which has no route for it -> blank page)
+            # instead of resolving to Django's own admin/api/etc. and
+            # getting its normal APPEND_SLASH redirect.
+            re_path(r'^(?!(?:api|admin|media|static|health|ckeditor5)(?:/|$)).*$',
+                    TemplateView.as_view(template_name='index.html'),
                     name='frontend'),
         ]
     else:
