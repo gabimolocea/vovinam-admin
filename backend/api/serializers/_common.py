@@ -215,6 +215,7 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     AthleteDetailSerializer (serializers/athletes.py) for the authenticated
     equivalent used by admin tooling."""
     date_of_birth = serializers.DateField(read_only=True)
+    status = serializers.SerializerMethodField()
     grade_history = serializers.SerializerMethodField()
     results = serializers.SerializerMethodField()
     seminars = serializers.SerializerMethodField()
@@ -225,12 +226,20 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
 
     class Meta(PublicAthleteSerializer.Meta):
         fields = PublicAthleteSerializer.Meta.fields + [
-            'date_of_birth', 'grade_history', 'results', 'seminars', 'annual_visas', 'medical_visas', 'can_edit',
+            'date_of_birth', 'status', 'grade_history', 'results', 'seminars', 'annual_visas', 'medical_visas', 'can_edit',
             'profile_image_status', 'pending_profile_image', 'profile_image_admin_notes',
         ]
 
     def get_can_edit(self, obj):
         return can_edit_object(self.context.get('request'), obj, IsClubCoachOrAdmin)
+
+    def get_status(self, obj):
+        # Approval status is workflow-only data, not public - only the
+        # athlete themself sees it (used by the "this is a preview of your
+        # public profile" banner on their own /cont/profil page).
+        request = self.context.get('request')
+        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
+        return obj.status if is_own_profile else None
 
     def get_pending_profile_image(self, obj):
         return _safe_file_url(getattr(obj, 'pending_profile_image', None))
