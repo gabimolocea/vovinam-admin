@@ -1,7 +1,4 @@
-import {
-  Timer, Hourglass, Users, Target, CheckCircle2, XCircle, Star, AlertTriangle,
-  Ban, Award, Flag, Hand,
-} from 'lucide-react';
+import { Timer, Hourglass, Users, CheckCircle2, Star, Award, Flag } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui';
 
 const SCORING_ONE_POINT = [
@@ -27,15 +24,16 @@ const DCTC_TIERS = [
 ];
 
 const NEUTRAL_SITUATIONS = [
-  { title: 'Eșec DCTC', text: 'Sportivul cade sau iese din zonă încercând un DCTC.' },
-  { title: 'Împingere', text: 'Ieșire din zonă cauzată de împingerea intenționată a adversarului.' },
-  { title: 'Ieșire/cădere simultană', text: 'Ambii sportivi ies sau cad împreună în atac.' },
-  { title: 'Clinch', text: 'Lovituri în timp ce sportivii sunt în clinch.' },
+  { title: 'Eșec DCTC', text: 'Sportivul cade sau iese din zonă încercând un DCTC.', image: 'esec_dctc' },
+  { title: 'Împingere', text: 'Ieșire din zonă cauzată de împingerea intenționată a adversarului.', image: 'impingere' },
+  { title: 'Ieșire/cădere simultană', text: 'Ambii sportivi ies sau cad împreună în atac.', image: 'iesire_cadere' },
+  { title: 'Clinch', text: 'Lovituri în timp ce sportivii sunt în clinch.', image: 'clinch' },
 ];
 
 const FORBIDDEN_GROUPS = [
   {
     title: 'Violență și Pericol',
+    image: 'violenta_icon',
     items: [
       'Atacuri la articulații, gât, zona inghinală.',
       'Lovire cu cotul, genunchiul sau „Topor” (Đá Búa).',
@@ -44,6 +42,7 @@ const FORBIDDEN_GROUPS = [
   },
   {
     title: 'Încălcări Tehnice',
+    image: 'incalcari_icon',
     items: [
       'Prinderea piciorului „afară-înăuntru”.',
       'Utilizarea tehnicilor de luptă (Vặt) sau DCTC interzise (#1, 2, 4, 5, 11-21).',
@@ -51,6 +50,7 @@ const FORBIDDEN_GROUPS = [
   },
   {
     title: 'Comportament',
+    image: 'comportament_icon',
     items: [
       'Comportament nesportiv, simularea accidentării, pasivitate.',
       'Utilizarea drogurilor.',
@@ -122,75 +122,58 @@ export default function RegulamentLuptaSection() {
       {/* Oficialii */}
       <section>
         <h2 className="text-fluid-h2 font-display font-bold text-[#00334d]">Oficialii și rolurile lor</h2>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-sky-600" />
-                <CardTitle className="text-base">CoRe <span className="font-normal text-muted-foreground">(Arbitrii de Colț - 4 persoane)</span></CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Evaluează exclusiv impacturile pentru Punctele 1 și 2.
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-[#da3b26]" />
-                <CardTitle className="text-base">CeRe <span className="font-normal text-muted-foreground">(Arbitrul Central - 1 persoană)</span></CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Gestionează penalități, ieșiri din spațiu, căderi și validează tehnicile Đòn Chân Tấn Công.
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-[#00334d]" />
-                <CardTitle className="text-base">Masa <span className="font-normal text-muted-foreground">(Arbitrul de Masă)</span></CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Înregistrează penalitățile dictate de CeRe.
-            </CardContent>
-          </Card>
+        <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:items-center">
+          <img
+            src="/regulament/arena.webp"
+            alt="Diagrama arenei de luptă cu pozițiile celor 4 arbitri de colț (CoRe), arbitrul central (CeRe) și sportivul"
+            className="mx-auto w-full min-w-0 max-w-md"
+          />
+          <div className="flex flex-col gap-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-sky-600" />
+                  <CardTitle className="text-base">CoRe <span className="font-normal text-muted-foreground">(Arbitrii de Colț - 4 persoane)</span></CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                Evaluează exclusiv impacturile pentru Punctele 1 și 2.
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-[#da3b26]" />
+                  <CardTitle className="text-base">CeRe <span className="font-normal text-muted-foreground">(Arbitrul Central - 1 persoană)</span></CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                Gestionează penalități, ieșiri din spațiu, căderi și validează tehnicile Đòn Chân Tấn Công.
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-[#00334d]" />
+                  <CardTitle className="text-base">Masa <span className="font-normal text-muted-foreground">(Arbitrul de Masă)</span></CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                Înregistrează penalitățile dictate de CeRe.
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </section>
 
       {/* Zonele de punctaj */}
       <section>
         <h2 className="text-fluid-h2 font-display font-bold text-[#00334d]">Zonele de punctaj vs. zone interzise</h2>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <Card className="border-sky-200 bg-sky-50/50">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Target className="h-5 w-5 text-sky-600" />
-                <CardTitle className="text-base">Zone valide</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2 text-sm">
-              <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-sky-600" /> Capul (față și lateral)</div>
-              <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-sky-600" /> Corpul (trunchi)</div>
-            </CardContent>
-          </Card>
-          <Card className="border-red-200 bg-red-50/50">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Ban className="h-5 w-5 text-[#da3b26]" />
-                <CardTitle className="text-base">Zone interzise</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2 text-sm">
-              <div className="flex items-center gap-2"><XCircle className="h-4 w-4 shrink-0 text-[#da3b26]" /> Ceafă și gât (spate/lateral)</div>
-              <div className="flex items-center gap-2"><XCircle className="h-4 w-4 shrink-0 text-[#da3b26]" /> Spate</div>
-              <div className="flex items-center gap-2"><XCircle className="h-4 w-4 shrink-0 text-[#da3b26]" /> Sub talie (inghinal/picioare)</div>
-              <div className="flex items-center gap-2"><XCircle className="h-4 w-4 shrink-0 text-[#da3b26]" /> Mâini și picioare (ca țintă)</div>
-            </CardContent>
-          </Card>
-        </div>
-        <p className="mt-3 text-sm text-muted-foreground">Notă: impacturile slabe sau blocate prin acțiuni defensive = 0 puncte.</p>
+        <img
+          src="/regulament/body.webp"
+          alt="Diagramă a corpului sportivului cu zonele de punctaj valide (cap, corp) și zonele interzise (ceafă, spate, sub talie, mâini și picioare)"
+          className="mx-auto mt-6 w-full max-w-3xl"
+        />
       </section>
 
       {/* Cum castigi puncte */}
@@ -248,7 +231,8 @@ export default function RegulamentLuptaSection() {
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {NEUTRAL_SITUATIONS.map((item) => (
             <Card key={item.title}>
-              <CardContent className="flex flex-col gap-2 pt-5 text-sm">
+              <CardContent className="flex flex-col items-center gap-2 pt-5 text-center text-sm">
+                <img src={`/regulament/${item.image}.webp`} alt="" className="h-20 w-20 object-contain" />
                 <p className="font-display font-semibold text-[#00334d]">{item.title}</p>
                 <p className="text-muted-foreground">{item.text}</p>
               </CardContent>
@@ -286,10 +270,8 @@ export default function RegulamentLuptaSection() {
           {FORBIDDEN_GROUPS.map((group) => (
             <Card key={group.title}>
               <CardHeader>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-[#da3b26]" />
-                  <CardTitle className="text-base">{group.title}</CardTitle>
-                </div>
+                <img src={`/regulament/${group.image}.webp`} alt="" className="h-12 w-auto" />
+                <CardTitle className="text-base">{group.title}</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
                 {group.items.map((item) => <p key={item}>{item}</p>)}
@@ -302,29 +284,11 @@ export default function RegulamentLuptaSection() {
       {/* Ierarhia sanctiunilor */}
       <section>
         <h2 className="text-fluid-h2 font-display font-bold text-[#00334d]">Ierarhia sancțiunilor</h2>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border-l-4 border-[#edb654] bg-[#edb654]/10 p-5">
-            <div className="flex items-center gap-2">
-              <Hand className="h-5 w-5 text-[#edb654]" />
-              <p className="font-display font-bold text-[#00334d]">Abateri (Nhắc Nhở)</p>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">Acordate pentru încălcări minore.</p>
-          </div>
-          <div className="rounded-lg border-l-4 border-[#da3b26] bg-[#da3b26]/10 p-5">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-[#da3b26]" />
-              <p className="font-display font-bold text-[#00334d]">Avertisment (Cảnh Cáo)</p>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">Automat la 3 abateri, sau pentru o încălcare gravă. Cost: -2 puncte.</p>
-          </div>
-          <div className="rounded-lg border-l-4 border-[#00334d] bg-[#00334d]/10 p-5">
-            <div className="flex items-center gap-2">
-              <Ban className="h-5 w-5 text-[#00334d]" />
-              <p className="font-display font-bold text-[#00334d]">Descalificare</p>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">La acumularea a 3 avertismente. Sportivul pierde meciul.</p>
-          </div>
-        </div>
+        <img
+          src="/regulament/sanctiuni.webp"
+          alt="Ierarhia sancțiunilor: Abateri (Nhắc Nhở) pentru încălcări minore, Avertisment (Cảnh Cáo) automat la 3 abateri sau încălcare gravă (cost -2 puncte), Descalificare la 3 avertismente"
+          className="mx-auto mt-6 w-full max-w-3xl"
+        />
       </section>
 
       {/* Sumar esential */}
