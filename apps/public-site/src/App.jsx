@@ -40,7 +40,7 @@ export default function App() {
         <Route path="staff" element={<StaffPage />} />
         <Route path="arbitri" element={<RefereesPage />} />
         <Route path="regulament" element={<RegulamentPage />} />
-        <Route path="documente" element={<DocumentsPage category="documente" title="Documente" />} />
+        <Route path="documente" element={<DocumentsPage />} />
         <Route path="autentificare" element={<Navigate to="/cont" replace />} />
         <Route path="inregistrare" element={<Navigate to="/cont?mode=register" replace />} />
         <Route path="cont" element={<AccountPage />} />
