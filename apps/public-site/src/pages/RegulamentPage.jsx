@@ -42,7 +42,7 @@ export default function RegulamentPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col">
       <Seo
         title="Regulament"
         description="Regulamentele oficiale ale competițiilor de luptă Vovinam Việt Võ Đạo - EVVF, WVVF și Light Contact."
@@ -51,9 +51,13 @@ export default function RegulamentPage() {
 
       <Breadcrumbs items={[{ label: 'Regulament' }]} showCurrent />
 
-      <h1 className="font-display text-3xl font-semibold text-[#00334d]">Regulament</h1>
+      <div className="site-full-bleed bg-[#e9ecef]">
+        <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:py-16">
+          <h1 className="text-fluid-h2 font-display font-bold text-[#00334d]">Regulament</h1>
+        </div>
+      </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 pt-8">
         {DOCUMENTS.map((doc) => (
           <Card key={doc.file}>
             <CardHeader>
@@ -75,7 +79,7 @@ export default function RegulamentPage() {
       </div>
 
       {!loading && cmsDocuments.length > 0 && (
-        <section className="flex flex-col gap-4 border-t border-border pt-6">
+        <section className="mt-6 flex flex-col gap-4 border-t border-border pt-6">
           <h2 className="text-fluid-h2 font-display font-bold text-[#00334d]">Alte documente</h2>
           {cmsDocuments.map((doc) => {
             const href = doc.file || doc.external_url;
@@ -101,7 +105,7 @@ export default function RegulamentPage() {
       )}
 
       {loading && (
-        <div className="flex flex-col gap-4">
+        <div className="mt-6 flex flex-col gap-4">
           <Skeleton className="h-24" />
         </div>
       )}
