@@ -27,27 +27,30 @@ function RoleStep({ onChoose, busy }) {
   );
 }
 
-/** "Cont" tab: account type + email. Email reuses the generic /auth/me/ PUT
- * (uniqueness is enforced by the User model). */
+/** "Cont" tab: account type + email + phone. Both reuse the generic
+ * /auth/me/ PUT (email uniqueness is enforced by the User model). */
 function AccountTab({ user, refetchUser }) {
   const isSupporter = user.role === 'supporter';
   const [email, setEmail] = useState(user.email || '');
+  const [phoneNumber, setPhoneNumber] = useState(user.phone_number || '');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+
+  const hasChanges = email !== user.email || phoneNumber !== (user.phone_number || '');
 
   async function handleSubmit(e) {
     e.preventDefault();
     setMessage(null);
-    if (email === user.email) return;
+    if (!hasChanges) return;
     setBusy(true);
     try {
-      await authAPI.updateProfile({ email });
+      await authAPI.updateProfile({ email, phone_number: phoneNumber });
       await refetchUser();
-      setMessage({ type: 'success', text: 'Adresa de email a fost actualizată.' });
+      setMessage({ type: 'success', text: 'Datele contului au fost actualizate.' });
     } catch (err) {
       const data = err.response?.data;
       const firstError = data && typeof data === 'object' ? Object.values(data)[0] : null;
-      setMessage({ type: 'destructive', text: (Array.isArray(firstError) ? firstError[0] : firstError) || 'Nu am putut actualiza emailul.' });
+      setMessage({ type: 'destructive', text: (Array.isArray(firstError) ? firstError[0] : firstError) || 'Nu am putut actualiza datele contului.' });
     } finally {
       setBusy(false);
     }
@@ -58,14 +61,18 @@ function AccountTab({ user, refetchUser }) {
       <h2 className="font-display text-lg font-bold text-[#00334d]">Cont</h2>
       <p className="text-sm"><span className="font-medium">Tip cont:</span> {isSupporter ? 'Susținător' : 'Sportiv / antrenor'}</p>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-        <Label htmlFor="account-email">Adresă de email</Label>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input id="account-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="sm:flex-1" />
-          <Button type="submit" disabled={busy || email === user.email}>
-            {busy ? 'Se salvează…' : 'Salvează email'}
-          </Button>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="account-email">Adresă de email</Label>
+          <Input id="account-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="account-phone">Telefon</Label>
+          <Input id="account-phone" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
+        </div>
+        <Button type="submit" disabled={busy || !hasChanges} className="self-start">
+          {busy ? 'Se salvează…' : 'Salvează'}
+        </Button>
         {message && <Alert variant={message.type}>{message.text}</Alert>}
       </form>
     </div>
