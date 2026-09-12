@@ -118,9 +118,24 @@ class PublicNewsCommentSerializer(serializers.ModelSerializer):
 
 
 class PublicVideoSerializer(serializers.ModelSerializer):
+    tagged_athletes = serializers.SerializerMethodField()
+    tagged_clubs = serializers.SerializerMethodField()
+
     class Meta:
         model = Video
-        fields = ['title', 'slug', 'url', 'thumbnail', 'description', 'featured', 'created_at']
+        fields = [
+            'title', 'slug', 'url', 'thumbnail', 'description', 'featured', 'created_at',
+            'tagged_athletes', 'tagged_clubs',
+        ]
+
+    def get_tagged_athletes(self, obj):
+        return [
+            {'id': a.id, 'name': f'{a.first_name} {a.last_name}'.strip()}
+            for a in obj.tagged_athletes.all()
+        ]
+
+    def get_tagged_clubs(self, obj):
+        return [{'id': c.id, 'name': c.name, 'slug': c.slug} for c in obj.tagged_clubs.all()]
 
 
 class PublicAboutSectionSerializer(serializers.ModelSerializer):
@@ -451,12 +466,15 @@ class PublicNewsViewSet(viewsets.ViewSet):
 
 
 class PublicVideoViewSet(viewsets.ViewSet):
-    """GET /api/public/videos/ - paginated list of published videos."""
+    """GET /api/public/videos/ - paginated list of published videos.
+    Optional filters: ?featured=true, ?athlete=<id>, ?club=<slug> (the Media
+    page's video tab uses athlete/club to filter by tag; neither is
+    required - omitting both returns every published video, newest first)."""
     permission_classes = [AllowAny]
     pagination_class = PublicContentPagination
 
     def get_queryset(self):
-        return Video.objects.filter(published=True)
+        return Video.objects.filter(published=True).prefetch_related('tagged_athletes', 'tagged_clubs')
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -464,6 +482,13 @@ class PublicVideoViewSet(viewsets.ViewSet):
         featured = request.query_params.get('featured')
         if featured is not None and str(featured).lower() in ('1', 'true', 'yes'):
             queryset = queryset.filter(featured=True)
+
+        athlete_id = request.query_params.get('athlete')
+        club_slug = request.query_params.get('club')
+        if athlete_id:
+            queryset = queryset.filter(tagged_athletes__id=athlete_id)
+        elif club_slug:
+            queryset = queryset.filter(tagged_clubs__slug=club_slug)
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request, view=self)
@@ -647,8 +672,10 @@ class PublicGalleryViewSet(viewsets.ViewSet):
     and athlete public profiles, plus the full-screen lightbox (like/dislike
     + threaded comments).
 
-    GET  /api/public/gallery/?athlete=<id>|club=<slug>  - paginated list of
-         photos tagged with that athlete/club, newest first (AllowAny).
+    GET  /api/public/gallery/[?athlete=<id>|club=<slug>] - paginated list of
+         photos, newest first, optionally filtered to those tagged with a
+         given athlete/club (used by the athlete/club 'Poze' tab and the
+         sitewide Media page's photo tab) (AllowAny).
     GET  /api/public/gallery/<id>/                       - single photo, for
          opening the lightbox directly (AllowAny).
     POST /api/public/gallery/<id>/react/    {type: like|dislike}
@@ -685,8 +712,8 @@ class PublicGalleryViewSet(viewsets.ViewSet):
             queryset = queryset.filter(tagged_athletes__id=athlete_id)
         elif club_slug:
             queryset = queryset.filter(tagged_clubs__slug=club_slug)
-        else:
-            return Response({'detail': 'Specifică athlete sau club.'}, status=status.HTTP_400_BAD_REQUEST)
+        # else: no filter - the Media page's photo tab lists every tagged
+        # photo, newest first.
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)

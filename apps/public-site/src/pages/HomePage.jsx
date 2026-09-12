@@ -129,9 +129,8 @@ export default function HomePage() {
       <NextEventSection event={nextEvent} />
 
       <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-fluid-h2 font-display font-semibold">Video</h2>
-          <Button as={Link} to="/video" variant="ghost" size="sm">Vezi toate</Button>
+        <div className="mb-4 flex items-center justify-end">
+          <Button as={Link} to="/galerie" variant="ghost" size="sm">Vezi toate</Button>
         </div>
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

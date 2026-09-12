@@ -186,6 +186,7 @@ class VideoAdmin(admin.ModelAdmin):
     search_fields = ['title', 'description', 'url']
     prepopulated_fields = {'slug': ('title',)}
     ordering = ['-created_at']
+    filter_horizontal = ['tagged_athletes', 'tagged_clubs']
 
     fieldsets = (
         (_('Informații video'), {
@@ -193,6 +194,9 @@ class VideoAdmin(admin.ModelAdmin):
         }),
         (_('Setări publicare'), {
             'fields': ('published', 'featured')
+        }),
+        (_('Etichete'), {
+            'fields': ('tagged_athletes', 'tagged_clubs')
         }),
     )
 

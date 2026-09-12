@@ -3,7 +3,7 @@ import Layout from './components/Layout';
 import HomePage from './pages/HomePage';
 import NewsListPage from './pages/NewsListPage';
 import NewsDetailPage from './pages/NewsDetailPage';
-import VideosPage from './pages/VideosPage';
+import MediaPage from './pages/MediaPage';
 import AboutPage from './pages/AboutPage';
 import EventsCalendarPage from './pages/EventsCalendarPage';
 import EventDetailPage from './pages/EventDetailPage';
@@ -28,7 +28,11 @@ export default function App() {
         <Route index element={<HomePage />} />
         <Route path="noutati" element={<NewsListPage />} />
         <Route path="noutati/:slug" element={<NewsDetailPage />} />
-        <Route path="video" element={<VideosPage />} />
+        {/* Not "/media" - that path is reserved for Django's MEDIA_URL
+            (uploaded files), both by the dev proxy and by the production
+            SPA catch-all, which explicitly excludes it. */}
+        <Route path="galerie" element={<MediaPage />} />
+        <Route path="video" element={<Navigate to="/galerie" replace />} />
         <Route path="despre" element={<AboutPage />} />
         <Route path="calendar" element={<EventsCalendarPage />} />
         <Route path="calendar/:slug" element={<EventDetailPage />} />

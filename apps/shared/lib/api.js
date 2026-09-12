@@ -491,6 +491,9 @@ export const publicContentAPI = {
     list: (params) => api.get('/public/documents/', { params }),
   },
   gallery: {
+    // Unfiltered (or optionally athlete/club-filtered via params) - powers
+    // the sitewide Media page's photo tab.
+    list: (params) => api.get('/public/gallery/', { params }),
     listByAthlete: (athleteId, params) => api.get('/public/gallery/', { params: { ...params, athlete: athleteId } }),
     listByClub: (clubSlug, params) => api.get('/public/gallery/', { params: { ...params, club: clubSlug } }),
     get: (id) => api.get(`/public/gallery/${id}/`),

@@ -285,6 +285,18 @@ class Video(models.Model):
     description = CKEditor5Field('Description', config_name='default', blank=True)
     published = models.BooleanField(default=False)
     featured = models.BooleanField(default=False, help_text="Show on homepage")
+    tagged_athletes = models.ManyToManyField(
+        'api.Athlete',
+        blank=True,
+        related_name='tagged_videos',
+        help_text="Athletes tagged in this video - shown on their public profile and the Media page",
+    )
+    tagged_clubs = models.ManyToManyField(
+        'api.Club',
+        blank=True,
+        related_name='tagged_videos',
+        help_text="Clubs tagged in this video - shown on the club's public page and the Media page",
+    )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
