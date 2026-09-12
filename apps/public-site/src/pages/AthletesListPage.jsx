@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@shared';
 import { athleteAPI } from '@shared/lib/api';
 import {
   Alert, Button, EmptyState, Input, Skeleton,
@@ -10,6 +11,7 @@ import Seo from '../components/Seo';
 import AthletesTable from '../components/AthletesTable';
 
 export default function AthletesListPage() {
+  const { user, loading: authLoading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
   const q = searchParams.get('q') || '';
@@ -21,6 +23,7 @@ export default function AthletesListPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (authLoading || !user) return undefined;
     let isMounted = true;
 
     async function load() {
@@ -49,7 +52,7 @@ export default function AthletesListPage() {
     return () => {
       isMounted = false;
     };
-  }, [page, q, ordering]);
+  }, [page, q, ordering, user, authLoading]);
 
   function updateParams(patch) {
     const next = new URLSearchParams(searchParams);
@@ -60,12 +63,23 @@ export default function AthletesListPage() {
     setSearchParams(next);
   }
 
+  if (authLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-8 w-1/3" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/cont" replace />;
+
   return (
     <div className="flex flex-col gap-6">
       <Seo
         title="Sportivi"
         description="Lista sportivilor legitimați ai Federației Române de Vovinam Việt Võ Đạo."
         path="/sportivi"
+        noindex
       />
 
       <Breadcrumbs items={[{ label: 'Federație', to: '/despre' }, { label: 'Sportivi' }]} />

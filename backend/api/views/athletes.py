@@ -25,13 +25,14 @@ from ..notification_utils import notify_profile_image_submitted, notify_profile_
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def athlete_detail(request, pk):
-    """Public-facing athlete detail endpoint used by the frontend.
+    """Athlete detail endpoint used by the frontend's (now sign-in-gated)
+    athlete profile page.
 
     This complements the ViewSet detail route which may not always be available
     during dynamic registrations in development. Returning this as a plain
-    function-based view ensures a stable URL for public athlete pages.
+    function-based view ensures a stable URL for these athlete pages.
     """
     try:
         athlete = Athlete.objects.select_related('club__city', 'city', 'current_grade').prefetch_related(

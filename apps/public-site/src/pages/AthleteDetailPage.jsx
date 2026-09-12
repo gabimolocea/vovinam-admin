@@ -224,7 +224,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (ownProfile && (authLoading || !user)) return undefined;
+    if (authLoading || !user) return undefined;
     let isMounted = true;
 
     async function load() {
@@ -246,7 +246,9 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
     };
   }, [id, ownProfile, user, authLoading]);
 
-  if (ownProfile && !authLoading && !user) return <Navigate to="/cont" replace />;
+  // Athlete profiles (own or another athlete's) are only visible to signed-in
+  // users - anonymous visitors get sent to the login/register page instead.
+  if (!authLoading && !user) return <Navigate to="/cont" replace />;
 
   async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
@@ -293,7 +295,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
           title={ownProfile ? 'Profilul meu' : athlete.full_name}
           description={ownProfile ? undefined : `Profilul sportivului ${athlete.full_name}, Federația Română de Vovinam Việt Võ Đạo.`}
           path={ownProfile ? '/cont/profil' : `/sportivi/${athlete.id}`}
-          noindex={ownProfile}
+          noindex
         />
       )}
 
