@@ -3,10 +3,14 @@ Minimal Django EMAIL_BACKEND that sends via Amazon SES using boto3 - already
 a dependency here for DigitalOcean Spaces storage, so this avoids pulling in
 a separate email-sending library for a handful of transactional emails.
 """
+import logging
+
 import boto3
 from botocore.exceptions import ClientError
 from django.conf import settings
 from django.core.mail.backends.base import BaseEmailBackend
+
+logger = logging.getLogger(__name__)
 
 
 class SESEmailBackend(BaseEmailBackend):
@@ -37,7 +41,17 @@ class SESEmailBackend(BaseEmailBackend):
                     RawMessage={'Data': message.message().as_bytes()},
                 )
                 sent_count += 1
-            except ClientError:
+            except ClientError as exc:
+                # fail_silently=True must never raise (a broken SES config
+                # can't be allowed to break the request that triggered the
+                # email), but it was previously swallowing the error with no
+                # trace at all, making send failures undiagnosable. Always
+                # log the actual SES rejection reason.
+                logger.error(
+                    'SES send_raw_email failed for %s: %s',
+                    message.recipients(),
+                    exc.response.get('Error', {}).get('Message', str(exc)),
+                )
                 if not self.fail_silently:
                     raise
         return sent_count
