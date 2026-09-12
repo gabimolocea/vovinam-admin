@@ -15,6 +15,7 @@ import AthleteDetailPage from './pages/AthleteDetailPage';
 import StaffPage from './pages/StaffPage';
 import RefereesPage from './pages/RefereesPage';
 import DocumentsPage from './pages/DocumentsPage';
+import RegulamentPage from './pages/RegulamentPage';
 import AccountPage from './pages/AccountPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import AthleteOnboardingPage from './pages/AthleteOnboardingPage';
@@ -38,7 +39,7 @@ export default function App() {
         <Route path="sportivi/:id" element={<AthleteDetailPage />} />
         <Route path="staff" element={<StaffPage />} />
         <Route path="arbitri" element={<RefereesPage />} />
-        <Route path="regulament" element={<DocumentsPage category="regulament" title="Regulament" />} />
+        <Route path="regulament" element={<RegulamentPage />} />
         <Route path="documente" element={<DocumentsPage category="documente" title="Documente" />} />
         <Route path="autentificare" element={<Navigate to="/cont" replace />} />
         <Route path="inregistrare" element={<Navigate to="/cont?mode=register" replace />} />
