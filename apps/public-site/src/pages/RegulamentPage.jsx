@@ -1,43 +1,83 @@
 import { useEffect, useState } from 'react';
+import { Download, Eye } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
 import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '../components/ui';
 import Breadcrumbs from '../components/Breadcrumbs';
 import Seo from '../components/Seo';
-import RegulamentLuptaSection from '../components/RegulamentLuptaSection';
 
-/** /regulament: the "quick rules" illustrated guide (RegulamentLuptaSection)
- * plus any official regulation documents an admin has published under the
- * 'regulament' DocumentPage category (PDFs, etc.) - same data source
- * DocumentsPage uses, so nothing admins already rely on is lost. */
+// Official regulation PDFs, viewable or downloadable directly - static files
+// (not admin-managed) since they're the federation's own source documents.
+const DOCUMENTS = [
+  {
+    title: 'Reguli pe scurt: Competiții de luptă EVVF 2024',
+    description: 'Ghid pentru sportivi, antrenori și arbitri, bazat pe reglementările European Vovinam Việt Võ Đạo Federation (EVVF).',
+    file: '/regulament/documente/reguli-lupta-evvf-2024.pdf',
+  },
+  {
+    title: 'WVVF Short Rulebook for Competitions (2025)',
+    description: 'Regulamentul oficial, versiune scurtă, al World Vovinam Federation (WVVF).',
+    file: '/regulament/documente/wvvf-short-rulebook-2025.pdf',
+  },
+  {
+    title: 'Regulament luptă Light Contact (2024) — Juniori 13-18 ani',
+    description: 'Ghid oficial de competiție pentru categoria Light Contact, conform standardelor EVVF.',
+    file: '/regulament/documente/regulament-light-contact-2024.pdf',
+  },
+];
+
+/** /regulament: the federation's official regulation PDFs (viewable and
+ * downloadable), plus any additional documents an admin has published under
+ * the 'regulament' DocumentPage CMS category. */
 export default function RegulamentPage() {
-  const [documents, setDocuments] = useState([]);
+  const [cmsDocuments, setCmsDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     publicContentAPI.documents.list({ category: 'regulament' })
-      .then((res) => { if (isMounted) setDocuments(res.data ?? []); })
+      .then((res) => { if (isMounted) setCmsDocuments(res.data ?? []); })
       .catch(() => {})
       .finally(() => { if (isMounted) setLoading(false); });
     return () => { isMounted = false; };
   }, []);
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-6">
       <Seo
         title="Regulament"
-        description="Regulamentul competițiilor de luptă Vovinam Việt Võ Đạo - ghid vizual pe scurt pentru sportivi, antrenori și arbitri."
+        description="Regulamentele oficiale ale competițiilor de luptă Vovinam Việt Võ Đạo - EVVF, WVVF și Light Contact."
         path="/regulament"
       />
 
       <Breadcrumbs items={[{ label: 'Regulament' }]} showCurrent />
 
-      <RegulamentLuptaSection />
+      <h1 className="font-display text-3xl font-semibold text-[#00334d]">Regulament</h1>
 
-      {!loading && documents.length > 0 && (
-        <section className="flex flex-col gap-4 border-t border-border pt-10">
-          <h2 className="text-fluid-h2 font-display font-bold text-[#00334d]">Documente oficiale</h2>
-          {documents.map((doc) => {
+      <div className="flex flex-col gap-4">
+        {DOCUMENTS.map((doc) => (
+          <Card key={doc.file}>
+            <CardHeader>
+              <CardTitle as="h2" className="text-lg">{doc.title}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">{doc.description}</p>
+              <div className="flex shrink-0 gap-2">
+                <Button as="a" href={doc.file} target="_blank" rel="noopener noreferrer" variant="outline">
+                  <Eye className="h-4 w-4" /> Vizualizează
+                </Button>
+                <Button as="a" href={doc.file} download>
+                  <Download className="h-4 w-4" /> Descarcă
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {!loading && cmsDocuments.length > 0 && (
+        <section className="flex flex-col gap-4 border-t border-border pt-6">
+          <h2 className="text-fluid-h2 font-display font-bold text-[#00334d]">Alte documente</h2>
+          {cmsDocuments.map((doc) => {
             const href = doc.file || doc.external_url;
             return (
               <Card key={doc.slug}>
