@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@shared';
 import { publicContentAPI, athleteAPI, clubAPI } from '@shared/lib/api';
 import { Alert, Button, EmptyState, Input, Label, Skeleton, Textarea } from '../components/ui';
 import { PersonGrid } from '../components/PersonCard';
@@ -29,8 +30,11 @@ const TABS = [
 
 export default function ClubDetailPage() {
   const { slug } = useParams();
+  const { isAuthenticated } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = ['sportivi', 'poze'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'info';
+  const allowedTabs = isAuthenticated ? ['sportivi', 'poze'] : ['poze'];
+  const tab = allowedTabs.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'info';
+  const tabs = TABS.filter(({ key }) => key !== 'sportivi' || isAuthenticated);
   const page = Number(searchParams.get('page') || '1');
 
   const [club, setClub] = useState(null);
@@ -201,9 +205,9 @@ export default function ClubDetailPage() {
                       key={key}
                       href={href}
                       {...(href.startsWith('tel:') ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
-                      className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs text-white/90 transition hover:bg-white/20"
+                      className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm text-white/90 transition hover:bg-white/20"
                     >
-                      <Icon className="h-3.5 w-3.5" /> {value}
+                      <Icon className="h-5 w-5" /> {value}
                     </a>
                   ))}
                   {socialLinks.map(({ key, label, Icon }) => (
@@ -212,9 +216,9 @@ export default function ClubDetailPage() {
                       href={club[key]}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs text-white/90 transition hover:bg-white/20"
+                      className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm text-white/90 transition hover:bg-white/20"
                     >
-                      <Icon className="h-3.5 w-3.5" /> {label}
+                      <Icon className="h-5 w-5" /> {label}
                     </a>
                   ))}
                 </div>
@@ -259,7 +263,7 @@ export default function ClubDetailPage() {
 
       <div className="site-full-bleed bg-[#e9ecef]">
         <div className="mx-auto flex w-full max-w-6xl items-center gap-1.5 px-4 py-1.5">
-          {TABS.map(({ key, label }) => (
+          {tabs.map(({ key, label }) => (
             <button
               key={key}
               type="button"

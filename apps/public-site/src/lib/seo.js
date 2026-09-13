@@ -9,12 +9,16 @@ export const DEFAULT_DESCRIPTION =
   'Federația Română de Vovinam Việt Võ Đạo (FRVV) - noutăți, competiții, cluburi afiliate, staff, arbitri și materiale video oficiale.';
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/frvv-logo.png`;
 
-// True on any hostname other than the real production domain (test.vovinam.ro,
+// Every real production domain this app is served on - kept in sync with
+// the custom domains attached to the DigitalOcean App Platform app.
+const PRODUCTION_HOSTS = ['vovinam.ro', 'www.vovinam.ro', 'vovinam-vietvodao.ro', 'www.vovinam-vietvodao.ro'];
+
+// True on any hostname other than a real production domain (test.vovinam.ro,
 // localhost, other DO preview URLs, ...) - used to force every page noindex
 // while this app is running somewhere other than production, with nothing to
 // remember to revert once the real domain takes over.
 export const IS_NON_PRODUCTION_HOST =
-  typeof window !== 'undefined' && !['vovinam.ro', 'www.vovinam.ro'].includes(window.location.hostname);
+  typeof window !== 'undefined' && !PRODUCTION_HOSTS.includes(window.location.hostname);
 
 export function absoluteUrl(path = '/') {
   if (!path) return SITE_URL;

@@ -47,6 +47,18 @@ export async function fetchAllEvents() {
   }
 }
 
+// /public/clubs/ returns a plain (non-paginated) array, unlike news/events.
+export async function fetchAllClubs() {
+  try {
+    const response = await fetch(`${API_BASE}/public/clubs/`);
+    if (!response.ok) throw new Error(`${response.status}`);
+    return await response.json();
+  } catch (err) {
+    console.warn(`[fetch-content] Could not fetch clubs from ${API_BASE}, continuing without it:`, err.message);
+    return [];
+  }
+}
+
 // The events list endpoint omits the rich-text `description` field (only
 // the detail endpoint returns it), so the prerender script needs one extra
 // fetch per event to build an accurate meta description.

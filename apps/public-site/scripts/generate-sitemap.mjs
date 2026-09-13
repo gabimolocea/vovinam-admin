@@ -5,18 +5,21 @@
 import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { fetchAllNews, fetchAllEvents } from './lib/fetch-content.mjs';
+import { fetchAllNews, fetchAllEvents, fetchAllClubs } from './lib/fetch-content.mjs';
 
 const SITE_URL = (process.env.VITE_SITE_URL || 'https://vovinam.ro').replace(/\/$/, '');
 const DIST_DIR = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..', 'dist');
 
+// Kept in sync with the routes declared in src/App.jsx.
 const STATIC_ROUTES = [
   '/',
   '/noutati',
-  '/video',
+  '/galerie',
   '/despre',
-  '/competitii',
+  '/calendar',
+  '/competitie',
   '/cluburi',
+  '/sportivi',
   '/staff',
   '/arbitri',
   '/regulament',
@@ -35,12 +38,13 @@ function urlEntry(loc, lastmod) {
 }
 
 async function main() {
-  const [news, events] = await Promise.all([fetchAllNews(), fetchAllEvents()]);
+  const [news, events, clubs] = await Promise.all([fetchAllNews(), fetchAllEvents(), fetchAllClubs()]);
 
   const entries = [
     ...STATIC_ROUTES.map((route) => urlEntry(route)),
     ...news.map((post) => urlEntry(`/noutati/${post.slug}`, post.updated_at || post.created_at)),
-    ...events.map((event) => urlEntry(`/competitii/${event.slug}`, event.updated_at || event.start_date)),
+    ...events.map((event) => urlEntry(`/calendar/${event.slug}`, event.updated_at || event.start_date)),
+    ...clubs.map((club) => urlEntry(`/cluburi/${club.slug}`)),
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join('\n')}\n</urlset>\n`;

@@ -5,9 +5,9 @@ import AccountNavItem from './AccountNavItem';
 import NotificationBell from './NotificationBell';
 
 const SOCIAL_LINKS = [
-  { href: '#', label: 'Facebook', icon: '/footer-facebook.png' },
-  { href: '#', label: 'LinkedIn', icon: '/footer-linkedin.png' },
-  { href: '#', label: 'YouTube', icon: '/footer-youtube.png' },
+  { href: 'https://www.facebook.com/vovinam.romania/', label: 'Facebook', icon: '/footer-facebook.png' },
+  { href: 'https://www.linkedin.com/company/vovinam-romania/', label: 'LinkedIn', icon: '/footer-linkedin.png' },
+  { href: 'https://www.youtube.com/@Vovinam.Romania', label: 'YouTube', icon: '/footer-youtube.png' },
 ];
 
 // Audience-facing pages the header surfaces separately from the main nav -
@@ -314,7 +314,7 @@ export default function Layout() {
           <p className="site-mobile-section-label px-4 pb-2 pt-6">Urmărește FRVV</p>
           <div className="flex gap-4 px-4 pb-8">
             {SOCIAL_LINKS.map((social) => (
-              <a key={social.label} href={social.href} aria-label={social.label} className="shrink-0">
+              <a key={social.label} href={social.href} aria-label={social.label} target="_blank" rel="noopener noreferrer" className="shrink-0">
                 <img src={social.icon} alt="" className="h-9 w-9 rounded-full" />
               </a>
             ))}
@@ -368,7 +368,7 @@ export default function Layout() {
                 <h3 className="site-footer-heading whitespace-nowrap">Urmărește-ne:</h3>
                 <div className="mt-4 flex gap-4">
                   {SOCIAL_LINKS.map((social) => (
-                    <a key={social.label} href={social.href} aria-label={social.label} className="shrink-0">
+                    <a key={social.label} href={social.href} aria-label={social.label} target="_blank" rel="noopener noreferrer" className="shrink-0">
                       <img src={social.icon} alt="" className="h-8 w-8" />
                     </a>
                   ))}

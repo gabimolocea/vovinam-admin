@@ -14,7 +14,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { fetchAllNews, fetchAllEvents, fetchEventDetail } from './lib/fetch-content.mjs';
+import { fetchAllNews, fetchAllEvents, fetchEventDetail, fetchAllClubs } from './lib/fetch-content.mjs';
 
 const SITE_NAME = 'Federația Română de Vovinam Việt Võ Đạo';
 const SITE_URL = (process.env.VITE_SITE_URL || 'https://vovinam.ro').replace(/\/$/, '');
@@ -106,15 +106,29 @@ function buildStaticRoutes() {
   return [
     { path: '/', title: null, description: DEFAULT_DESCRIPTION, jsonLd: organizationJsonLd() },
     { path: '/noutati', title: 'Noutăți', description: 'Cele mai recente noutăți, comunicate și anunțuri ale Federației Române de Vovinam Việt Võ Đạo.' },
-    { path: '/video', title: 'Video', description: 'Materiale video oficiale ale Federației Române de Vovinam Việt Võ Đạo: competiții, seminarii și demonstrații.' },
+    { path: '/galerie', title: 'Media', description: 'Materiale video și poze din activitatea Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/despre', title: 'Despre noi', description: 'Despre Federația Română de Vovinam Việt Võ Đạo: istorie, misiune și structura federației.' },
-    { path: '/competitii', title: 'Competiții și evenimente', description: 'Calendarul competițiilor, examenelor și seminariilor de pregătire organizate de Federația Română de Vovinam Việt Võ Đạo.' },
+    { path: '/calendar', title: 'Calendar competiții', description: 'Calendarul competițiilor, examenelor și seminariilor de pregătire organizate de Federația Română de Vovinam Việt Võ Đạo.' },
+    { path: '/competitie', title: 'Competiție', description: 'Prezentarea sistemului competițional al Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/cluburi', title: 'Cluburi afiliate', description: 'Lista cluburilor sportive afiliate Federației Române de Vovinam Việt Võ Đạo, cu antrenori și localizare.' },
+    { path: '/sportivi', title: 'Sportivi', description: 'Sportivii legitimați ai cluburilor afiliate Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/staff', title: 'Staff federație', description: 'Consiliul actual și titlurile de Maestru acordate de Ministerul Sportului în cadrul Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/arbitri', title: 'Arbitri', description: 'Arbitrii internaționali și naționali acreditați de Federația Română de Vovinam Việt Võ Đạo.' },
     { path: '/regulament', title: 'Regulament', description: 'Regulament - Federația Română de Vovinam Việt Võ Đạo.' },
     { path: '/documente', title: 'Documente', description: 'Documente - Federația Română de Vovinam Việt Võ Đạo.' },
   ];
+}
+
+function clubJsonLd(club, routePath) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'SportsClub',
+    name: club.name,
+    logo: club.logo || undefined,
+    address: club.city || club.address ? { '@type': 'PostalAddress', addressLocality: club.city, streetAddress: club.address } : undefined,
+    telephone: club.mobile_number || undefined,
+    url: club.website || absoluteUrl(routePath),
+  };
 }
 
 function renderHead(template, { routePath, title, description, image, type, jsonLd }) {
@@ -156,7 +170,7 @@ async function writeRoute(template, routePath, meta) {
 
 async function main() {
   const template = await readFile(path.join(DIST_DIR, 'index.html'), 'utf-8');
-  const [news, events] = await Promise.all([fetchAllNews(), fetchAllEvents()]);
+  const [news, events, clubs] = await Promise.all([fetchAllNews(), fetchAllEvents(), fetchAllClubs()]);
 
   let count = 0;
   for (const route of buildStaticRoutes()) {
@@ -178,13 +192,26 @@ async function main() {
 
   for (const eventSummary of events) {
     const event = (await fetchEventDetail(eventSummary.slug)) || eventSummary;
-    const routePath = `/competitii/${event.slug}`;
+    const routePath = `/calendar/${event.slug}`;
     await writeRoute(template, routePath, {
       title: event.title,
       description: event.description ? excerpt(event.description) : DEFAULT_DESCRIPTION,
       image: event.featured_image || DEFAULT_OG_IMAGE,
       type: 'article',
       jsonLd: sportsEventJsonLd(event, routePath),
+    });
+    count += 1;
+  }
+
+  for (const club of clubs) {
+    const routePath = `/cluburi/${club.slug}`;
+    await writeRoute(template, routePath, {
+      title: club.name,
+      description: club.description
+        ? excerpt(club.description)
+        : `Pagina clubului ${club.name}, afiliat Federației Române de Vovinam Việt Võ Đạo.`,
+      image: club.logo || DEFAULT_OG_IMAGE,
+      jsonLd: clubJsonLd(club, routePath),
     });
     count += 1;
   }
