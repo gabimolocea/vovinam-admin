@@ -22,11 +22,21 @@ class IsAdminOrReadOnly(BasePermission):
         # Read permissions for any request (GET, HEAD, OPTIONS)
         if request.method in ['GET', 'HEAD', 'OPTIONS']:
             return True
-        
+
         # Write permissions only for admin users
         return request.user.is_authenticated and (
-            request.user.is_admin or 
-            request.user.is_superuser or 
+            request.user.is_admin or
+            request.user.is_superuser or
+            request.user.is_staff
+        )
+
+class IsAdminUser(BasePermission):
+    """Staff/admin only, for every method - used where even reading exposes
+    private data (e.g. contact form submissions with visitor PII)."""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and (
+            request.user.is_admin or
+            request.user.is_superuser or
             request.user.is_staff
         )
 
@@ -91,7 +101,7 @@ class NewsPostViewSet(viewsets.ModelViewSet):
 
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['is_featured', 'event_type']
     search_fields = ['title', 'description', 'city__name', 'tags']
@@ -153,12 +163,17 @@ class EventViewSet(viewsets.ModelViewSet):
 class AboutSectionViewSet(viewsets.ModelViewSet):
     queryset = AboutSection.objects.filter(is_active=True)
     serializer_class = AboutSectionSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAdminOrReadOnly]
     ordering = ['order', 'section_title']
 
 class ContactMessageViewSet(viewsets.ModelViewSet):
+    """Visitor-submitted contact form entries (name/email/phone/message) -
+    staff/admin only for every action, including read: the public-facing
+    submission path is the separate `submit_contact_form` view below, and
+    this data must never be listable by an arbitrary authenticated (or
+    anonymous) account."""
     queryset = ContactMessage.objects.all()
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAdminUser]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['priority', 'is_read', 'is_replied']
     ordering = ['-created_at']

@@ -95,13 +95,10 @@ cors_origins = _csv_env('CORS_ALLOWED_ORIGINS')
 if cors_origins:
     CORS_ALLOWED_ORIGINS = cors_origins
 
-# CSRF - trust DigitalOcean App Platform domains
-CSRF_TRUSTED_ORIGINS = [
-    'https://*.ondigitalocean.app',
-]
-if os.getenv('ALLOWED_HOSTS'):
-    for host in ALLOWED_HOSTS:
-        CSRF_TRUSTED_ORIGINS.append(f'https://{host}')
+# CSRF - trust only this app's own hosts (from ALLOWED_HOSTS), never a bare
+# "*.ondigitalocean.app" wildcard: that would also trust every other
+# customer's app on the platform as a valid CSRF origin for this backend.
+CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS if not host.startswith('.')]
 
 # Security settings for production
 # Note: SECURE_SSL_REDIRECT is disabled because DigitalOcean App Platform
