@@ -12,7 +12,7 @@ const COMPETITIONS = [
  * of the earlier generic "Ce este Vovinam?" pillars band. */
 export default function AboutVovinamSection() {
   return (
-    <section className="grid gap-8 lg:grid-cols-2 lg:items-center">
+    <section className="grid gap-8 pb-12 pt-12 sm:pb-16 sm:pt-16 lg:grid-cols-2 lg:items-center">
       <img
         src="/compete-section.webp"
         alt="Sportivi de Vovinam Việt Võ Đạo în timpul unui meci de luptă"

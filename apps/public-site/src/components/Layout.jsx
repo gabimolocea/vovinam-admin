@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink } from 'react-router-dom';
-import { ChevronRight, Heart, Menu, X } from 'lucide-react';
+import { ChevronRight, Menu, User, X } from 'lucide-react';
 import AccountNavItem from './AccountNavItem';
 import NotificationBell from './NotificationBell';
-import { Button } from './ui';
 
 const SOCIAL_LINKS = [
   { href: '#', label: 'Facebook', icon: '/footer-facebook.png' },
@@ -20,11 +19,6 @@ const RESOURCE_LINKS = [
   { to: '/arbitri', label: 'Arbitri' },
 ];
 
-const UTILITY_LINKS = [
-  { to: '/documente', label: 'Documente' },
-  { to: '/regulament', label: 'Regulament' },
-];
-
 // Full menu parity with the live vovinam.ro nav: Acasă / Noutăți / Evenimente
 // / Federație (dropdown) / Competiție (dropdown). "Video" is temporarily
 // hidden from the header nav (route/page still exist, just unlinked).
@@ -36,8 +30,6 @@ const NAV_LINKS = [
     label: 'Federație',
     children: [
       { to: '/despre', label: 'Despre' },
-      { to: '/cluburi', label: 'Cluburi' },
-      { to: '/sportivi', label: 'Sportivi' },
       { to: '/staff', label: 'Staff' },
       { to: '/arbitri', label: 'Arbitri' },
     ],
@@ -50,6 +42,7 @@ const NAV_LINKS = [
       { to: '/documente', label: 'Documente' },
     ],
   },
+  { to: '/cluburi', label: 'Cluburi' },
 ];
 
 function desktopLinkClassName({ isActive }) {
@@ -214,11 +207,7 @@ export default function Layout() {
                 <Link key={link.to} to={link.to} className="site-utility-link">{link.label}</Link>
               ))}
             </div>
-            <div className="flex items-center gap-4">
-              {UTILITY_LINKS.map((link) => (
-                <Link key={link.to} to={link.to} className="site-utility-link">{link.label}</Link>
-              ))}
-            </div>
+            <AccountNavItem />
           </div>
         </div>
 
@@ -252,8 +241,15 @@ export default function Layout() {
               de Vovinam Viet-Vo-Dao
             </span>
           </Link>
-          <div className="flex w-14 shrink-0 items-center justify-center">
+          <div className="flex shrink-0 items-center justify-center gap-3">
             <NotificationBell />
+            <Link
+              to="/cont"
+              aria-label="Contul meu"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e9ecef] text-foreground"
+            >
+              <User className="h-5 w-5" aria-hidden="true" />
+            </Link>
           </div>
         </div>
 
@@ -279,7 +275,6 @@ export default function Layout() {
               <DesktopNavItem key={item.label} item={item} />
             ))}
             <NotificationBell />
-            <AccountNavItem />
           </nav>
         </div>
       </header>
@@ -295,7 +290,7 @@ export default function Layout() {
         style={{ top: 'var(--mobile-header-h, 0px)' }}
         aria-hidden={!mobileOpen}
       >
-        <nav className="site-mobile-nav flex flex-col pb-12" aria-label="Navigație mobilă">
+        <nav className="site-mobile-nav flex flex-col bg-[#0c223d] p-0 m-0" aria-label="Navigație mobilă">
           {NAV_LINKS.map((item) => (
             <MobileNavItem key={item.label} item={item} onNavigate={() => setMobileOpen(false)} />
           ))}
@@ -303,16 +298,6 @@ export default function Layout() {
 
         <div className="site-mobile-secondary flex flex-col">
           <AccountNavItem mobile onNavigate={() => setMobileOpen(false)} />
-          {UTILITY_LINKS.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className="site-mobile-row px-4 py-4 text-base"
-              onClick={() => setMobileOpen(false)}
-            >
-              {link.label}
-            </Link>
-          ))}
 
           <p className="site-mobile-section-label px-4 pt-6">Resurse pentru</p>
           {RESOURCE_LINKS.map((link) => (
@@ -380,15 +365,6 @@ export default function Layout() {
 
             <div className="flex flex-wrap gap-10 lg:flex-nowrap">
               <div className="shrink-0">
-                <h3 className="site-footer-heading">Resurse</h3>
-                <ul className="mt-4 flex flex-col gap-4">
-                  <li><Link to="/sportivi" className="site-footer-link">Sportivi</Link></li>
-                  <li><Link to="/staff" className="site-footer-link">Antrenori</Link></li>
-                  <li><Link to="/arbitri" className="site-footer-link">Arbitri</Link></li>
-                </ul>
-              </div>
-
-              <div className="shrink-0">
                 <h3 className="site-footer-heading whitespace-nowrap">Urmărește-ne:</h3>
                 <div className="mt-4 flex gap-4">
                   {SOCIAL_LINKS.map((social) => (
@@ -397,21 +373,6 @@ export default function Layout() {
                     </a>
                   ))}
                 </div>
-              </div>
-
-              <div className="flex shrink-0 flex-col items-start gap-4">
-                <h3 className="site-footer-heading whitespace-nowrap">Susține-ne!</h3>
-                <Button
-                  as={Link}
-                  to="/despre"
-                  className="text-fluid-button w-full max-w-[240px] gap-2 bg-[#da3b26] uppercase text-white hover:bg-[#da3b26]/90"
-                >
-                  <Heart className="h-4 w-4 fill-current" />
-                  Sponsorizează
-                </Button>
-                <a href="/despre" className="w-[212px] text-center text-base text-white underline">
-                  Sponsorizare one-time
-                </a>
               </div>
             </div>
           </div>

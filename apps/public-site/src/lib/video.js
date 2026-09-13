@@ -32,3 +32,30 @@ export function toEmbedUrl(url) {
 
   return url;
 }
+
+/** Extracts the raw YouTube video id from a watch/shorts/share URL, or null
+ * for anything else (Vimeo, unrecognized hosts) - used to build a static
+ * thumbnail (img.youtube.com/vi/<id>/...) for click-to-play video cards. */
+export function getYouTubeId(url) {
+  if (!url) return null;
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+
+    if (host === 'youtube.com' || host === 'm.youtube.com') {
+      const videoId = parsed.searchParams.get('v');
+      if (videoId) return videoId;
+      const shortsMatch = parsed.pathname.match(/\/shorts\/([^/]+)/);
+      if (shortsMatch) return shortsMatch[1];
+    }
+
+    if (host === 'youtu.be') {
+      return parsed.pathname.replace('/', '') || null;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}

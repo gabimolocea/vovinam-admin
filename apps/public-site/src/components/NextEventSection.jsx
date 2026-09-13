@@ -15,7 +15,7 @@ export default function NextEventSection({ event }) {
   const isUpcoming = new Date(event.end_date || event.start_date) >= new Date().setHours(0, 0, 0, 0);
 
   return (
-    <section className="site-full-bleed bg-white py-16">
+    <section className="site-full-bleed bg-white pb-12 pt-12 sm:pb-16 sm:pt-16">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4">
         <div className="flex flex-wrap items-center gap-6">
           <h2 className="text-fluid-h2 font-display shrink-0 font-bold text-[#00334d]">

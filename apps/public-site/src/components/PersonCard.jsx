@@ -18,7 +18,7 @@ export default function PersonCard({ person }) {
 
   const card = (
     <div className="group flex h-full flex-col overflow-hidden rounded-xl border border-[#dce0e5] bg-white p-2 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-[#0a4c75] hover:shadow-lg">
-      <div className="relative flex h-40 w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#e9ecef]">
+      <div className="relative flex aspect-[15/8] w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#e9ecef]">
         {person.profile_image ? (
           <img
             src={person.profile_image}

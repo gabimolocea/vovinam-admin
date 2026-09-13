@@ -4,7 +4,7 @@ const PARTNER_LOGOS = ['/partner-1.png', '/partner-2.png', '/partner-3.png', '/p
  * "Parteneri" heading flanked by gold rule lines, above a row of logos. */
 export default function PartnersSection() {
   return (
-    <section className="site-full-bleed bg-white py-16">
+    <section className="site-full-bleed bg-white pb-12 pt-12 sm:pb-16 sm:pt-16">
       <div className="mx-auto flex w-full max-w-7xl flex-col items-center gap-16 px-4">
         <div className="flex w-full items-center gap-12">
           <span className="h-px flex-1 bg-[#edb654]" aria-hidden="true" />

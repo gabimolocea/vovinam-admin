@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@shared';
-import LoginForm from './LoginForm';
-import { ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown, LogOut, User } from 'lucide-react';
 
-/** Header "Cont" dropdown - mirrors the pattern seen on most e-commerce
- * sites (Altex, etc.): a compact quick-login form in a popover when signed
- * out, or account/logout links when signed in. Closes on outside click,
- * Escape, or successful login/navigation. */
+/** Header "Cont" nav item - a plain link to /cont when signed out, or an
+ * account/logout dropdown when signed in. The dropdown closes on outside
+ * click, Escape, or navigation. */
 export default function AccountNavItem({ mobile = false, onNavigate }) {
   const { isAuthenticated, logout, user, isAdmin, isCoach } = useAuth();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
   const closeTimer = useRef(null);
@@ -78,17 +75,7 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
         </>
       );
     }
-    return (
-      <div className="relative z-10 -mt-8 px-4">
-        <Link
-          to="/cont"
-          className="text-fluid-button flex items-center justify-center gap-2 rounded-lg bg-[#da3b26] px-4 py-4 uppercase tracking-wide text-white transition hover:bg-[#da3b26]/90"
-          onClick={onNavigate}
-        >
-          Contul meu
-        </Link>
-      </div>
-    );
+    return null;
   }
 
   if (isAuthenticated) {
@@ -96,7 +83,7 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
       <div className="relative" ref={containerRef} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
         <button
           type="button"
-          className="text-fluid-button ml-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#da3b26] px-4 uppercase tracking-wide text-white transition hover:bg-[#da3b26]/90"
+          className="site-utility-link inline-flex items-center gap-1"
           aria-expanded={open}
           aria-haspopup="true"
           onClick={() => setOpen((v) => !v)}
@@ -136,28 +123,9 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
   }
 
   return (
-    <div className="relative" ref={containerRef} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
-      <button
-        type="button"
-        className="text-fluid-button ml-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#da3b26] px-4 uppercase tracking-wide text-white transition hover:bg-[#da3b26]/90"
-        aria-expanded={open}
-        aria-haspopup="true"
-        onClick={() => setOpen((v) => !v)}
-      >
-        Contul meu
-        <ChevronDown className="h-3 w-3" />
-      </button>
-      {open && (
-        <div className="site-account-popover absolute right-0 top-full z-50 mt-2 w-80 p-5">
-          <LoginForm compact onSuccess={() => { setOpen(false); navigate('/cont'); }} />
-          <p className="mt-3 text-center text-sm text-muted-foreground">
-            Nu ai cont?{' '}
-            <Link to="/cont?mode=register" className="font-medium underline" onClick={() => setOpen(false)}>
-              Înregistrare
-            </Link>
-          </p>
-        </div>
-      )}
-    </div>
+    <Link to="/cont" className="site-utility-link inline-flex items-center gap-1.5">
+      <User className="h-3.5 w-3.5" />
+      Contul meu
+    </Link>
   );
 }
