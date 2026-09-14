@@ -4,7 +4,6 @@ import { useAuth, athleteAPI } from '@shared';
 import { Alert, Badge, Button, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 import GalleryTab from '../components/GalleryTab';
-import EditAthleteProfileForm from '../components/EditAthleteProfileForm';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ResultSubmissionForm from '../components/ResultSubmissionForm';
 import GradeSubmissionForm from '../components/GradeSubmissionForm';
@@ -216,7 +215,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
   const [noProfile, setNoProfile] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
-  const [editing, setEditing] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [addingResult, setAddingResult] = useState(false);
   const [addingGrade, setAddingGrade] = useState(false);
   const [addingSeminar, setAddingSeminar] = useState(false);
@@ -262,26 +261,41 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
 
   const isPhotoPending = athlete?.profile_image_status === 'pending';
 
-  function handlePhotoButtonClick() {
-    if (window.confirm('Orice schimbare a pozei de profil necesită aprobarea unui admin înainte de a deveni vizibilă public. Continui?')) {
-      fileInputRef.current?.click();
-    }
-  }
-
-  async function handlePhotoChange(e) {
+  // Selecting a file just stages it locally (object URL preview) - nothing
+  // is uploaded until the athlete confirms in the preview dialog, which is
+  // also where they're warned that the change needs admin approval.
+  function handlePhotoChange(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    setPhotoError('');
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return { file, url: URL.createObjectURL(file) };
+    });
+  }
+
+  function cancelPhotoUpload() {
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  }
+
+  async function confirmPhotoUpload() {
+    if (!photoPreview) return;
     setUploadingPhoto(true);
     setPhotoError('');
     try {
-      const response = await athleteAPI.updatePhoto(athlete.id, file);
+      const response = await athleteAPI.updatePhoto(athlete.id, photoPreview.file);
       setAthlete((prev) => ({
         ...prev,
         profile_image: response.data.profile_image,
         pending_profile_image: response.data.pending_profile_image,
         profile_image_status: response.data.profile_image_status,
       }));
+      URL.revokeObjectURL(photoPreview.url);
+      setPhotoPreview(null);
     } catch {
       setPhotoError('Nu am putut încărca poza. Încearcă din nou.');
     } finally {
@@ -412,7 +426,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                     size="sm"
                     variant="outline"
                     disabled={uploadingPhoto || isPhotoPending}
-                    onClick={handlePhotoButtonClick}
+                    onClick={() => fileInputRef.current?.click()}
                     className="absolute bottom-1 right-1 h-6 w-6 rounded-full border-white/40 bg-[#0c223d] p-0 text-white hover:bg-white/10 disabled:opacity-50 lg:bottom-2 lg:right-2 lg:h-7 lg:w-7"
                     title={isPhotoPending ? 'O poză este deja în așteptarea aprobării' : 'Schimbă poza de profil'}
                   >
@@ -463,25 +477,30 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
           <Alert variant="destructive">Poza de profil trimisă a fost respinsă: {athlete.profile_image_admin_notes}</Alert>
         )}
 
-        {editing && (
-          <FullScreenModal title="Editează profilul" onClose={() => setEditing(false)}>
-            <EditAthleteProfileForm
-              athlete={athlete}
-              onCancel={() => setEditing(false)}
-              onSaved={(updated) => {
-                setAthlete((prev) => ({ ...prev, ...updated }));
-                setEditing(false);
-              }}
-            />
+        {photoPreview && (
+          <FullScreenModal title="Previzualizare poză de profil" onClose={cancelPhotoUpload}>
+            <div className="flex flex-col items-center gap-4">
+              <img
+                src={photoPreview.url}
+                alt="Previzualizare poză de profil"
+                className="aspect-[3/2] w-full max-w-sm rounded-lg object-cover"
+              />
+              <Alert>Orice schimbare a pozei de profil necesită aprobarea unui admin înainte de a deveni vizibilă public.</Alert>
+              {photoError && <Alert variant="destructive">{photoError}</Alert>}
+              <div className="flex w-full gap-3">
+                <Button type="button" disabled={uploadingPhoto} onClick={confirmPhotoUpload} className="flex-1">
+                  {uploadingPhoto ? 'Se trimite…' : 'Trimite spre aprobare'}
+                </Button>
+                <Button type="button" variant="outline" disabled={uploadingPhoto} onClick={cancelPhotoUpload} className="flex-1">
+                  Anulează
+                </Button>
+              </div>
+            </div>
           </FullScreenModal>
         )}
+
       {tab === 'info' && (
         <div className="flex flex-col gap-4">
-          {ownProfile && !editing && (
-            <Button type="button" variant="outline" className="w-fit" onClick={() => setEditing(true)}>
-              <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editează profilul
-            </Button>
-          )}
           <dl className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1 text-sm">
             <dt className="text-xs font-semibold uppercase tracking-wide text-[#00334d]/60">Grad curent</dt>
