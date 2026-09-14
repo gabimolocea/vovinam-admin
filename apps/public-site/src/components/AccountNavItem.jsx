@@ -75,11 +75,9 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
         </>
       );
     }
-    return (
-      <Link to="/cont" className="site-mobile-row block px-4 py-4 text-base" onClick={onNavigate}>
-        Autentificare / Înregistrare
-      </Link>
-    );
+    // Signed out: no row here - the mobile header's account icon already
+    // links straight to /cont for login/register.
+    return null;
   }
 
   if (isAuthenticated) {

@@ -321,9 +321,6 @@ export default function AthleteOnboardingPage() {
             </div>
 
             {ocrNotice && <span className="text-xs text-[#0a4c75]">{ocrNotice}</span>}
-            <span className="text-xs text-muted-foreground">
-              Verifică datele completate automat și corectează-le dacă este cazul, înainte de a trimite profilul.
-            </span>
           </div>
         )}
 

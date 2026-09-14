@@ -307,17 +307,8 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="site-mobile-secondary flex flex-col">
+        <div className="site-mobile-secondary flex flex-col pb-4">
           <AccountNavItem mobile onNavigate={() => setMobileOpen(false)} />
-
-          <p className="site-mobile-section-label px-4 pb-2 pt-6">Urmărește FRVV</p>
-          <div className="flex gap-4 px-4 pb-8">
-            {SOCIAL_LINKS.map((social) => (
-              <a key={social.label} href={social.href} aria-label={social.label} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                <img src={social.icon} alt="" className="h-9 w-9 rounded-full" />
-              </a>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -344,22 +335,22 @@ export default function Layout() {
         </div>
 
         <div className="pt-10 lg:pt-6">
-          <div className="site-footer-divider mx-auto flex w-full max-w-7xl flex-col items-center gap-4 px-4 py-8">
-            <div className="flex gap-4">
+          <div className="mx-auto flex w-full max-w-7xl flex-col items-center gap-4 px-4 py-8 text-sm text-white lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col items-center gap-2 text-center lg:items-start lg:text-left">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-white/70 lg:justify-start">
+                <Link to="/termeni-si-conditii" className="hover:text-white hover:underline">Termeni și Condiții</Link>
+                <Link to="/confidentialitate" className="hover:text-white hover:underline">Politica de Confidențialitate</Link>
+                <Link to="/gdpr" className="hover:text-white hover:underline">GDPR</Link>
+              </div>
+              <p>© {new Date().getFullYear()} Federația Română de Vovinam Viet-Vo-Dao. Toate drepturile rezervate.</p>
+            </div>
+
+            <div className="order-first flex shrink-0 gap-4 lg:order-none">
               {SOCIAL_LINKS.map((social) => (
                 <a key={social.label} href={social.href} aria-label={social.label} target="_blank" rel="noopener noreferrer" className="shrink-0">
                   <img src={social.icon} alt="" className="h-8 w-8" />
                 </a>
               ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col items-center gap-2 px-4 py-5 text-center text-sm text-white">
-            <p>© {new Date().getFullYear()} Federația Română de Vovinam Viet-Vo-Dao. Toate drepturile rezervate.</p>
-            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-white/70">
-              <Link to="/termeni-si-conditii" className="hover:text-white hover:underline">Termeni și Condiții</Link>
-              <Link to="/confidentialitate" className="hover:text-white hover:underline">Politica de Confidențialitate</Link>
-              <Link to="/gdpr" className="hover:text-white hover:underline">GDPR</Link>
             </div>
           </div>
         </div>

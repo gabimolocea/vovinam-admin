@@ -110,7 +110,10 @@ autocomplete_urlpatterns = [
 urlpatterns = autocomplete_urlpatterns + [
     # CSRF token endpoint
     path('auth/csrf/', views.get_csrf_token, name='csrf-token'),
-    
+
+    # @mention autocomplete search (CKEditor5) - athletes and clubs
+    path('mentions/', views.mention_search, name='mention-search'),
+
     # Category referee lookup for admin
     path('category-athlete-score/<int:pk>/referees/', views.get_category_referees, name='category-referees'),
     

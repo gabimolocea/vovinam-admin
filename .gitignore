@@ -44,6 +44,12 @@ dist/
 dev-dist/
 logs/
 
+# Custom CKEditor5 build output - not rebuilt by any CI step, so unlike
+# other dist/ dirs this one has to be committed (see backend/tools/
+# ckeditor5-custom-build/README.md to rebuild it).
+!backend/static/django_ckeditor_5/dist/
+!backend/static/django_ckeditor_5/dist/**
+
 # OS
 .DS_Store
 

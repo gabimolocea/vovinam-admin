@@ -1,0 +1,54 @@
+/** Todo list **/
+
+.ck .todo-list input {
+    padding: 0;
+}
+
+.ck .todo-list__checkmark:after {
+    height: 6px !important;
+}
+
+.ck .todo-list__checkmark {
+    padding: 0;
+}
+
+.ck.ck-content.ck-editor__editable {
+    min-height: 300px;
+}
+
+.ck h2 {
+    color: inherit;
+    background: inherit;
+}
+
+form .aligned .ck ul li {
+    list-style: inherit;
+}
+
+form .aligned .ck ul {
+    margin-left: 1.5em;
+    padding-left: inherit;
+}
+/** @mention links (athletes/clubs) **/
+
+.ck-content a.ck-mention-link,
+.ck-mention-link {
+    color: #0a4c75;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.ck-mention-suggestion {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5em;
+    width: 100%;
+}
+
+.ck-mention-suggestion__badge {
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #6b7280;
+}

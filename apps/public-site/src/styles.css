@@ -330,25 +330,11 @@
   color: #edb654;
 }
 
-/* Secondary panel below the primary nav (account/utility/resource links,
-   social row) - lighter background, same as the site's other light
-   panels, to visually separate it from the primary nav list above. */
+/* Secondary panel below the primary nav (account links, when signed in) -
+   same navy as the footer, so the drawer reads as one continuous panel
+   instead of switching to a lighter block partway down. */
 .public-site-app .site-mobile-secondary {
-  background-color: #e9ecef;
-}
-
-.public-site-app .site-mobile-secondary .site-mobile-row,
-.public-site-app .site-mobile-secondary .site-mobile-link {
-  color: #172642;
-}
-
-.public-site-app .site-mobile-secondary .site-mobile-row::after {
-  background-color: #dce0e5;
-}
-
-.public-site-app .site-mobile-secondary .site-mobile-row:hover,
-.public-site-app .site-mobile-secondary .site-mobile-link:hover {
-  color: #da3b26;
+  background-color: #0c223d;
 }
 
 .public-site-app .site-mobile-section-label {

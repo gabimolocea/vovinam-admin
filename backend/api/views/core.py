@@ -108,6 +108,38 @@ def _display_city_name(name):
     return settlement if _is_county_seat(settlement, county) else name
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def mention_search(request):
+    """Lightweight combined athlete/club search for the @mention
+    autocomplete in CKEditor5 article/content fields (see the mention
+    feed wired in the custom static/django_ckeditor_5/dist/bundle.js).
+    Public and minimal on purpose - same visibility as the existing
+    public athlete/club list endpoints, just id/name/url, capped and
+    unpaginated since this only ever backs a live-typing dropdown."""
+    query = (request.query_params.get('query') or '').strip()
+    if not query:
+        return Response([])
+    term = _strip_diacritics(query)
+
+    athletes = []
+    for athlete in Athlete.objects.filter(status='approved', is_deleted=False).only('id', 'first_name', 'last_name').iterator():
+        full_name = f'{athlete.first_name} {athlete.last_name}'.strip()
+        if term in _strip_diacritics(full_name):
+            athletes.append({'id': f'athlete-{athlete.id}', 'type': 'athlete', 'name': full_name, 'url': f'/sportivi/{athlete.id}'})
+            if len(athletes) >= 10:
+                break
+
+    clubs = []
+    for club in Club.objects.only('id', 'name', 'slug').iterator():
+        if term in _strip_diacritics(club.name):
+            clubs.append({'id': f'club-{club.id}', 'type': 'club', 'name': club.name, 'url': f'/cluburi/{club.slug}'})
+            if len(clubs) >= 10:
+                break
+
+    return Response(athletes + clubs)
+
+
 class CityViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
     queryset = City.objects.all()
