@@ -88,7 +88,7 @@ export default function HeroCarousel({ slides }) {
       aria-roledescription="carousel"
       aria-label="Noutăți evidențiate"
     >
-      <div className="relative h-[451px] w-full lg:h-[620px]">
+      <div className="relative h-[519px] w-full lg:h-[620px]">
         {slides.map((slide, i) => (
           <div
             key={slide.slug}
