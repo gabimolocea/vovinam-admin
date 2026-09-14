@@ -102,7 +102,7 @@ export default function HeroCarousel({ slides }) {
                 title instead of the title floating over a full-bleed photo
                 - the scrim then blends its bottom edge into the navy panel
                 behind it. Desktop keeps the original full-bleed photo. */}
-            <div className="site-hero-media absolute inset-x-0 top-0 h-[52%] overflow-hidden lg:inset-0 lg:h-full">
+            <div className="site-hero-media absolute inset-x-0 top-0 h-[60%] overflow-hidden lg:inset-0 lg:h-full">
               {slide.featured_image ? (
                 <>
                   {/* Mirrored, blurred backdrop (desktop only): fills the
