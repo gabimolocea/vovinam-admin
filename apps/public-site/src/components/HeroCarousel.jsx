@@ -20,8 +20,22 @@ function primaryCategory(slide) {
 export default function HeroCarousel({ slides }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  // On mobile/tablet a landscape photo crops from the top (object-top +
+  // zooming from the top edge) so heads in a group photo aren't cut off.
+  // A portrait photo already frames its subject(s) with headroom on both
+  // ends, so the same top-anchored crop would instead cut off everything
+  // below the subject - center it and zoom from the center instead once
+  // we know it's portrait.
+  const [portraitSlides, setPortraitSlides] = useState({});
   const timerRef = useRef(null);
   const navigate = useNavigate();
+
+  const handlePhotoLoad = useCallback((slug, e) => {
+    const img = e.target;
+    if (img.naturalHeight > img.naturalWidth) {
+      setPortraitSlides((prev) => (prev[slug] ? prev : { ...prev, [slug]: true }));
+    }
+  }, []);
 
   const goTo = useCallback((i) => {
     setIndex((current) => {
@@ -70,8 +84,9 @@ export default function HeroCarousel({ slides }) {
                   {/* Mirrored, blurred backdrop (desktop only): fills the
                       letterboxed edges when the photo isn't wide enough to
                       cover the banner, instead of cropping it or leaving
-                      empty bars. Mobile/tablet crop to cover instead, like
-                      FIBA's hero, since there's less width to letterbox. */}
+                      empty bars. Mobile/tablet crop-and-zoom every photo
+                      (tall or wide) to cover the short band instead, like
+                      FIBA's hero, since there's less room to letterbox. */}
                   <img
                     src={slide.featured_image}
                     alt=""
@@ -80,11 +95,23 @@ export default function HeroCarousel({ slides }) {
                     loading={i === 0 ? 'eager' : 'lazy'}
                   />
                   <div className="site-hero-bg-scrim absolute inset-0 hidden lg:block" />
+                  {/* Mobile/tablet: cover-crop with a mild extra zoom
+                      (scale-[1.2]) so photos read as a deliberately tight,
+                      zoomed-in shot instead of a bare minimum crop - reset
+                      back to the whole, unscaled photo on desktop
+                      (lg:object-contain lg:scale-100). Landscape photos
+                      anchor and zoom from the top to protect heads;
+                      portrait photos anchor/zoom from the center since
+                      cropping from the top there would lose the subject's
+                      lower half instead. */}
                   <img
                     src={slide.featured_image}
                     alt={slide.featured_image_alt || ''}
-                    className="site-hero-photo relative h-full w-full object-cover object-top lg:object-contain"
+                    className={`site-hero-photo relative h-full w-full scale-[1.2] object-cover lg:scale-100 lg:object-contain ${
+                      portraitSlides[slide.slug] ? 'object-center' : 'origin-top object-top'
+                    }`}
                     loading={i === 0 ? 'eager' : 'lazy'}
+                    onLoad={(e) => handlePhotoLoad(slide.slug, e)}
                   />
                 </>
               ) : (
