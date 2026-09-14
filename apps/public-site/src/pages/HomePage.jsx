@@ -86,14 +86,7 @@ export default function HomePage() {
         <Skeleton className="site-full-bleed -mt-8 h-[560px] w-full rounded-none lg:h-[620px]" />
       ) : heroSlides.length > 0 ? (
         <HeroCarousel slides={heroSlides} />
-      ) : (
-        <section className="text-center">
-          <h1 className="text-fluid-display font-display font-semibold text-foreground">Vovinam Việt Võ Đạo România</h1>
-          <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">
-            Noutăți, competiții și materiale video ale Federației Române de Vovinam Việt Võ Đạo.
-          </p>
-        </section>
-      )}
+      ) : null}
 
       {error && <Alert variant="destructive">{error}</Alert>}
 
