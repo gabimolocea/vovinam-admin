@@ -80,6 +80,34 @@ def _strip_diacritics(value):
     return normalized.encode('ascii', 'ignore').decode('ascii').lower()
 
 
+def _parse_city_name(name):
+    """Split the GeoNames-imported 'Settlement, X County' name into its
+    settlement and county parts (county is '' for names with no comma)."""
+    if ',' in name:
+        settlement, _, county = name.partition(',')
+        return settlement.strip(), county.strip()
+    return name.strip(), ''
+
+
+def _is_county_seat(settlement, county):
+    """True when the settlement's name IS its county's name (e.g. 'Iași'
+    in 'Iași County') - our proxy for "this is the well-known city", not
+    one of the thousands of villages that share the county."""
+    if not county:
+        return False
+    county_base = county[:-len('County')].strip() if county.lower().endswith('county') else county
+    return _strip_diacritics(settlement) == _strip_diacritics(county_base)
+
+
+def _display_city_name(name):
+    """Drop the redundant ', X County' suffix when the settlement is that
+    county's seat (e.g. 'Iași, Iași County' -> 'Iași'), so the one city
+    almost everyone means when they type its name doesn't read like a
+    disambiguated duplicate next to its own villages."""
+    settlement, county = _parse_city_name(name)
+    return settlement if _is_county_seat(settlement, county) else name
+
+
 class CityViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
     queryset = City.objects.all()
@@ -95,13 +123,28 @@ class CityViewSet(viewsets.ViewSet):
             # Diacritic-insensitive: SQLite's icontains only strips case,
             # so "Iasi" (no diacritics) wouldn't match "Iași" without this.
             term = _strip_diacritics(search)
-            matches = []
+            scored = []
             for city in City.objects.only('id', 'name').iterator():
-                if term in _strip_diacritics(city.name):
-                    matches.append(city)
-                    if len(matches) >= 20:
-                        break
-            queryset = matches
+                settlement, county = _parse_city_name(city.name)
+                norm_settlement = _strip_diacritics(settlement)
+                if norm_settlement == term:
+                    rank = 0
+                elif norm_settlement.startswith(term):
+                    rank = 1
+                elif term in norm_settlement:
+                    rank = 2
+                elif term in _strip_diacritics(city.name):
+                    rank = 3  # only matched in the ", X County" part
+                else:
+                    continue
+                # Within the same match quality, the county seat (the
+                # actual well-known city) outranks its own villages, and
+                # shorter/plainer names outrank longer compound ones.
+                county_seat_rank = 0 if _is_county_seat(settlement, county) else 1
+                scored.append((rank, county_seat_rank, len(settlement), settlement, city))
+            scored.sort(key=lambda item: item[:4])
+            data = [{'id': city.id, 'name': _display_city_name(city.name)} for *_, city in scored[:20]]
+            return Response(data)
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 

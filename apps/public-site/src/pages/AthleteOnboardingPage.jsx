@@ -7,7 +7,7 @@ import {
 } from '../components/ui';
 import SearchableSelect from '../components/SearchableSelect';
 import Seo from '../components/Seo';
-import { displayToIso, maskDateInput } from '../lib/dateFormat';
+import { displayToIso, formatIsoToDisplay, maskDateInput } from '../lib/dateFormat';
 
 /**
  * Dedicated onboarding URL for completing the athlete/coach profile,
@@ -38,6 +38,8 @@ export default function AthleteOnboardingPage() {
   const [licenseRequestDocument, setLicenseRequestDocument] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrNotice, setOcrNotice] = useState('');
 
   useEffect(() => {
     publicContentAPI.clubs.list().then((res) => setClubs(res.data ?? [])).catch(() => {});
@@ -72,6 +74,43 @@ export default function AthleteOnboardingPage() {
     setIsLicensed(licensed);
     setLicenseImage(null);
     setLicenseRequestDocument(null);
+  }
+
+  async function handleLicenseImageChange(e) {
+    const file = e.target.files?.[0] ?? null;
+    setLicenseImage(file);
+    setOcrNotice('');
+    if (!file) return;
+
+    setOcrBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const { data } = await athleteAPI.extractLicense(formData);
+      const suggested = data?.suggested ?? {};
+
+      // Only fill fields the athlete hasn't already typed something into -
+      // never overwrite what they entered themselves.
+      setForm((f) => ({
+        ...f,
+        first_name: f.first_name || suggested.first_name || f.first_name,
+        last_name: f.last_name || suggested.last_name || f.last_name,
+        date_of_birth: f.date_of_birth || (suggested.date_of_birth ? formatIsoToDisplay(suggested.date_of_birth) : f.date_of_birth),
+        gender: f.gender || suggested.gender || f.gender,
+        cnp: f.cnp || suggested.cnp || f.cnp,
+        club: f.club || (suggested.club_id ? String(suggested.club_id) : f.club),
+        license_series: f.license_series || suggested.license_series || f.license_series,
+      }));
+      if (!selectedCity && suggested.city_id && suggested.city_name) {
+        setSelectedCity({ id: suggested.city_id, name: suggested.city_name });
+        update('city', suggested.city_id);
+      }
+      setOcrNotice('Am completat automat câmpurile pe care le-am putut citi din poză - verifică-le înainte de a trimite.');
+    } catch {
+      // Best-effort convenience only - the athlete just fills the form manually.
+    } finally {
+      setOcrBusy(false);
+    }
   }
 
   async function handleSubmit(e) {
@@ -142,18 +181,19 @@ export default function AthleteOnboardingPage() {
           <div className="flex gap-3">
             {[
               { value: true, label: 'Sunt sportiv legitimat' },
-              { value: false, label: 'Doresc legitimație' },
+              { value: false, label: 'Doresc legitimație', disabled: true },
             ].map((option) => (
               <label
                 key={String(option.value)}
-                className={`flex flex-1 cursor-pointer items-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition ${
+                className={`flex flex-1 items-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition ${
                   isLicensed === option.value ? 'border-[#0a4c75] bg-[#0a4c75]/5' : 'border-border'
-                }`}
+                } ${option.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
               >
                 <input
                   type="radio"
                   name="isLicensed"
                   checked={isLicensed === option.value}
+                  disabled={option.disabled}
                   onChange={() => handleLicenseStatusChange(option.value)}
                   className="h-4 w-4 accent-[#0a4c75]"
                 />
@@ -162,6 +202,15 @@ export default function AthleteOnboardingPage() {
             ))}
           </div>
         </div>
+
+        {isLicensed && (
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="license_image">Poză legitimație</Label>
+            <Input id="license_image" type="file" required accept="image/*" onChange={handleLicenseImageChange} />
+            {ocrBusy && <span className="text-xs text-muted-foreground">Se citesc datele din poză…</span>}
+            {ocrNotice && !ocrBusy && <span className="text-xs text-[#0a4c75]">{ocrNotice}</span>}
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
@@ -233,27 +282,15 @@ export default function AthleteOnboardingPage() {
             />
           </div>
           {isLicensed ? (
-            <>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="license_series">Serie legitimație</Label>
-                <Input
-                  id="license_series"
-                  required
-                  value={form.license_series}
-                  onChange={(e) => update('license_series', e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1 sm:col-span-2">
-                <Label htmlFor="license_image">Poză legitimație</Label>
-                <Input
-                  id="license_image"
-                  type="file"
-                  required
-                  accept="image/*"
-                  onChange={(e) => setLicenseImage(e.target.files?.[0] ?? null)}
-                />
-              </div>
-            </>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="license_series">Serie legitimație</Label>
+              <Input
+                id="license_series"
+                required
+                value={form.license_series}
+                onChange={(e) => update('license_series', e.target.value)}
+              />
+            </div>
           ) : (
             <div className="flex flex-col gap-1 sm:col-span-2">
               <Label htmlFor="license_request_document">Cerere de legitimare</Label>

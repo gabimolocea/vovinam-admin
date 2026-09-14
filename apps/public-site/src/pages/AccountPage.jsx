@@ -6,6 +6,7 @@ import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 import LoginForm from '../components/LoginForm';
 import OnboardingPage from './OnboardingPage';
+import { Eye, EyeOff } from 'lucide-react';
 
 function RegisterForm() {
   const { register, refetchUser } = useAuth();
@@ -14,6 +15,8 @@ function RegisterForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -86,27 +89,47 @@ function RegisterForm() {
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">Parolă</span>
-        <input
-          type="password"
-          required
-          minLength={8}
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="site-form-input"
-        />
+        <div className="relative">
+          <input
+            type={showPassword ? 'text' : 'password'}
+            required
+            minLength={8}
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="site-form-input pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
+            aria-label={showPassword ? 'Ascunde parola' : 'Arată parola'}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">Confirmă parola</span>
-        <input
-          type="password"
-          required
-          autoComplete="new-password"
-          value={passwordConfirm}
-          onChange={(e) => setPasswordConfirm(e.target.value)}
-          className="site-form-input"
-        />
+        <div className="relative">
+          <input
+            type={showPasswordConfirm ? 'text' : 'password'}
+            required
+            autoComplete="new-password"
+            value={passwordConfirm}
+            onChange={(e) => setPasswordConfirm(e.target.value)}
+            className="site-form-input pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPasswordConfirm((v) => !v)}
+            className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
+            aria-label={showPasswordConfirm ? 'Ascunde parola' : 'Arată parola'}
+          >
+            {showPasswordConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
       </label>
 
       <Button

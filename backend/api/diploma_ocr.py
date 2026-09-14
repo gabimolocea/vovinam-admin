@@ -65,6 +65,21 @@ cu exact aceste chei:
 }
 Dacă un câmp nu apare clar pe imagine, folosește null pentru acel câmp."""
 
+LICENSE_EXTRACTION_PROMPT = """Această imagine este o legitimație de sportiv de Vovinam (sau un act de identitate \
+folosit pentru completarea acesteia). Extrage următoarele informații și răspunde STRICT cu un obiect JSON valid, \
+fără alt text, cu exact aceste chei:
+{
+  "first_name": string sau null (prenumele sportivului),
+  "last_name": string sau null (numele de familie al sportivului),
+  "date_of_birth": string sau null (data nașterii, așa cum apare pe imagine),
+  "gender": string sau null ("male" sau "female", dedus din prenume/CNP dacă nu apare explicit),
+  "cnp": string sau null (codul numeric personal, 13 cifre, dacă apare),
+  "club_name": string sau null (numele clubului sportiv, dacă apare),
+  "license_series": string sau null (seria/numărul legitimației, dacă apare),
+  "city_name": string sau null (localitatea de domiciliu, dacă apare)
+}
+Dacă un câmp nu apare clar pe imagine, folosește null pentru acel câmp."""
+
 
 def _best_match(text, candidates, cutoff=0.5):
     """Return (id, name) of the closest candidate name to `text`, or (None, None)."""
@@ -251,5 +266,67 @@ def extract_visa_certificate_fields(image_file):
         },
         'suggested': {
             'issued_date': normalize_date(parsed.get('issued_date')),
+        },
+    }
+
+
+def normalize_gender(raw):
+    if not raw:
+        return None
+    key = str(raw).strip().lower()
+    if key in ('male', 'm', 'masculin', 'baiat', 'băiat'):
+        return 'male'
+    if key in ('female', 'f', 'feminin', 'fata', 'fată'):
+        return 'female'
+    return None
+
+
+def extract_license_card_fields(image_file):
+    """Call Claude vision on an uploaded athlete license/ID card image and
+    return a dict with raw AI guesses plus DB-matched suggestions (club,
+    city), so the onboarding form can prefill itself. Best-effort only -
+    the athlete always reviews the fields before submitting."""
+    parsed = _call_claude_vision(image_file, LICENSE_EXTRACTION_PROMPT)
+
+    from .models import Club, City
+
+    clubs = list(Club.objects.values_list('id', 'name'))
+    club_id, club_name = _best_match(parsed.get('club_name'), clubs)
+
+    city_id, city_name = None, None
+    raw_city = parsed.get('city_name')
+    if raw_city:
+        cities = list(
+            City.objects.filter(name__icontains=raw_city.split(',')[0].strip()).values_list('id', 'name')[:50]
+        )
+        city_id, city_name = _best_match(raw_city, cities)
+
+    cnp = parsed.get('cnp')
+    cnp = ''.join(ch for ch in cnp if ch.isdigit()) if cnp else None
+    if cnp and len(cnp) != 13:
+        cnp = None
+
+    return {
+        'raw': {
+            'first_name': parsed.get('first_name'),
+            'last_name': parsed.get('last_name'),
+            'date_of_birth': parsed.get('date_of_birth'),
+            'gender': parsed.get('gender'),
+            'cnp': parsed.get('cnp'),
+            'club_name': parsed.get('club_name'),
+            'license_series': parsed.get('license_series'),
+            'city_name': raw_city,
+        },
+        'suggested': {
+            'first_name': parsed.get('first_name'),
+            'last_name': parsed.get('last_name'),
+            'date_of_birth': normalize_date(parsed.get('date_of_birth')),
+            'gender': normalize_gender(parsed.get('gender')),
+            'cnp': cnp,
+            'club_id': club_id,
+            'club_name': club_name,
+            'license_series': parsed.get('license_series'),
+            'city_id': city_id,
+            'city_name': city_name,
         },
     }

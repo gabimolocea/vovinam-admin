@@ -123,6 +123,7 @@ export const athleteAPI = {
     formData.append('profile_image', file);
     return api.patch(`/athletes/${id}/`, formData);
   },
+  extractLicense: (formData) => api.post('/athletes/extract_license/', formData),
   myProfile: () => api.get('/athletes/my-profile/'),
   myProfileDetail: () => api.get('/athletes/my-profile-detail/'),
   createMyProfile: (data) => api.post('/athletes/my-profile/', data),

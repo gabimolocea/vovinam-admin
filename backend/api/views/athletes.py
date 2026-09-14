@@ -380,6 +380,27 @@ class AthleteViewSet(viewsets.ModelViewSet):
         serializer = PublicAthleteDetailSerializer(athlete, context={'request': request})
         return Response(serializer.data)
 
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def extract_license(self, request):
+        """Best-effort AI reading of an uploaded license/ID photo during
+        onboarding, returning suggested values for the fields below it on
+        the form. Never creates or modifies anything by itself - the
+        athlete always reviews the prefilled fields before submitting."""
+        image = request.FILES.get('image')
+        if not image:
+            return Response({'error': 'Trimite o imagine cu legitimația (câmpul "image").'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from ..diploma_ocr import extract_license_card_fields
+        try:
+            result = extract_license_card_fields(image)
+        except Exception:
+            logging.getLogger(__name__).exception('License card OCR failed')
+            return Response(
+                {'error': 'Nu am putut citi automat legitimația. Completează câmpurile manual.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(result)
+
     @action(detail=False, methods=['get', 'post', 'put'], permission_classes=[permissions.IsAuthenticated], url_path='my-profile')
     def my_profile(self, request):
         """Convenience endpoint for the current user's athlete profile.

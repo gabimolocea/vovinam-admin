@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.pagination import PageNumberPagination
 from ..serializers import *
 from ..models import *
@@ -563,13 +563,13 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
             return
 
         if not hasattr(self.request.user, 'athlete'):
-            raise ValidationError("Only athletes can submit competition results")
+            raise DRFValidationError("Only athletes can submit competition results")
 
         # Athlete self-submissions must always start as pending (never trust a
         # client-supplied status here) and must include the diploma/certificate
         # photo, since that's the evidence the coach/admin reviews.
         if not self.request.FILES.get('certificate_image') and not serializer.validated_data.get('certificate_image'):
-            raise ValidationError({'certificate_image': 'Este necesară o fotografie cu diploma pentru a trimite rezultatul spre aprobare.'})
+            raise DRFValidationError({'certificate_image': 'Este necesară o fotografie cu diploma pentru a trimite rezultatul spre aprobare.'})
 
         serializer.save(status='pending')
 

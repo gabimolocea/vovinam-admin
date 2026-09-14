@@ -213,6 +213,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
   const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [noProfile, setNoProfile] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const [editing, setEditing] = useState(false);
@@ -230,11 +231,20 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
     async function load() {
       setLoading(true);
       setError('');
+      setNoProfile(false);
       try {
         const response = ownProfile ? await athleteAPI.myProfileDetail() : await athleteAPI.getPublic(id);
         if (isMounted) setAthlete(response.data);
-      } catch {
-        if (isMounted) setError(ownProfile ? 'Nu am putut încărca profilul tău.' : 'Nu am putut încărca acest sportiv.');
+      } catch (err) {
+        if (!isMounted) return;
+        // A 404 here just means this account hasn't finished onboarding
+        // yet (no Athlete row at all) - that's not an error, so guide the
+        // user to the onboarding form instead of a generic failure message.
+        if (ownProfile && err.response?.status === 404) {
+          setNoProfile(true);
+        } else {
+          setError(ownProfile ? 'Nu am putut încărca profilul tău.' : 'Nu am putut încărca acest sportiv.');
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -277,6 +287,18 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         <Skeleton className="h-40" />
         <Skeleton className="h-64" />
       </div>
+    );
+  }
+
+  if (noProfile) {
+    return (
+      <Alert variant="info">
+        <p>Nu ai încă un profil de sportiv completat.</p>
+        <p className="mt-1">
+          Completează <Link to="/onboarding/sportiv" className="font-medium underline">pasul de înregistrare a profilului</Link> - după trimitere,
+          profilul va fi vizibil public abia după ce este aprobat de un administrator.
+        </p>
+      </Alert>
     );
   }
 
