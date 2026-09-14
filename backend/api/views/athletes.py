@@ -295,7 +295,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
                     logging.getLogger(__name__).exception('Failed to notify about pending profile image')
             if previous_values and any(getattr(updated, field, None) != old_value for field, old_value in previous_values.items()):
                 updated.resubmit()
-            return Response(AthleteDetailSerializer(updated).data)
+            return Response(AthleteDetailSerializer(updated, context={'request': request}).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'], permission_classes=[IsClubCoachOrAdmin])

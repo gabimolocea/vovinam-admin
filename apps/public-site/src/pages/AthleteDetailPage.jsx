@@ -14,7 +14,7 @@ import BeltBadge from '../components/BeltBadge';
 import MedalIcon from '../components/MedalIcon';
 import ResponsiveTable from '../components/ResponsiveTable';
 import { ATHLETE_STATUS_LABELS } from '../lib/athletes';
-import { ChevronLeft, ChevronRight, Pencil, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Pencil, X } from 'lucide-react';
 
 // Ribbon colors per competition level - national medals (computed
 // automatically from in-app scoring) get the Romanian flag's 3 colors;
@@ -260,6 +260,14 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
   // users - anonymous visitors get sent to the login/register page instead.
   if (!authLoading && !user) return <Navigate to="/cont" replace />;
 
+  const isPhotoPending = athlete?.profile_image_status === 'pending';
+
+  function handlePhotoButtonClick() {
+    if (window.confirm('Orice schimbare a pozei de profil necesită aprobarea unui admin înainte de a deveni vizibilă public. Continui?')) {
+      fileInputRef.current?.click();
+    }
+  }
+
   async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -355,12 +363,27 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
               layout); side by side and left-aligned from lg up. */}
           <div className="flex w-full flex-col items-center gap-2 lg:w-auto lg:flex-row lg:gap-3">
             <div className="relative aspect-[3/2] w-28 shrink-0 bg-white/10 sm:w-32 lg:w-40">
-              {athlete.profile_image ? (
+              {isPhotoPending && athlete.pending_profile_image ? (
+                <img
+                  src={athlete.pending_profile_image}
+                  alt={athlete.full_name}
+                  title="Poză în așteptarea aprobării"
+                  className="h-full w-full rounded-lg object-cover opacity-50 grayscale"
+                />
+              ) : athlete.profile_image ? (
                 <img src={athlete.profile_image} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center rounded-lg text-2xl font-display font-bold text-white/40">
                   {athlete.first_name?.[0]}{athlete.last_name?.[0]}
                 </div>
+              )}
+              {isPhotoPending && athlete.pending_profile_image && (
+                <span
+                  className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white lg:left-1.5 lg:top-1.5"
+                  title="Poză în așteptarea aprobării"
+                >
+                  <Clock className="h-3 w-3" />
+                </span>
               )}
               {athlete.club?.logo && (
                 <Link
@@ -388,10 +411,10 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={uploadingPhoto}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute bottom-1 right-1 h-6 w-6 rounded-full border-white/40 bg-[#0c223d] p-0 text-white hover:bg-white/10 lg:bottom-2 lg:right-2 lg:h-7 lg:w-7"
-                    title="Schimbă poza de profil"
+                    disabled={uploadingPhoto || isPhotoPending}
+                    onClick={handlePhotoButtonClick}
+                    className="absolute bottom-1 right-1 h-6 w-6 rounded-full border-white/40 bg-[#0c223d] p-0 text-white hover:bg-white/10 disabled:opacity-50 lg:bottom-2 lg:right-2 lg:h-7 lg:w-7"
+                    title={isPhotoPending ? 'O poză este deja în așteptarea aprobării' : 'Schimbă poza de profil'}
                   >
                     <Pencil className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
                   </Button>
@@ -434,7 +457,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         )}
 
         {ownProfile && athlete.profile_image_status === 'pending' && (
-          <Alert>Noua ta poză de profil așteaptă aprobarea antrenorului sau a unui administrator. Poza curentă rămâne vizibilă până atunci.</Alert>
+          <Alert>Noua ta poză de profil așteaptă aprobarea antrenorului sau a unui administrator - o vezi mai sus, estompată, până este aprobată. Nu poți trimite altă poză până atunci.</Alert>
         )}
         {ownProfile && athlete.profile_image_status === 'rejected' && athlete.profile_image_admin_notes && (
           <Alert variant="destructive">Poza de profil trimisă a fost respinsă: {athlete.profile_image_admin_notes}</Alert>
