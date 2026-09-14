@@ -86,11 +86,15 @@ export default function LoginForm({ onSuccess, compact = false, showForgotPasswo
     setError('');
     setBusy(true);
     try {
-      await login(email, password);
+      const data = await login(email, password);
       if (onSuccess) {
         onSuccess();
       } else {
-        navigate('/cont', { replace: true });
+        // Athletes land straight on their own rich profile page; accounts
+        // with no athlete profile (supporters, or users who haven't
+        // finished onboarding) go to the general account/settings page,
+        // since /cont/profil has nothing to show them.
+        navigate(data?.user?.athlete ? '/cont/profil' : '/cont', { replace: true });
       }
     } catch (err) {
       setError(err.response?.data?.detail || err.response?.data?.error || 'Autentificarea a eșuat. Verifică emailul și parola.');
