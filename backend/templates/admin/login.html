@@ -4,28 +4,6 @@
 {% block title %}{% if form.errors %}{% translate "Error:" %} {% endif %}{{ block.super }}{% endblock %}
 {% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/login.css" %}">
 {{ form.media }}
-<style>
-  .demo-credentials {
-    margin-top: 1.5rem;
-    padding: 0.9rem 1rem;
-    border: 1px solid #d9d9d9;
-    border-radius: 6px;
-    background: #f8f8f8;
-    color: #3c3c3c;
-    font-size: 0.92rem;
-    line-height: 1.6;
-  }
-  .demo-credentials strong {
-    color: #1d1d1d;
-  }
-  .demo-credentials code {
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 0.12rem 0.35rem;
-    font-size: 0.88em;
-  }
-</style>
 {% endblock %}
 
 {% block bodyclass %}{{ block.super }} login{% endblock %}
@@ -86,12 +64,6 @@
     <input type="submit" value="{% translate 'Log in' %}">
   </div>
 </form>
-
-<div class="demo-credentials">
-  <strong>Demo admin login:</strong><br>
-  Email: <code>admin@vovinam.local</code><br>
-  Password: <code>admin123</code>
-</div>
 
 </div>
 {% endblock %}
