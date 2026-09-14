@@ -362,7 +362,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
               mobile/tablet (stacked, and more compact than the lg+ row
               layout); side by side and left-aligned from lg up. */}
           <div className="flex w-full flex-col items-center gap-2 lg:w-auto lg:flex-row lg:gap-3">
-            <div className="relative aspect-[3/2] w-28 shrink-0 bg-white/10 sm:w-32 lg:w-40">
+            <div className="relative aspect-[3/2] w-40 shrink-0 bg-white/10 sm:w-52 lg:w-40">
               {isPhotoPending && athlete.pending_profile_image ? (
                 <img
                   src={athlete.pending_profile_image}
