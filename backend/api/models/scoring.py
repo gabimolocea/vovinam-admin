@@ -603,7 +603,7 @@ def trophy_counts_by_club():
     trophy_places = ['gold', 'silver', 'bronze']
     trophies = defaultdict(lambda: {'gold': 0, 'silver': 0, 'bronze': 0})
 
-    competition_ids = Event.objects.filter(event_type='competition').values_list('id', flat=True)
+    competition_ids = Event.objects.filter(event_types__icontains=Event.type_query_value('competition')).values_list('id', flat=True)
     for competition_id in competition_ids:
         scores = (
             CategoryAthleteScore.objects

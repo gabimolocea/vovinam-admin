@@ -272,6 +272,20 @@ class AthleteViewSet(viewsets.ModelViewSet):
         serializer_class = AthleteSerializer if is_admin else AthleteProfileSerializer
         serializer = serializer_class(athlete, data=data, partial=partial, context={'request': request})
         if serializer.is_valid():
+            # An athlete (or an authorized supporter) editing an
+            # already-approved profile needs an admin to re-review the
+            # change before it counts as approved again - same as the
+            # revision_required -> resubmit cycle. Snapshot the old values
+            # of the fields being touched before save() overwrites them, so
+            # a no-op submission (e.g. just reopening/saving the form
+            # unchanged) doesn't needlessly pull the profile out of public
+            # view while it's re-reviewed.
+            was_approved = not is_admin and athlete.status == 'approved'
+            previous_values = (
+                {field: getattr(athlete, field, None) for field in serializer.validated_data}
+                if was_approved else None
+            )
+
             updated = serializer.save()
             if pending_image is not None:
                 updated.submit_profile_image(pending_image)
@@ -279,6 +293,8 @@ class AthleteViewSet(viewsets.ModelViewSet):
                     notify_profile_image_submitted(updated)
                 except Exception:
                     logging.getLogger(__name__).exception('Failed to notify about pending profile image')
+            if previous_values and any(getattr(updated, field, None) != old_value for field, old_value in previous_values.items()):
+                updated.resubmit()
             return Response(AthleteDetailSerializer(updated).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -431,7 +447,15 @@ class AthleteViewSet(viewsets.ModelViewSet):
                 # account meanwhile.
                 user.role = 'athlete'
                 user.profile_completed = True
-                user.save(update_fields=['role', 'profile_completed'])
+                # The account's own phone number (shown on the "Cont" tab)
+                # starts out blank - carry over the number just given here,
+                # so the athlete doesn't see an empty field for a number
+                # they already typed once.
+                if athlete.mobile_number and user.phone_number != athlete.mobile_number:
+                    user.phone_number = athlete.mobile_number
+                    user.save(update_fields=['role', 'profile_completed', 'phone_number'])
+                else:
+                    user.save(update_fields=['role', 'profile_completed'])
                 return Response(AthleteProfileSerializer(athlete, context={'request': request}).data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -446,10 +470,23 @@ class AthleteViewSet(viewsets.ModelViewSet):
 
             serializer = AthleteProfileSerializer(athlete, data=request.data, partial=True, context={'request': request})
             if serializer.is_valid():
+                was_approved = athlete.status == 'approved'
+                previous_values = (
+                    {field: getattr(athlete, field, None) for field in serializer.validated_data}
+                    if was_approved else None
+                )
+
                 updated = serializer.save()
                 # If the athlete was in revision_required and user updated, resubmit
                 if updated.status == 'revision_required':
                     updated.resubmit()
+                # Same idea for an edit to an already-approved profile: send
+                # it back for admin re-review instead of applying silently.
+                elif previous_values and any(getattr(updated, field, None) != old_value for field, old_value in previous_values.items()):
+                    updated.resubmit()
+                if updated.mobile_number and user.phone_number != updated.mobile_number:
+                    user.phone_number = updated.mobile_number
+                    user.save(update_fields=['phone_number'])
                 return Response(AthleteProfileSerializer(updated, context={'request': request}).data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

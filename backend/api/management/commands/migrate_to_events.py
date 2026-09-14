@@ -66,7 +66,7 @@ class Command(BaseCommand):
                         start_date=start_dt,
                         end_date=end_dt or start_dt,  # Use start_date if end_date is None
                         address=comp.place or '',
-                        event_type='competition',
+                        event_types=['competition'],
                     )
                     self.stdout.write(
                         self.style.SUCCESS(f'Created Event: {event.title}')

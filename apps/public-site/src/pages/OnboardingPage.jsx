@@ -1,42 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth, onboardingAPI, authAPI, notificationSettingsAPI } from '@shared';
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input, Label, Skeleton } from '../components/ui';
+import { Navigate, useSearchParams } from 'react-router-dom';
+import { useAuth, authAPI, notificationSettingsAPI } from '@shared';
+import { Alert, Button, Checkbox, Input, Label, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
-
-/** Step 1: choose account type. Never offers 'admin' - self-service accounts
- * are only ever athlete/coach or supporter, matched by OnboardingRoleView's
- * server-side whitelist. */
-function RoleStep({ onChoose, busy }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle as="h1">Ce fel de cont vrei?</CardTitle>
-        <p className="text-sm text-muted-foreground">Poți completa profilul detaliat la pasul următor.</p>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 sm:flex-row">
-        <Button className="flex-1" disabled={busy} onClick={() => onChoose('athlete')}>
-          Sunt sportiv / antrenor
-        </Button>
-        <Button className="flex-1" variant="secondary" disabled={busy} onClick={() => onChoose('supporter')}>
-          Sunt susținător
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
 
 /** "Cont" tab: account type + email + phone. Both reuse the generic
  * /auth/me/ PUT (email uniqueness is enforced by the User model). */
 function AccountTab({ user, refetchUser }) {
   const isSupporter = user.role === 'supporter';
-  const [email, setEmail] = useState(user.email || '');
-  const [phoneNumber, setPhoneNumber] = useState(user.phone_number || '');
+  // The account's own phone_number can still be blank for athletes who
+  // onboarded before it started syncing from their profile automatically -
+  // fall back to the athlete profile's number so the field isn't blank.
+  const initialPhone = user.phone_number || user.athlete?.mobile_number || '';
+  const [phoneNumber, setPhoneNumber] = useState(initialPhone);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
 
-  const hasChanges = email !== user.email || phoneNumber !== (user.phone_number || '');
+  const hasChanges = phoneNumber !== initialPhone;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -44,7 +25,7 @@ function AccountTab({ user, refetchUser }) {
     if (!hasChanges) return;
     setBusy(true);
     try {
-      await authAPI.updateProfile({ email, phone_number: phoneNumber });
+      await authAPI.updateProfile({ phone_number: phoneNumber });
       await refetchUser();
       setMessage({ type: 'success', text: 'Datele contului au fost actualizate.' });
     } catch (err) {
@@ -64,7 +45,8 @@ function AccountTab({ user, refetchUser }) {
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <Label htmlFor="account-email">Adresă de email</Label>
-          <Input id="account-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input id="account-email" type="email" required disabled value={user.email || ''} />
+          <p className="text-xs text-muted-foreground">Adresa de email nu poate fi schimbată din cont.</p>
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="account-phone">Telefon</Label>
@@ -281,9 +263,6 @@ function StatusStep({ user, refetchUser }) {
 
 export default function OnboardingPage() {
   const { user, refetchUser, loading } = useAuth();
-  const navigate = useNavigate();
-  const [choosingRole, setChoosingRole] = useState(false);
-  const [roleError, setRoleError] = useState('');
 
   if (loading) {
     return (
@@ -295,34 +274,13 @@ export default function OnboardingPage() {
   }
   if (!user) return null;
 
-  async function chooseRole(role) {
-    setRoleError('');
-    setChoosingRole(true);
-    try {
-      await onboardingAPI.setRole(role);
-      await refetchUser();
-      if (role === 'athlete') navigate('/onboarding/sportiv');
-    } catch {
-      setRoleError('Nu am putut salva alegerea. Încearcă din nou.');
-    } finally {
-      setChoosingRole(false);
-    }
-  }
-
-  const needsRoleChoice = user.role === 'user';
+  // Account type (athlete/coach vs supporter) is chosen once, at
+  // registration (see AccountPage's RegisterForm) - there's no separate
+  // "what kind of account do you want" step here anymore. An athlete who
+  // hasn't finished their profile yet goes straight to that form instead
+  // of this account-settings page.
   const needsAthleteProfile = user.role === 'athlete' && !user.profile_completed;
-
   if (needsAthleteProfile) return <Navigate to="/onboarding/sportiv" replace />;
-
-  if (needsRoleChoice) {
-    return (
-      <div className="mx-auto flex max-w-lg flex-col gap-6 pt-10 sm:pt-16">
-        <Seo title="Setări" path="/cont" noindex />
-        {roleError && <Alert variant="destructive">{roleError}</Alert>}
-        <RoleStep onChoose={chooseRole} busy={choosingRole} />
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col">
@@ -337,7 +295,6 @@ export default function OnboardingPage() {
       </div>
 
       <div className="flex flex-col gap-6 pt-8">
-        {roleError && <Alert variant="destructive">{roleError}</Alert>}
         <StatusStep user={user} refetchUser={refetchUser} />
       </div>
     </div>

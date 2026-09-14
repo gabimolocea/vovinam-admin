@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 from django.utils import timezone
@@ -74,8 +75,31 @@ class NewsPostAdmin(admin.ModelAdmin):
             kwargs["queryset"] = db_field.related_model.objects.filter(role='admin')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+class EventAdminForm(forms.ModelForm):
+    # `event_types` is a JSONField (a list of values from
+    # Event.EVENT_TYPE_CHOICES) so an event can be e.g. both a training
+    # seminar and an examination at once - present it as checkboxes rather
+    # than the raw-JSON textarea the default JSONField widget would show.
+    event_types = forms.MultipleChoiceField(
+        choices=Event.EVENT_TYPE_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        required=True,
+        label=_('Tip eveniment'),
+    )
+
+    class Meta:
+        model = Event
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields['event_types'].initial = self.instance.event_types
+
+
 class EventAdmin(admin.ModelAdmin):
-    list_display = ['title', 'start_date', 'city', 'event_type', 'event_status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured']
+    form = EventAdminForm
+    list_display = ['title', 'start_date', 'city', 'event_types_display', 'event_status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured']
     list_filter = ['status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'start_date']
     search_fields = ['title', 'description', 'city__name', 'tags']
     autocomplete_fields = ['city']
@@ -86,13 +110,13 @@ class EventAdmin(admin.ModelAdmin):
     # "Save" button. Use the object change form or admin actions to toggle
     # featured status instead.
     ordering = ['start_date']
-    
+
     fieldsets = (
         (_('Detalii eveniment'), {
             'fields': ('title', 'slug', 'description', 'featured_image', 'featured_image_alt', 'tags')
         }),
         (_('Dată și locație'), {
-            'fields': ('start_date', 'end_date', 'coach_registration_deadline', 'city', 'address', 'price', 'event_type', 'status')
+            'fields': ('start_date', 'end_date', 'coach_registration_deadline', 'city', 'address', 'price', 'event_types', 'status')
         }),
         (_('Setări afișare'), {
             'fields': ('is_featured',)
@@ -108,6 +132,11 @@ class EventAdmin(admin.ModelAdmin):
         }),
     )
     
+    def event_types_display(self, obj):
+        labels = dict(Event.EVENT_TYPE_CHOICES)
+        return ', '.join(labels.get(t, t) for t in (obj.event_types or [])) or '—'
+    event_types_display.short_description = _('Tip eveniment')
+
     def event_status(self, obj):
         if obj.is_past:
             return format_html('<span style="color: red;">{}</span>', _('Trecut'))

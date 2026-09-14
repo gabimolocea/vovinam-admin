@@ -73,7 +73,7 @@ class CompetitionFieldViewSet(viewsets.ViewSet):
             return Response({'detail': 'count must be an integer between 0 and 20.'}, status=400)
         from landing.models import Event
         try:
-            event = Event.objects.get(pk=event_id, event_type='competition')
+            event = Event.objects.get(pk=event_id, event_types__icontains=Event.type_query_value('competition'))
         except Event.DoesNotExist:
             return Response({'detail': 'Competition not found.'}, status=404)
         locked = _event_operational_lock_response(event)

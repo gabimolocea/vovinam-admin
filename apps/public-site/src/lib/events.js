@@ -4,6 +4,15 @@ export const EVENT_TYPE_LABELS = {
   training_seminar: 'Seminar de pregătire',
 };
 
+/** An event can be more than one type at once (e.g. a training seminar
+ * that also includes grade examinations) - `event.event_types` is the
+ * list to render as badges; `event.event_type` (a single value) is kept
+ * as a fallback for any payload shape that doesn't carry the list. */
+export function getEventTypeLabels(event) {
+  const types = event?.event_types?.length ? event.event_types : [event?.event_type].filter(Boolean);
+  return types.map((type) => EVENT_TYPE_LABELS[type] || type);
+}
+
 export const STATUS_LABELS = {
   upcoming: 'Viitor',
   ongoing: 'În desfășurare',

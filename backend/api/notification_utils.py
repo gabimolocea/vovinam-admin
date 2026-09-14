@@ -160,6 +160,31 @@ def notify_account_approved(athlete):
     )
 
 
+def notify_profile_update_approved(athlete):
+    """Sent when an *already-approved* athlete edits their profile and an
+    admin re-approves the update - distinct from notify_account_approved
+    (the first-ever approval), whose "acum vizibil public" wording doesn't
+    fit a profile that was already public before this edit."""
+    if not athlete.user:
+        return
+    create_notification(
+        recipient=athlete.user,
+        notification_type='profile_update_approved',
+        title='Actualizare profil aprobată',
+        message='Modificările aduse profilului tău de sportiv au fost verificate și aprobate de un administrator.',
+    )
+    send_status_email(
+        athlete.user,
+        title='Actualizarea profilului tău a fost aprobată',
+        message=(
+            'Modificările aduse profilului tău de sportiv au fost verificate și aprobate de un administrator.\n\n'
+            'Profilul tău este din nou vizibil public pe site.'
+        ),
+        cta_label='Vezi profilul meu',
+        cta_path='/cont/profil',
+    )
+
+
 def notify_profile_image_submitted(athlete):
     """Notify the athlete's club coaches (or all admins if no coach) that a
     new profile picture is awaiting approval."""

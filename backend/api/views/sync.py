@@ -160,7 +160,7 @@ class OfflineSyncViewSet(viewsets.ViewSet):
     def competition_pack(self, request):
         from landing.models import Event
 
-        competitions = Event.objects.filter(event_type='competition')
+        competitions = Event.objects.filter(event_types__icontains=Event.type_query_value('competition'))
         categories = Category.objects.filter(event__in=competitions)
         matches = Match.objects.filter(category__in=categories)
 

@@ -50,6 +50,7 @@ class Notification(models.Model):
         ('profile_image_approved', 'Poză de profil aprobată'),
         ('profile_image_rejected', 'Poză de profil respinsă'),
         ('account_approved', 'Cont aprobat'),
+        ('profile_update_approved', 'Actualizare profil aprobată'),
     ]
     
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name=_('Destinatar'), related_name='notifications')

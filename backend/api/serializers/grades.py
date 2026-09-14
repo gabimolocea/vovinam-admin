@@ -81,7 +81,7 @@ class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
         target_athlete = attrs.get('athlete') or getattr(self.instance, 'athlete', None)
         event = attrs.get('event') or getattr(self.instance, 'event', None)
 
-        if event and getattr(event, 'event_type', None) != 'examination':
+        if event and not event.has_event_type('examination'):
             raise serializers.ValidationError({'event': 'Grade history poate fi completat doar pentru evenimente de tip examen.'})
 
         if request and request.user and getattr(request.user, 'is_admin', False):

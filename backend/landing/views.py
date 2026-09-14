@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, BasePermission
 from django_filters.rest_framework import DjangoFilterBackend
+import django_filters
 from django.utils import timezone
 from .models import NewsPost, Event, AboutSection, ContactMessage, ContactInfo, NewsPostGallery, NewsComment
 from .serializers import (
@@ -99,11 +100,26 @@ class NewsPostViewSet(viewsets.ModelViewSet):
         serializer = NewsPostGallerySerializer(gallery_images, many=True, context={'request': request})
         return Response(serializer.data)
 
+class EventFilter(django_filters.FilterSet):
+    # `event_type` stays the query param name for backward compatibility
+    # with existing frontend callers (?event_type=examination), but an
+    # event can now have more than one type - "has this type" (contains),
+    # not "is exactly this type" (exact match on a scalar field).
+    event_type = django_filters.CharFilter(method='filter_event_type')
+
+    class Meta:
+        model = Event
+        fields = ['is_featured', 'event_type']
+
+    def filter_event_type(self, queryset, name, value):
+        return queryset.filter(event_types__icontains=Event.type_query_value(value))
+
+
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
     permission_classes = [IsAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_featured', 'event_type']
+    filterset_class = EventFilter
     search_fields = ['title', 'description', 'city__name', 'tags']
     ordering_fields = ['start_date', 'created_at', 'title']
     ordering = ['start_date']

@@ -212,7 +212,7 @@ def extract_grade_certificate_fields(image_file):
     grades = list(Grade.objects.values_list('id', 'name'))
     grade_id, grade_name = _best_match(parsed.get('grade_name'), grades)
 
-    events = list(Event.objects.filter(event_type='examination').values_list('id', 'title'))
+    events = list(Event.objects.filter(event_types__icontains=Event.type_query_value('examination')).values_list('id', 'title'))
     event_id, event_title = _best_match(parsed.get('exam_event_name'), events)
 
     return {
@@ -240,7 +240,7 @@ def extract_seminar_certificate_fields(image_file):
 
     from landing.models import Event
 
-    events = list(Event.objects.filter(event_type='training_seminar').values_list('id', 'title'))
+    events = list(Event.objects.filter(event_types__icontains=Event.type_query_value('training_seminar')).values_list('id', 'title'))
     event_id, event_title = _best_match(parsed.get('seminar_name'), events)
 
     return {

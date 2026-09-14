@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, CalendarDays, MapPin } from 'lucide-react';
-import { EVENT_TYPE_LABELS, formatEventDateRange } from '../lib/events';
+import { formatEventDateRange, getEventTypeLabels } from '../lib/events';
 
 /** Grid tile for an event/competition - same card shell, spacing, and
  * hover state as NewsCard, so the "Evenimente" list reads as one visual
@@ -30,8 +30,12 @@ export default function EventCard({ event }) {
             <CalendarDays className="h-10 w-10 text-brand-navy/30" />
           </div>
         )}
-        <span className="absolute left-2 top-2 rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
-          {EVENT_TYPE_LABELS[event.event_type] || event.event_type}
+        <span className="absolute left-2 top-2 flex flex-wrap gap-1.5">
+          {getEventTypeLabels(event).map((label) => (
+            <span key={label} className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+              {label}
+            </span>
+          ))}
         </span>
       </div>
       <div className="flex flex-1 flex-col gap-4 px-4 py-6">

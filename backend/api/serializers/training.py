@@ -40,6 +40,7 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
                 'address': getattr(ev, 'address', None),
                 'city': ev.city.name if ev.city else None,
                 'event_type': getattr(ev, 'event_type', None),
+                'event_types': getattr(ev, 'event_types', None),
             }
         # Fallback to legacy TrainingSeminar when present
         ts = getattr(obj, 'seminar', None)

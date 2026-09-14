@@ -329,7 +329,7 @@ def seed_default_competition_fields(sender, **kwargs):
 
     try:
         from landing.models import Event
-        competitions = Event.objects.filter(event_type='competition')
+        competitions = Event.objects.filter(event_types__icontains=Event.type_query_value('competition'))
         for ev in competitions:
             if CompetitionField.objects.filter(event=ev).exists():
                 continue

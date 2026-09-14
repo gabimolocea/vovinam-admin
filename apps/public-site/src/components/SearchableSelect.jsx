@@ -15,6 +15,7 @@ export default function SearchableSelect({
   placeholder = 'Caută…',
   minChars = 2,
   debounceMs = 250,
+  error = false,
 }) {
   const [query, setQuery] = useState(value?.name || '');
   const [options, setOptions] = useState([]);
@@ -77,7 +78,7 @@ export default function SearchableSelect({
         placeholder={placeholder}
         onChange={handleInputChange}
         onFocus={() => setOpen(true)}
-        className="site-form-input"
+        className={`site-form-input ${error ? '!border-destructive' : ''}`}
         autoComplete="off"
       />
       {open && (query.trim().length >= minChars) && (

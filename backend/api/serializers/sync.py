@@ -34,6 +34,12 @@ class OfflineClubSerializer(serializers.ModelSerializer):
 
 
 class OfflineCompetitionSerializer(serializers.ModelSerializer):
+    # `event_type` is a read-only computed property on Event now (the real,
+    # possibly multi-valued field is `event_types`) - declare it explicitly
+    # so it keeps serializing for this offline/local-sync payload exactly
+    # as before.
+    event_type = serializers.ReadOnlyField()
+
     class Meta:
         model = Event
         fields = ['id', 'title', 'address', 'start_date', 'end_date', 'event_type']

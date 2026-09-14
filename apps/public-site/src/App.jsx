@@ -20,6 +20,7 @@ import AccountPage from './pages/AccountPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import AthleteOnboardingPage from './pages/AthleteOnboardingPage';
 import ApprovalsPage from './pages/ApprovalsPage';
+import NotificationsPage from './pages/NotificationsPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import GdprPage from './pages/GdprPage';
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="cont/profil" element={<AthleteDetailPage ownProfile />} />
         <Route path="onboarding/sportiv" element={<AthleteOnboardingPage />} />
         <Route path="cont/aprobari" element={<ApprovalsPage />} />
+        <Route path="cont/notificari" element={<NotificationsPage />} />
         <Route path="termeni-si-conditii" element={<TermsPage />} />
         <Route path="confidentialitate" element={<PrivacyPolicyPage />} />
         <Route path="gdpr" element={<GdprPage />} />

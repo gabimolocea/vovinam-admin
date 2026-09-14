@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, CalendarDays, MapPin } from 'lucide-react';
-import { EVENT_TYPE_LABELS, formatEventDateRange } from '../lib/events';
+import { formatEventDateRange, getEventTypeLabels } from '../lib/events';
 import { excerpt } from '../lib/seo';
 
 /** "Evenimente & Competiții" homepage section, matching Figma node
@@ -59,11 +59,13 @@ export default function NextEventSection({ event }) {
               ) : (
                 <CalendarDays className="h-10 w-10 text-[#00334d]/30" />
               )}
-              {EVENT_TYPE_LABELS[event.event_type] && (
-                <span className="absolute left-2 top-2 rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
-                  {EVENT_TYPE_LABELS[event.event_type]}
-                </span>
-              )}
+              <span className="absolute left-2 top-2 flex flex-wrap gap-1.5">
+                {getEventTypeLabels(event).map((label) => (
+                  <span key={label} className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+                    {label}
+                  </span>
+                ))}
+              </span>
             </div>
             <div className="flex flex-1 flex-col justify-center gap-2 px-4 py-4 lg:gap-4 lg:py-6">
               <p className="text-sm uppercase text-[#00334d]">

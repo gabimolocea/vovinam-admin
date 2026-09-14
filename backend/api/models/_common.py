@@ -174,7 +174,7 @@ try:
         def get_queryset(self):
             qs = super().get_queryset()
             if self.event_type:
-                qs = qs.filter(event_type=self.event_type)
+                qs = qs.filter(event_types__icontains=LandingEvent.type_query_value(self.event_type))
             return qs
 
         def create(self, **kwargs):
@@ -192,7 +192,9 @@ try:
             if 'end_date' not in kwargs:
                 kwargs['end_date'] = kwargs['start_date'] + timedelta(days=1)
 
-            kwargs.setdefault('event_type', self.event_type)
+            if 'event_type' in kwargs and 'event_types' not in kwargs:
+                kwargs['event_types'] = [kwargs.pop('event_type')]
+            kwargs.setdefault('event_types', [self.event_type])
             return super().create(**kwargs)
 
     class Event(LandingEvent):
@@ -527,13 +529,21 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     
     def approve(self, admin_user):
         """Approve the athlete profile"""
+        # If this athlete was already approved once before (approved_date
+        # already set), this is a re-approval of a later profile edit, not
+        # the athlete's first-ever approval - send the distinct
+        # "profile update approved" notification for that case instead.
+        is_reapproval = self.approved_date is not None
         self.approved_date = timezone.now()  # Legacy field
         self.approved_by = admin_user  # Legacy field
-        self._transition_status('approved', admin_user, set_notes=False, on_success=lambda obj, status, actor, notes: self._notify_account_approved())
+        self._transition_status('approved', admin_user, set_notes=False, on_success=lambda obj, status, actor, notes: self._notify_account_approved(is_reapproval))
 
-    def _notify_account_approved(self):
-        from ..notification_utils import notify_account_approved
-        notify_account_approved(self)
+    def _notify_account_approved(self, is_reapproval=False):
+        from ..notification_utils import notify_account_approved, notify_profile_update_approved
+        if is_reapproval:
+            notify_profile_update_approved(self)
+        else:
+            notify_account_approved(self)
 
     def reject(self, admin_user, reason=None):
         """Reject the athlete profile"""

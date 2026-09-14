@@ -54,13 +54,21 @@ class EventSerializer(serializers.ModelSerializer):
     is_upcoming = serializers.ReadOnlyField()
     is_past = serializers.ReadOnlyField()
     city_name = serializers.CharField(source='city.name', read_only=True)
-    event_type = serializers.CharField(read_only=False)
-    
+    # An event can be more than one type at once (e.g. a training seminar
+    # that also includes grade examinations) - `event_types` is the real,
+    # writable, multi-value field. `event_type` is kept read-only for
+    # backward compatibility with older frontend code that only expects a
+    # single value (it returns the first configured type).
+    event_types = serializers.ListField(
+        child=serializers.ChoiceField(choices=Event.EVENT_TYPE_CHOICES), required=False
+    )
+    event_type = serializers.ReadOnlyField()
+
     class Meta:
         model = Event
         fields = [
             'id', 'title', 'slug', 'description', 'start_date', 'end_date',
-            'city', 'city_name', 'event_type', 'status', 'address', 'featured_image', 'featured_image_alt',
+            'city', 'city_name', 'event_type', 'event_types', 'status', 'address', 'featured_image', 'featured_image_alt',
             'is_featured', 'price', 'tags', 'created_at', 'is_upcoming',
             'is_past', 'meta_title', 'meta_description', 'meta_keywords',
             'canonical_url', 'robots_index', 'robots_follow'
@@ -73,13 +81,17 @@ class EventListSerializer(serializers.ModelSerializer):
     is_ongoing = serializers.ReadOnlyField()
     is_past = serializers.ReadOnlyField()
     city_name = serializers.CharField(source='city.name', read_only=True)
-    
+    event_types = serializers.ListField(
+        child=serializers.ChoiceField(choices=Event.EVENT_TYPE_CHOICES), required=False
+    )
+    event_type = serializers.ReadOnlyField()
+
     class Meta:
         model = Event
         fields = [
             'id', 'title', 'slug', 'start_date', 'end_date',
             'featured_image', 'featured_image_alt', 'is_featured',
-            'city', 'city_name', 'event_type', 'status', 'price', 'tags', 'is_upcoming', 'is_ongoing', 'is_past'
+            'city', 'city_name', 'event_type', 'event_types', 'status', 'price', 'tags', 'is_upcoming', 'is_ongoing', 'is_past'
         ]
 
 class AboutSectionSerializer(serializers.ModelSerializer):

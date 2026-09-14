@@ -35,7 +35,7 @@ class CompetitionViewSet(viewsets.ViewSet):
     def list(self, request):
         from landing.models import Event
         event_type = request.query_params.get('event_type') or 'competition'
-        events = Event.objects.filter(event_type=event_type)
+        events = Event.objects.filter(event_types__icontains=Event.type_query_value(event_type))
         status_filter = request.query_params.get('status')
         if status_filter:
             events = events.filter(status=status_filter)
@@ -147,7 +147,7 @@ class CompetitionViewSet(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
         from landing.models import Event
         try:
-            ev = Event.objects.get(pk=pk, event_type='competition')
+            ev = Event.objects.get(pk=pk, event_types__icontains=Event.type_query_value('competition'))
             status_filter = request.query_params.get('status')
             if status_filter and ev.status != status_filter:
                 return Response({'detail': 'Not found.'}, status=404)
@@ -208,7 +208,7 @@ class CompetitionViewSet(viewsets.ViewSet):
             end_date=parsed_end_date,
             coach_registration_deadline=coach_deadline,
             description=d.get('description', ''),
-            event_type=event_type,
+            event_types=[event_type],
             status=d.get('status', 'upcoming'),
             sync_mode=d.get('sync_mode', 'cloud') or 'cloud',
             sync_locked=_coerce_bool(d.get('sync_locked'), default=False),
@@ -223,7 +223,7 @@ class CompetitionViewSet(viewsets.ViewSet):
         from landing.models import Event
         from ..models import City
         try:
-            ev = Event.objects.get(pk=pk, event_type='competition')
+            ev = Event.objects.get(pk=pk, event_types__icontains=Event.type_query_value('competition'))
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
         d = request.data
@@ -299,7 +299,7 @@ class CompetitionViewSet(viewsets.ViewSet):
         from landing.models import Event
 
         try:
-            ev = Event.objects.get(pk=pk, event_type='competition')
+            ev = Event.objects.get(pk=pk, event_types__icontains=Event.type_query_value('competition'))
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
 
@@ -318,7 +318,7 @@ class CompetitionViewSet(viewsets.ViewSet):
         from landing.models import Event
 
         try:
-            ev = Event.objects.get(pk=pk, event_type='competition')
+            ev = Event.objects.get(pk=pk, event_types__icontains=Event.type_query_value('competition'))
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
 
@@ -334,7 +334,7 @@ class CompetitionViewSet(viewsets.ViewSet):
         from landing.models import Event
 
         try:
-            ev = Event.objects.get(pk=pk, event_type='competition')
+            ev = Event.objects.get(pk=pk, event_types__icontains=Event.type_query_value('competition'))
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
 
@@ -353,7 +353,7 @@ class CompetitionViewSet(viewsets.ViewSet):
         from ..competition_defaults import ensure_standard_competition_groups_and_categories
 
         try:
-            ev = Event.objects.get(pk=pk, event_type='competition')
+            ev = Event.objects.get(pk=pk, event_types__icontains=Event.type_query_value('competition'))
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
 
@@ -367,7 +367,7 @@ class CompetitionViewSet(viewsets.ViewSet):
     def destroy(self, request, pk=None):
         from landing.models import Event
         try:
-            ev = Event.objects.get(pk=pk, event_type='competition')
+            ev = Event.objects.get(pk=pk, event_types__icontains=Event.type_query_value('competition'))
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
         ev.delete()
@@ -377,7 +377,7 @@ class CompetitionViewSet(viewsets.ViewSet):
     def stats(self, request, pk=None):
         from landing.models import Event
         try:
-            ev = Event.objects.get(pk=pk, event_type='competition')
+            ev = Event.objects.get(pk=pk, event_types__icontains=Event.type_query_value('competition'))
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
 

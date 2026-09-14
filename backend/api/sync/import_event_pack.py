@@ -116,7 +116,10 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
         {
             'title': event_data.get('title', ''),
             'slug': event_data.get('slug', ''),
-            'event_type': event_data.get('event_type', 'competition'),
+            # The wire payload still carries a single `event_type` string
+            # (matches what export_event_pack.py sends) - translate it to
+            # the real, possibly multi-valued `event_types` field.
+            'event_types': [event_data.get('event_type', 'competition')],
             'start_date': event_data.get('start_date'),
             'end_date': event_data.get('end_date'),
             'address': event_data.get('address') or '',

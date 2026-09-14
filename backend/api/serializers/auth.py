@@ -136,8 +136,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         # supporter, never admin) goes through OnboardingRoleView, which
         # validates the value server-side. Letting this generic profile
         # serializer accept an arbitrary `role` would let any authenticated
-        # user PUT their way to role='admin'.
-        read_only_fields = ['username', 'role', 'date_joined', 'is_active']
+        # user PUT their way to role='admin'. `email` is read-only too -
+        # it's the login identifier (USERNAME_FIELD) and self-service email
+        # changes aren't offered, so this endpoint shouldn't accept one
+        # even if a client sends it directly.
+        read_only_fields = ['username', 'email', 'role', 'date_joined', 'is_active']
     
     def to_representation(self, instance):
         """Add computed fields"""
@@ -161,6 +164,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 'club': athlete.club_id if hasattr(athlete, 'club_id') else (athlete.club.id if athlete.club else None),
                 'is_coach': athlete.is_coach if hasattr(athlete, 'is_coach') else False,
                 'is_referee': athlete.is_referee if hasattr(athlete, 'is_referee') else False,
+                'mobile_number': athlete.mobile_number,
             }
             representation['athlete_id'] = athlete.id
         

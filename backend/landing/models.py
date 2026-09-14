@@ -91,6 +91,13 @@ class NewsPost(SEOModel):
         return self.reactions.filter(reaction_type='dislike').count()
 
 
+def default_event_types():
+    # Matches the old `event_type` field's `default='competition'` - code
+    # across the codebase (signals, sync, scoring) already treats an Event
+    # with no type specified as a competition.
+    return ['competition']
+
+
 class Event(SEOModel):
     SYNC_MODE_CHOICES = [
         ('cloud', _('Cloud')),
@@ -131,13 +138,46 @@ class Event(SEOModel):
         help_text="Alt text for featured image (SEO)"
     )
     is_featured = models.BooleanField(default=False, help_text="Show on homepage")
-    # Type of event: competition, examination, training seminar, etc.
+    # Type(s) of event: competition, examination, training seminar, etc. An
+    # event can be more than one of these at once (e.g. a training seminar
+    # that also includes grade examinations), so this is a list rather than
+    # a single scalar choice.
     EVENT_TYPE_CHOICES = [
         ('competition', 'Competition'),
         ('examination', 'Examination'),
         ('training_seminar', 'Training Seminar'),
     ]
-    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES, default='competition', help_text='Type of event')
+    event_types = models.JSONField(default=default_event_types, blank=True, help_text='Type(s) of event')
+
+    def has_event_type(self, event_type):
+        return event_type in (self.event_types or [])
+
+    @staticmethod
+    def type_query_value(event_type):
+        """Value to filter with via `event_types__icontains=...`.
+
+        JSONField's `contains` lookup (list-containment) needs Postgres and
+        raises NotSupportedError on SQLite, which is what actually backs
+        local dev/tests here - so "does this event have this type" is
+        matched instead as a substring of the JSON-encoded list, which
+        works identically on every backend. The values in
+        EVENT_TYPE_CHOICES don't overlap as substrings of one another, so
+        this can't false-positive-match a different type.
+        """
+        return f'"{event_type}"'
+
+    @property
+    def event_type(self):
+        """Backward-compatible single-value accessor: the first configured
+        type, or '' if none is set. Prefer `event_types`/`has_event_type()`
+        in new code - this stays around so older read-only call sites
+        (admin list_display, offline sync payloads, etc.) keep working."""
+        types = self.event_types or []
+        return types[0] if types else ''
+
+    @event_type.setter
+    def event_type(self, value):
+        self.event_types = [value] if value else []
     STATUS_CHOICES = [
         ('upcoming', 'Upcoming'),
         ('ongoing', 'Ongoing'),

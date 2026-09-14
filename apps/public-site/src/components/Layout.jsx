@@ -248,21 +248,21 @@ export default function Layout() {
               de Vovinam Viet-Vo-Dao
             </span>
           </Link>
-          <div className="flex shrink-0 items-center gap-3">
-            <NotificationBell />
+          <div className="-my-2 flex shrink-0 self-stretch items-stretch">
+            <NotificationBell mobile />
+            <NavLink
+              to="/cont"
+              aria-label="Contul meu"
+              onClick={() => setMobileOpen(false)}
+              className={({ isActive }) =>
+                `-mr-4 flex w-14 shrink-0 items-center justify-center ${
+                  isActive ? 'site-mobile-toggle' : 'text-foreground'
+                }`
+              }
+            >
+              <User className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+            </NavLink>
           </div>
-          <NavLink
-            to="/cont"
-            aria-label="Contul meu"
-            onClick={() => setMobileOpen(false)}
-            className={({ isActive }) =>
-              `-mr-4 -my-2 flex w-14 shrink-0 self-stretch items-center justify-center ${
-                isActive ? 'site-mobile-toggle' : 'text-foreground'
-              }`
-            }
-          >
-            <User className="h-5 w-5" fill="currentColor" aria-hidden="true" />
-          </NavLink>
         </div>
 
         <div className="mx-auto hidden w-full max-w-7xl items-center justify-between gap-3 px-4 py-2 lg:flex">

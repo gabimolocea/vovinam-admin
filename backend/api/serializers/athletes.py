@@ -272,7 +272,11 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
             'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes',
             'profile_image', 'medical_certificate'
         ]
-        read_only_fields = ['submitted_date', 'reviewed_date', 'reviewed_by']
+        # `status` is deliberately read-only here: it must only ever change
+        # through the approve/reject/request_revision/resubmit workflow
+        # methods (see AthleteViewSet.update and Athlete.resubmit), never by
+        # a client sending it directly in a profile create/edit payload.
+        read_only_fields = ['status', 'submitted_date', 'reviewed_date', 'reviewed_by']
         extra_kwargs = {
             'first_name': {'required': True},
             'last_name': {'required': True},

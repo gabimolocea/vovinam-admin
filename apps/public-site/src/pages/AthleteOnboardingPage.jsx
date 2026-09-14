@@ -11,6 +11,21 @@ import Seo from '../components/Seo';
 import { Sparkles, Upload } from 'lucide-react';
 import { displayToIso, formatIsoToDisplay, maskDateInput } from '../lib/dateFormat';
 
+/** Marks a field's label as required. */
+function Req() {
+  return <span className="text-destructive"> *</span>;
+}
+
+const ERROR_INPUT_CLASS = '!border-destructive focus-visible:!ring-destructive';
+
+/** IDs/legitimații often print names in ALL CAPS - the AI reads them
+ * verbatim, so normalize to "Title Case" (incl. after hyphens/spaces,
+ * e.g. "Ana-Maria Popescu-Ionescu") before prefilling the form. */
+function toTitleCase(text) {
+  if (!text) return text;
+  return text.toLowerCase().replace(/(^|[\s-])\p{L}/gu, (match) => match.toUpperCase());
+}
+
 /**
  * Dedicated onboarding URL for completing the athlete/coach profile,
  * reached after choosing "Sunt sportiv / antrenor" on /cont (or directly,
@@ -44,6 +59,7 @@ export default function AthleteOnboardingPage() {
   const [licenseImagePreview, setLicenseImagePreview] = useState(null);
   const [licenseRequestDocument, setLicenseRequestDocument] = useState(null);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrNotice, setOcrNotice] = useState('');
@@ -69,10 +85,21 @@ export default function AthleteOnboardingPage() {
     );
   }
   if (!user) return <Navigate to="/cont" replace />;
-  if (user.role !== 'user' && user.profile_completed) return <Navigate to="/cont" replace />;
+  // Supporters never need this form, and an athlete/coach who already has
+  // a profile record shouldn't submit a second one. Gate on `user.athlete`
+  // itself rather than `user.profile_completed` - that flag can drift out
+  // of sync (e.g. an admin later deletes/rejects the profile), which would
+  // otherwise bounce the user straight back to /cont with no way to reach
+  // this form again.
+  if (user.role === 'supporter' || user.athlete) return <Navigate to="/cont" replace />;
+
+  function clearFieldError(field) {
+    setFieldErrors((errs) => (errs[field] ? { ...errs, [field]: false } : errs));
+  }
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+    clearFieldError(field);
   }
 
   async function searchCities(query) {
@@ -95,6 +122,7 @@ export default function AthleteOnboardingPage() {
   function handleLicenseImageChange(e) {
     const file = e.target.files?.[0] ?? null;
     setLicenseImage(file);
+    clearFieldError('license_image');
     setLicenseImagePreview(file ? URL.createObjectURL(file) : null);
     setOcrNotice('');
   }
@@ -116,8 +144,8 @@ export default function AthleteOnboardingPage() {
       // being gated on the field being empty like the others.
       setForm((f) => ({
         ...f,
-        first_name: f.first_name || suggested.first_name || f.first_name,
-        last_name: f.last_name || suggested.last_name || f.last_name,
+        first_name: f.first_name || toTitleCase(suggested.first_name) || f.first_name,
+        last_name: f.last_name || toTitleCase(suggested.last_name) || f.last_name,
         date_of_birth: f.date_of_birth || (suggested.date_of_birth ? formatIsoToDisplay(suggested.date_of_birth) : f.date_of_birth),
         gender: f.gender || suggested.gender || f.gender,
         cnp: f.cnp || suggested.cnp || f.cnp,
@@ -140,50 +168,45 @@ export default function AthleteOnboardingPage() {
     }
   }
 
+  function getFieldErrors() {
+    const errors = {};
+    if (!form.first_name.trim()) errors.first_name = true;
+    if (!form.last_name.trim()) errors.last_name = true;
+    if (!displayToIso(form.date_of_birth)) errors.date_of_birth = true;
+    if (!form.gender) errors.gender = true;
+    if (!form.club) errors.club = true;
+    if (!form.city) errors.city = true;
+    if (!form.mobile_number.trim()) errors.mobile_number = true;
+    if (!form.cnp.trim()) errors.cnp = true;
+    if (!form.nationality.trim()) errors.nationality = true;
+    if (isLicensed) {
+      if (!form.license_series.trim()) errors.license_series = true;
+      if (!form.license_number.trim()) errors.license_number = true;
+      if (!displayToIso(form.registered_date)) errors.registered_date = true;
+      if (!displayToIso(form.expiration_date)) errors.expiration_date = true;
+      if (!licenseImage) errors.license_image = true;
+    } else if (!licenseRequestDocument) {
+      errors.license_request_document = true;
+    }
+    if (!form.emergency_contact_name.trim()) errors.emergency_contact_name = true;
+    if (!form.emergency_contact_phone.trim()) errors.emergency_contact_phone = true;
+    return errors;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
 
-    const isoDate = displayToIso(form.date_of_birth);
-    if (!isoDate) {
-      setError('Introdu data nașterii completă, în formatul zz.luna.an (ex: 15.03.1995).');
-      return;
-    }
-    if (!form.gender) {
-      setError('Alege genul.');
-      return;
-    }
-    if (!form.club) {
-      setError('Alege clubul.');
-      return;
-    }
-    if (!form.city) {
-      setError('Alege localitatea.');
-      return;
-    }
-    if (isLicensed && !licenseImage) {
-      setError('Încarcă poza legitimației.');
-      return;
-    }
-    if (!isLicensed && !licenseRequestDocument) {
-      setError('Încarcă cererea de legitimare.');
+    const errors = getFieldErrors();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Completează toate câmpurile obligatorii, marcate mai jos.');
       return;
     }
 
-    let registeredIso = null;
-    let expirationIso = null;
-    if (isLicensed) {
-      registeredIso = displayToIso(form.registered_date);
-      if (!registeredIso) {
-        setError('Introdu data eliberării legitimației, în formatul zz.ll.aaaa.');
-        return;
-      }
-      expirationIso = displayToIso(form.expiration_date);
-      if (!expirationIso) {
-        setError('Introdu data expirării legitimației, în formatul zz.ll.aaaa.');
-        return;
-      }
-    }
+    const isoDate = displayToIso(form.date_of_birth);
+    const registeredIso = isLicensed ? displayToIso(form.registered_date) : null;
+    const expirationIso = isLicensed ? displayToIso(form.expiration_date) : null;
 
     setBusy(true);
     try {
@@ -206,7 +229,7 @@ export default function AthleteOnboardingPage() {
       }
       await athleteAPI.createMyProfile(payload);
       await refetchUser();
-      navigate('/cont', { replace: true });
+      navigate('/cont/profil', { replace: true });
     } catch (err) {
       const data = err.response?.data;
       const firstError = data && typeof data === 'object' ? Object.values(data)[0] : null;
@@ -224,7 +247,6 @@ export default function AthleteOnboardingPage() {
         {error && <Alert variant="destructive">{error}</Alert>}
 
         <div className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Stare legitimare</span>
           <div className="flex gap-3">
             {[
               { value: true, label: 'Sunt sportiv legitimat' },
@@ -252,13 +274,17 @@ export default function AthleteOnboardingPage() {
 
         {isLicensed && (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="license_image">Poză legitimație</Label>
+            <Label htmlFor="license_image">Poză legitimație<Req /></Label>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
                 <div
                   className={`relative flex h-40 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 text-center transition ${
-                    dragActive ? 'border-[#0a4c75] bg-[#0a4c75]/5' : 'border-border bg-muted/30 hover:border-[#0a4c75] hover:bg-[#0a4c75]/5'
+                    dragActive
+                      ? 'border-[#0a4c75] bg-[#0a4c75]/5'
+                      : fieldErrors.license_image
+                        ? 'border-destructive bg-destructive/5'
+                        : 'border-border bg-muted/30 hover:border-[#0a4c75] hover:bg-[#0a4c75]/5'
                   }`}
                   onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
                   onDragOver={(e) => e.preventDefault()}
@@ -268,7 +294,6 @@ export default function AthleteOnboardingPage() {
                   <input
                     id="license_image"
                     type="file"
-                    required
                     accept="image/*"
                     onChange={handleLicenseImageChange}
                     className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
@@ -328,28 +353,38 @@ export default function AthleteOnboardingPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0a4c75]">Date personale</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="first_name">Prenume</Label>
-              <Input id="first_name" required value={form.first_name} onChange={(e) => update('first_name', e.target.value)} />
+              <Label htmlFor="first_name">Prenume<Req /></Label>
+              <Input
+                id="first_name"
+                className={fieldErrors.first_name ? ERROR_INPUT_CLASS : ''}
+                value={form.first_name}
+                onChange={(e) => update('first_name', e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="last_name">Nume</Label>
-              <Input id="last_name" required value={form.last_name} onChange={(e) => update('last_name', e.target.value)} />
+              <Label htmlFor="last_name">Nume<Req /></Label>
+              <Input
+                id="last_name"
+                className={fieldErrors.last_name ? ERROR_INPUT_CLASS : ''}
+                value={form.last_name}
+                onChange={(e) => update('last_name', e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="date_of_birth">Data nașterii</Label>
+              <Label htmlFor="date_of_birth">Data nașterii<Req /></Label>
               <Input
                 id="date_of_birth"
-                required
                 inputMode="numeric"
                 placeholder="zz.ll.aaaa"
+                className={fieldErrors.date_of_birth ? ERROR_INPUT_CLASS : ''}
                 value={form.date_of_birth}
                 onChange={(e) => update('date_of_birth', maskDateInput(e.target.value))}
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label>Gen</Label>
+              <Label>Gen<Req /></Label>
               <Select value={form.gender} onValueChange={(value) => update('gender', value)}>
-                <SelectTrigger>
+                <SelectTrigger className={fieldErrors.gender ? ERROR_INPUT_CLASS : ''}>
                   <SelectValue placeholder="Nespecificat" />
                 </SelectTrigger>
                 <SelectContent>
@@ -359,9 +394,9 @@ export default function AthleteOnboardingPage() {
               </Select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label>Club</Label>
+              <Label>Club<Req /></Label>
               <Select value={form.club ? String(form.club) : ''} onValueChange={(value) => update('club', value)}>
-                <SelectTrigger>
+                <SelectTrigger className={fieldErrors.club ? ERROR_INPUT_CLASS : ''}>
                   <SelectValue placeholder="Alege clubul" />
                 </SelectTrigger>
                 <SelectContent>
@@ -372,32 +407,57 @@ export default function AthleteOnboardingPage() {
               </Select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label>Localitate</Label>
+              <Label>Localitate<Req /></Label>
               <SearchableSelect
                 value={selectedCity}
                 onChange={handleCityChange}
                 onSearch={searchCities}
                 placeholder="Scrie pentru a căuta localitatea…"
+                error={fieldErrors.city}
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="mobile_number">Telefon mobil</Label>
-              <Input id="mobile_number" required value={form.mobile_number} onChange={(e) => update('mobile_number', e.target.value)} />
+              <Label htmlFor="mobile_number">Telefon mobil<Req /></Label>
+              <Input
+                id="mobile_number"
+                className={fieldErrors.mobile_number ? ERROR_INPUT_CLASS : ''}
+                value={form.mobile_number}
+                onChange={(e) => update('mobile_number', e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="cnp">CNP</Label>
+              <Label htmlFor="cnp">CNP<Req /></Label>
               <Input
                 id="cnp"
-                required
                 inputMode="numeric"
                 maxLength={13}
+                className={fieldErrors.cnp ? ERROR_INPUT_CLASS : ''}
                 value={form.cnp}
                 onChange={(e) => update('cnp', e.target.value.replace(/\D/g, ''))}
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="nationality">Naționalitate</Label>
-              <Input id="nationality" required value={form.nationality} onChange={(e) => update('nationality', e.target.value)} />
+              <Label htmlFor="nationality">Naționalitate<Req /></Label>
+              <Select
+                value={form.nationality === 'Română' ? 'Română' : '__custom__'}
+                onValueChange={(value) => update('nationality', value === '__custom__' ? '' : value)}
+              >
+                <SelectTrigger id="nationality" className={fieldErrors.nationality ? ERROR_INPUT_CLASS : ''}>
+                  <SelectValue placeholder="Alege naționalitatea" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Română">Română</SelectItem>
+                  <SelectItem value="__custom__">Altă naționalitate</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.nationality !== 'Română' && (
+                <Input
+                  placeholder="Scrie naționalitatea"
+                  className={`mt-1 ${fieldErrors.nationality ? ERROR_INPUT_CLASS : ''}`}
+                  value={form.nationality}
+                  onChange={(e) => update('nationality', e.target.value)}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -410,42 +470,42 @@ export default function AthleteOnboardingPage() {
             {isLicensed ? (
               <>
                 <div className="flex flex-col gap-1">
-                  <Label htmlFor="license_series">Serie</Label>
+                  <Label htmlFor="license_series">Serie<Req /></Label>
                   <Input
                     id="license_series"
-                    required
+                    className={fieldErrors.license_series ? ERROR_INPUT_CLASS : ''}
                     value={form.license_series}
                     onChange={(e) => update('license_series', e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label htmlFor="license_number">Număr</Label>
+                  <Label htmlFor="license_number">Număr<Req /></Label>
                   <Input
                     id="license_number"
-                    required
                     inputMode="numeric"
+                    className={fieldErrors.license_number ? ERROR_INPUT_CLASS : ''}
                     value={form.license_number}
                     onChange={(e) => update('license_number', e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label htmlFor="registered_date">Eliberată la data de</Label>
+                  <Label htmlFor="registered_date">Eliberată la data de<Req /></Label>
                   <Input
                     id="registered_date"
-                    required
                     inputMode="numeric"
                     placeholder="zz.ll.aaaa"
+                    className={fieldErrors.registered_date ? ERROR_INPUT_CLASS : ''}
                     value={form.registered_date}
                     onChange={(e) => update('registered_date', maskDateInput(e.target.value))}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label htmlFor="expiration_date">Expiră la data de</Label>
+                  <Label htmlFor="expiration_date">Expiră la data de<Req /></Label>
                   <Input
                     id="expiration_date"
-                    required
                     inputMode="numeric"
                     placeholder="zz.ll.aaaa"
+                    className={fieldErrors.expiration_date ? ERROR_INPUT_CLASS : ''}
                     value={form.expiration_date}
                     onChange={(e) => update('expiration_date', maskDateInput(e.target.value))}
                   />
@@ -453,13 +513,16 @@ export default function AthleteOnboardingPage() {
               </>
             ) : (
               <div className="flex flex-col gap-1 sm:col-span-2">
-                <Label htmlFor="license_request_document">Cerere de legitimare</Label>
+                <Label htmlFor="license_request_document">Cerere de legitimare<Req /></Label>
                 <Input
                   id="license_request_document"
                   type="file"
-                  required
                   accept="image/*,.pdf"
-                  onChange={(e) => setLicenseRequestDocument(e.target.files?.[0] ?? null)}
+                  className={fieldErrors.license_request_document ? ERROR_INPUT_CLASS : ''}
+                  onChange={(e) => {
+                    setLicenseRequestDocument(e.target.files?.[0] ?? null);
+                    clearFieldError('license_request_document');
+                  }}
                 />
               </div>
             )}
@@ -470,19 +533,19 @@ export default function AthleteOnboardingPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0a4c75]">Contact de urgență</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="emergency_contact_name">Nume</Label>
+              <Label htmlFor="emergency_contact_name">Nume<Req /></Label>
               <Input
                 id="emergency_contact_name"
-                required
+                className={fieldErrors.emergency_contact_name ? ERROR_INPUT_CLASS : ''}
                 value={form.emergency_contact_name}
                 onChange={(e) => update('emergency_contact_name', e.target.value)}
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="emergency_contact_phone">Telefon</Label>
+              <Label htmlFor="emergency_contact_phone">Telefon<Req /></Label>
               <Input
                 id="emergency_contact_phone"
-                required
+                className={fieldErrors.emergency_contact_phone ? ERROR_INPUT_CLASS : ''}
                 value={form.emergency_contact_phone}
                 onChange={(e) => update('emergency_contact_phone', e.target.value)}
               />

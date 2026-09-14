@@ -152,7 +152,7 @@ class PublicEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            'title', 'slug', 'event_type', 'start_date', 'end_date', 'address', 'city',
+            'title', 'slug', 'event_type', 'event_types', 'start_date', 'end_date', 'address', 'city',
             'featured_image', 'status',
         ]
 

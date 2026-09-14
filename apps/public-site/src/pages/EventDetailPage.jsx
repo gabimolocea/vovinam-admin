@@ -8,7 +8,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import ShareButton from '../components/ShareButton';
 import Lightbox from '../components/Lightbox';
 import { excerpt, DEFAULT_OG_IMAGE } from '../lib/seo';
-import { EVENT_TYPE_LABELS, formatEventDateRange } from '../lib/events';
+import { formatEventDateRange, getEventTypeLabels } from '../lib/events';
 
 export default function EventDetailPage() {
   const { slug } = useParams();
@@ -57,7 +57,7 @@ export default function EventDetailPage() {
     <article className="flex flex-col">
       <Seo
         title={event.title}
-        description={event.description ? excerpt(event.description) : `${EVENT_TYPE_LABELS[event.event_type] || 'Eveniment'} organizat de Federația Română de Vovinam Việt Võ Đạo.`}
+        description={event.description ? excerpt(event.description) : `${getEventTypeLabels(event).join(' / ') || 'Eveniment'} organizat de Federația Română de Vovinam Việt Võ Đạo.`}
         path={`/calendar/${slug}`}
         image={event.featured_image || DEFAULT_OG_IMAGE}
         type="article"
@@ -89,11 +89,13 @@ export default function EventDetailPage() {
 
           <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-6 px-4 pb-6 pt-4 sm:pb-8 sm:pt-6 lg:flex-row lg:items-center lg:justify-between lg:gap-12 lg:pb-8 lg:pt-8">
             <div className="flex flex-col items-start gap-4 text-left">
-              {EVENT_TYPE_LABELS[event.event_type] && (
-                <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
-                  {EVENT_TYPE_LABELS[event.event_type]}
-                </span>
-              )}
+              <div className="flex flex-wrap gap-1.5">
+                {getEventTypeLabels(event).map((label) => (
+                  <span key={label} className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+                    {label}
+                  </span>
+                ))}
+              </div>
 
               <h1 className="text-fluid-display font-display font-bold text-white">{event.title}</h1>
 

@@ -231,7 +231,7 @@ class Command(BaseCommand):
                 slug=slug,
                 defaults={
                     'title': data['title'],
-                    'event_type': data['type'],
+                    'event_types': [data['type']],
                     'start_date': start_date,
                     'end_date': end_date,
                     'city': city,

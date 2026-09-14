@@ -234,7 +234,6 @@ def build_event_pack(*, event_id: int) -> dict[str, Any]:
         'athletes': [_athlete_dict(athlete) for athlete in athletes],
         'groups': [_group_dict(group) for group in groups],
         'categories': [_category_dict(category) for category in categories],
-                'display_mode': match.display_mode,
         'category_athletes': [
             {
                 'id': entry.id,

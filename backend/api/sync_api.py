@@ -52,7 +52,7 @@ class SyncAPIViewSet(viewsets.ViewSet):
         
         if 'competitions' in entities:
             from landing.models import Event
-            qs = Event.objects.filter(event_type='competition')
+            qs = Event.objects.filter(event_types__icontains=Event.type_query_value('competition'))
             if since:
                 # Use created_at if available, otherwise no time filter
                 if hasattr(Event, 'created_at'):
