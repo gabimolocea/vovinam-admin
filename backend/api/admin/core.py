@@ -164,7 +164,12 @@ class LogEntryAdmin(admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        # Regular staff can't tamper with the audit log, but this permission
+        # also gates cascade deletes elsewhere in admin (e.g. deleting a User
+        # cascades to their LogEntry rows) - hardcoding False here blocked
+        # superusers from deleting anything with log entries attached, not
+        # just direct LogEntry deletion. Superusers can still delete.
+        return request.user.is_superuser
 
     def object_link(self, obj):
         if not obj.content_type_id or not obj.object_id:
