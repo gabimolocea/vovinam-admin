@@ -411,15 +411,19 @@
 /* Mobile/tablet (below lg): a stronger scrim, like FIBA's — it bleeds up
    over the photo well before the text/bars/next-preview block starts, so
    that whole bottom area sits on a solid, legible navy panel instead of
-   a thin fade. */
+   a thin fade. Sized off `--hero-title-h` (set from JS per slide, see
+   HeroCarousel.jsx) so a one-line title gets a small band and a
+   three-line one gets a taller one, instead of a fixed size that's
+   wrong for most titles. The 90px fallback covers the no-JS/first-paint
+   case before the real height is measured. */
 @media (max-width: 1023px) {
   .public-site-app .site-hero-scrim {
     background: linear-gradient(
       180deg,
       rgba(12, 33, 61, 0) 0%,
-      rgba(12, 33, 61, 0) 68%,
-      rgba(12, 33, 61, 0.55) 85%,
-      rgba(12, 33, 61, 0.92) 95%,
+      rgba(12, 33, 61, 0) calc(100% - var(--hero-title-h, 90px) - 40px),
+      rgba(12, 33, 61, 0.55) calc(100% - var(--hero-title-h, 90px) - 10px),
+      rgba(12, 33, 61, 0.92) calc(100% - 10px),
       #0c213d 100%
     );
   }

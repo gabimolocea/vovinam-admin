@@ -29,6 +29,14 @@ export default function HeroCarousel({ slides }) {
   const [portraitSlides, setPortraitSlides] = useState({});
   const timerRef = useRef(null);
   const navigate = useNavigate();
+  // Mobile/tablet: the scrim's dark/solid band needs to cover roughly the
+  // title's own height (see the CSS `--hero-title-h` custom property) so a
+  // one-line title doesn't get an oversized dark band and a three-line one
+  // doesn't get cut off by an undersized one. Measured per slide (titles
+  // differ in length) and written onto that slide's own wrapper element,
+  // which the scrim inherits it from.
+  const slideRefs = useRef({});
+  const titleRefs = useRef({});
 
   const handlePhotoLoad = useCallback((slug, e) => {
     const img = e.target;
@@ -36,6 +44,21 @@ export default function HeroCarousel({ slides }) {
       setPortraitSlides((prev) => (prev[slug] ? prev : { ...prev, [slug]: true }));
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const slug = entry.target.getAttribute('data-slug');
+        const slideEl = slug && slideRefs.current[slug];
+        if (slideEl) {
+          slideEl.style.setProperty('--hero-title-h', `${Math.ceil(entry.contentRect.height)}px`);
+        }
+      }
+    });
+    Object.values(titleRefs.current).forEach((el) => el && observer.observe(el));
+    return () => observer.disconnect();
+  }, [slides]);
 
   const goTo = useCallback((i) => {
     setIndex((current) => {
@@ -69,6 +92,7 @@ export default function HeroCarousel({ slides }) {
         {slides.map((slide, i) => (
           <div
             key={slide.slug}
+            ref={(el) => { slideRefs.current[slide.slug] = el; }}
             className="absolute inset-0 transition-opacity duration-700"
             style={{ opacity: i === index ? 1 : 0, pointerEvents: i === index ? 'auto' : 'none' }}
             aria-hidden={i !== index}
@@ -127,7 +151,11 @@ export default function HeroCarousel({ slides }) {
                     {primaryCategory(slide)}
                   </span>
                 )}
-                <h1 className="text-fluid-display font-display font-bold text-white">
+                <h1
+                  ref={(el) => { titleRefs.current[slide.slug] = el; }}
+                  data-slug={slide.slug}
+                  className="text-fluid-display font-display font-bold text-white"
+                >
                   {slide.title}
                 </h1>
               </div>
