@@ -5,6 +5,8 @@ from django.urls import reverse
 from django.conf import settings
 from django_ckeditor_5.fields import CKEditor5Field  # Updated import
 from django.utils.translation import gettext_lazy as _
+from django.utils.text import slugify
+from django.utils.html import strip_tags
 
 class SEOModel(models.Model):
     """Abstract model for SEO fields"""
@@ -78,9 +80,54 @@ class NewsPost(SEOModel):
         ordering = ['-created_at']
         verbose_name = _('Post')
         verbose_name_plural = _('Posts')
-    
+
     def __str__(self):
         return self.title
+
+    def _unique_slug(self, base):
+        base_slug = slugify(base) or 'post'
+        candidate = base_slug
+        qs = NewsPost.objects.exclude(pk=self.pk) if self.pk else NewsPost.objects.all()
+        suffix = 1
+        while qs.filter(slug=candidate).exists():
+            suffix += 1
+            candidate = f'{base_slug}-{suffix}'
+        return candidate
+
+    def save(self, *args, **kwargs):
+        # Auto-fill "Setări SEO" (and the slug) from the post's own
+        # content instead of leaving admins to type them by hand:
+        # - slug tracks the title live while the post is still a draft,
+        #   then freezes the moment it's published so a live post's URL
+        #   never changes under someone editing the title later.
+        # - meta_title keeps tracking the title too (indefinitely - it's
+        #   just the <title> tag, not a URL, so there's no breakage risk),
+        #   but only while it wasn't manually set to something else.
+        # - meta_description/meta_keywords fill once from the excerpt/
+        #   content/tags when left blank, and are never overwritten once
+        #   set, since they're not title-driven.
+        old = NewsPost.objects.filter(pk=self.pk).first() if self.pk else None
+
+        # Compare against the INCOMING (self) value, not old's own stored
+        # value - otherwise a manual edit made in this very save (e.g. the
+        # admin retypes meta_title in the same request as a title change)
+        # gets silently clobbered by the "still auto-tracking" check below.
+        if not self.slug or (old and not old.published and self.slug == old._unique_slug(old.title)):
+            self.slug = self._unique_slug(self.title)
+
+        if not self.meta_title or (old and self.meta_title == old.title[:60]):
+            self.meta_title = self.title[:60]
+
+        if not self.meta_description:
+            source = strip_tags(self.excerpt or self.content or '').strip()
+            source = ' '.join(source.split())
+            if source:
+                self.meta_description = (source[:157] + '…') if len(source) > 160 else source[:160]
+
+        if not self.meta_keywords and self.tags:
+            self.meta_keywords = self.tags[:255]
+
+        super().save(*args, **kwargs)
 
     @property
     def like_count(self):

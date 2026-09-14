@@ -40,17 +40,17 @@ export default function HomePage() {
           publicContentAPI.events.upcoming(),
         ]);
         if (!isMounted) return;
-        let heroResults = heroResponse.data?.results ?? [];
+        // The hero carousel only ever shows posts explicitly marked
+        // "Featured" in admin - no fallback to unfeatured posts here, so
+        // unchecking Featured reliably takes a post out of the carousel
+        // (including down to an empty carousel, which HeroCarousel already
+        // renders as nothing rather than showing unintended content).
+        const heroResults = heroResponse.data?.results ?? [];
         let newsResults = newsResponse.data?.results ?? [];
         let videosResults = videosResponse.data?.results ?? [];
         // Fallback to the latest published items when nothing has been marked
         // "featured" yet in admin (e.g. right after a fresh content import),
         // so the homepage isn't empty while content curation catches up.
-        if (heroResults.length === 0) {
-          const latestHero = await publicContentAPI.news.list({ page_size: 5 });
-          if (!isMounted) return;
-          heroResults = latestHero.data?.results ?? [];
-        }
         if (newsResults.length === 0) {
           const latestNews = await publicContentAPI.news.list({ page_size: 3 });
           if (!isMounted) return;
