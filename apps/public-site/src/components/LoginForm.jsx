@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, authAPI } from '@shared';
-import { Alert, Button } from './ui';
+import { Alert, Button, Req } from './ui';
 import { Eye, EyeOff } from 'lucide-react';
 
 /** Inline "forgot password" mini-form - swaps in for the login fields when
@@ -44,7 +44,7 @@ function ForgotPasswordForm({ compact, onBack }) {
     <form onSubmit={handleSubmit} className={`flex flex-col ${compact ? 'gap-3' : 'gap-4'}`}>
       {error && <Alert variant="destructive">{error}</Alert>}
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Introdu adresa de email a contului tău</span>
+        <span className="font-medium">Introdu adresa de email a contului tău<Req /></span>
         <input
           type="email"
           required
@@ -112,7 +112,7 @@ export default function LoginForm({ onSuccess, compact = false, showForgotPasswo
       {error && <Alert variant="destructive">{error}</Alert>}
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Introdu adresa de email</span>
+        <span className="font-medium">Introdu adresa de email<Req /></span>
         <input
           type="email"
           required
@@ -124,7 +124,7 @@ export default function LoginForm({ onSuccess, compact = false, showForgotPasswo
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Parolă</span>
+        <span className="font-medium">Parolă<Req /></span>
         <div className="relative">
           <input
             type={showPassword ? 'text' : 'password'}

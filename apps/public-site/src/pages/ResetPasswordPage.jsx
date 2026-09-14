@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI } from '@shared';
-import { Alert, Button } from '../components/ui';
+import { Alert, Button, Req } from '../components/ui';
 import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 
@@ -60,7 +60,7 @@ export default function ResetPasswordPage() {
             {error && <Alert variant="destructive">{error}</Alert>}
 
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Parolă nouă</span>
+              <span className="font-medium">Parolă nouă<Req /></span>
               <input
                 type="password"
                 required
@@ -73,7 +73,7 @@ export default function ResetPasswordPage() {
             </label>
 
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Confirmă parola nouă</span>
+              <span className="font-medium">Confirmă parola nouă<Req /></span>
               <input
                 type="password"
                 required

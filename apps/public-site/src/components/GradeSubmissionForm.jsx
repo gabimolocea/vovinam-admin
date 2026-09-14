@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { eventAPI, gradeAPI, gradeHistoryAPI } from '@shared';
 import {
-  Alert, Button, Label,
+  Alert, Button, Label, Req,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui';
 import { Sparkles } from 'lucide-react';
@@ -90,7 +90,7 @@ export default function GradeSubmissionForm({ athleteId, onSubmitted, onCancel }
       {error && <Alert variant="destructive">{error}</Alert>}
 
       <div className="flex flex-col gap-1">
-        <Label htmlFor="grade_certificate_image">Poză certificat de grad</Label>
+        <Label htmlFor="grade_certificate_image">Poză certificat de grad<Req /></Label>
         <input
           id="grade_certificate_image"
           type="file"
@@ -115,7 +115,7 @@ export default function GradeSubmissionForm({ athleteId, onSubmitted, onCancel }
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <Label>Grad</Label>
+          <Label>Grad<Req /></Label>
           <Select value={gradeId} onValueChange={setGradeId}>
             <SelectTrigger><SelectValue placeholder="Alege gradul" /></SelectTrigger>
             <SelectContent className="bg-white">

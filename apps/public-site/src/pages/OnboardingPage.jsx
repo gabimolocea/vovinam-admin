@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth, authAPI, notificationSettingsAPI } from '@shared';
-import { Alert, Button, Checkbox, Input, Label, Skeleton } from '../components/ui';
+import { Alert, Button, Checkbox, Input, Label, Req, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 
@@ -94,7 +94,7 @@ function PasswordTab() {
     <div className="flex flex-col gap-4">
       <h2 className="font-display text-lg font-bold text-[#00334d]">Parolă</h2>
       <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-        <Label htmlFor="account-current-password">Parolă curentă</Label>
+        <Label htmlFor="account-current-password">Parolă curentă<Req /></Label>
         <Input
           id="account-current-password"
           type="password"
@@ -103,7 +103,7 @@ function PasswordTab() {
           value={currentPassword}
           onChange={(e) => setCurrentPassword(e.target.value)}
         />
-        <Label htmlFor="account-new-password">Parolă nouă</Label>
+        <Label htmlFor="account-new-password">Parolă nouă<Req /></Label>
         <Input
           id="account-new-password"
           type="password"
@@ -113,7 +113,7 @@ function PasswordTab() {
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
         />
-        <Label htmlFor="account-new-password-confirm">Confirmă parola nouă</Label>
+        <Label htmlFor="account-new-password-confirm">Confirmă parola nouă<Req /></Label>
         <Input
           id="account-new-password-confirm"
           type="password"

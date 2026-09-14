@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, onboardingAPI } from '@shared';
-import { Alert, Button } from '../components/ui';
+import { Alert, Button, Req } from '../components/ui';
 import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 import LoginForm from '../components/LoginForm';
@@ -81,7 +81,7 @@ function RegisterForm() {
       </div>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Introdu adresa de email</span>
+        <span className="font-medium">Introdu adresa de email<Req /></span>
         <input
           type="email"
           required
@@ -93,7 +93,7 @@ function RegisterForm() {
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Parolă</span>
+        <span className="font-medium">Parolă<Req /></span>
         <div className="relative">
           <input
             type={showPassword ? 'text' : 'password'}
@@ -116,7 +116,7 @@ function RegisterForm() {
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Confirmă parola</span>
+        <span className="font-medium">Confirmă parola<Req /></span>
         <div className="relative">
           <input
             type={showPasswordConfirm ? 'text' : 'password'}

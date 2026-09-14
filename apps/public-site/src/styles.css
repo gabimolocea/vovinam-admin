@@ -128,6 +128,20 @@
   box-shadow: 0 0 0 2px rgba(23, 38, 66, 0.15);
 }
 
+/* iOS Safari auto-zooms the page when a focused text input's font-size is
+   under 16px - override every form control's size back up to 16px below
+   the tablet breakpoint so tapping into a field no longer triggers it. */
+@media (max-width: 767px) {
+  .public-site-app input,
+  .public-site-app textarea,
+  .public-site-app select {
+    /* !important: this custom rule otherwise loses to Tailwind's
+       lower-specificity `text-sm` utility, since Tailwind's utilities
+       layer takes cascade priority over plain unlayered CSS here. */
+    font-size: 16px !important;
+  }
+}
+
 .public-site-app .prose-content img {
   max-width: 100%;
   height: auto;
@@ -352,6 +366,13 @@
    bars or a hard crop), faded toward the brand navy via site-hero-bg-scrim
    so the seam reads as intentional. A bottom gradient keeps the title/CTA
    legible and blends the slide into the "Știri recente" card below. */
+/* Base panel color for the whole hero - on mobile/tablet the photo only
+   covers the top portion (see HeroCarousel.jsx), so this shows through as
+   the navy backdrop the title sits on below it. */
+.public-site-app .site-hero {
+  background-color: #0c213d;
+}
+
 .public-site-app .site-hero-bg-mirror,
 .public-site-app .site-hero-fallback {
   background-color: #0c213d;
@@ -396,9 +417,9 @@
     background: linear-gradient(
       180deg,
       rgba(12, 33, 61, 0) 0%,
-      rgba(12, 33, 61, 0.55) 40%,
-      rgba(12, 33, 61, 0.94) 62%,
-      #0c213d 78%,
+      rgba(12, 33, 61, 0) 68%,
+      rgba(12, 33, 61, 0.55) 85%,
+      rgba(12, 33, 61, 0.92) 95%,
       #0c213d 100%
     );
   }

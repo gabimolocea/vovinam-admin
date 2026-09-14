@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { eventAPI, categoryAPI, scoreAPI } from '@shared';
 import {
-  Alert, Button, Label,
+  Alert, Button, Label, Req,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui';
 import { Sparkles } from 'lucide-react';
@@ -111,7 +111,7 @@ export default function ResultSubmissionForm({ athleteId, athleteGender, onSubmi
       {error && <Alert variant="destructive">{error}</Alert>}
 
       <div className="flex flex-col gap-1">
-        <Label htmlFor="certificate_image">Poză diplomă / certificat</Label>
+        <Label htmlFor="certificate_image">Poză diplomă / certificat<Req /></Label>
         <input
           id="certificate_image"
           type="file"
@@ -136,7 +136,7 @@ export default function ResultSubmissionForm({ athleteId, athleteGender, onSubmi
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <Label>Competiție</Label>
+          <Label>Competiție<Req /></Label>
           <Select value={eventId} onValueChange={(value) => { setEventId(value); setCategoryId(''); }}>
             <SelectTrigger><SelectValue placeholder="Alege competiția" /></SelectTrigger>
             <SelectContent className="bg-white">
@@ -147,7 +147,7 @@ export default function ResultSubmissionForm({ athleteId, athleteGender, onSubmi
           </Select>
         </div>
         <div className="flex flex-col gap-1">
-          <Label>Categorie</Label>
+          <Label>Categorie<Req /></Label>
           <Select value={categoryId} onValueChange={setCategoryId} disabled={!eventId}>
             <SelectTrigger><SelectValue placeholder="Alege categoria" /></SelectTrigger>
             <SelectContent className="bg-white">
@@ -163,7 +163,7 @@ export default function ResultSubmissionForm({ athleteId, athleteGender, onSubmi
           </Select>
         </div>
         <div className="flex flex-col gap-1 sm:col-span-2">
-          <Label>Locul obținut</Label>
+          <Label>Locul obținut<Req /></Label>
           <Select value={placement} onValueChange={setPlacement}>
             <SelectTrigger><SelectValue placeholder="Alege locul" /></SelectTrigger>
             <SelectContent className="bg-white">

@@ -108,6 +108,13 @@ export function Label({ className, ...props }) {
   return <label className={cn('text-sm font-medium leading-none text-foreground', className)} {...props} />;
 }
 
+/** Marks a field's label as required - append right after the label text,
+ * e.g. `<Label>Nume<Req /></Label>`. Every required field across the site
+ * should use this so "required" always looks the same to the user. */
+export function Req() {
+  return <span className="text-destructive"> *</span>;
+}
+
 /**
  * shadcn/ui-style Select built on Radix - use for any dropdown that should
  * match the design system (e.g. gen, club) instead of a native <select>.

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth, athleteAPI, publicContentAPI, cityAPI } from '@shared';
 import {
-  Alert, Button, Input, Label, Skeleton,
+  Alert, Button, Input, Label, Req, Skeleton,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../components/ui';
 import SearchableSelect from '../components/SearchableSelect';
@@ -10,11 +10,6 @@ import Lightbox from '../components/Lightbox';
 import Seo from '../components/Seo';
 import { Sparkles, Upload } from 'lucide-react';
 import { displayToIso, formatIsoToDisplay, maskDateInput } from '../lib/dateFormat';
-
-/** Marks a field's label as required. */
-function Req() {
-  return <span className="text-destructive"> *</span>;
-}
 
 const ERROR_INPUT_CLASS = '!border-destructive focus-visible:!ring-destructive';
 

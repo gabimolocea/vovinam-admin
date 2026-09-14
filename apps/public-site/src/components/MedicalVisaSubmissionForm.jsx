@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { visaAPI } from '@shared';
-import { Alert, Button, Label } from './ui';
+import { Alert, Button, Label, Req } from './ui';
 import { Sparkles } from 'lucide-react';
 
 /** Athlete-facing "submit medical checkup proof" form, shown on the own
@@ -72,7 +72,7 @@ export default function MedicalVisaSubmissionForm({ onSubmitted, onCancel }) {
       {error && <Alert variant="destructive">{error}</Alert>}
 
       <div className="flex flex-col gap-1">
-        <Label htmlFor="visa_certificate_image">Poză legitimație / dovadă control medical</Label>
+        <Label htmlFor="visa_certificate_image">Poză legitimație / dovadă control medical<Req /></Label>
         <input
           id="visa_certificate_image"
           type="file"
@@ -96,7 +96,7 @@ export default function MedicalVisaSubmissionForm({ onSubmitted, onCancel }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <Label htmlFor="visa_issued_date">Data controlului medical</Label>
+        <Label htmlFor="visa_issued_date">Data controlului medical<Req /></Label>
         <input
           id="visa_issued_date"
           type="date"

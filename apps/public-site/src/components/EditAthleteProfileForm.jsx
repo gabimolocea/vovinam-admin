@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { athleteAPI, publicContentAPI, cityAPI } from '@shared';
 import {
-  Alert, Button, Checkbox, Input, Label,
+  Alert, Button, Checkbox, Input, Label, Req,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui';
 import SearchableSelect from './SearchableSelect';
@@ -82,15 +82,15 @@ export default function EditAthleteProfileForm({ athlete, onCancel, onSaved }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <Label htmlFor="edit_first_name">Prenume</Label>
+          <Label htmlFor="edit_first_name">Prenume<Req /></Label>
           <Input id="edit_first_name" required value={form.first_name} onChange={(e) => update('first_name', e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor="edit_last_name">Nume</Label>
+          <Label htmlFor="edit_last_name">Nume<Req /></Label>
           <Input id="edit_last_name" required value={form.last_name} onChange={(e) => update('last_name', e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor="edit_date_of_birth">Data nașterii</Label>
+          <Label htmlFor="edit_date_of_birth">Data nașterii<Req /></Label>
           <Input
             id="edit_date_of_birth"
             required

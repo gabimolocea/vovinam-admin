@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { eventAPI, seminarAPI } from '@shared';
 import {
-  Alert, Button, Label,
+  Alert, Button, Label, Req,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui';
 import { Sparkles } from 'lucide-react';
@@ -82,7 +82,7 @@ export default function SeminarSubmissionForm({ athleteId, onSubmitted, onCancel
       {error && <Alert variant="destructive">{error}</Alert>}
 
       <div className="flex flex-col gap-1">
-        <Label htmlFor="seminar_certificate_image">Poză certificat de participare</Label>
+        <Label htmlFor="seminar_certificate_image">Poză certificat de participare<Req /></Label>
         <input
           id="seminar_certificate_image"
           type="file"
@@ -106,7 +106,7 @@ export default function SeminarSubmissionForm({ athleteId, onSubmitted, onCancel
       </div>
 
       <div className="flex flex-col gap-1">
-        <Label>Seminar</Label>
+        <Label>Seminar<Req /></Label>
         <Select value={eventId} onValueChange={setEventId}>
           <SelectTrigger><SelectValue placeholder="Alege seminarul" /></SelectTrigger>
           <SelectContent className="bg-white">

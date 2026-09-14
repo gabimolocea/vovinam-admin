@@ -51,7 +51,7 @@ export default function HeroCarousel({ slides }) {
       aria-roledescription="carousel"
       aria-label="Noutăți evidențiate"
     >
-      <div className="relative h-[560px] w-full lg:h-[620px]">
+      <div className="relative h-[451px] w-full lg:h-[620px]">
         {slides.map((slide, i) => (
           <div
             key={slide.slug}
@@ -59,7 +59,12 @@ export default function HeroCarousel({ slides }) {
             style={{ opacity: i === index ? 1 : 0, pointerEvents: i === index ? 'auto' : 'none' }}
             aria-hidden={i !== index}
           >
-            <div className="site-hero-media absolute inset-0 overflow-hidden">
+            {/* Mobile/tablet: the photo only fills the top portion of the
+                slide (not the full height) so it visibly "sits above" the
+                title instead of the title floating over a full-bleed photo
+                - the scrim then blends its bottom edge into the navy panel
+                behind it. Desktop keeps the original full-bleed photo. */}
+            <div className="site-hero-media absolute inset-x-0 top-0 h-[52%] overflow-hidden lg:inset-0 lg:h-full">
               {slide.featured_image ? (
                 <>
                   {/* Mirrored, blurred backdrop (desktop only): fills the
@@ -78,7 +83,7 @@ export default function HeroCarousel({ slides }) {
                   <img
                     src={slide.featured_image}
                     alt={slide.featured_image_alt || ''}
-                    className="site-hero-photo relative h-full w-full object-cover lg:object-contain"
+                    className="site-hero-photo relative h-full w-full object-cover object-top lg:object-contain"
                     loading={i === 0 ? 'eager' : 'lazy'}
                   />
                 </>
@@ -88,7 +93,7 @@ export default function HeroCarousel({ slides }) {
               <div className="site-hero-scrim absolute inset-0" />
             </div>
 
-            <div className="relative mx-auto flex h-full w-full max-w-7xl flex-col justify-end gap-8 px-4 pb-32 sm:px-6 lg:pb-36">
+            <div className="relative mx-auto flex h-full w-full max-w-7xl flex-col justify-end gap-8 px-4 pb-[92px] sm:px-6 lg:pb-36">
               <div className="flex max-w-2xl flex-col items-start gap-3">
                 {primaryCategory(slide) && (
                   <span className="bg-secondary/60 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white">
