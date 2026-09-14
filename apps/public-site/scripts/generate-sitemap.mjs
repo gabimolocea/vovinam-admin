@@ -24,6 +24,9 @@ const STATIC_ROUTES = [
   '/arbitri',
   '/regulament',
   '/documente',
+  '/termeni-si-conditii',
+  '/confidentialitate',
+  '/gdpr',
 ];
 
 function urlEntry(loc, lastmod) {

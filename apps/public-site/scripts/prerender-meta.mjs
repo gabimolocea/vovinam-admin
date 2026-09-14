@@ -116,6 +116,9 @@ function buildStaticRoutes() {
     { path: '/arbitri', title: 'Arbitri', description: 'Arbitrii internaționali și naționali acreditați de Federația Română de Vovinam Việt Võ Đạo.' },
     { path: '/regulament', title: 'Regulament', description: 'Regulament - Federația Română de Vovinam Việt Võ Đạo.' },
     { path: '/documente', title: 'Documente', description: 'Documente - Federația Română de Vovinam Việt Võ Đạo.' },
+    { path: '/termeni-si-conditii', title: 'Termeni și Condiții', description: 'Termenii și condițiile de utilizare a platformei online a Federației Române de Vovinam Việt Võ Đạo.' },
+    { path: '/confidentialitate', title: 'Politica de Confidențialitate', description: 'Ce date personale colectează Federația Română de Vovinam Việt Võ Đạo, în ce scop și cum le poți controla.' },
+    { path: '/gdpr', title: 'GDPR', description: 'Informare GDPR: consimțământul dat la înregistrare, utilizarea imaginii la competiții, drepturile tale și cookie-urile folosite pe vovinam.ro.' },
   ];
 }
 

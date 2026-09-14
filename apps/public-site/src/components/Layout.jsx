@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Outlet, Link, NavLink } from 'react-router-dom';
+import { Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { ChevronRight, Menu, User, X } from 'lucide-react';
 import AccountNavItem from './AccountNavItem';
 import NotificationBell from './NotificationBell';
+import CookieConsentBanner from './CookieConsentBanner';
+import { trackPageview } from '../lib/analytics';
 
 const SOCIAL_LINKS = [
   { href: 'https://www.facebook.com/vovinam.romania/', label: 'Facebook', icon: '/footer-facebook.png' },
   { href: 'https://www.linkedin.com/company/vovinam-romania/', label: 'LinkedIn', icon: '/footer-linkedin.png' },
   { href: 'https://www.youtube.com/@Vovinam.Romania', label: 'YouTube', icon: '/footer-youtube.png' },
-];
-
-// Audience-facing pages the header surfaces separately from the main nav -
-// mirrors the "Resources for..." utility row on usavolleyball.org, using
-// only sections that actually exist on this site.
-const RESOURCE_LINKS = [
-  { to: '/staff', label: 'Antrenori' },
-  { to: '/sportivi', label: 'Sportivi' },
-  { to: '/arbitri', label: 'Arbitri' },
 ];
 
 // Full menu parity with the live vovinam.ro nav: Acasă / Noutăți / Evenimente
@@ -154,6 +147,15 @@ function MobileNavItem({ item, onNavigate }) {
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const headerRef = useRef(null);
+  const location = useLocation();
+
+  // Virtual pageview per route change (a no-op until GA has actually been
+  // loaded, i.e. the visitor accepted the cookie banner) - GA4's own
+  // automatic pageview only fires once on script load, which would miss
+  // every client-side route change in this SPA.
+  useEffect(() => {
+    trackPageview(location.pathname + location.search);
+  }, [location.pathname, location.search]);
 
   // Publishes the header's real rendered height as a CSS var so the
   // mobile drawer can start exactly below it (`top: var(--mobile-header-h)`)
@@ -201,13 +203,18 @@ export default function Layout() {
       >
         <div className="site-header-utility hidden lg:block">
           <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-1.5">
-            <div className="flex items-center gap-4">
-              <span className="site-utility-label">Resurse pentru:</span>
-              {RESOURCE_LINKS.map((link) => (
-                <Link key={link.to} to={link.to} className="site-utility-link">{link.label}</Link>
+            <div className="flex items-center gap-3">
+              <span className="site-utility-label">Urmărește-ne:</span>
+              {SOCIAL_LINKS.map((social) => (
+                <a key={social.label} href={social.href} aria-label={social.label} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                  <img src={social.icon} alt="" className="h-5 w-5" />
+                </a>
               ))}
             </div>
-            <AccountNavItem />
+            <div className="flex items-center gap-3">
+              <NotificationBell />
+              <AccountNavItem />
+            </div>
           </div>
         </div>
 
@@ -241,16 +248,21 @@ export default function Layout() {
               de Vovinam Viet-Vo-Dao
             </span>
           </Link>
-          <div className="flex shrink-0 items-center justify-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <NotificationBell />
-            <Link
-              to="/cont"
-              aria-label="Contul meu"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e9ecef] text-foreground"
-            >
-              <User className="h-5 w-5" aria-hidden="true" />
-            </Link>
           </div>
+          <NavLink
+            to="/cont"
+            aria-label="Contul meu"
+            onClick={() => setMobileOpen(false)}
+            className={({ isActive }) =>
+              `-mr-4 -my-2 flex w-14 shrink-0 self-stretch items-center justify-center ${
+                isActive ? 'site-mobile-toggle' : 'text-foreground'
+              }`
+            }
+          >
+            <User className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+          </NavLink>
         </div>
 
         <div className="mx-auto hidden w-full max-w-7xl items-center justify-between gap-3 px-4 py-2 lg:flex">
@@ -274,7 +286,6 @@ export default function Layout() {
             {NAV_LINKS.map((item) => (
               <DesktopNavItem key={item.label} item={item} />
             ))}
-            <NotificationBell />
           </nav>
         </div>
       </header>
@@ -298,18 +309,6 @@ export default function Layout() {
 
         <div className="site-mobile-secondary flex flex-col">
           <AccountNavItem mobile onNavigate={() => setMobileOpen(false)} />
-
-          <p className="site-mobile-section-label px-4 pt-6">Resurse pentru</p>
-          {RESOURCE_LINKS.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className="site-mobile-row px-4 py-4 text-base"
-              onClick={() => setMobileOpen(false)}
-            >
-              {link.label}
-            </Link>
-          ))}
 
           <p className="site-mobile-section-label px-4 pb-2 pt-6">Urmărește FRVV</p>
           <div className="flex gap-4 px-4 pb-8">
@@ -345,43 +344,28 @@ export default function Layout() {
         </div>
 
         <div className="pt-10 lg:pt-6">
-          <div className="site-footer-divider mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-8 lg:flex-row lg:items-start lg:justify-between">
-            <p className="max-w-lg text-sm leading-[1.3] text-white lg:max-w-md">
-              Folosirea fără acordul Federației Române de Vovinam Viet-Vo-Dao a denumirii integrale sau parțiale
-              „Vovinam”, „Viet-Vo-Dao” pe teritoriul României, atrage consecințele legale asupra autorilor.
-              Federația Română de Vovinam Viet-Vo-Dao este membră a Federației Europene de Vovinam
-              Viet-Vo-Dao(EVVF) și a Federației Mondiale de Vovinam Viet-Vo-Dao(WVVF), fiind unica entitate
-              recunoscută de către Ministerul Sportului pentru a reprezenta România la toate evenimentele
-              oficiale internaționale.{' '}
-              <a
-                href="/certificat-inregistrare-marca.jpg"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-secondary"
-              >
-                Certificat de înregistrare a mărcii.
-              </a>
-            </p>
-
-            <div className="flex flex-wrap gap-10 lg:flex-nowrap">
-              <div className="shrink-0">
-                <h3 className="site-footer-heading whitespace-nowrap">Urmărește-ne:</h3>
-                <div className="mt-4 flex gap-4">
-                  {SOCIAL_LINKS.map((social) => (
-                    <a key={social.label} href={social.href} aria-label={social.label} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                      <img src={social.icon} alt="" className="h-8 w-8" />
-                    </a>
-                  ))}
-                </div>
-              </div>
+          <div className="site-footer-divider mx-auto flex w-full max-w-7xl flex-col items-center gap-4 px-4 py-8">
+            <div className="flex gap-4">
+              {SOCIAL_LINKS.map((social) => (
+                <a key={social.label} href={social.href} aria-label={social.label} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                  <img src={social.icon} alt="" className="h-8 w-8" />
+                </a>
+              ))}
             </div>
           </div>
 
-          <p className="px-4 py-5 text-center text-sm text-white">
-            © {new Date().getFullYear()} Federația Română de Vovinam Viet-Vo-Dao. Toate drepturile rezervate.
-          </p>
+          <div className="flex flex-col items-center gap-2 px-4 py-5 text-center text-sm text-white">
+            <p>© {new Date().getFullYear()} Federația Română de Vovinam Viet-Vo-Dao. Toate drepturile rezervate.</p>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-white/70">
+              <Link to="/termeni-si-conditii" className="hover:text-white hover:underline">Termeni și Condiții</Link>
+              <Link to="/confidentialitate" className="hover:text-white hover:underline">Politica de Confidențialitate</Link>
+              <Link to="/gdpr" className="hover:text-white hover:underline">GDPR</Link>
+            </div>
+          </div>
         </div>
       </footer>
+
+      <CookieConsentBanner />
     </div>
   );
 }

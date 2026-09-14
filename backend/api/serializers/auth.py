@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.db.models import Q
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 import re
 from ..models import *
 from landing.models import Event
@@ -67,10 +68,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     unique username but the public-facing forms no longer ask for one.
     """
     password_confirm = serializers.CharField(write_only=True)
+    terms_accepted = serializers.BooleanField(write_only=True)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'password_confirm']
+        fields = ['email', 'password', 'password_confirm', 'terms_accepted']
         extra_kwargs = {
             'password': {'write_only': True},
         }
@@ -78,6 +80,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError('Există deja un cont cu acest email.')
+        return value
+
+    def validate_terms_accepted(self, value):
+        if not value:
+            raise serializers.ValidationError('Trebuie să accepți Termenii și Condițiile, Politica de Confidențialitate și GDPR.')
         return value
 
     def validate(self, attrs):
@@ -97,6 +104,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
+        validated_data.pop('terms_accepted', None)
         password = validated_data.pop('password')
         email = validated_data['email']
         user = User.objects.create_user(
@@ -106,6 +114,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             first_name='',
             last_name='',
             role='user',
+            terms_accepted_at=timezone.now(),
         )
         from ..notification_utils import notify_welcome_email
         notify_welcome_email(user)

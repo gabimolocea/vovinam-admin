@@ -292,18 +292,24 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
 
   if (noProfile) {
     return (
-      <Alert variant="info">
-        <p>Nu ai încă un profil de sportiv completat.</p>
-        <p className="mt-1">
-          Completează <Link to="/onboarding/sportiv" className="font-medium underline">pasul de înregistrare a profilului</Link> - după trimitere,
-          profilul va fi vizibil public abia după ce este aprobat de un administrator.
-        </p>
-      </Alert>
+      <div className="pt-6 sm:pt-10">
+        <Alert variant="info">
+          <p>Nu ai încă un profil de sportiv completat.</p>
+          <p className="mt-1">
+            Completează <Link to="/onboarding/sportiv" className="font-medium underline">pasul de înregistrare a profilului</Link> - după trimitere,
+            profilul va fi vizibil public abia după ce este aprobat de un administrator.
+          </p>
+        </Alert>
+      </div>
     );
   }
 
   if (error || !athlete) {
-    return <Alert variant="destructive">{error || 'Sportiv negăsit.'}</Alert>;
+    return (
+      <div className="pt-6 sm:pt-10">
+        <Alert variant="destructive">{error || 'Sportiv negăsit.'}</Alert>
+      </div>
+    );
   }
 
   const medals = athlete.medals || { gold: 0, silver: 0, bronze: 0 };

@@ -45,11 +45,12 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const register = async ({ email, password, passwordConfirm }) => {
+  const register = async ({ email, password, passwordConfirm, termsAccepted }) => {
     const { data } = await authAPI.register({
       email,
       password,
       password_confirm: passwordConfirm ?? password,
+      terms_accepted: !!termsAccepted,
     });
     const access = data.tokens?.access || data.access;
     const refresh = data.tokens?.refresh || data.refresh;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, onboardingAPI } from '@shared';
 import { Alert, Button } from '../components/ui';
 import Seo from '../components/Seo';
@@ -17,6 +17,7 @@ function RegisterForm() {
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -28,10 +29,14 @@ function RegisterForm() {
       setError('Parolele nu coincid.');
       return;
     }
+    if (!termsAccepted) {
+      setError('Trebuie să accepți Termenii și Condițiile, Politica de Confidențialitate și GDPR pentru a-ți crea un cont.');
+      return;
+    }
 
     setBusy(true);
     try {
-      await register({ email, password, passwordConfirm });
+      await register({ email, password, passwordConfirm, termsAccepted });
       await onboardingAPI.setRole(accountType);
       await refetchUser();
       navigate(accountType === 'athlete' ? '/onboarding/sportiv' : '/cont', { replace: true });
@@ -130,6 +135,28 @@ function RegisterForm() {
             {showPasswordConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+      </label>
+
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          required
+          checked={termsAccepted}
+          onChange={(e) => setTermsAccepted(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-[#0a4c75]"
+        />
+        <span>
+          Sunt de acord cu{' '}
+          <Link to="/termeni-si-conditii" target="_blank" rel="noopener noreferrer" className="font-medium text-brand-red underline">
+            Termenii și Condițiile
+          </Link>
+          , <Link to="/confidentialitate" target="_blank" rel="noopener noreferrer" className="font-medium text-brand-red underline">
+            Politica de Confidențialitate
+          </Link>{' '}
+          și <Link to="/gdpr" target="_blank" rel="noopener noreferrer" className="font-medium text-brand-red underline">
+            informarea GDPR
+          </Link>.
+        </span>
       </label>
 
       <Button

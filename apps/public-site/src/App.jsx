@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
 import HomePage from './pages/HomePage';
 import NewsListPage from './pages/NewsListPage';
@@ -20,6 +20,10 @@ import AccountPage from './pages/AccountPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import AthleteOnboardingPage from './pages/AthleteOnboardingPage';
 import ApprovalsPage from './pages/ApprovalsPage';
+import TermsPage from './pages/TermsPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import GdprPage from './pages/GdprPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
   return (
@@ -52,7 +56,27 @@ export default function App() {
         <Route path="cont/profil" element={<AthleteDetailPage ownProfile />} />
         <Route path="onboarding/sportiv" element={<AthleteOnboardingPage />} />
         <Route path="cont/aprobari" element={<ApprovalsPage />} />
+        <Route path="termeni-si-conditii" element={<TermsPage />} />
+        <Route path="confidentialitate" element={<PrivacyPolicyPage />} />
+        <Route path="gdpr" element={<GdprPage />} />
+
+        {/* Old/retired paths (WordPress-era or since-renamed) still indexed
+            by Google - redirect to their current equivalent instead of
+            falling through to the 404 below. */}
+        <Route path="competitii" element={<Navigate to="/calendar" replace />} />
+        <Route path="competitii/:slug" element={<CompetitiiSlugRedirect />} />
+        <Route path="contact" element={<Navigate to="/despre" replace />} />
+
+        {/* Catch-all: without this, an unmatched path renders nothing at
+            all (a blank white page), since this layout route only renders
+            when one of its children matches. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
+}
+
+function CompetitiiSlugRedirect() {
+  const { slug } = useParams();
+  return <Navigate to={`/calendar/${slug}`} replace />;
 }

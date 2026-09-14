@@ -264,8 +264,9 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Athlete
         fields = [
-            'id', 'user', 'first_name', 'last_name', 'gender', 'is_licensed', 'license_series', 'license_image',
-            'license_request_document', 'cnp', 'date_of_birth',
+            'id', 'user', 'first_name', 'last_name', 'gender', 'is_licensed', 'license_series', 'license_number',
+            'registered_date', 'expiration_date', 'license_image',
+            'license_request_document', 'cnp', 'nationality', 'date_of_birth',
             'address', 'mobile_number', 'club', 'city', 'previous_experience', 'is_coach', 'is_instructor', 'is_referee',
             'emergency_contact_name', 'emergency_contact_phone', 'status',
             'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes',

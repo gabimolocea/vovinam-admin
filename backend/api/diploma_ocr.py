@@ -69,14 +69,18 @@ LICENSE_EXTRACTION_PROMPT = """Această imagine este o legitimație de sportiv d
 folosit pentru completarea acesteia). Extrage următoarele informații și răspunde STRICT cu un obiect JSON valid, \
 fără alt text, cu exact aceste chei:
 {
-  "first_name": string sau null (prenumele sportivului),
-  "last_name": string sau null (numele de familie al sportivului),
-  "date_of_birth": string sau null (data nașterii, așa cum apare pe imagine),
-  "gender": string sau null ("male" sau "female", dedus din prenume/CNP dacă nu apare explicit),
+  "first_name": string sau null (prenumele sportivului, câmpul "Prenume"/"First name"),
+  "last_name": string sau null (numele de familie al sportivului, câmpul "Nume"/"Name"),
+  "date_of_birth": string sau null (data nașterii, câmpul "Data nașterii"/"Birth date"),
+  "gender": string sau null ("male" sau "female", dedus din prenume/CNP/fotografie dacă nu apare explicit),
   "cnp": string sau null (codul numeric personal, 13 cifre, dacă apare),
+  "nationality": string sau null (naționalitatea, câmpul "Naționalitatea"/"Nationality"),
   "club_name": string sau null (numele clubului sportiv, dacă apare),
-  "license_series": string sau null (seria/numărul legitimației, dacă apare),
-  "city_name": string sau null (localitatea de domiciliu, dacă apare)
+  "license_series": string sau null (doar litera/seria legitimației, câmpul "Seria ... nr. ..."/"Series ... no. ..." - de exemplu "A"),
+  "license_number": string sau null (doar numărul legitimației, din același câmp "Seria ... nr. ..." - de exemplu "1083"),
+  "license_issued_date": string sau null (data eliberării legitimației, câmpul "Eliberată la data de"/"Delivered at"),
+  "license_expiry_date": string sau null (data expirării legitimației, câmpul "Expiră la data de"/"Expiring date"),
+  "city_name": string sau null (localitatea de domiciliu, câmpul "Adresa"/"Address" - de obicei doar numele orașului, fără restul adresei)
 }
 Dacă un câmp nu apare clar pe imagine, folosește null pentru acel câmp."""
 
@@ -313,8 +317,12 @@ def extract_license_card_fields(image_file):
             'date_of_birth': parsed.get('date_of_birth'),
             'gender': parsed.get('gender'),
             'cnp': parsed.get('cnp'),
+            'nationality': parsed.get('nationality'),
             'club_name': parsed.get('club_name'),
             'license_series': parsed.get('license_series'),
+            'license_number': parsed.get('license_number'),
+            'license_issued_date': parsed.get('license_issued_date'),
+            'license_expiry_date': parsed.get('license_expiry_date'),
             'city_name': raw_city,
         },
         'suggested': {
@@ -323,9 +331,13 @@ def extract_license_card_fields(image_file):
             'date_of_birth': normalize_date(parsed.get('date_of_birth')),
             'gender': normalize_gender(parsed.get('gender')),
             'cnp': cnp,
+            'nationality': parsed.get('nationality'),
             'club_id': club_id,
             'club_name': club_name,
             'license_series': parsed.get('license_series'),
+            'license_number': parsed.get('license_number'),
+            'license_issued_date': normalize_date(parsed.get('license_issued_date')),
+            'license_expiry_date': normalize_date(parsed.get('license_expiry_date')),
             'city_id': city_id,
             'city_name': city_name,
         },

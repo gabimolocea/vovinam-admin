@@ -123,13 +123,14 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ('role', 'is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('email', 'first_name', 'last_name', 'username')
     ordering = ('-date_joined',)
-    
+    readonly_fields = ('last_login', 'date_joined', 'terms_accepted_at')
+
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         ('Date personale', {'fields': ('first_name', 'last_name', 'email')}),
         ('Rol și permisiuni', {'fields': ('role', 'is_active', 'is_staff', 'is_superuser')}),
         ('Grupuri și permisiuni', {'fields': ('groups', 'user_permissions')}),
-        ('Date importante', {'fields': ('last_login', 'date_joined')}),
+        ('Date importante', {'fields': ('last_login', 'date_joined', 'terms_accepted_at')}),
     )
     
     add_fieldsets = (

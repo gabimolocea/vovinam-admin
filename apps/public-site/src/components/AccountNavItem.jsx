@@ -75,7 +75,11 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
         </>
       );
     }
-    return null;
+    return (
+      <Link to="/cont" className="site-mobile-row block px-4 py-4 text-base" onClick={onNavigate}>
+        Autentificare / Înregistrare
+      </Link>
+    );
   }
 
   if (isAuthenticated) {
@@ -124,7 +128,7 @@ export default function AccountNavItem({ mobile = false, onNavigate }) {
 
   return (
     <Link to="/cont" className="site-utility-link inline-flex items-center gap-1.5">
-      <User className="h-3.5 w-3.5" />
+      <User className="h-3.5 w-3.5" fill="currentColor" />
       Contul meu
     </Link>
   );

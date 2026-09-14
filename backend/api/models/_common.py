@@ -39,6 +39,12 @@ class User(AbstractUser):
     date_of_birth = models.DateField(_('Data nașterii'), blank=True, null=True)
     # City removed - use athlete.city instead
     profile_completed = models.BooleanField(_('Profil completat'), default=False)
+
+    # Timestamped proof of consent to the Terms & Conditions / Privacy
+    # Policy / GDPR notice at registration (required - GDPR art. 7(1) puts
+    # the burden of demonstrating consent on the controller, so recording
+    # *when* it was given matters, not just that a checkbox exists).
+    terms_accepted_at = models.DateTimeField(_('Data acceptării termenilor'), blank=True, null=True)
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
@@ -338,9 +344,11 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     gender = models.CharField(_('Gen'), max_length=20, choices=GENDER_CHOICES, blank=True, null=True)
     is_licensed = models.BooleanField(_('Sportiv legitimat'), default=True)
     license_series = models.CharField(_('Serie legitimație'), max_length=50, blank=True, null=True)
+    license_number = models.CharField(_('Număr legitimație'), max_length=50, blank=True, null=True)
     license_image = models.ImageField(_('Poză legitimație'), upload_to='license_images/', blank=True, null=True)
     license_request_document = models.FileField(_('Cerere de legitimare'), upload_to='license_requests/', blank=True, null=True)
     cnp = models.CharField(_('CNP'), max_length=13, blank=True, null=True)
+    nationality = models.CharField(_('Naționalitate'), max_length=100, blank=True, null=True, default='Română')
     date_of_birth = models.DateField(_('Data nașterii'), blank=True, null=True)
     team_place = models.CharField(_('Loc obținut cu echipa'), max_length=50, blank=True, null=True)  # Place awarded to the athlete in a team competition
     address = models.TextField(_('Adresă'), blank=True, null=True)
