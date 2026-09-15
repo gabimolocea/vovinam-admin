@@ -452,12 +452,27 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
           <div className="flex w-full flex-col items-center gap-2 lg:w-auto lg:flex-row lg:gap-3">
             <div className="relative aspect-[3/2] w-40 shrink-0 bg-white/10 sm:w-52 lg:w-40">
               {isPhotoPending && athlete.pending_profile_image ? (
-                <img
-                  src={athlete.pending_profile_image}
-                  alt={athlete.full_name}
-                  title="Poză în așteptarea aprobării"
-                  className="h-full w-full rounded-lg object-cover opacity-50 grayscale"
-                />
+                canReview ? (
+                  // A reviewer needs to actually see the submitted photo
+                  // clearly to judge it, not the dimmed/grayscale "not
+                  // public yet" treatment shown to the athlete themself -
+                  // linked out to the full-size image too, since this
+                  // thumbnail is small.
+                  <a href={athlete.pending_profile_image} target="_blank" rel="noopener noreferrer" title="Vezi poza la dimensiune completă">
+                    <img
+                      src={athlete.pending_profile_image}
+                      alt={athlete.full_name}
+                      className="h-full w-full rounded-lg object-cover"
+                    />
+                  </a>
+                ) : (
+                  <img
+                    src={athlete.pending_profile_image}
+                    alt={athlete.full_name}
+                    title="Poză în așteptarea aprobării"
+                    className="h-full w-full rounded-lg object-cover opacity-50 grayscale"
+                  />
+                )
               ) : athlete.profile_image ? (
                 <img src={athlete.profile_image} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
               ) : (
