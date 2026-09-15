@@ -422,6 +422,16 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         _('Nivel arbitraj'), max_length=20, choices=REFEREE_LEVEL_CHOICES, blank=True, null=True,
         help_text=_('Folosit pentru gruparea pe pagina publică Arbitri (internaționali/naționali).')
     )
+    REFEREE_CATEGORY_CHOICES = [
+        ('A', 'Categoria A'),
+        ('B', 'Categoria B'),
+        ('C', 'Categoria C'),
+        ('stagiar', 'Stagiar'),
+    ]
+    referee_category = models.CharField(
+        _('Categorie arbitru'), max_length=20, choices=REFEREE_CATEGORY_CHOICES, blank=True, null=True,
+        help_text=_('Doar pentru arbitri naționali (Categoria A/B/C sau Stagiar).')
+    )
 
     # Medals won at competitions the federation doesn't organize/score in-app
     # (European and World championships), entered manually by an admin -
@@ -650,6 +660,10 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         self.profile_image_admin_notes = notes
         self.save()
         return self
+
+    def clean(self):
+        if self.is_coach and self.is_instructor:
+            raise ValidationError(_('Un sportiv nu poate fi simultan antrenor și instructor.'))
 
     def __str__(self):
         club_name = f", {self.club.name}" if self.club else ""

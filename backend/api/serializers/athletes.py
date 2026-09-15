@@ -318,6 +318,13 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
         
         return representation
 
+    def validate(self, attrs):
+        is_coach = attrs.get('is_coach', getattr(self.instance, 'is_coach', False))
+        is_instructor = attrs.get('is_instructor', getattr(self.instance, 'is_instructor', False))
+        if is_coach and is_instructor:
+            raise serializers.ValidationError('Un sportiv nu poate fi simultan antrenor și instructor.')
+        return attrs
+
     def create(self, validated_data):
         """Auto-assign current user to the profile and set status to pending"""
         validated_data['user'] = self.context['request'].user

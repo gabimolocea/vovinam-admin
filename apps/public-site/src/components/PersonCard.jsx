@@ -49,6 +49,11 @@ export default function PersonCard({ person }) {
             {person.federation_role}
           </span>
         )}
+        {person.referee_category && (
+          <span className="text-xs font-bold uppercase tracking-wide text-brand-red">
+            {person.referee_category}
+          </span>
+        )}
         {person.title && (
           <span className="flex items-start gap-1 text-sm font-medium italic text-[#00334d]/70">
             <Award className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#edb654]" />

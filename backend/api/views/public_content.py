@@ -257,10 +257,11 @@ class PublicRefereeSerializer(serializers.ModelSerializer):
     title = serializers.CharField(source='title.name', read_only=True, default='')
     grade = serializers.CharField(source='current_grade.name', read_only=True, default='')
     club = serializers.SerializerMethodField()
+    referee_category = serializers.CharField(source='get_referee_category_display', read_only=True, default='')
 
     class Meta:
         model = Athlete
-        fields = ['id', 'full_name', 'title', 'grade', 'club', 'profile_image']
+        fields = ['id', 'full_name', 'title', 'grade', 'club', 'profile_image', 'referee_category']
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
@@ -586,26 +587,39 @@ _MASTERS_ORDER = [
     ('Sinodor', 'Socea'),
     ('Răzvan', 'Niculescu'),
 ]
-_REFEREE_INTERNATIONAL_ORDER = [
-    ('Florin', 'Macovei'),
-    ('Angel', 'Mititelu'),
-    ('Răzvan', 'Rusov'),
-    ('Vasile', 'Ichim'),
-    ('Geluța', 'Ciobotaru'),
-    ('Lăcrămioara', 'Ciobotaru'),
-    ('Adrian', 'Teleman'),
-    ('Sinodor', 'Socea'),
-]
-_REFEREE_NATIONAL_ORDER = [
-    ('Răzvan', 'Niculescu'),
-    ('Gabriel', 'Molocea'),
-    ('Gabriel', 'Popilciuc'),
-    ('George', 'Prisacariu'),
-    ('Robert', 'Tomulescu'),
-    ('Marian', 'Hriban'),
-    ('Ștefan', 'Zaharescu'),
-    ('Vlăduț', 'Băcanu'),
-]
+def _leadership_priority(federation_role):
+    """The federation's top 3 leadership positions outrank grade entirely
+    (e.g. the head of the refereeing commission may hold a lower belt rank
+    than the referees they lead) - everyone else, including other
+    federation_role holders like "Membru", sorts by grade as normal."""
+    if not federation_role:
+        return None
+    name = federation_role.name.strip().lower()
+    if name.startswith('președinte'):
+        return 0
+    if name.startswith('vicepreședinte'):
+        return 1
+    if 'șef comisie' in name:
+        return 2
+    return None
+
+
+def _by_grade_then_name(queryset):
+    """Sort athletes by leadership position (see _leadership_priority),
+    then grade rank (highest first, ungraded last), then by name - used
+    for the referee directory instead of a curated name list, so a newly
+    flagged referee shows up automatically without anyone having to add
+    them to a hardcoded order."""
+    def sort_key(athlete):
+        leadership = _leadership_priority(athlete.federation_role)
+        rank = athlete.current_grade.rank_order if athlete.current_grade else None
+        return (
+            leadership if leadership is not None else 99,
+            -rank if rank is not None else float('inf'),
+            athlete.last_name,
+            athlete.first_name,
+        )
+    return sorted(queryset, key=sort_key)
 
 
 def _in_curated_order(queryset, order_pairs):
@@ -639,14 +653,16 @@ class PublicStaffViewSet(viewsets.ViewSet):
 class PublicRefereeViewSet(viewsets.ViewSet):
     """GET /api/public/referees/ - federation referee directory
     ('Arbitri' nav item). Groups approved athletes flagged is_referee=True
-    into 'international' and 'national', mirroring the two sections on the
-    live vovinam.ro Arbitri page."""
+    into 'international' and 'national' (by `referee_level`), sorted by
+    grade rank - any athlete an admin marks as a referee (and classifies
+    as international/national in Django admin) appears here automatically,
+    no manual list to maintain."""
     permission_classes = [AllowAny]
 
     def list(self, request):
-        base = Athlete.objects.filter(status='approved', is_referee=True).select_related('title', 'club')
-        international = _in_curated_order(base.filter(referee_level='international'), _REFEREE_INTERNATIONAL_ORDER)
-        national = _in_curated_order(base.filter(referee_level='national'), _REFEREE_NATIONAL_ORDER)
+        base = Athlete.objects.filter(status='approved', is_referee=True).select_related('title', 'club', 'current_grade', 'federation_role')
+        international = _by_grade_then_name(base.filter(referee_level='international'))
+        national = _by_grade_then_name(base.filter(referee_level='national'))
         return Response({
             'international': PublicRefereeSerializer(international, many=True, context={'request': request}).data,
             'national': PublicRefereeSerializer(national, many=True, context={'request': request}).data,

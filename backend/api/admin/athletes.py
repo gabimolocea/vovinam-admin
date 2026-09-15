@@ -85,9 +85,9 @@ class AthleteAdmin(admin.ModelAdmin):
     form = AthleteAdminForm
     change_form_template = 'admin/api/athlete/change_form.html'
     list_display = [
-        'full_name_link', 'status', 'is_referee', 'is_coach'
+        'full_name_link', 'status', 'is_referee', 'referee_level', 'is_coach', 'is_instructor'
     ]
-    list_filter = ['status', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
+    list_filter = ['status', 'is_coach', 'is_instructor', 'is_referee', 'referee_level', 'referee_category', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
     search_fields = ['first_name', 'last_name', 'license_series', 'cnp', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
     readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'license_image_preview']
@@ -110,7 +110,11 @@ class AthleteAdmin(admin.ModelAdmin):
             'fields': ('is_licensed', 'license_series', 'license_number', 'license_image_preview', 'license_request_document'),
         }),
         ('Informații sportive și club', {
-            'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_referee')
+            'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_instructor', 'is_referee')
+        }),
+        ('Arbitraj', {
+            'description': 'Doar pentru sportivii bifați ca arbitru mai sus. Categoria se aplică doar arbitrilor naționali.',
+            'fields': ('referee_level', 'referee_category'),
         }),
         ('Contact de urgență', {
             'fields': ('emergency_contact_name', 'emergency_contact_phone')

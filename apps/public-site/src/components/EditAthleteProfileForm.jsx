@@ -144,12 +144,20 @@ export default function EditAthleteProfileForm({ athlete, onCancel, onSaved }) {
       </div>
 
       <div className="flex flex-col gap-2">
+        {/* Antrenor/Instructor sunt reciproc exclusive - bifarea unuia îl
+            debifează pe celălalt, în loc de două checkbox-uri independente. */}
         <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={form.is_coach} onCheckedChange={(checked) => update('is_coach', checked === true)} />
+          <Checkbox
+            checked={form.is_coach}
+            onCheckedChange={(checked) => setForm((f) => ({ ...f, is_coach: checked === true, is_instructor: checked === true ? false : f.is_instructor }))}
+          />
           <span>Sunt Antrenor</span>
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={form.is_instructor} onCheckedChange={(checked) => update('is_instructor', checked === true)} />
+          <Checkbox
+            checked={form.is_instructor}
+            onCheckedChange={(checked) => setForm((f) => ({ ...f, is_instructor: checked === true, is_coach: checked === true ? false : f.is_coach }))}
+          />
           <span>Sunt Instructor</span>
         </label>
         <label className="flex items-center gap-2 text-sm">
