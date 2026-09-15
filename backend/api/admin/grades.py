@@ -92,11 +92,13 @@ class GradeAdmin(admin.ModelAdmin):
 # Updated GradeHistoryAdmin
 @admin.register(GradeHistory)
 class GradeHistoryAdmin(admin.ModelAdmin):
-    list_display = ('athlete', 'grade', 'level', 'event', 'obtained_date')
+    list_display = ('athlete', 'grade', 'level', 'event', 'obtained_date', 'status', 'submitted_by_athlete')
     search_fields = ('athlete__first_name', 'athlete__last_name', 'grade__name', 'level')
-    list_filter = ('level', 'event', 'obtained_date')
+    list_filter = ('status', 'submitted_by_athlete', 'level', 'event', 'obtained_date')
     # Use Django admin autocomplete for examiner fields and restrict choices to coaches
     autocomplete_fields = ('examiner_1', 'examiner_2')
+    readonly_fields = ('certificate_image_preview',)
+    actions = ['approve_pending', 'reject_pending']
 
     # Use the custom form to show friendly validation messages in the admin
     form = GradeHistoryAdminForm
@@ -118,6 +120,43 @@ class GradeHistoryAdmin(admin.ModelAdmin):
             initial['athlete'] = athlete_id
         return initial
 
-    # Do not use readonly_fields here to allow editing in the standalone GradeHistory admin panel
+    def certificate_image_preview(self, obj):
+        try:
+            if obj.certificate_image and hasattr(obj.certificate_image, 'url'):
+                return format_html(
+                    '<a href="{0}" target="_blank" rel="noopener noreferrer">'
+                    '<img src="{0}" style="max-width:360px; max-height:360px; object-fit:contain; '
+                    'border:1px solid #ccc; border-radius:4px;" />'
+                    '</a>',
+                    obj.certificate_image.url
+                )
+        except Exception:
+            pass
+        return _('Nu a fost trimisă o poză a certificatului.')
+    certificate_image_preview.short_description = _('Poză certificat')
+
+    def approve_pending(self, request, queryset):
+        count = 0
+        for obj in queryset.filter(status='pending'):
+            obj.approve(request.user)
+            count += 1
+        if count:
+            self.message_user(request, f'{count} examen(e) de grad aprobat(e).', level=messages.SUCCESS)
+        else:
+            self.message_user(request, 'Nicio înregistrare selectată nu este în așteptare.', level=messages.WARNING)
+    approve_pending.short_description = _('Aprobă examenele de grad în așteptare (pentru selecție)')
+
+    def reject_pending(self, request, queryset):
+        count = 0
+        for obj in queryset.filter(status='pending'):
+            obj.reject(request.user, 'Examenul de grad nu a fost aprobat.')
+            count += 1
+        if count:
+            self.message_user(request, f'{count} examen(e) de grad respins(e).', level=messages.SUCCESS)
+        else:
+            self.message_user(request, 'Nicio înregistrare selectată nu este în așteptare.', level=messages.WARNING)
+    reject_pending.short_description = _('Respinge examenele de grad în așteptare (pentru selecție)')
+
+    # Do not use readonly_fields beyond the preview above, to allow editing in the standalone GradeHistory admin panel
 
 # Register Title model

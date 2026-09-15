@@ -523,3 +523,53 @@ class CategoryTeamAdmin(admin.ModelAdmin):
         return '-'
     total_score_display.short_description = 'Scor total'
 
+
+@admin.register(CategoryAthleteScore)
+class CategoryAthleteScoreAdmin(admin.ModelAdmin):
+    """Athlete-submitted competition results awaiting approval - there was
+    previously no standalone admin page for this model at all, so a
+    self-reported result had no admin-side review surface."""
+    list_display = ('athlete', 'category', 'type', 'placement_claimed', 'status', 'submitted_by_athlete', 'submitted_date')
+    list_filter = ('status', 'submitted_by_athlete', 'type', 'placement_claimed')
+    search_fields = ('athlete__first_name', 'athlete__last_name', 'team_name', 'category__name', 'category__event__title')
+    autocomplete_fields = ('category', 'athlete', 'referee')
+    readonly_fields = ('certificate_image_preview',)
+    actions = ['approve_pending', 'reject_pending']
+
+    def certificate_image_preview(self, obj):
+        try:
+            if obj.certificate_image and hasattr(obj.certificate_image, 'url'):
+                return format_html(
+                    '<a href="{0}" target="_blank" rel="noopener noreferrer">'
+                    '<img src="{0}" style="max-width:360px; max-height:360px; object-fit:contain; '
+                    'border:1px solid #ccc; border-radius:4px;" />'
+                    '</a>',
+                    obj.certificate_image.url
+                )
+        except Exception:
+            pass
+        return _('Nu a fost trimisă o poză a certificatului.')
+    certificate_image_preview.short_description = _('Poză certificat')
+
+    def approve_pending(self, request, queryset):
+        count = 0
+        for obj in queryset.filter(status='pending'):
+            obj.approve(request.user)
+            count += 1
+        if count:
+            self.message_user(request, f'{count} rezultat(e) aprobat(e).', level=messages.SUCCESS)
+        else:
+            self.message_user(request, 'Niciun rezultat selectat nu este în așteptare.', level=messages.WARNING)
+    approve_pending.short_description = _('Aprobă rezultatele în așteptare (pentru selecție)')
+
+    def reject_pending(self, request, queryset):
+        count = 0
+        for obj in queryset.filter(status='pending'):
+            obj.reject(request.user, 'Rezultatul nu a fost aprobat.')
+            count += 1
+        if count:
+            self.message_user(request, f'{count} rezultat(e) respins(e).', level=messages.SUCCESS)
+        else:
+            self.message_user(request, 'Niciun rezultat selectat nu este în așteptare.', level=messages.WARNING)
+    reject_pending.short_description = _('Respinge rezultatele în așteptare (pentru selecție)')
+

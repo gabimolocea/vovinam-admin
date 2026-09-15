@@ -85,13 +85,14 @@ class AthleteAdmin(admin.ModelAdmin):
     form = AthleteAdminForm
     change_form_template = 'admin/api/athlete/change_form.html'
     list_display = [
-        'full_name_link', 'status', 'is_referee', 'referee_level', 'is_coach', 'is_instructor'
+        'full_name_link', 'status', 'pending_photo_indicator', 'is_referee', 'referee_level', 'is_coach', 'is_instructor'
     ]
-    list_filter = ['status', 'is_coach', 'is_instructor', 'is_referee', 'referee_level', 'referee_category', 'submitted_date', 'reviewed_date']
+    list_filter = ['status', 'profile_image_status', 'is_coach', 'is_instructor', 'is_referee', 'referee_level', 'referee_category', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
     search_fields = ['first_name', 'last_name', 'license_series', 'cnp', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
-    readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'license_image_preview']
+    readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'license_image_preview', 'pending_profile_image_preview']
     ordering = ['-submitted_date']
+    actions = ['approve_pending_photos', 'reject_pending_photos']
     inlines = [
         GradeHistoryInline,
     VisaInline,
@@ -108,6 +109,14 @@ class AthleteAdmin(admin.ModelAdmin):
         ('Legitimație', {
             'description': 'Verifică poza legitimației trimise de sportiv înainte de a aproba profilul.',
             'fields': ('is_licensed', 'license_series', 'license_number', 'license_image_preview', 'license_request_document'),
+        }),
+        ('Poză de profil în așteptare', {
+            'description': (
+                'Cât timp sportivul are un profil deja aprobat, o poză de profil nouă nu înlocuiește '
+                'poza curentă direct - stă aici "în așteptare" până e aprobată sau respinsă (din listă, '
+                'cu acțiunile de mai jos, sau din pagina Aprobări a site-ului).'
+            ),
+            'fields': ('profile_image_status', 'pending_profile_image_preview', 'profile_image_admin_notes'),
         }),
         ('Informații sportive și club', {
             'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_instructor', 'is_referee')
@@ -195,6 +204,60 @@ class AthleteAdmin(admin.ModelAdmin):
             pass
         return _('Sportivul nu a încărcat încă o poză a legitimației.')
     license_image_preview.short_description = _('Poză legitimație')
+
+    def pending_profile_image_preview(self, obj):
+        try:
+            if obj.pending_profile_image and hasattr(obj.pending_profile_image, 'url'):
+                return format_html(
+                    '<a href="{0}" target="_blank" rel="noopener noreferrer">'
+                    '<img src="{0}" style="max-width:200px; max-height:200px; object-fit:cover; '
+                    'border:1px solid #ccc; border-radius:50%;" />'
+                    '</a>',
+                    obj.pending_profile_image.url
+                )
+        except Exception:
+            pass
+        return _('Nu există o poză de profil în așteptare.')
+    pending_profile_image_preview.short_description = _('Poză nouă (în așteptare)')
+
+    def pending_photo_indicator(self, obj):
+        if obj.profile_image_status == 'pending':
+            return mark_safe('<span style="color:#b45309; font-weight:600;">● În așteptare</span>')
+        return '—'
+    pending_photo_indicator.short_description = _('Poză profil')
+    pending_photo_indicator.admin_order_field = 'profile_image_status'
+
+    def approve_pending_photos(self, request, queryset):
+        from ..notification_utils import notify_profile_image_reviewed
+        count = 0
+        for athlete in queryset.filter(profile_image_status='pending'):
+            athlete.approve_profile_image(request.user)
+            try:
+                notify_profile_image_reviewed(athlete, approved=True)
+            except Exception:
+                pass
+            count += 1
+        if count:
+            self.message_user(request, f'{count} poză(e) de profil aprobată(e).', level=messages.SUCCESS)
+        else:
+            self.message_user(request, 'Niciun sportiv selectat nu are o poză de profil în așteptare.', level=messages.WARNING)
+    approve_pending_photos.short_description = _('Aprobă poza de profil în așteptare (pentru selecție)')
+
+    def reject_pending_photos(self, request, queryset):
+        from ..notification_utils import notify_profile_image_reviewed
+        count = 0
+        for athlete in queryset.filter(profile_image_status='pending'):
+            athlete.reject_profile_image(request.user, 'Poza nu a fost aprobată.')
+            try:
+                notify_profile_image_reviewed(athlete, approved=False)
+            except Exception:
+                pass
+            count += 1
+        if count:
+            self.message_user(request, f'{count} poză(e) de profil respinsă(e).', level=messages.SUCCESS)
+        else:
+            self.message_user(request, 'Niciun sportiv selectat nu are o poză de profil în așteptare.', level=messages.WARNING)
+    reject_pending_photos.short_description = _('Respinge poza de profil în așteptare (pentru selecție)')
 
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"

@@ -545,7 +545,8 @@ try:
         list_display = ('athlete_with_club', 'visa_type', 'issued_date', 'visa_status', 'status', 'submitted_date')
         search_fields = ('athlete__first_name', 'athlete__last_name')
         list_filter = ('visa_type', 'status')
-        readonly_fields = ('visa_status',)
+        readonly_fields = ('visa_status', 'proof_preview')
+        actions = ['approve_pending', 'reject_pending']
 
         class Media:
             # Include a tiny admin JS to show/hide the medical-only field `health_status`
@@ -571,6 +572,48 @@ try:
             except Exception:
                 return ''
         visa_status.short_description = _('Status')
+
+        def proof_preview(self, obj):
+            try:
+                if obj.image and hasattr(obj.image, 'url'):
+                    return format_html(
+                        '<a href="{0}" target="_blank" rel="noopener noreferrer">'
+                        '<img src="{0}" style="max-width:360px; max-height:360px; object-fit:contain; '
+                        'border:1px solid #ccc; border-radius:4px;" />'
+                        '</a>',
+                        obj.image.url
+                    )
+            except Exception:
+                pass
+            try:
+                if obj.document and hasattr(obj.document, 'url'):
+                    return format_html('<a href="{0}" target="_blank" rel="noopener noreferrer">{0}</a>', obj.document.url)
+            except Exception:
+                pass
+            return _('Nu a fost trimisă nicio dovadă.')
+        proof_preview.short_description = _('Dovadă trimisă')
+
+        def approve_pending(self, request, queryset):
+            count = 0
+            for obj in queryset.filter(status='pending'):
+                obj.approve(request.user)
+                count += 1
+            if count:
+                self.message_user(request, f'{count} viz(ă/e) aprobată(e).', level=messages.SUCCESS)
+            else:
+                self.message_user(request, 'Nicio viză selectată nu este în așteptare.', level=messages.WARNING)
+        approve_pending.short_description = _('Aprobă vizele în așteptare (pentru selecție)')
+
+        def reject_pending(self, request, queryset):
+            count = 0
+            for obj in queryset.filter(status='pending'):
+                obj.reject(request.user, 'Viza nu a fost aprobată.')
+                count += 1
+            if count:
+                self.message_user(request, f'{count} viz(ă/e) respinsă(e).', level=messages.SUCCESS)
+            else:
+                self.message_user(request, 'Nicio viză selectată nu este în așteptare.', level=messages.WARNING)
+        reject_pending.short_description = _('Respinge vizele în așteptare (pentru selecție)')
 
         def get_changeform_initial_data(self, request):
             """Prefill visa_type (and optionally athlete) from query params.

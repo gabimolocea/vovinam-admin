@@ -94,8 +94,10 @@ class SupporterAthleteRelationAdmin(admin.ModelAdmin):
     reject_relations.short_description = 'Respinge relațiile selectate'
 
 
-# Note: CategoryAthleteScore has no standalone admin page; scores are managed
-# via CategoryTeamScoreInline/CategoryRefereeScoreInline on the category admins.
+# Note: CategoryAthleteScore now has its own admin page (see
+# CategoryAthleteScoreAdmin in api/admin/competitions.py) for reviewing
+# athlete-submitted results, alongside CategoryTeamScoreInline/
+# CategoryRefereeScoreInline on the category admins.
 
 
 # DISABLED INLINES (for future use):
