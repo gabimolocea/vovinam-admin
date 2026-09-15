@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { competitionAPI } from '@shared/lib/api';
-import { Spinner } from '@shared/components/ui';
+import { Badge, Card, CardContent, EmptyState, Skeleton } from '../components/ui';
+import { Calendar, MapPin } from 'lucide-react';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -12,18 +13,6 @@ const formatDate = (value) => {
   return String(value).slice(0, 10);
 };
 
-function InfoChip({ children, tone = 'default' }) {
-  const toneClass = tone === 'muted'
-    ? 'border-gray-300 bg-gray-100 text-gray-600'
-    : 'border-black bg-yellow-100 text-black';
-
-  return (
-    <span className={`inline-flex items-center border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${toneClass}`}>
-      {children}
-    </span>
-  );
-}
-
 function CompetitionCard({ event, disabled = false, onOpen }) {
   return (
     <button
@@ -31,32 +20,22 @@ function CompetitionCard({ event, disabled = false, onOpen }) {
       onClick={disabled ? undefined : onOpen}
       disabled={disabled}
       title={disabled ? 'Competiția s-a încheiat — nu mai poți modifica înscrierile' : undefined}
-      className={`w-full border-2 p-4 text-left transition sm:p-5 ${
-        disabled
-          ? 'cursor-not-allowed border-gray-300 bg-gray-100 text-gray-500 opacity-70'
-          : 'border-black bg-white hover:bg-yellow-50'
-      }`}
+      className="w-full text-left"
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <h3 className={`truncate text-base font-black ${disabled ? 'text-gray-500' : 'text-gray-900'}`}>
-            {event.name}
-          </h3>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {event.start_date ? <InfoChip tone={disabled ? 'muted' : 'default'}>{formatDate(event.start_date)}</InfoChip> : null}
-            {event.place ? <InfoChip tone={disabled ? 'muted' : 'default'}>{event.place}</InfoChip> : null}
+      <Card className={disabled ? 'opacity-60' : 'transition hover:bg-accent'}>
+        <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate font-medium">{event.name}</h3>
+            <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+              {event.start_date && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDate(event.start_date)}</span>}
+              {event.place && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {event.place}</span>}
+            </div>
           </div>
-        </div>
-        <div className="shrink-0">
-          <span className={`inline-flex items-center border px-3 py-2 text-[11px] font-black uppercase tracking-wide ${
-            disabled
-              ? 'border-gray-300 bg-white text-gray-500'
-              : 'border-black bg-yellow-300 text-black'
-          }`}>
+          <Badge variant={disabled ? 'outline' : 'default'} className="shrink-0">
             {disabled ? 'Încheiat' : 'Deschide centralizator'}
-          </span>
-        </div>
-      </div>
+          </Badge>
+        </CardContent>
+      </Card>
     </button>
   );
 }
@@ -73,79 +52,61 @@ export default function CompetitionsList() {
     }).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
-
-  if (events.length === 0) {
+  if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="text-center">
-          <div className="text-4xl mb-3">🏆</div>
-          <h2 className="text-base font-bold text-gray-700 mb-1">Fără competiții</h2>
-          <p className="text-sm text-gray-500">Nu există competiții disponibile momentan.</p>
-        </div>
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-9 w-48" />
+        <Skeleton className="h-64" />
       </div>
     );
   }
 
+  if (events.length === 0) {
+    return <EmptyState title="Fără competiții" message="Nu există competiții disponibile momentan." />;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
-
-  // Sort: upcoming first, then past (most recent first)
-  const sorted = [...events].sort((a, b) => {
-    const aEnd = a.end_date || a.start_date || '';
-    const bEnd = b.end_date || b.start_date || '';
-    const aPast = aEnd < today;
-    const bPast = bEnd < today;
-    if (aPast !== bPast) return aPast ? 1 : -1;
-    // within same group, sort by start_date descending
-    return (b.start_date || '').localeCompare(a.start_date || '');
-  });
-
-  const upcoming = sorted.filter(ev => (ev.end_date || ev.start_date || '') >= today);
-  const past = sorted.filter(ev => (ev.end_date || ev.start_date || '') < today);
+  const upcoming = events.filter(ev => (ev.end_date || ev.start_date || '') >= today)
+    .sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''));
+  const past = events.filter(ev => (ev.end_date || ev.start_date || '') < today)
+    .sort((a, b) => (b.start_date || '').localeCompare(a.start_date || ''));
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="mb-6 border-b-2 border-black pb-4">
-        <h1 className="text-xl font-black uppercase tracking-wide text-black sm:text-2xl">Competiții</h1>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <InfoChip>{upcoming.length} viitoare</InfoChip>
-          <InfoChip tone="muted">{past.length} încheiate</InfoChip>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold">Competiții</h1>
+          <p className="text-sm text-muted-foreground">Înscrieri pentru sportivii clubului tău</p>
+        </div>
+        <div className="flex gap-2">
+          <Badge variant="outline">{upcoming.length} viitoare</Badge>
+          <Badge variant="outline">{past.length} încheiate</Badge>
         </div>
       </div>
 
-      {/* ── UPCOMING ── */}
       {upcoming.length > 0 && (
-        <section className="mb-8">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Competiții viitoare</h2>
-            <span className="text-xs font-semibold text-gray-400">Poți modifica înscrierile</span>
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Competiții viitoare</h2>
+            <span className="text-xs text-muted-foreground">Poți modifica înscrierile</span>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {upcoming.map(ev => (
-              <CompetitionCard
-                key={ev.id}
-                event={ev}
-                onOpen={() => navigate(`/competitions/${ev.id}`)}
-              />
+              <CompetitionCard key={ev.id} event={ev} onOpen={() => navigate(`/competitions/${ev.id}`)} />
             ))}
           </div>
         </section>
       )}
 
-      {/* ── PAST ── */}
       {past.length > 0 && (
-        <section>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Competiții încheiate</h2>
-            <span className="text-xs font-semibold text-gray-400">Doar vizualizare</span>
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Competiții încheiate</h2>
+            <span className="text-xs text-muted-foreground">Doar vizualizare</span>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {past.map(ev => (
-              <CompetitionCard
-                key={ev.id}
-                event={ev}
-                disabled
-              />
+              <CompetitionCard key={ev.id} event={ev} disabled />
             ))}
           </div>
         </section>

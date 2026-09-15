@@ -1,12 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { categoryAPI, refereeAPI, enrollmentAPI, monitorAPI, refereePresenceAPI } from '@shared/lib/api';
+import { categoryAPI, refereeAPI, enrollmentAPI, monitorAPI, refereePresenceAPI, API_BASE_URL } from '@shared/lib/api';
 import { useAuth } from '@shared';
 import { Spinner, formatGroupBadgeLabel } from '@shared/components/ui';
 
 const POLL_INTERVAL = 2000;
 const MAX_SCORE = 100;
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 const MODAL_SECONDARY_BUTTON = 'border border-black bg-white px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
 const MODAL_SUCCESS_BUTTON = 'border border-black bg-green-600 px-4 py-2.5 font-bold text-white transition hover:bg-green-700 disabled:opacity-40';
 

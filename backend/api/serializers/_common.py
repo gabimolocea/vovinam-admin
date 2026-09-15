@@ -210,10 +210,9 @@ class PublicAthleteSerializer(serializers.ModelSerializer):
 class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     """Full public athlete detail page - adds the tab data (results, grade
     history, seminars, visas) on top of PublicAthleteSerializer's basic
-    fields. Still deliberately excludes CNP, address, medical certificate,
-    emergency contacts and any other private/workflow-only data - see
-    AthleteDetailSerializer (serializers/athletes.py) for the authenticated
-    equivalent used by admin tooling."""
+    fields, plus (reviewer-only, see _can_review) the private/administrative
+    fields a coach or admin managing this athlete needs (CNP, address,
+    emergency contact, etc.) - a public/anonymous viewer never sees these."""
     date_of_birth = serializers.DateField(read_only=True)
     status = serializers.SerializerMethodField()
     grade_history = serializers.SerializerMethodField()
@@ -223,15 +222,56 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     medical_visas = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     pending_profile_image = serializers.SerializerMethodField()
+    cnp = serializers.SerializerMethodField()
+    license_series = serializers.SerializerMethodField()
+    mobile_number = serializers.SerializerMethodField()
+    address = serializers.SerializerMethodField()
+    emergency_contact_name = serializers.SerializerMethodField()
+    emergency_contact_phone = serializers.SerializerMethodField()
+    previous_experience = serializers.SerializerMethodField()
+    registered_date = serializers.SerializerMethodField()
+    expiration_date = serializers.SerializerMethodField()
 
     class Meta(PublicAthleteSerializer.Meta):
         fields = PublicAthleteSerializer.Meta.fields + [
             'date_of_birth', 'status', 'grade_history', 'results', 'seminars', 'annual_visas', 'medical_visas', 'can_edit',
             'profile_image_status', 'pending_profile_image', 'profile_image_admin_notes',
+            'cnp', 'license_series', 'mobile_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
+            'previous_experience', 'registered_date', 'expiration_date',
         ]
 
     def get_can_edit(self, obj):
         return can_edit_object(self.context.get('request'), obj, IsClubCoachOrAdmin)
+
+    def _reviewer_only(self, obj, value):
+        return value if self._can_review(obj) else None
+
+    def get_cnp(self, obj):
+        return self._reviewer_only(obj, obj.cnp)
+
+    def get_license_series(self, obj):
+        return self._reviewer_only(obj, obj.license_series)
+
+    def get_mobile_number(self, obj):
+        return self._reviewer_only(obj, obj.mobile_number)
+
+    def get_address(self, obj):
+        return self._reviewer_only(obj, obj.address)
+
+    def get_emergency_contact_name(self, obj):
+        return self._reviewer_only(obj, obj.emergency_contact_name)
+
+    def get_emergency_contact_phone(self, obj):
+        return self._reviewer_only(obj, obj.emergency_contact_phone)
+
+    def get_previous_experience(self, obj):
+        return self._reviewer_only(obj, obj.previous_experience)
+
+    def get_registered_date(self, obj):
+        return self._reviewer_only(obj, _safe_scalar(obj.registered_date))
+
+    def get_expiration_date(self, obj):
+        return self._reviewer_only(obj, _safe_scalar(obj.expiration_date))
 
     def _can_review(self, obj):
         # Approval-workflow data (status/admin_notes/certificate images,
@@ -257,7 +297,7 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     def get_grade_history(self, obj):
         can_review = self._can_review(obj)
         status_filter = {} if can_review else {'status': 'approved'}
-        entries = obj.grade_history.filter(**status_filter).select_related('grade', 'event').order_by('-obtained_date')
+        entries = obj.grade_history.filter(**status_filter).select_related('grade', 'event', 'examiner_1', 'examiner_2').order_by('-obtained_date')
         return [
             {
                 'id': entry.id,
@@ -267,6 +307,8 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
                 'status': entry.status if can_review else None,
                 'admin_notes': entry.admin_notes if can_review else None,
                 'certificate_image': _safe_file_url(entry.certificate_image) if can_review else None,
+                'examiner_1_name': _person_name(entry.examiner_1) if can_review and entry.examiner_1 else None,
+                'examiner_2_name': _person_name(entry.examiner_2) if can_review and entry.examiner_2 else None,
             }
             for entry in entries
         ]
@@ -276,15 +318,19 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
         status_filter = {} if can_review else {'status': 'approved'}
         scores = CategoryAthleteScore.objects.filter(
             Q(athlete=obj) | Q(team_members=obj), **status_filter,
-        ).distinct().select_related('category', 'category__event').order_by('-submitted_date')
+        ).distinct().select_related('category', 'category__event', 'group').prefetch_related('team_members').order_by('-submitted_date')
         return [
             {
                 'id': score.id,
                 'category': score.category.name if score.category else None,
                 'competition': score.category.event.title if score.category and score.category.event else None,
+                'competition_date': _safe_scalar(score.category.event.start_date) if score.category and score.category.event else None,
+                'group_name': score.group.name if score.group else None,
                 'type': score.type,
                 'placement_claimed': score.placement_claimed,
+                'score': score.score,
                 'team_name': score.team_name,
+                'team_members': [_person_name(m) for m in score.team_members.all()] if can_review else [],
                 'status': score.status,
                 'admin_notes': score.admin_notes if can_review else None,
                 'certificate_image': _safe_file_url(score.certificate_image) if can_review else None,

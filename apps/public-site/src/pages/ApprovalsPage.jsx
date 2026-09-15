@@ -7,11 +7,13 @@ import Seo from '../components/Seo';
 const PLACEMENT_LABELS = { '1st': '🥇 Locul 1', '2nd': '🥈 Locul 2', '3rd': '🥉 Locul 3' };
 const VISA_TYPE_LABELS = { medical: 'Medicală', annual: 'Anuală' };
 
-/** Coach/admin-only page listing pending profile-picture changes, results,
- * grade exams and visas awaiting review - the UI surface for the
- * "antrenorul sau adminul aprobă" approval workflows. */
+/** Admin-only page listing pending profile-picture changes, results, grade
+ * exams and visas awaiting review, across every club - coaches now review
+ * their own club's athletes directly from the coach dashboard instead
+ * (see apps/coach-dashboard's AthleteDetail/GradeManagement pages), so this
+ * flat cross-club queue is admin-only. */
 export default function ApprovalsPage() {
-  const { user, loading: authLoading, isAdmin, isCoach } = useAuth();
+  const { user, loading: authLoading, isAdmin } = useAuth();
   const [images, setImages] = useState([]);
   const [results, setResults] = useState([]);
   const [grades, setGrades] = useState([]);
@@ -20,7 +22,7 @@ export default function ApprovalsPage() {
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
 
-  const canReview = isAdmin || isCoach;
+  const canReview = isAdmin;
 
   useEffect(() => {
     if (!canReview) return undefined;

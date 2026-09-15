@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { ChevronRight, Menu, User, X } from 'lucide-react';
-import AccountNavItem from './AccountNavItem';
+import { useAuth } from '@shared';
+import AccountNavItem, { AccountAvatar } from './AccountNavItem';
 import NotificationBell from './NotificationBell';
 import CookieConsentBanner from './CookieConsentBanner';
 import { trackPageview } from '../lib/analytics';
@@ -145,6 +146,7 @@ function MobileNavItem({ item, onNavigate }) {
 }
 
 export default function Layout() {
+  const { isAuthenticated, user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const headerRef = useRef(null);
   const location = useLocation();
@@ -260,7 +262,11 @@ export default function Layout() {
                 }`
               }
             >
-              <User className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+              {isAuthenticated ? (
+                <AccountAvatar user={user} size="h-7 w-7" />
+              ) : (
+                <User className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+              )}
             </NavLink>
           </div>
         </div>
@@ -306,10 +312,6 @@ export default function Layout() {
             <MobileNavItem key={item.label} item={item} onNavigate={() => setMobileOpen(false)} />
           ))}
         </nav>
-
-        <div className="site-mobile-secondary flex flex-col pb-4">
-          <AccountNavItem mobile onNavigate={() => setMobileOpen(false)} />
-        </div>
       </div>
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-8">

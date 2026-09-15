@@ -1,13 +1,18 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api, { cityAPI, gradeAPI } from '@shared/lib/api';
+import api, { cityAPI, gradeAPI, competitionAPI } from '@shared/lib/api';
+import {
+  Alert, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input, Label, Req,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea,
+} from '../components/ui';
+import { ArrowLeft, ImagePlus, Plus, Search, X } from 'lucide-react';
 
 const MAJOR_CITIES = ['București', 'Cluj-Napoca', 'Timișoara', 'Iași', 'Constanța', 'Brașov'];
 
 const normalizeText = (value = '') =>
   String(value)
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
 
 const INITIAL = {
@@ -21,19 +26,44 @@ const INITIAL = {
   mobile_number: '',
   emergency_contact_name: '',
   emergency_contact_phone: '',
-  previous_experience: '',
   city: '',
   is_coach: false,
+  is_instructor: false,
   is_referee: false,
+  referee_level: '',
+  referee_category: '',
   registered_date: '',
   expiration_date: '',
 };
 
+const REFEREE_LEVEL_OPTIONS = [
+  { id: 'national', name: 'Național' },
+  { id: 'international', name: 'Internațional' },
+];
+
+const REFEREE_CATEGORY_OPTIONS = [
+  { id: 'A', name: 'Categoria A' },
+  { id: 'B', name: 'Categoria B' },
+  { id: 'C', name: 'Categoria C' },
+  { id: 'stagiar', name: 'Stagiar' },
+];
+
 const INITIAL_GRADE = {
   grade: '',
+  event: '',
   obtained_date: new Date().toISOString().split('T')[0],
   level: 'good',
 };
+
+const GENDER_OPTIONS = [
+  { id: 'male', name: 'Masculin' },
+  { id: 'female', name: 'Feminin' },
+];
+
+const LEVEL_OPTIONS = [
+  { id: 'good', name: 'Bun' },
+  { id: 'bad', name: 'Nesatisfăcător' },
+];
 
 export default function CreateAthlete() {
   const navigate = useNavigate();
@@ -44,6 +74,7 @@ export default function CreateAthlete() {
   const [medicalCert, setMedicalCert] = useState(null);
   const [cities, setCities] = useState([]);
   const [grades, setGrades] = useState([]);
+  const [exams, setExams] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef();
@@ -54,6 +85,9 @@ export default function CreateAthlete() {
   useEffect(() => {
     cityAPI.list().then(r => setCities(r.data?.results || r.data || [])).catch(() => {});
     gradeAPI.list().then(r => setGrades(r.data?.results || r.data || [])).catch(() => {});
+    competitionAPI.list({ event_type: 'examination' })
+      .then(r => setExams(Array.isArray(r.data) ? r.data : r.data?.results ?? []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -87,6 +121,8 @@ export default function CreateAthlete() {
     const { name, value, type, checked } = e.target;
     setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
+
+  const update = (name, value) => setForm(prev => ({ ...prev, [name]: value }));
 
   const selectCity = (city) => {
     setForm((prev) => ({ ...prev, city: city.id }));
@@ -157,17 +193,17 @@ export default function CreateAthlete() {
 
       const athlete = await api.post('/athletes/', fd);
 
-      // Create grade history entry if a grade was selected
       if (gradeForm.grade) {
         await api.post('/grade-histories/', {
           athlete: athlete.data.id,
           grade: gradeForm.grade,
+          event: gradeForm.event || null,
           obtained_date: gradeForm.obtained_date,
           level: gradeForm.level,
         });
       }
 
-      navigate('/');
+      navigate('/athletes');
     } catch (err) {
       const data = err.response?.data;
       if (data && typeof data === 'object') {
@@ -182,68 +218,102 @@ export default function CreateAthlete() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl p-4 md:p-6">
-      <div className="mb-6 flex items-center gap-3">
-        <button onClick={() => navigate('/')}
-          className="frvv-btn-secondary">← Înapoi</button>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3">
+        <Button variant="outline" size="sm" onClick={() => navigate('/athletes')}>
+          <ArrowLeft className="h-4 w-4" /> Înapoi
+        </Button>
         <div>
-          <h1 className="text-2xl font-black uppercase tracking-wide text-black">Adaugă sportiv</h1>
-          <p className="text-sm text-gray-500">Completează profilul și documentele sportivului.</p>
+          <h1 className="font-display text-2xl font-bold">Adaugă sportiv</h1>
+          <p className="text-sm text-muted-foreground">Completează profilul și documentele sportivului.</p>
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 border-2 border-red-300 bg-red-50 p-3 text-sm text-red-700 whitespace-pre-line">
-          {error}
-        </div>
-      )}
+      {error && <Alert variant="destructive" className="whitespace-pre-line">{error}</Alert>}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ═══ DATE PERSONALE ═══ */}
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Date personale</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            <Field label="Prenume *" name="first_name" value={form.first_name} onChange={handleChange} required />
-            <Field label="Nume *" name="last_name" value={form.last_name} onChange={handleChange} required />
-            <SelectField label="Gen *" name="gender" value={form.gender} onChange={handleChange} options={GENDER_OPTIONS} required />
-            <Field label="Serie legitimație" name="license_series" value={form.license_series} onChange={handleChange} />
-            <Field label="CNP" name="cnp" value={form.cnp} onChange={handleChange} maxLength={13} />
-            <Field label="Data nașterii *" name="date_of_birth" type="date" value={form.date_of_birth} onChange={handleChange} required />
-            <Field label="Telefon" name="mobile_number" value={form.mobile_number} onChange={handleChange} />
-            <div className="sm:col-span-2">
-              <Field label="Adresă" name="address" value={form.address} onChange={handleChange} multiline />
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2" className="text-sm">Date personale</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_first_name">Prenume<Req /></Label>
+              <Input id="ca_first_name" name="first_name" value={form.first_name} onChange={handleChange} required />
             </div>
-          </div>
-        </fieldset>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_last_name">Nume<Req /></Label>
+              <Input id="ca_last_name" name="last_name" value={form.last_name} onChange={handleChange} required />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Gen<Req /></Label>
+              <Select value={form.gender} onValueChange={(v) => update('gender', v)}>
+                <SelectTrigger><SelectValue placeholder="Alege" /></SelectTrigger>
+                <SelectContent>
+                  {GENDER_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_license">Serie legitimație</Label>
+              <Input id="ca_license" name="license_series" value={form.license_series} onChange={handleChange} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_cnp">CNP</Label>
+              <Input id="ca_cnp" name="cnp" value={form.cnp} onChange={handleChange} maxLength={13} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_dob">Data nașterii<Req /></Label>
+              <Input id="ca_dob" name="date_of_birth" type="date" value={form.date_of_birth} onChange={handleChange} required />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_phone">Telefon</Label>
+              <Input id="ca_phone" name="mobile_number" value={form.mobile_number} onChange={handleChange} />
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <Label htmlFor="ca_address">Adresă</Label>
+              <Textarea id="ca_address" name="address" value={form.address} onChange={handleChange} rows={3} />
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* ═══ CONTACT URGENȚĂ ═══ */}
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Contact de urgență</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            <Field label="Nume contact" name="emergency_contact_name" value={form.emergency_contact_name} onChange={handleChange} />
-            <Field label="Telefon contact" name="emergency_contact_phone" value={form.emergency_contact_phone} onChange={handleChange} />
-          </div>
-        </fieldset>
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2" className="text-sm">Contact de urgență</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_emg_name">Nume contact</Label>
+              <Input id="ca_emg_name" name="emergency_contact_name" value={form.emergency_contact_name} onChange={handleChange} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_emg_phone">Telefon contact</Label>
+              <Input id="ca_emg_phone" name="emergency_contact_phone" value={form.emergency_contact_phone} onChange={handleChange} />
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* ═══ DATE SPORTIVE ═══ */}
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Date sportive</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            <div ref={cityBoxRef} className="relative">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Oraș</label>
-              <input
-                type="text"
-                value={cityQuery}
-                onChange={handleCityChange}
-                onFocus={() => setShowCitySuggestions(true)}
-                onBlur={handleCityBlur}
-                placeholder="Caută orașul..."
-                className="frvv-input w-full pr-10"
-                autoComplete="off"
-              />
-              <div className="pointer-events-none absolute right-3 top-[34px] text-xs text-gray-500">⌕</div>
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2" className="text-sm">Date sportive</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
+            <div ref={cityBoxRef} className="relative flex flex-col gap-1">
+              <Label>Oraș</Label>
+              <div className="relative">
+                <Input
+                  value={cityQuery}
+                  onChange={handleCityChange}
+                  onFocus={() => setShowCitySuggestions(true)}
+                  onBlur={handleCityBlur}
+                  placeholder="Caută orașul…"
+                  className="pr-9"
+                  autoComplete="off"
+                />
+                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              </div>
               {showCitySuggestions && filteredCities.length > 0 && (
-                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border-2 border-black bg-white">
+                <div className="absolute top-full z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-popover shadow-md">
                   {filteredCities.map((city, index) => {
                     const selected = Number(form.city) === Number(city.id);
                     const isMajor = MAJOR_CITIES.includes(city.name);
@@ -253,12 +323,12 @@ export default function CreateAthlete() {
                         type="button"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => selectCity(city)}
-                        className={`flex w-full items-center justify-between border-b border-black/10 px-3 py-2 text-left text-sm transition last:border-b-0 ${
-                          selected ? 'bg-yellow-100 font-semibold text-gray-900' : 'bg-white text-gray-700 hover:bg-yellow-50'
+                        className={`flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-sm transition last:border-b-0 ${
+                          selected ? 'bg-accent font-semibold' : 'hover:bg-accent'
                         }`}
                       >
                         <span className="truncate">{city.name}</span>
-                        <span className="ml-3 shrink-0 text-[10px] font-black uppercase tracking-wide text-gray-400">
+                        <span className="ml-3 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                           {selected ? 'SELECTAT' : (!cityQuery.trim() && isMajor && index < MAJOR_CITIES.length ? 'SUGERAT' : '')}
                         </span>
                       </button>
@@ -267,149 +337,175 @@ export default function CreateAthlete() {
                 </div>
               )}
               {showCitySuggestions && filteredCities.length === 0 && cityQuery.trim() && (
-                <div className="absolute z-30 mt-1 w-full border-2 border-black bg-white px-3 py-3 text-sm text-gray-500">
+                <div className="absolute top-full z-30 mt-1 w-full rounded-md border border-border bg-popover px-3 py-3 text-sm text-muted-foreground shadow-md">
                   Niciun oraș găsit.
                 </div>
               )}
             </div>
-            <Field label="Data înregistrării" name="registered_date" type="date" value={form.registered_date} onChange={handleChange} />
-            <Field label="Data expirării" name="expiration_date" type="date" value={form.expiration_date} onChange={handleChange} />
-            <div className="flex items-center gap-6 sm:col-span-2">
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" name="is_coach" checked={form.is_coach} onChange={handleChange}
-                  className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                Antrenor
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" name="is_referee" checked={form.is_referee} onChange={handleChange}
-                  className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                Arbitru
-              </label>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_registered">Data înregistrării</Label>
+              <Input id="ca_registered" name="registered_date" type="date" value={form.registered_date} onChange={handleChange} />
             </div>
-            <div className="sm:col-span-2">
-              <Field label="Experiență anterioară" name="previous_experience" value={form.previous_experience} onChange={handleChange} multiline />
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_expiration">Data expirării</Label>
+              <Input id="ca_expiration" name="expiration_date" type="date" value={form.expiration_date} onChange={handleChange} />
             </div>
-          </div>
-        </fieldset>
-
-        {/* ═══ GRAD ═══ */}
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Grad (opțional)</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            <SelectField
-              label="Grad acordat"
-              name="grade"
-              value={gradeForm.grade}
-              onChange={e => setGradeForm(prev => ({ ...prev, grade: e.target.value }))}
-              options={grades}
-              labelKey="name"
-            />
-            <Field
-              label="Data obținerii"
-              name="obtained_date"
-              type="date"
-              value={gradeForm.obtained_date}
-              onChange={e => setGradeForm(prev => ({ ...prev, obtained_date: e.target.value }))}
-            />
-            <SelectField
-              label="Nivel"
-              name="level"
-              value={gradeForm.level}
-              onChange={e => setGradeForm(prev => ({ ...prev, level: e.target.value }))}
-              options={[{ id: 'good', name: 'Bun' }, { id: 'bad', name: 'Nesatisfăcător' }]}
-            />
-          </div>
-        </fieldset>
-
-        {/* ═══ DOCUMENTE ═══ */}
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Documente</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            {/* Profile Image */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Fotografie sportiv</label>
-              <div className="flex items-center gap-4">
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-24 w-24 items-center justify-center overflow-hidden border-2 border-dashed border-black bg-gray-50 cursor-pointer transition hover:bg-yellow-50"
-                >
-                  {profilePreview ? (
-                    <img src={profilePreview} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-gray-400 text-xs text-center px-1">Click pentru a alege</span>
+            <div className="flex flex-col gap-3 sm:col-span-2">
+              <div className="flex flex-wrap items-center gap-6">
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.is_coach}
+                    onCheckedChange={(checked) => setForm((f) => ({ ...f, is_coach: checked === true, is_instructor: checked === true ? false : f.is_instructor }))}
+                  />
+                  Antrenor
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.is_instructor}
+                    onCheckedChange={(checked) => setForm((f) => ({ ...f, is_instructor: checked === true, is_coach: checked === true ? false : f.is_coach }))}
+                  />
+                  Instructor
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.is_referee}
+                    onCheckedChange={(checked) => setForm((f) => ({ ...f, is_referee: checked === true, referee_level: checked === true ? f.referee_level : '', referee_category: checked === true ? f.referee_category : '' }))}
+                  />
+                  Arbitru
+                </label>
+              </div>
+              {form.is_referee && (
+                <div className="grid grid-cols-1 gap-4 rounded-md border border-border bg-muted/50 p-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <Label>Nivel arbitraj</Label>
+                    <Select value={form.referee_level} onValueChange={(v) => update('referee_level', v)}>
+                      <SelectTrigger><SelectValue placeholder="Alege" /></SelectTrigger>
+                      <SelectContent>
+                        {REFEREE_LEVEL_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {form.referee_level === 'national' && (
+                    <div className="flex flex-col gap-1">
+                      <Label>Categorie arbitru</Label>
+                      <Select value={form.referee_category} onValueChange={(v) => update('referee_category', v)}>
+                        <SelectTrigger><SelectValue placeholder="Alege" /></SelectTrigger>
+                        <SelectContent>
+                          {REFEREE_CATEGORY_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
                 </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2" className="text-sm">Grad (opțional)</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label>Grad acordat</Label>
+              <Select value={gradeForm.grade} onValueChange={(v) => setGradeForm(prev => ({ ...prev, grade: v }))}>
+                <SelectTrigger><SelectValue placeholder="Alege" /></SelectTrigger>
+                <SelectContent>
+                  {grades.map((g) => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Examen</Label>
+              <Select value={gradeForm.event} onValueChange={(v) => setGradeForm(prev => ({ ...prev, event: v }))}>
+                <SelectTrigger><SelectValue placeholder="Alege examenul" /></SelectTrigger>
+                <SelectContent>
+                  {exams.map((ev) => <SelectItem key={ev.id} value={String(ev.id)}>{ev.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_grade_date">Data obținerii</Label>
+              <Input
+                id="ca_grade_date"
+                type="date"
+                value={gradeForm.obtained_date}
+                onChange={(e) => setGradeForm(prev => ({ ...prev, obtained_date: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Nivel</Label>
+              <Select value={gradeForm.level} onValueChange={(v) => setGradeForm(prev => ({ ...prev, level: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {LEVEL_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2" className="text-sm">Documente</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label>Fotografie sportiv</Label>
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
+                >
+                  {profilePreview ? (
+                    <img src={profilePreview} alt="Preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <ImagePlus className="h-6 w-6" />
+                  )}
+                </button>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 {profileImage && (
-                  <div className="text-xs text-gray-500">
-                    <p className="font-medium truncate max-w-[140px]">{profileImage.name}</p>
-                    <button type="button"
+                  <div className="text-xs text-muted-foreground">
+                    <p className="max-w-[140px] truncate font-medium">{profileImage.name}</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => { setProfileImage(null); setProfilePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                      className="text-red-500 hover:text-red-700 mt-1">Șterge</button>
+                      className="mt-1 h-auto px-0 text-destructive hover:bg-transparent"
+                    >
+                      <X className="h-3 w-3" /> Șterge
+                    </Button>
                   </div>
                 )}
               </div>
             </div>
-            {/* Medical Certificate */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Certificat medical</label>
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_medcert">Certificat medical</Label>
+              <input
+                id="ca_medcert"
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
                 onChange={(e) => setMedicalCert(e.target.files?.[0] || null)}
-                className="block w-full text-xs text-gray-500 file:mr-2 file:border file:border-black file:bg-yellow-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-black hover:file:bg-yellow-200 cursor-pointer" />
-              {medicalCert && <p className="text-[10px] text-gray-400 mt-1 truncate">{medicalCert.name}</p>}
+                className="block w-full text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+              />
+              {medicalCert && <p className="mt-1 truncate text-[11px] text-muted-foreground">{medicalCert.name}</p>}
             </div>
-          </div>
-        </fieldset>
+          </CardContent>
+        </Card>
 
-        {/* ═══ ACTIONS ═══ */}
-        <div className="flex items-center justify-end gap-3 pt-2">
-          <button type="button" onClick={() => navigate('/')}
-            className="frvv-btn-secondary">
+        <div className="flex items-center justify-end gap-3">
+          <Button type="button" variant="outline" onClick={() => navigate('/athletes')}>
             Anulează
-          </button>
-          <button type="submit" disabled={saving}
-            className="frvv-btn-add">
-            <span className="frvv-btn-add-icon">+</span>
+          </Button>
+          <Button type="submit" disabled={saving}>
+            <Plus className="h-4 w-4" />
             {saving ? 'Se salvează…' : 'Salvează sportivul'}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
   );
 }
-
-/* ── Reusable field ── */
-function Field({ label, name, value, onChange, type = 'text', required, multiline, maxLength }) {
-  const cls = 'frvv-input w-full';
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      {multiline ? (
-        <textarea name={name} value={value} onChange={onChange} rows={3} className={cls + ' resize-none min-h-[96px]'} />
-      ) : (
-        <input type={type} name={name} value={value} onChange={onChange} required={required} maxLength={maxLength} className={cls} />
-      )}
-    </div>
-  );
-}
-
-/* ── Reusable select ── */
-function SelectField({ label, name, value, onChange, options, labelKey = 'name', required = false }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      <select name={name} value={value} onChange={onChange} required={required}
-        className="frvv-input w-full bg-white">
-        <option value="">— Alege —</option>
-        {options.map(o => (
-          <option key={o.id} value={o.id}>{o[labelKey]}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-const GENDER_OPTIONS = [
-  { id: 'male', name: 'Masculin' },
-  { id: 'female', name: 'Feminin' },
-];

@@ -21,6 +21,10 @@ class UserSerializer(serializers.ModelSerializer):
         """Return athlete details if user has an associated athlete"""
         if hasattr(obj, 'athlete') and obj.athlete:
             athlete = obj.athlete
+            try:
+                profile_image = athlete.profile_image.url if athlete.profile_image else None
+            except Exception:
+                profile_image = None
             return {
                 'id': athlete.id,
                 'first_name': athlete.first_name,
@@ -28,6 +32,7 @@ class UserSerializer(serializers.ModelSerializer):
                 'club': athlete.club_id if hasattr(athlete, 'club_id') else (athlete.club.id if athlete.club else None),
                 'is_coach': athlete.is_coach if hasattr(athlete, 'is_coach') else False,
                 'status': athlete.status,
+                'profile_image': profile_image,
             }
         return None
 

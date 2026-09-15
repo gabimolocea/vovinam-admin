@@ -1,114 +1,60 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { clubAPI, MEDIA_BASE_URL } from '@shared/lib/api';
+import { Alert, Button, Input, Label, Skeleton, Textarea } from '../components/ui';
 import { useAuth } from '@shared';
-import { clubAPI, cityAPI } from '@shared/lib/api';
+import { Building2, Link2 } from 'lucide-react';
 
-const MAJOR_CITIES = ['București', 'Cluj-Napoca', 'Timișoara', 'Iași', 'Constanța', 'Brașov'];
+function imgUrl(path) {
+  if (!path) return null;
+  if (String(path).startsWith('http')) return path;
+  return `${MEDIA_BASE_URL}${String(path).startsWith('/') ? '' : '/'}${path}`;
+}
 
-const normalizeText = (value = '') =>
-  String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/** Section heading used to separate page areas without a bordered box -
+ * spacing and typography carry the grouping instead of a Card. */
+function SectionHeading({ children }) {
+  return <h2 className="font-display text-lg font-semibold text-foreground">{children}</h2>;
+}
 
 export default function ClubEdit() {
   const { user } = useAuth();
   const clubId = user?.athlete?.club;
 
   const [club, setClub] = useState(null);
-  const [form, setForm] = useState({ name: '', address: '', mobile_number: '', website: '', city: '' });
-  const [cityQuery, setCityQuery] = useState('');
-  const [cities, setCities] = useState([]);
-  const [showCitySuggestions, setShowCitySuggestions] = useState(false);
-  const [logo, setLogo] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(null);
+  const [form, setForm] = useState({ address: '', mobile_number: '', website: '', facebook_url: '', instagram_url: '', youtube_url: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  const cityBoxRef = useRef(null);
-  const fileInputRef = useRef();
-
-  useEffect(() => {
-    cityAPI.list().then(r => setCities(r.data?.results || r.data || [])).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (!clubId) return;
-    clubAPI.get(clubId).then(r => {
+    clubAPI.get(clubId).then((r) => {
       const c = r.data;
       setClub(c);
       setForm({
-        name: c.name || '',
         address: c.address || '',
         mobile_number: c.mobile_number || '',
         website: c.website || '',
-        city: c.city?.id || c.city || '',
+        facebook_url: c.facebook_url || '',
+        instagram_url: c.instagram_url || '',
+        youtube_url: c.youtube_url || '',
       });
-      if (c.city?.name) setCityQuery(c.city.name);
-      if (c.logo) setLogoPreview(c.logo);
     }).catch(() => setError('Nu s-au putut încărca datele clubului.'));
   }, [clubId]);
 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (cityBoxRef.current && !cityBoxRef.current.contains(e.target)) setShowCitySuggestions(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredCities = useMemo(() => {
-    const q = normalizeText(cityQuery.trim());
-    const sorted = [...cities].sort((a, b) => {
-      const aMajor = MAJOR_CITIES.includes(a.name) ? 0 : 1;
-      const bMajor = MAJOR_CITIES.includes(b.name) ? 0 : 1;
-      if (aMajor !== bMajor) return aMajor - bMajor;
-      return a.name.localeCompare(b.name, 'ro');
-    });
-    return q ? sorted.filter(c => normalizeText(c.name).includes(q)) : sorted;
-  }, [cities, cityQuery]);
-
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
-  };
-
-  const selectCity = (city) => {
-    setForm(prev => ({ ...prev, city: city.id }));
-    setCityQuery(city.name);
-    setShowCitySuggestions(false);
-  };
-
-  const handleCityChange = (e) => {
-    const value = e.target.value;
-    setCityQuery(value);
-    setShowCitySuggestions(true);
-    const exact = cities.find(c => normalizeText(c.name) === normalizeText(value));
-    setForm(prev => ({ ...prev, city: exact ? exact.id : '' }));
-  };
-
-  const handleLogoChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setLogo(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setLogoPreview(reader.result);
-    reader.readAsDataURL(file);
+    setForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setSuccess(false);
-    if (!form.name.trim()) { setError('Numele clubului este obligatoriu.'); return; }
     setSaving(true);
     try {
-      let res;
-      if (logo) {
-        const fd = new FormData();
-        Object.entries(form).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined) fd.append(k, v); });
-        fd.append('logo', logo);
-        res = await clubAPI.update(clubId, fd);
-      } else {
-        const payload = Object.fromEntries(Object.entries(form).filter(([, v]) => v !== '' && v !== null && v !== undefined));
-        res = await clubAPI.update(clubId, payload);
-      }
+      const payload = Object.fromEntries(Object.entries(form).filter(([, v]) => v !== '' && v !== null && v !== undefined));
+      const res = await clubAPI.update(clubId, payload);
       setClub(res.data);
       setSuccess(true);
     } catch (err) {
@@ -119,111 +65,86 @@ export default function ClubEdit() {
     }
   };
 
-  if (!clubId) return (
-    <div className="p-6 text-sm text-gray-500">Contul tău nu este asociat unui club.</div>
-  );
+  if (!clubId) {
+    return <Alert>Contul tău nu este asociat unui club.</Alert>;
+  }
 
-  if (!club) return (
-    <div className="p-6 text-sm text-gray-400 italic">Se încarcă...</div>
-  );
+  if (!club) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-9 w-48" />
+        <Skeleton className="h-80" />
+      </div>
+    );
+  }
+
+  const logoUrl = imgUrl(club.logo);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
-      <h2 className="text-lg font-black uppercase tracking-[0.18em] text-gray-800">Editează clubul</h2>
+    <div className="flex flex-col gap-8">
+      <h1 className="font-display text-2xl font-bold">Club</h1>
 
-      {error && (
-        <div className="border-2 border-red-300 bg-red-50 p-3 text-sm text-red-700 whitespace-pre-line">{error}</div>
-      )}
-      {success && (
-        <div className="border-2 border-green-300 bg-green-50 p-3 text-sm text-green-700">Datele clubului au fost salvate.</div>
-      )}
+      {error && <Alert variant="destructive" className="whitespace-pre-line">{error}</Alert>}
+      {success && <Alert variant="success">Datele clubului au fost salvate.</Alert>}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Date club</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+      <section className="flex items-center gap-4">
+        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-muted-foreground">
+          {logoUrl ? (
+            <img src={logoUrl} alt={club.name} className="h-full w-full object-contain" />
+          ) : (
+            <Building2 className="h-8 w-8" />
+          )}
+        </div>
+        <div>
+          <p className="font-display text-lg font-bold">{club.name}</p>
+          <p className="text-sm text-muted-foreground">{club.city?.name || 'Oraș nespecificat'}</p>
+        </div>
+      </section>
 
-            <div className="sm:col-span-2">
-              <Field label="Nume club *" name="name" value={form.name} onChange={handleChange} required />
+      <section className="flex flex-col gap-4 border-t border-border pt-8">
+        <SectionHeading>Date de contact</SectionHeading>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="club_phone">Telefon</Label>
+              <Input id="club_phone" name="mobile_number" value={form.mobile_number} onChange={handleChange} />
             </div>
 
-            {/* City autocomplete */}
-            <div ref={cityBoxRef} className="relative">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Oraș</label>
-              <input
-                type="text"
-                value={cityQuery}
-                onChange={handleCityChange}
-                onFocus={() => setShowCitySuggestions(true)}
-                onBlur={() => {
-                  const exact = cities.find(c => normalizeText(c.name) === normalizeText(cityQuery));
-                  if (!exact) { setForm(p => ({ ...p, city: '' })); }
-                }}
-                placeholder="Caută oraș..."
-                autoComplete="off"
-                className="frvv-input w-full"
-              />
-              {showCitySuggestions && filteredCities.length > 0 && (
-                <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto border-2 border-black bg-white shadow-lg">
-                  {filteredCities.slice(0, 20).map(city => (
-                    <button key={city.id} type="button" onMouseDown={() => selectCity(city)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-yellow-100">
-                      {city.name}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="club_website">Website</Label>
+              <Input id="club_website" name="website" value={form.website} onChange={handleChange} type="url" placeholder="https://" />
             </div>
 
-            <Field label="Telefon" name="mobile_number" value={form.mobile_number} onChange={handleChange} />
-            <div className="sm:col-span-2">
-              <Field label="Adresă" name="address" value={form.address} onChange={handleChange} multiline />
-            </div>
-            <Field label="Website" name="website" value={form.website} onChange={handleChange} type="url" placeholder="https://" />
-
-            {/* Logo */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Logo club</label>
-              <div className="flex items-center gap-4">
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-20 w-20 items-center justify-center overflow-hidden border-2 border-dashed border-black bg-gray-50 cursor-pointer hover:bg-yellow-50 transition"
-                >
-                  {logoPreview
-                    ? <img src={logoPreview} alt="logo" className="h-full w-full object-contain" />
-                    : <span className="text-xs text-gray-400 text-center leading-tight px-1">Adaugă logo</span>
-                  }
-                </div>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
-                {logoPreview && (
-                  <button type="button" onClick={() => { setLogo(null); setLogoPreview(null); }}
-                    className="text-xs text-red-500 underline">Elimină</button>
-                )}
-              </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <Label htmlFor="club_address">Adresă</Label>
+              <Textarea id="club_address" name="address" value={form.address} onChange={handleChange} rows={3} />
             </div>
           </div>
-        </fieldset>
 
-        <div className="flex justify-end">
-          <button type="submit" disabled={saving}
-            className="border-2 border-black bg-yellow-300 px-6 py-2 text-sm font-black uppercase tracking-wide hover:bg-yellow-400 transition disabled:opacity-50">
-            {saving ? 'Se salvează...' : 'Salvează'}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
+          <div className="flex flex-col gap-1">
+            <Label className="text-sm font-medium text-foreground">Rețele sociale</Label>
+            <p className="text-xs text-muted-foreground">Link-urile apar pe pagina publică a clubului.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="club_facebook" className="flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" /> Facebook</Label>
+              <Input id="club_facebook" name="facebook_url" value={form.facebook_url} onChange={handleChange} type="url" placeholder="https://facebook.com/…" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="club_instagram" className="flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" /> Instagram</Label>
+              <Input id="club_instagram" name="instagram_url" value={form.instagram_url} onChange={handleChange} type="url" placeholder="https://instagram.com/…" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="club_youtube" className="flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" /> YouTube</Label>
+              <Input id="club_youtube" name="youtube_url" value={form.youtube_url} onChange={handleChange} type="url" placeholder="https://youtube.com/…" />
+            </div>
+          </div>
 
-function Field({ label, name, value, onChange, required = false, type = 'text', multiline = false, placeholder = '' }) {
-  const cls = 'frvv-input w-full';
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      {multiline
-        ? <textarea name={name} value={value} onChange={onChange} rows={3} className={cls} placeholder={placeholder} />
-        : <input type={type} name={name} value={value} onChange={onChange} required={required} className={cls} placeholder={placeholder} />
-      }
+          <div className="flex justify-end">
+            <Button type="submit" disabled={saving}>{saving ? 'Se salvează…' : 'Salvează'}</Button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

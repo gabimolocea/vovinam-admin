@@ -13,7 +13,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from ..serializers import *
 from ..models import *
-from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
+from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin, IsResultReviewerOrAdmin
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
@@ -200,7 +200,7 @@ class VisaSubmissionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def approve(self, request, pk=None):
         visa = self.get_object()
         serializer = VisaApprovalSerializer(data=request.data)
@@ -209,7 +209,7 @@ class VisaSubmissionViewSet(viewsets.ModelViewSet):
             return Response({'message': 'Visa approved successfully', 'status': visa.status})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def reject(self, request, pk=None):
         visa = self.get_object()
         serializer = VisaApprovalSerializer(data=request.data)
@@ -218,7 +218,7 @@ class VisaSubmissionViewSet(viewsets.ModelViewSet):
             return Response({'message': 'Visa rejected successfully', 'status': visa.status})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def request_revision(self, request, pk=None):
         visa = self.get_object()
         serializer = VisaApprovalSerializer(data=request.data)

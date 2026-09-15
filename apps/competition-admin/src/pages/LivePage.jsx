@@ -14,6 +14,15 @@ import { formatGroupBadgeLabel } from '@shared/components/ui';
 
 const PUBLIC_DISPLAY_PORT = 5177;
 
+// Same-host, different-port - not hardcoded to localhost, since this admin
+// app and public-display may be opened from different devices on the venue
+// LAN (e.g. admin laptop vs. the machine driving the scoreboard TV).
+function publicDisplayOrigin() {
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
+  return `${protocol}//${host}:${PUBLIC_DISPLAY_PORT}`;
+}
+
 const STATUS_CFG = {
   not_started:  { label: 'Neînceput',      dot: 'bg-gray-500',  bg: 'bg-white',  border: 'border-black', badge: 'border border-black bg-white text-gray-700' },
   in_progress:  { label: 'În desfășurare', dot: 'bg-emerald-500 animate-pulse', bg: 'bg-yellow-50/60', border: 'border-black', badge: 'border border-black bg-yellow-100 text-gray-800' },
@@ -271,7 +280,7 @@ function FieldPanel({
   };
 
   // Public display URL
-  const displayUrl = `http://localhost:${PUBLIC_DISPLAY_PORT}/display/${field.id}`;
+  const displayUrl = `${publicDisplayOrigin()}/display/${field.id}`;
 
   // Build sorted schedule items (categories + matches + breaks)
   const scheduleItems = (() => {

@@ -40,6 +40,7 @@ class Club(models.Model):
     facebook_url = models.URLField(_('Facebook'), max_length=200, blank=True, null=True)
     instagram_url = models.URLField(_('Instagram'), max_length=200, blank=True, null=True)
     tiktok_url = models.URLField(_('TikTok'), max_length=200, blank=True, null=True)
+    youtube_url = models.URLField(_('YouTube'), max_length=200, blank=True, null=True)
     coaches = models.ManyToManyField(
         'Athlete', 
         verbose_name=_('Antrenori'),

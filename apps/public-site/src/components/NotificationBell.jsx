@@ -9,13 +9,16 @@ const POLL_INTERVAL_MS = 60000;
  * links straight to the notifications page (no dropdown). `mobile` mirrors
  * the mobile header's account icon exactly: a flush, full-height square
  * that turns into a solid red block (site-mobile-toggle) while the
- * notifications page is the active route. */
+ * notifications page is the active route. Hidden for approved coaches -
+ * they get notifications inside the coach dashboard instead, which is
+ * where the athlete-review links in those notifications actually lead. */
 export default function NotificationBell({ mobile = false }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isCoach, user } = useAuth();
+  const isApprovedCoach = isCoach && user?.athlete?.status === 'approved';
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (!isAuthenticated) return undefined;
+    if (!isAuthenticated || isApprovedCoach) return undefined;
 
     let isMounted = true;
     async function refreshCount() {
@@ -33,9 +36,9 @@ export default function NotificationBell({ mobile = false }) {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isApprovedCoach]);
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated || isApprovedCoach) return null;
 
   const badge = unreadCount > 0 && (
     <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#da3b26] px-1 text-[10px] font-bold text-white">

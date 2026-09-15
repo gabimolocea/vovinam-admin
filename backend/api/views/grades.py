@@ -13,7 +13,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from ..serializers import *
 from ..models import *
-from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
+from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin, IsResultReviewerOrAdmin
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
@@ -200,14 +200,17 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def pending_review(self, request):
         """Grade history submissions pending review: all of them for admins,
-        or just the submitting coach's own club's athletes for club coaches."""
+        or just the submitting coach's own club's athletes for club coaches.
+        Unlike CategoryAthleteScore's pending_review, this deliberately does
+        NOT restrict to submitted_by_athlete=True - a coach recording an
+        exam result directly (not the athlete self-submitting) still lands
+        as status='pending' and needs to surface here too, or it would never
+        show up for review anywhere in the UI."""
         user = request.user
         if getattr(user, 'is_admin', False) or getattr(user, 'role', None) == 'admin':
-            qs = GradeHistory.objects.filter(status='pending', submitted_by_athlete=True)
+            qs = GradeHistory.objects.filter(status='pending')
         elif hasattr(user, 'athlete') and user.athlete and user.athlete.is_coach and user.athlete.club_id:
-            qs = GradeHistory.objects.filter(
-                athlete__club_id=user.athlete.club_id, status='pending', submitted_by_athlete=True
-            )
+            qs = GradeHistory.objects.filter(athlete__club_id=user.athlete.club_id, status='pending')
         else:
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -215,7 +218,7 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def approve(self, request, pk=None):
         """Admin action to approve a grade history"""
         grade_history = self.get_object()
@@ -232,7 +235,7 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def reject(self, request, pk=None):
         """Admin action to reject a grade history"""
         grade_history = self.get_object()
@@ -249,7 +252,7 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def request_revision(self, request, pk=None):
         """Admin action to request revision of a grade history"""
         grade_history = self.get_object()

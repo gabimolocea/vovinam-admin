@@ -19,6 +19,16 @@ import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
    ═══════════════════════════════════════════════════════ */
 
 const PUBLIC_DISPLAY_PORT = 5177;
+
+// Same-host, different-port - not hardcoded to localhost, since this admin
+// app and public-display may be opened from different devices on the venue
+// LAN (e.g. admin laptop vs. the machine driving the scoreboard TV).
+function publicDisplayOrigin() {
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
+  return `${protocol}//${host}:${PUBLIC_DISPLAY_PORT}`;
+}
+
 const formatFieldLabel = (name = '') => String(name).replace(/\bfield\b/gi, 'TEREN').replace(/\btatami\b/gi, 'TEREN').toUpperCase();
 const CATEGORY_TYPE_BADGES = {
   solo: { label: 'Solo', bg: 'border border-black bg-yellow-300 text-black' },
@@ -676,7 +686,7 @@ export default function LiveFullscreenPage() {
               className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted ? 'ring-2 ring-green-400 animate-pulse' : ''}`}
             >ÎNCHEIE PROBA</button>
           )}
-          <a href={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
+          <a href={`${publicDisplayOrigin()}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
             className={`${TOPNAV_SECONDARY_BUTTON} text-center`}>
             TV PUBLIC
           </a>

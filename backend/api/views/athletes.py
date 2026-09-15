@@ -21,7 +21,7 @@ from django.core.files.base import ContentFile
 import logging
 from pathlib import Path
 from django.db import IntegrityError
-from ..notification_utils import notify_profile_image_submitted, notify_profile_image_reviewed
+from ..notification_utils import notify_profile_image_submitted, notify_profile_image_reviewed, notify_athlete_registered
 
 
 @api_view(['GET'])
@@ -79,11 +79,26 @@ class AthleteViewSet(viewsets.ModelViewSet):
             return [IsClubCoachOrAdmin()]
         return [permissions.IsAuthenticated()]
 
+    def _is_own_club_roster_request(self):
+        """True when a club coach is listing their own club's roster via
+        ?my_club=true - unlike the public directory, a coach must be able to
+        see (and later approve) their pending/rejected athletes too, with
+        the full serializer (status, current_grade_details, etc)."""
+        my_club = self.request.query_params.get('my_club')
+        if not (my_club and str(my_club).lower() in ('1', 'true', 'yes')):
+            return False
+        user = self.request.user
+        return bool(
+            user and user.is_authenticated and hasattr(user, 'athlete') and user.athlete
+            and user.athlete.is_coach and user.athlete.club_id
+        )
+
     def get_serializer_class(self):
         """Use minimal serializer for list, full for detail, writable for mutations."""
-        if self.action in ['list', 'retrieve'] and not (
-            self.request.user and self.request.user.is_authenticated and self.request.user.is_admin
-        ):
+        is_admin = bool(self.request.user and self.request.user.is_authenticated and self.request.user.is_admin)
+        if self.action == 'list' and not is_admin and self._is_own_club_roster_request():
+            return AthleteSerializer
+        if self.action in ['list', 'retrieve'] and not is_admin:
             return PublicAthleteSerializer
         if self.action == 'retrieve':
             return AthleteDetailSerializer
@@ -109,9 +124,9 @@ class AthleteViewSet(viewsets.ModelViewSet):
 
         if self.action in ['list', 'retrieve'] and not (
             self.request.user and self.request.user.is_authenticated and self.request.user.is_admin
-        ):
+        ) and not self._is_own_club_roster_request():
             queryset = queryset.filter(status='approved', is_deleted=False)
-        
+
         # Apply filters
         club_id = self.request.query_params.get('club')
         if club_id:
@@ -125,7 +140,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(club_id=user.athlete.club_id)
             else:
                 queryset = queryset.none()
-        
+
         return queryset
 
     def list(self, request):
@@ -243,6 +258,10 @@ class AthleteViewSet(viewsets.ModelViewSet):
         serializer = AthleteProfileSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             athlete = serializer.save(user=request.user, status='pending')
+            try:
+                notify_athlete_registered(athlete)
+            except Exception:
+                logging.getLogger(__name__).exception('Failed to notify about new athlete registration')
             return Response(AthleteProfileSerializer(athlete).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -263,7 +282,19 @@ class AthleteViewSet(viewsets.ModelViewSet):
                 supporter=request.user, athlete=athlete, can_edit=True, status='approved'
             ).exists()
         )
-        if not is_owner_or_admin and not is_authorized_supporter:
+        # A club coach manages their own roster's profile fields directly
+        # (birth date, contact info, license, etc.) from the coach
+        # dashboard - same trust level as an admin for their own club, so
+        # this doesn't reuse the athlete/supporter self-service re-review
+        # path below.
+        requester_athlete = getattr(request.user, 'athlete', None)
+        is_club_coach = bool(
+            not is_owner_or_admin and not is_authorized_supporter
+            and requester_athlete and requester_athlete.is_coach
+            and athlete.club_id and athlete.club_id == requester_athlete.club_id
+            and athlete.club.coaches.filter(pk=requester_athlete.pk).exists()
+        )
+        if not is_owner_or_admin and not is_authorized_supporter and not is_club_coach:
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
         # A new profile picture uploaded by anyone other than an admin is
@@ -289,7 +320,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
             # a no-op submission (e.g. just reopening/saving the form
             # unchanged) doesn't needlessly pull the profile out of public
             # view while it's re-reviewed.
-            was_approved = not is_admin and athlete.status == 'approved'
+            was_approved = not is_admin and not is_club_coach and athlete.status == 'approved'
             previous_values = (
                 {field: getattr(athlete, field, None) for field in serializer.validated_data}
                 if was_approved else None
@@ -345,6 +376,87 @@ class AthleteViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         serializer = AthleteDetailSerializer(queryset.order_by('-profile_image_submitted_date'), many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated], url_path='coach-reminders')
+    def coach_reminders(self, request):
+        """Computed (not notification-based) reminders for a club coach's
+        feed: visas nearing expiration, upcoming competitions with roster
+        athletes not yet enrolled in any category, and upcoming grade-exam
+        events. Empty for anyone without a club (e.g. admins, supporters)."""
+        athlete = getattr(request.user, 'athlete', None)
+        club = athlete.club if athlete else None
+        empty = {'expiring_visas': [], 'competition_deadlines': [], 'upcoming_exams': []}
+        if not club:
+            return Response(empty)
+
+        from landing.models import Event
+
+        today = timezone.localdate()
+        horizon = today + timedelta(days=30)
+        club_athletes = Athlete.objects.filter(club=club, status='approved', is_deleted=False)
+
+        # Approved visas whose computed expiration (medical: +180d, annual:
+        # +365d from issue) falls within the next 30 days - mirrors
+        # Visa.is_valid()'s own math rather than duplicating a stored field
+        # that doesn't exist on the model.
+        expiring_visas = []
+        visas = Visa.objects.filter(
+            athlete__in=club_athletes, status='approved', issued_date__isnull=False,
+        ).select_related('athlete')
+        for visa in visas:
+            span = timedelta(days=180) if visa.visa_type == 'medical' else timedelta(days=365)
+            expiry = visa.issued_date + span
+            if today <= expiry <= horizon:
+                expiring_visas.append({
+                    'athlete_id': visa.athlete_id,
+                    'athlete_name': f'{visa.athlete.first_name} {visa.athlete.last_name}',
+                    'visa_type': visa.visa_type,
+                    'expires_on': expiry.isoformat(),
+                })
+
+        # Upcoming competitions whose coach-registration deadline falls
+        # within the next 14 days, where at least one club athlete has no
+        # category enrollment yet anywhere in that event. This doesn't try
+        # to match category eligibility (age/gender/grade) - it's a coarse
+        # "has nobody signed this athlete up yet" signal, not a guarantee
+        # they're eligible for every category.
+        competition_deadlines = []
+        deadline_horizon = today + timedelta(days=14)
+        candidate_events = Event.objects.filter(start_date__date__gte=today, start_date__date__lte=horizon)
+        for event in candidate_events:
+            if not event.has_event_type('competition'):
+                continue
+            deadline_dt = event.coach_registration_deadline or event.start_date
+            deadline_date = timezone.localtime(deadline_dt).date() if timezone.is_aware(deadline_dt) else deadline_dt.date()
+            if not (today <= deadline_date <= deadline_horizon):
+                continue
+            registered_ids = set(
+                CategoryAthlete.objects.filter(category__event=event, athlete__in=club_athletes)
+                .values_list('athlete_id', flat=True)
+            )
+            unregistered_count = club_athletes.exclude(id__in=registered_ids).count()
+            if unregistered_count:
+                competition_deadlines.append({
+                    'event_id': event.id,
+                    'event_name': event.title,
+                    'deadline': deadline_date.isoformat(),
+                    'unregistered_count': unregistered_count,
+                })
+
+        # Upcoming grade-exam events in the next 30 days - shown as-is,
+        # without trying to match each athlete's current grade (Event has
+        # no record of who organized it, so "created by the federation"
+        # can't be distinguished from one this coach created themselves).
+        upcoming_exams = [
+            {'event_id': event.id, 'event_name': event.title, 'start_date': event.start_date.isoformat()}
+            for event in candidate_events if event.has_event_type('examination')
+        ]
+
+        return Response({
+            'expiring_visas': expiring_visas,
+            'competition_deadlines': competition_deadlines,
+            'upcoming_exams': upcoming_exams,
+        })
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
@@ -450,6 +562,10 @@ class AthleteViewSet(viewsets.ModelViewSet):
             serializer = AthleteProfileSerializer(data=request.data, context={'request': request})
             if serializer.is_valid():
                 athlete = serializer.save(user=user, status='pending')
+                try:
+                    notify_athlete_registered(athlete)
+                except Exception:
+                    logging.getLogger(__name__).exception('Failed to notify about new athlete registration')
                 # Onboarding is complete once the athlete/coach profile is
                 # submitted - admin approval (athlete.status) is tracked
                 # separately and doesn't block the user from using their

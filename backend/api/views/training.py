@@ -30,19 +30,43 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAthleteOwnerCoachOrAdmin]
     
     def perform_create(self, serializer):
-        """Set the athlete and submitted_by_athlete flag when creating"""
+        """Set the athlete and submitted_by_athlete flag when creating.
+
+        `athlete` is read-only on the serializer (so a client can't spoof
+        submitting for someone else), so a coach logging a participation
+        for one of their own club's athletes passes it as a plain
+        `athlete` id in the request body instead - read directly off
+        `request.data` here and trusted like an admin (no self-submission
+        flag, no pending review). Anyone else can only submit for
+        themselves, exactly as before."""
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+
+        requester_athlete = getattr(self.request.user, 'athlete', None)
+        is_admin = bool(self.request.user and getattr(self.request.user, 'is_admin', False))
+
+        target_athlete = requester_athlete
+        requested_athlete_id = self.request.data.get('athlete')
+        if requested_athlete_id and (is_admin or (requester_athlete and requester_athlete.is_coach)):
+            try:
+                candidate = Athlete.objects.get(pk=requested_athlete_id)
+            except (Athlete.DoesNotExist, ValueError, TypeError):
+                candidate = None
+            if candidate and (is_admin or candidate.club_id == requester_athlete.club_id):
+                target_athlete = candidate
+
+        if not target_athlete:
+            raise DRFValidationError({'athlete': 'Sportivul este obligatoriu.'})
+
+        submitted_by_athlete = not is_admin and target_athlete == requester_athlete
+
         try:
-            serializer.save(
-                athlete=self.request.user.athlete,
-                submitted_by_athlete=True
-            )
+            serializer.save(athlete=target_athlete, submitted_by_athlete=submitted_by_athlete)
         except IntegrityError:
             # `ValidationError` in this module resolves to django.core.exceptions.ValidationError
             # (the `from .models import *` below the rest_framework import shadows it), which
             # DRF's exception handler doesn't render as JSON and surfaces as an opaque 500
             # instead of a 400. Import DRF's explicitly here so the friendly message actually
             # reaches the client.
-            from rest_framework.exceptions import ValidationError as DRFValidationError
             raise DRFValidationError({'event': 'You have already submitted participation for this event.'})
     
     def get_queryset(self):

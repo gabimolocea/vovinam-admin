@@ -1,9 +1,69 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth, authAPI, notificationSettingsAPI } from '@shared';
-import { Alert, Button, Checkbox, Input, Label, Req, Skeleton } from '../components/ui';
+import { Alert, Button, Card, Checkbox, Input, Label, Req, Skeleton } from '../components/ui';
+import { User, Settings, ExternalLink, LogOut } from 'lucide-react';
 import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
+
+const COACH_DASHBOARD_URL = import.meta.env.VITE_COACH_DASHBOARD_URL || 'http://localhost:5175';
+
+/** True once an athlete's coach flag has cleared approval - the point at
+ * which account management (settings, notifications, password) moves to
+ * the coach dashboard and drops off the public site. */
+function isApprovedCoach(user) {
+  return user.role !== 'supporter' && !!user.athlete?.is_coach && user.athlete?.status === 'approved';
+}
+
+/** Quick-nav row shown at the top of /cont: profil public, setări cont,
+ * panou antrenor (only for approved coaches). Icon-led, no description -
+ * these are shortcuts, not explainers. */
+function AccountShortcuts({ user }) {
+  const { logout } = useAuth();
+  const isSupporter = user.role === 'supporter';
+  const isCoach = isApprovedCoach(user);
+
+  const cards = [];
+  if (!isSupporter) {
+    cards.push({ key: 'public', to: '/cont/profil', icon: User, title: 'Profil public', internal: true });
+  }
+  if (isCoach) {
+    cards.push({ key: 'coach', href: COACH_DASHBOARD_URL, icon: ExternalLink, title: 'Panou antrenor', internal: false });
+  }
+  cards.push(
+    isCoach
+      ? { key: 'settings', href: `${COACH_DASHBOARD_URL}/account`, icon: Settings, title: 'Setări cont', internal: false }
+      : { key: 'settings', to: '/cont', icon: Settings, title: 'Setări cont', internal: true, active: true },
+  );
+  cards.push({ key: 'logout', icon: LogOut, title: 'Deconectare', action: logout });
+
+  const colsClass = cards.length >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : cards.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
+
+  return (
+    <div className={`grid gap-4 ${colsClass}`}>
+      {cards.map(({ key, to, href, icon: Icon, title, internal, active, action }) => {
+        const content = (
+          <Card className={`flex h-full flex-col items-center gap-3 p-6 text-center transition hover:border-primary ${active ? 'border-primary' : ''}`}>
+            <Icon className="h-9 w-9 text-primary" />
+            <span className="font-display font-semibold text-foreground">{title}</span>
+          </Card>
+        );
+        if (action) {
+          return (
+            <button key={key} type="button" onClick={action} className="text-left">
+              {content}
+            </button>
+          );
+        }
+        return internal ? (
+          <Link key={key} to={to}>{content}</Link>
+        ) : (
+          <a key={key} href={href} target="_blank" rel="noopener noreferrer">{content}</a>
+        );
+      })}
+    </div>
+  );
+}
 
 /** "Cont" tab: account type + email + phone. Both reuse the generic
  * /auth/me/ PUT (email uniqueness is enforced by the User model). */
@@ -278,24 +338,37 @@ export default function OnboardingPage() {
   // registration (see AccountPage's RegisterForm) - there's no separate
   // "what kind of account do you want" step here anymore. An athlete who
   // hasn't finished their profile yet goes straight to that form instead
-  // of this account-settings page.
-  const needsAthleteProfile = user.role === 'athlete' && !user.profile_completed;
+  // of this account-settings page. Gate on `user.athlete` itself, not
+  // `user.profile_completed` - that flag can drift out of sync (e.g. a
+  // profile created directly rather than through the onboarding submit
+  // flow), and AthleteOnboardingPage's own redirect-back-to-/cont already
+  // gates on `user.athlete` too. Using different conditions here caused an
+  // infinite redirect loop for any account where they disagreed.
+  const needsAthleteProfile = user.role === 'athlete' && !user.athlete;
   if (needsAthleteProfile) return <Navigate to="/onboarding/sportiv" replace />;
+
+  // Approved coaches manage everything (profile, notifications, password)
+  // from the coach dashboard now - this page reduces to a plain shortcuts
+  // launcher for them, with no breadcrumb/hero/tabs clutter.
+  const isCoach = isApprovedCoach(user);
 
   return (
     <div className="flex flex-col">
       <Seo title="Setări" path="/cont" noindex />
 
-      <Breadcrumbs items={[{ label: 'Contul meu' }]} showCurrent />
+      {!isCoach && <Breadcrumbs items={[{ label: 'Contul meu' }]} showCurrent />}
 
-      <div className="site-full-bleed bg-[#e9ecef]">
-        <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:py-16">
-          <h1 className="text-fluid-h2 font-display font-bold text-[#00334d]">Contul meu</h1>
+      {!isCoach && (
+        <div className="site-full-bleed bg-[#e9ecef]">
+          <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:py-16">
+            <h1 className="text-fluid-h2 font-display font-bold text-[#00334d]">Contul meu</h1>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex flex-col gap-6 pt-8">
-        <StatusStep user={user} refetchUser={refetchUser} />
+        <AccountShortcuts user={user} />
+        {!isCoach && <StatusStep user={user} refetchUser={refetchUser} />}
       </div>
     </div>
   );

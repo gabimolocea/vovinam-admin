@@ -1,6 +1,21 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+// On a LAN (competition day), the same frontend build is opened from many
+// devices at whatever IP the venue laptop happens to have - a build-time
+// VITE_API_BASE_URL can't know that in advance. So when it isn't explicitly
+// set, derive the API host from how the browser actually reached this page
+// (same pattern already used by AppLauncherPanel/PortalPage for cross-app
+// links), instead of hardcoding localhost - that way pointing a tablet at
+// http://192.168.1.50:5176 automatically talks to http://192.168.1.50:8000/api
+// with no per-event .env editing. An explicit VITE_API_BASE_URL (e.g. the
+// production API domain) still always wins.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+  || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000/api` : 'http://localhost:8000/api');
+
+// Same host as API_BASE_URL but without the trailing /api - for building
+// absolute media/image URLs (profile photos, certificates, etc.) that come
+// back from the API as host-relative paths.
+export const MEDIA_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -75,6 +90,7 @@ export const competitionAPI = {
   markLocalInProgress: (id) => api.post(`/competitions/${id}/mark-local-in-progress/`),
   markResultsUploaded: (id) => api.post(`/competitions/${id}/mark-results-uploaded/`),
   generateStandardGroupsCategories: (id) => api.post(`/competitions/${id}/generate-standard-groups-categories/`),
+  createExam: (data) => api.post('/competitions/create-exam/', data),
 };
 
 export const eventAPI = {
@@ -138,6 +154,7 @@ export const athleteAPI = {
   approveImage: (id, notes) => api.post(`/athletes/${id}/approve_image/`, { notes }),
   rejectImage: (id, notes) => api.post(`/athletes/${id}/reject_image/`, { notes }),
   pendingImageApprovals: () => api.get('/athletes/pending_image_approvals/'),
+  coachReminders: () => api.get('/athletes/coach-reminders/'),
 };
 
 // ── Clubs ─────────────────────────────────────────────
@@ -391,6 +408,11 @@ export const notificationAPI = {
   unreadCount: () => api.get('/notifications/unread_count/'),
   markRead: (id) => api.post(`/notifications/${id}/mark_read/`),
   markAllRead: () => api.post('/notifications/mark_all_read/'),
+};
+
+// ── News mentions (authenticated) ─────────────────────
+export const newsAPI = {
+  myMentions: () => api.get('/landing/news/my_mentions/'),
 };
 
 // ── Match Field Assignments ───────────────────────────

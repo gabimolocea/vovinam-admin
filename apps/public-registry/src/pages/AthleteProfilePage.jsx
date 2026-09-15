@@ -17,18 +17,11 @@ import {
   scoreAPI,
   titleAPI,
   visaAPI,
+  MEDIA_BASE_URL,
 } from '@shared/lib/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-
 function getBackendBaseUrl() {
-  if (/^https?:\/\//i.test(API_BASE_URL)) {
-    return API_BASE_URL.replace(/\/api\/?$/, '');
-  }
-  if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:8000`;
-  }
-  return 'http://localhost:8000';
+  return MEDIA_BASE_URL;
 }
 
 function normalizeResultStatus(status) {

@@ -3,6 +3,15 @@ import { fieldAPI } from '@shared/lib/api';
 
 const PUBLIC_DISPLAY_PORT = 5177;
 
+// Same-host, different-port - not hardcoded to localhost, since this admin
+// app and public-display may be opened from different devices on the venue
+// LAN (e.g. admin laptop vs. the machine driving the scoreboard TV).
+function publicDisplayOrigin() {
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
+  return `${protocol}//${host}:${PUBLIC_DISPLAY_PORT}`;
+}
+
 const DisplayPreviewContext = createContext(null);
 
 export function useDisplayPreview() {
@@ -76,7 +85,7 @@ export function DisplayPreviewProvider({ children }) {
               <button onClick={() => closePreview(fId)} className="text-gray-400 hover:text-white text-xs leading-none px-1">✕</button>
             </div>
             <iframe
-              src={`http://localhost:${PUBLIC_DISPLAY_PORT}/display/${fId}`}
+              src={`${publicDisplayOrigin()}/display/${fId}`}
               className="border-0 pointer-events-none"
               title={`${label} Preview`}
               style={{ width: '1920px', height: '1080px', transform: 'scale(0.2083)', transformOrigin: 'top left' }}

@@ -572,6 +572,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         {ownProfile && athlete.profile_image_status === 'pending' && (
           <Alert>Noua ta poză de profil așteaptă aprobarea antrenorului sau a unui administrator - o vezi mai sus, estompată, până este aprobată. Nu poți trimite altă poză până atunci.</Alert>
         )}
+
         {ownProfile && athlete.profile_image_status === 'rejected' && athlete.profile_image_admin_notes && (
           <Alert variant="destructive">Poza de profil trimisă a fost respinsă: {athlete.profile_image_admin_notes}</Alert>
         )}

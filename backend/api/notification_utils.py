@@ -6,36 +6,52 @@ from .models import Notification, User, NotificationSettings
 from .email_utils import send_status_email
 from .whatsapp_utils import send_whatsapp_status_message
 
-# Status-change notification types (approved/rejected/revision_required) are
-# the only ones that also go out over email/WhatsApp - submissions and admin
-# notices stay in-app only. Each entry maps a type prefix to the
-# NotificationSettings email field to check and the profile tab it should
-# link to (mirrors the frontend's NotificationBell.jsx linkFor()).
-STATUS_CHANGE_CHANNELS = {
-    'result': {'email_field': 'email_on_result_status_change', 'tab': 'rezultate'},
-    'grade': {'email_field': 'email_on_grade_status_change', 'tab': 'grade'},
-    'seminar': {'email_field': 'email_on_seminar_status_change', 'tab': 'seminarii'},
-    'visa': {'email_field': 'email_on_visa_status_change', 'tab': 'vize'},
+# Every notification type gets an email - not just result/grade/seminar/visa
+# status changes. Where a dedicated NotificationSettings field exists (the
+# four submission domains, competition updates, system announcements) it
+# gates the email; the profile-tab link only makes sense for the four
+# submission domains (mirrors the frontend's NotificationBell.jsx linkFor()).
+DOMAIN_EMAIL_FIELDS = {
+    'result': 'email_on_result_status_change',
+    'grade': 'email_on_grade_status_change',
+    'seminar': 'email_on_seminar_status_change',
+    'visa': 'email_on_visa_status_change',
+    'competition': 'email_on_competition_updates',
+    'system_announcement': 'email_on_system_announcements',
 }
+DOMAIN_TABS = {'result': 'rezultate', 'grade': 'grade', 'seminar': 'seminarii', 'visa': 'vize'}
 STATUS_SUFFIXES = ('_approved', '_rejected', '_revision_required')
+
+# account_approved/profile_update_approved already send their own richer,
+# unconditional email (with a custom message and CTA) right after calling
+# create_notification() - skip them here so that email isn't sent twice.
+EMAILED_ELSEWHERE = {'account_approved', 'profile_update_approved'}
 
 
 def _send_status_channels(recipient, settings, notification_type, title, message):
-    """Send the email/WhatsApp side-channels for a status-change notification,
-    if the recipient's settings and contact info allow it. Never raises -
-    email_utils/whatsapp_utils already swallow their own failures."""
-    prefix = next((p for p in STATUS_CHANGE_CHANNELS if notification_type.startswith(p)), None)
-    suffix = next((s for s in STATUS_SUFFIXES if notification_type.endswith(s)), None)
-    if not prefix or not suffix:
+    """Send the email/WhatsApp side-channels for a notification, if the
+    recipient's settings and contact info allow it. Never raises -
+    email_utils/whatsapp_utils already swallow their own failures.
+
+    Types with no dedicated settings field (profile picture reviews,
+    supporter relations, roster registrations) are always emailed - there's
+    no "don't tell me" toggle for those, same as account_approved/
+    profile_update_approved (handled outside this function - see
+    EMAILED_ELSEWHERE), which email unconditionally too."""
+    if notification_type in EMAILED_ELSEWHERE:
         return
 
-    channel = STATUS_CHANGE_CHANNELS[prefix]
-    cta_path = f'/cont/profil?tab={channel["tab"]}'
+    domain = next((d for d in DOMAIN_EMAIL_FIELDS if notification_type.startswith(d)), None)
+    email_field = DOMAIN_EMAIL_FIELDS.get(domain)
+    should_email = getattr(settings, email_field, True) if email_field else True
 
-    if getattr(settings, channel['email_field'], True):
-        send_status_email(recipient, title, message, cta_label='Vezi profilul meu', cta_path=cta_path)
+    if should_email:
+        tab = DOMAIN_TABS.get(domain)
+        cta_path = f'/cont/profil?tab={tab}' if tab else None
+        send_status_email(recipient, title, message, cta_label='Vezi profilul meu' if cta_path else None, cta_path=cta_path)
 
-    if settings.notify_via_whatsapp:
+    suffix = next((s for s in STATUS_SUFFIXES if notification_type.endswith(s)), None)
+    if settings.notify_via_whatsapp and domain in DOMAIN_TABS and suffix:
         phone = recipient.phone_number or getattr(getattr(recipient, 'athlete', None), 'mobile_number', None)
         if phone:
             send_whatsapp_status_message(phone, title, message)
@@ -185,12 +201,52 @@ def notify_profile_update_approved(athlete):
     )
 
 
+def _club_coach_recipients(athlete, exclude_user=None):
+    """Users who coach the athlete's club - notified alongside admins when
+    that athlete submits something, so a coach sees their own roster's
+    activity without needing to be an admin. Excludes `exclude_user` (the
+    submitter themselves, when they're also their own club's coach) to
+    avoid a duplicate self-notification."""
+    if not athlete.club:
+        return []
+    return [c.user for c in athlete.club.coaches.filter(is_coach=True) if c.user and c.user != exclude_user]
+
+
+def _status_change_coach_recipients(athletes, exclude_user=None):
+    """Deduplicated club-coach Users for a list of athletes (e.g. every
+    member of a team result) - notified alongside the athlete(s) when a
+    submission's status changes, so a coach sees the outcome even when an
+    admin (not them) was the one who reviewed it. `exclude_user` is
+    normally the reviewer themselves, who already knows."""
+    seen_ids = set()
+    recipients = []
+    for athlete in athletes:
+        if not athlete:
+            continue
+        for coach_user in _club_coach_recipients(athlete, exclude_user=athlete.user):
+            if coach_user.id in seen_ids or coach_user == exclude_user:
+                continue
+            seen_ids.add(coach_user.id)
+            recipients.append(coach_user)
+    return recipients
+
+
+def _submission_recipients(athlete):
+    """Admins plus the athlete's club coaches, deduplicated - the standard
+    audience for a "new submission awaiting approval" notification."""
+    recipients = list(User.objects.filter(role='admin'))
+    seen_ids = {u.id for u in recipients}
+    for coach_user in _club_coach_recipients(athlete, exclude_user=athlete.user):
+        if coach_user.id not in seen_ids:
+            recipients.append(coach_user)
+            seen_ids.add(coach_user.id)
+    return recipients
+
+
 def notify_profile_image_submitted(athlete):
     """Notify the athlete's club coaches (or all admins if no coach) that a
     new profile picture is awaiting approval."""
-    coaches = []
-    if athlete.club:
-        coaches = [c.user for c in athlete.club.coaches.filter(is_coach=True) if c.user]
+    coaches = _club_coach_recipients(athlete, exclude_user=athlete.user)
     recipients = coaches or list(User.objects.filter(role='admin'))
     for recipient in recipients:
         create_notification(
@@ -198,6 +254,23 @@ def notify_profile_image_submitted(athlete):
             notification_type='profile_image_submitted',
             title='Poză de profil în așteptare',
             message=f'{athlete.first_name} {athlete.last_name} a trimis o nouă poză de profil spre aprobare.',
+            action_data={'athlete_id': athlete.id, 'athlete_name': f'{athlete.first_name} {athlete.last_name}'},
+        )
+
+
+def notify_athlete_registered(athlete):
+    """Notify the club's coaches (or all admins if no coach) that a new
+    athlete has self-registered into their club and awaits approval."""
+    if not athlete.club:
+        return
+    coaches = _club_coach_recipients(athlete, exclude_user=athlete.user)
+    recipients = coaches or list(User.objects.filter(role='admin'))
+    for recipient in recipients:
+        create_notification(
+            recipient=recipient,
+            notification_type='athlete_registered',
+            title='Sportiv nou înregistrat',
+            message=f'{athlete.first_name} {athlete.last_name} s-a înregistrat la clubul tău și așteaptă aprobare.',
             action_data={'athlete_id': athlete.id, 'athlete_name': f'{athlete.first_name} {athlete.last_name}'},
         )
 
@@ -246,9 +319,8 @@ def create_result_submitted_notification(result):
         }
     )
     
-    # Notification for admin users
-    admin_users = User.objects.filter(role='admin')
-    for admin in admin_users:
+    # Notification for admins and the athlete's club coaches
+    for admin in _submission_recipients(athlete):
         create_notification(
             recipient=admin,
             notification_type='result_submitted',
@@ -340,6 +412,21 @@ def create_result_status_notification(result, new_status, admin_user, admin_note
             action_data=action_data,
         )
 
+    # Let the club's coaches see the outcome too, even if an admin (not
+    # them) reviewed it.
+    coach_predicate = {'approved': 'a fost aprobat', 'rejected': 'a fost respins', 'revision_required': 'necesită completări'}[new_status]
+    athlete_names = ' și '.join(f'{a.first_name} {a.last_name}' for a in recipients if a) or 'un sportiv din club'
+    coach_message = f'Rezultatul lui {athlete_names} la {result.category.name} de la {entity_name}{placement_suffix} {coach_predicate}.'
+    for coach_user in _status_change_coach_recipients(recipients, exclude_user=admin_user):
+        create_notification(
+            recipient=coach_user,
+            notification_type=status_info['type'],
+            title=status_info['title'],
+            message=coach_message,
+            related_result=result,
+            action_data={**action_data, 'athlete_id': athlete.id if athlete else None, 'athlete_name': athlete_names},
+        )
+
 
 def create_competition_notification(competition, notification_type='competition_created'):
     """Create notification for competition events"""
@@ -408,9 +495,8 @@ def create_grade_submitted_notification(grade_history):
         }
     )
     
-    # Notification for admin users
-    admin_users = User.objects.filter(role='admin')
-    for admin in admin_users:
+    # Notification for admins and the athlete's club coaches
+    for admin in _submission_recipients(athlete):
         create_notification(
             recipient=admin,
             notification_type='grade_submitted',
@@ -460,23 +546,38 @@ def create_grade_status_notification(grade_history, new_status, admin_user, admi
     if admin_notes:
         message += f'\n\nNote administrator: {admin_notes}'
 
+    action_data = {
+        'grade_name': grade_history.grade.name,
+        'event': grade_history.event.id if getattr(grade_history, 'event', None) else None,
+        'event_name': grade_history.event.title if getattr(grade_history, 'event', None) else None,
+        'event_start': grade_history.event.start_date.isoformat() if getattr(grade_history, 'event', None) and getattr(grade_history.event, 'start_date', None) else None,
+        'level': grade_history.level,
+        'reviewed_by': str(admin_user) if admin_user else 'Admin',
+        'admin_notes': admin_notes,
+        'new_status': new_status,
+    }
+
     # Create notification for the athlete
     create_notification(
         recipient=athlete.user,
         notification_type=status_info['type'],
         title=status_info['title'],
         message=message,
-        action_data={
-            'grade_name': grade_history.grade.name,
-                'event': grade_history.event.id if getattr(grade_history, 'event', None) else None,
-                'event_name': grade_history.event.title if getattr(grade_history, 'event', None) else None,
-                'event_start': grade_history.event.start_date.isoformat() if getattr(grade_history, 'event', None) and getattr(grade_history.event, 'start_date', None) else None,
-            'level': grade_history.level,
-            'reviewed_by': str(admin_user) if admin_user else 'Admin',
-            'admin_notes': admin_notes,
-            'new_status': new_status
-        }
+        action_data=action_data,
     )
+
+    # Let the club's coaches see the outcome too, even if an admin (not
+    # them) reviewed it.
+    coach_predicate = {'approved': 'a fost aprobat', 'rejected': 'a fost respins', 'revision_required': 'necesită completări'}[new_status]
+    coach_message = f'Examenul de grad al lui {athlete.first_name} {athlete.last_name} pentru {grade_history.grade.name} {coach_predicate}.'
+    for coach_user in _status_change_coach_recipients([athlete], exclude_user=admin_user):
+        create_notification(
+            recipient=coach_user,
+            notification_type=status_info['type'],
+            title=status_info['title'],
+            message=coach_message,
+            action_data={**action_data, 'athlete_id': athlete.id, 'athlete_name': f'{athlete.first_name} {athlete.last_name}'},
+        )
 
 
 # Training Seminar Notification Functions
@@ -516,9 +617,8 @@ def create_seminar_submitted_notification(participation):
             }
         )
     
-    # Notification for admin users
-    admin_users = User.objects.filter(role='admin')
-    for admin in admin_users:
+    # Notification for admins and the athlete's club coaches
+    for admin in _submission_recipients(athlete):
         create_notification(
             recipient=admin,
             notification_type='seminar_submitted',
@@ -615,6 +715,29 @@ def create_seminar_status_notification(participation, new_status, admin_user, ad
             }
         )
 
+    # Let the club's coaches see the outcome too, even if an admin (not
+    # them) reviewed it.
+    seminar_label = event.title if event else (seminar.name if seminar else 'seminar')
+    coach_predicate = {'approved': 'a fost aprobată', 'rejected': 'a fost respinsă', 'revision_required': 'necesită completări'}[new_status]
+    coach_message = f'Participarea lui {athlete.first_name} {athlete.last_name} la „{seminar_label}” {coach_predicate}.'
+    for coach_user in _status_change_coach_recipients([athlete], exclude_user=admin_user):
+        create_notification(
+            recipient=coach_user,
+            notification_type=status_info['type'],
+            title=status_info['title'],
+            message=coach_message,
+            action_data={
+                'athlete_id': athlete.id,
+                'athlete_name': f'{athlete.first_name} {athlete.last_name}',
+                'event_id': event.pk if event else None,
+                'event_name': event.title if event else None,
+                'seminar_name': seminar.name if seminar else None,
+                'reviewed_by': str(admin_user) if admin_user else 'Admin',
+                'admin_notes': admin_notes,
+                'new_status': new_status,
+            },
+        )
+
 
 VISA_TYPE_LABELS = {'medical': 'medicală', 'annual': 'anuală'}
 
@@ -632,8 +755,7 @@ def create_visa_submitted_notification(visa):
         action_data={'visa_id': visa.pk, 'visa_type': visa.visa_type, 'issued_date': visa.issued_date.isoformat() if visa.issued_date else None},
     )
 
-    admin_users = User.objects.filter(role='admin')
-    for admin in admin_users:
+    for admin in _submission_recipients(athlete):
         create_notification(
             recipient=admin,
             notification_type='visa_submitted',
@@ -674,16 +796,31 @@ def create_visa_status_notification(visa, new_status, admin_user, admin_notes=''
     if admin_notes:
         message += f'\n\nNote administrator: {admin_notes}'
 
+    action_data = {
+        'visa_id': visa.pk,
+        'visa_type': visa.visa_type,
+        'reviewed_by': str(admin_user) if admin_user else 'Admin',
+        'admin_notes': admin_notes,
+        'new_status': new_status,
+    }
+
     create_notification(
         recipient=athlete.user,
         notification_type=status_info['type'],
         title=status_info['title'],
         message=message,
-        action_data={
-            'visa_id': visa.pk,
-            'visa_type': visa.visa_type,
-            'reviewed_by': str(admin_user) if admin_user else 'Admin',
-            'admin_notes': admin_notes,
-            'new_status': new_status,
-        },
+        action_data=action_data,
     )
+
+    # Let the club's coaches see the outcome too, even if an admin (not
+    # them) reviewed it.
+    coach_predicate = {'approved': 'a fost aprobată', 'rejected': 'a fost respinsă', 'revision_required': 'necesită completări'}[new_status]
+    coach_message = f'Viza {type_label} a lui {athlete.first_name} {athlete.last_name} {coach_predicate}.'
+    for coach_user in _status_change_coach_recipients([athlete], exclude_user=admin_user):
+        create_notification(
+            recipient=coach_user,
+            notification_type=status_info['type'],
+            title=status_info['title'],
+            message=coach_message,
+            action_data={**action_data, 'athlete_id': athlete.id, 'athlete_name': f'{athlete.first_name} {athlete.last_name}'},
+        )

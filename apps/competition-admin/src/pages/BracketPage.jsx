@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
-import { api } from '@shared';
+import { api, MEDIA_BASE_URL } from '@shared';
 import { formatGroupBadgeLabel } from '@shared/components/ui';
 import ExcelJS from 'exceljs';
 
@@ -20,7 +20,7 @@ const genderBg = g =>
     : g === 'female' ? 'bg-pink-100 text-pink-900'
       : 'bg-amber-100 text-amber-900';
 
-const ADMIN_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://127.0.0.1:8000';
+const ADMIN_BASE = MEDIA_BASE_URL;
 
 /* ═══════════════════════════════════════════════════════════════════
    BRACKET PAGE  –  tabs instead of accordions

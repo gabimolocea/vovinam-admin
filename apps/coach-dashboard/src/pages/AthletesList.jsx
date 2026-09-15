@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { athleteAPI, visaAPI } from '@shared/lib/api';
-import { PageHeader, Spinner, EmptyState, DataTable, StatusBadge } from '@shared/components/ui';
+import { athleteAPI, visaAPI, MEDIA_BASE_URL } from '@shared/lib/api';
+import {
+  Alert, Badge, Button, EmptyState, Skeleton,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '../components/ui';
+import BeltBadge from '../components/BeltBadge';
+import { Plus } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:8000';
+const API_BASE = MEDIA_BASE_URL;
 
 const STATUS_LABELS = {
   approved: 'Aprobat',
@@ -18,8 +23,6 @@ function imgUrl(path) {
   return `${API_BASE}${String(path).startsWith('/') ? '' : '/'}${path}`;
 }
 
-const AVATAR_PLACEHOLDER = '/avatar-placeholder.svg';
-
 function normalizeList(data) {
   return Array.isArray(data) ? data : data?.results ?? [];
 }
@@ -32,90 +35,49 @@ function getLatestVisaByAthlete(items) {
     const current = map.get(athleteId);
     const currentDate = current?.issued_date ? new Date(current.issued_date).getTime() : 0;
     const nextDate = item?.issued_date ? new Date(item.issued_date).getTime() : 0;
-    if (!current || nextDate >= currentDate) {
-      map.set(athleteId, item);
-    }
+    if (!current || nextDate >= currentDate) map.set(athleteId, item);
   });
   return map;
 }
 
 function VisaBadge({ visa, unavailable = false }) {
-  if (unavailable) {
-    return <span className="inline-flex border border-amber-500 bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">Indisponibilă</span>;
-  }
-  if (!visa) {
-    return <span className="inline-flex rounded-full border border-gray-300 bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-500">Lipsește</span>;
-  }
-
-  return visa.is_valid ? (
-    <span className="inline-flex rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">Validă</span>
-  ) : (
-    <span className="inline-flex rounded-full border border-red-300 bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">Invalidă</span>
-  );
+  if (unavailable) return <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-400">Indisponibilă</Badge>;
+  if (!visa) return <Badge variant="outline">Lipsește</Badge>;
+  return visa.is_valid
+    ? <Badge className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">Validă</Badge>
+    : <Badge variant="destructive">Invalidă</Badge>;
 }
 
-function ApprovalInfoIcon() {
-  return (
-    <span
-      title="Sportivii trebuie aprobați de adminul federației înainte să fie validați complet în sistem."
-      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-blue-300 bg-blue-100 text-[10px] font-black text-blue-700"
-    >
-      i
-    </span>
-  );
-}
-
-function MobileAthleteCard({ athlete, annualVisa, medicalVisa, annualVisaUnavailable, medicalVisaUnavailable, onOpen }) {
-  const profileImageUrl = imgUrl(athlete.profile_image);
+/** Athlete photo in the same wide (3:2) format used on the athlete's own
+ * profile hero - rather than a small circular avatar - so the roster reads
+ * consistently with the profile page. `className` sets the size (a fixed
+ * width; height follows from the aspect ratio). */
+function AthletePhoto({ athlete, className }) {
   const fullName = `${athlete.last_name || ''} ${athlete.first_name || ''}`.trim() || athlete.full_name || '—';
-
+  const initials = `${(athlete.first_name || '')[0] || ''}${(athlete.last_name || '')[0] || ''}`.toUpperCase();
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="w-full border-2 border-black bg-white p-4 text-left transition hover:bg-yellow-50"
-    >
-      <div className="flex items-start gap-3">
-        <div className="h-14 w-14 overflow-hidden rounded-full border border-gray-200 bg-gray-100 shrink-0">
-          <img
-            src={profileImageUrl || AVATAR_PLACEHOLDER}
-            alt=""
-            className="h-full w-full object-cover"
-            onError={(e) => {
-              e.currentTarget.onerror = null;
-              e.currentTarget.src = AVATAR_PLACEHOLDER;
-            }}
-          />
+    <div className={`relative aspect-[3/2] shrink-0 bg-muted ${className}`}>
+      {athlete.profile_image ? (
+        <img src={imgUrl(athlete.profile_image)} alt={fullName} className="h-full w-full rounded-lg object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center rounded-lg text-xs font-semibold text-muted-foreground">
+          {initials || '?'}
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-black text-gray-900">{fullName}</div>
-          <div className="mt-1 text-sm text-gray-600">Grad: {athlete.current_grade?.name || athlete.current_grade_name || '—'}</div>
-        </div>
-      </div>
+      )}
+    </div>
+  );
+}
 
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-            Status <ApprovalInfoIcon />
-          </div>
-          <div className="min-w-0 [&>span]:w-full [&>span]:justify-center [&>span]:px-1.5 [&>span]:text-[10px]">
-            <StatusBadge status={athlete.status} label={STATUS_LABELS[athlete.status] || athlete.status || '—'} />
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">Viza anuală</div>
-          <div className="min-w-0 [&>span]:w-full [&>span]:justify-center [&>span]:px-1.5 [&>span]:text-[10px]">
-            <VisaBadge visa={annualVisa} unavailable={annualVisaUnavailable} />
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">Viza medicală</div>
-          <div className="min-w-0 [&>span]:w-full [&>span]:justify-center [&>span]:px-1.5 [&>span]:text-[10px]">
-            <VisaBadge visa={medicalVisa} unavailable={medicalVisaUnavailable} />
-          </div>
-        </div>
-      </div>
-    </button>
+function GradeCell({ grade }) {
+  if (!grade?.name) return <span className="text-muted-foreground">—</span>;
+  return <BeltBadge grade={grade.name} />;
+}
+
+function StatusCell({ status }) {
+  return (
+    <Badge variant={status === 'approved' ? 'default' : status === 'rejected' ? 'destructive' : 'outline'} className="whitespace-nowrap">
+      {STATUS_LABELS[status] || status || '—'}
+    </Badge>
   );
 }
 
@@ -149,104 +111,106 @@ export default function AthletesList() {
       setMedicalVisaUnavailable(medicalResult.status === 'rejected');
       setAnnualVisas(annualResult.status === 'fulfilled' ? normalizeList(annualResult.value.data) : []);
       setMedicalVisas(medicalResult.status === 'fulfilled' ? normalizeList(medicalResult.value.data) : []);
-    }).finally(() => {
-      if (active) setLoading(false);
-    });
+    }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [reloadKey]);
 
   const latestAnnualVisaByAthlete = useMemo(() => getLatestVisaByAthlete(annualVisas), [annualVisas]);
   const latestMedicalVisaByAthlete = useMemo(() => getLatestVisaByAthlete(medicalVisas), [medicalVisas]);
 
-  const columns = [
-    {
-      key: 'photo',
-      label: '',
-      render: (r) => {
-        const profileImageUrl = imgUrl(r.profile_image);
-        return (
-          <div className="h-10 w-10 rounded-full overflow-hidden shrink-0 border border-gray-200 bg-gray-100">
-            <img
-              src={profileImageUrl || AVATAR_PLACEHOLDER}
-              alt=""
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.currentTarget.onerror = null;
-                e.currentTarget.src = AVATAR_PLACEHOLDER;
-              }}
-            />
-          </div>
-        );
-      },
-    },
-    { key: 'name', label: 'Nume', render: (r) => `${r.last_name || ''} ${r.first_name || ''}`.trim() || r.full_name || '—' },
-    { key: 'current_grade', label: 'Grad', render: (r) => r.current_grade?.name || r.current_grade_name || '—' },
-    {
-      key: 'status',
-      label: 'Status',
-      render: (r) => (
-        <div className="flex items-center gap-2">
-          <StatusBadge status={r.status} label={STATUS_LABELS[r.status] || r.status || '—'} />
-          <ApprovalInfoIcon />
-        </div>
-      ),
-    },
-    {
-      key: 'annual_visa',
-      label: 'Viza anuală',
-      render: (r) => <VisaBadge visa={latestAnnualVisaByAthlete.get(r.id)} unavailable={annualVisaUnavailable} />,
-    },
-    {
-      key: 'medical_visa',
-      label: 'Viza medicală',
-      render: (r) => <VisaBadge visa={latestMedicalVisaByAthlete.get(r.id)} unavailable={medicalVisaUnavailable} />,
-    },
-  ];
-
-  if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-9 w-48" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="border-2 border-red-700 bg-red-50 p-5 text-red-900" role="alert">
-          <p className="font-bold">{error}</p>
-          <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="mt-3 frvv-btn-primary">
-            Reîncearcă
-          </button>
-        </div>
+      <div className="flex flex-col gap-3">
+        <Alert variant="destructive">{error}</Alert>
+        <Button variant="outline" size="sm" className="w-fit" onClick={() => setReloadKey((v) => v + 1)}>Reîncearcă</Button>
       </div>
     );
   }
 
   return (
-    <div className="p-4 sm:p-6">
-      <PageHeader title="Sportivi" subtitle="Sportivii din clubul tău">
-        <button
-          onClick={() => navigate('/athletes/new')}
-          className="frvv-btn-add"
-        >
-          <span className="frvv-btn-add-icon">+</span>
-          Adaugă sportiv
-        </button>
-      </PageHeader>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold">Sportivi</h1>
+          <p className="text-sm text-muted-foreground">Sportivii din clubul tău</p>
+        </div>
+        <Button onClick={() => navigate('/athletes/new')}>
+          <Plus className="h-4 w-4" /> Adaugă sportiv
+        </Button>
+      </div>
+
       {athletes.length === 0 ? (
-        <EmptyState icon="🥋" title="Fără sportivi" message="Nu au fost găsiți sportivi în clubul tău." />
+        <EmptyState title="Fără sportivi" message="Nu au fost găsiți sportivi în clubul tău." />
       ) : (
         <>
-          <div className="hidden lg:block">
-            <DataTable columns={columns} rows={athletes} onRowClick={(r) => navigate(`/athletes/${r.id}`)} />
+          <div className="hidden rounded-lg border border-border lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead />
+                  <TableHead>Nume</TableHead>
+                  <TableHead>Grad</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Viza anuală</TableHead>
+                  <TableHead>Viza medicală</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {athletes.map((athlete) => (
+                  <TableRow key={athlete.id} className="cursor-pointer" onClick={() => navigate(`/athletes/${athlete.id}`)}>
+                    <TableCell><AthletePhoto athlete={athlete} className="w-16" /></TableCell>
+                    <TableCell className="font-medium">{`${athlete.last_name || ''} ${athlete.first_name || ''}`.trim() || athlete.full_name || '—'}</TableCell>
+                    <TableCell><GradeCell grade={athlete.current_grade_details} /></TableCell>
+                    <TableCell><StatusCell status={athlete.status} /></TableCell>
+                    <TableCell><VisaBadge visa={latestAnnualVisaByAthlete.get(athlete.id)} unavailable={annualVisaUnavailable} /></TableCell>
+                    <TableCell><VisaBadge visa={latestMedicalVisaByAthlete.get(athlete.id)} unavailable={medicalVisaUnavailable} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-          <div className="space-y-3 lg:hidden">
+
+          <div className="flex flex-col gap-3 lg:hidden">
             {athletes.map((athlete) => (
-              <MobileAthleteCard
+              <button
                 key={athlete.id}
-                athlete={athlete}
-                annualVisa={latestAnnualVisaByAthlete.get(athlete.id)}
-                medicalVisa={latestMedicalVisaByAthlete.get(athlete.id)}
-                annualVisaUnavailable={annualVisaUnavailable}
-                medicalVisaUnavailable={medicalVisaUnavailable}
-                onOpen={() => navigate(`/athletes/${athlete.id}`)}
-              />
+                type="button"
+                onClick={() => navigate(`/athletes/${athlete.id}`)}
+                className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-left transition hover:bg-accent"
+              >
+                <div className="flex items-center gap-3">
+                  <AthletePhoto athlete={athlete} className="w-20" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{`${athlete.last_name || ''} ${athlete.first_name || ''}`.trim() || athlete.full_name || '—'}</p>
+                    <div className="mt-1"><GradeCell grade={athlete.current_grade_details} /></div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
+                    <Badge variant={athlete.status === 'approved' ? 'default' : athlete.status === 'rejected' ? 'destructive' : 'outline'} className="w-full justify-center whitespace-nowrap">
+                      {STATUS_LABELS[athlete.status] || athlete.status || '—'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Viza anuală</p>
+                    <VisaBadge visa={latestAnnualVisaByAthlete.get(athlete.id)} unavailable={annualVisaUnavailable} />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Viza medicală</p>
+                    <VisaBadge visa={latestMedicalVisaByAthlete.get(athlete.id)} unavailable={medicalVisaUnavailable} />
+                  </div>
+                </div>
+              </button>
             ))}
           </div>
         </>

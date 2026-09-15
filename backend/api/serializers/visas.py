@@ -60,13 +60,29 @@ class VisaSubmissionSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Auto-assign the current user's athlete profile and set the
-        submission flag, same as TrainingSeminarParticipationSerializer."""
+        submission flag - unless a club coach explicitly recorded this for
+        a different athlete on their own roster (from the coach dashboard,
+        sent as a plain `athlete` id in the request body since this field
+        is read-only to prevent spoofing), in which case that athlete is
+        trusted as-is and the submission isn't flagged as self-reported.
+        Same pattern as TrainingSeminarParticipationViewSet.perform_create."""
         request = self.context.get('request')
         if not request or not hasattr(request.user, 'athlete'):
             raise serializers.ValidationError('Utilizatorul trebuie să aibă profil de sportiv.')
 
-        validated_data['athlete'] = request.user.athlete
-        validated_data['submitted_by_athlete'] = True
+        requester_athlete = request.user.athlete
+        target_athlete = requester_athlete
+        requested_athlete_id = request.data.get('athlete')
+        if requested_athlete_id and requester_athlete.is_coach:
+            try:
+                candidate = Athlete.objects.get(pk=requested_athlete_id)
+            except (Athlete.DoesNotExist, ValueError, TypeError):
+                candidate = None
+            if candidate and candidate.club_id == requester_athlete.club_id:
+                target_athlete = candidate
+
+        validated_data['athlete'] = target_athlete
+        validated_data['submitted_by_athlete'] = target_athlete == requester_athlete
 
         from ..notification_utils import create_visa_submitted_notification
         visa = super().create(validated_data)

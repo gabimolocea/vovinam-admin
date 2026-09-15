@@ -216,34 +216,46 @@ class CategoryAthleteScoreSerializer(serializers.ModelSerializer):
         return getattr(ent, 'start_date', None)
 
     def create(self, validated_data):
-        """Auto-assign current user's athlete profile and set submission flag"""
+        """Auto-assign current user's athlete profile and set submission
+        flag - unless a club coach explicitly recorded this for a
+        different athlete on their own roster (from the coach dashboard),
+        in which case that athlete is trusted as-is and the submission
+        isn't flagged as self-reported. Everyone else can only ever submit
+        for themselves, exactly as before."""
         request = self.context.get('request')
-        if request and hasattr(request.user, 'athlete'):
-            validated_data['athlete'] = request.user.athlete
+        if not (request and hasattr(request.user, 'athlete')):
+            raise serializers.ValidationError("User must have an athlete profile to submit results")
+
+        requester_athlete = request.user.athlete
+        target_athlete = validated_data.get('athlete')
+        is_coach_for_club_athlete = bool(
+            target_athlete and target_athlete != requester_athlete
+            and requester_athlete.is_coach
+            and target_athlete.club_id == requester_athlete.club_id
+        )
+        if is_coach_for_club_athlete:
+            validated_data.setdefault('submitted_by_athlete', False)
+        else:
+            validated_data['athlete'] = requester_athlete
             validated_data['submitted_by_athlete'] = True
 
-            # For team results, handle team members separately
-            team_members = validated_data.pop('team_members', [])
+        # For team results, handle team members separately
+        team_members = validated_data.pop('team_members', [])
 
-            # Create the result first
-            result = super().create(validated_data)
+        # Create the result first
+        result = super().create(validated_data)
 
-            # For team results, ensure submitting athlete is included in team members
-            if result.type == 'teams':
-                if request.user.athlete not in team_members:
-                    team_members.append(request.user.athlete)
-                result.team_members.set(team_members)
+        # For team results, ensure the submitting athlete is included in team members
+        if result.type == 'teams':
+            if result.athlete and result.athlete not in team_members:
+                team_members.append(result.athlete)
+            result.team_members.set(team_members)
 
-            competition = result.category.event_or_competition
-            competition_name = getattr(competition, 'title', None) or getattr(competition, 'name', None) or 'competition'
+        # Create notification for result submission
+        from ..notification_utils import create_result_submitted_notification
+        create_result_submitted_notification(result)
 
-            # Create notification for result submission
-            from ..notification_utils import create_result_submitted_notification
-            create_result_submitted_notification(result)
-
-            return result
-
-        raise serializers.ValidationError("User must have an athlete profile to submit results")
+        return result
 class OfflineCategoryAthleteScoreSerializer(serializers.ModelSerializer):
     """Writable serializer for offline result uploads."""
     team_members = serializers.PrimaryKeyRelatedField(many=True, queryset=Athlete.objects.all(), required=False)

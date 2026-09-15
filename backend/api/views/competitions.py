@@ -219,6 +219,61 @@ class CompetitionViewSet(viewsets.ViewSet):
         )
         return Response(self._serialize_event(ev), status=201)
 
+    @action(detail=False, methods=['post'], url_path='create-exam', permission_classes=[permissions.IsAuthenticated])
+    def create_exam(self, request):
+        """Let a club coach (or admin) create a grade-exam event - a
+        narrower surface than create() above: only the fields an exam
+        needs (no sync/local-competition fields), and event_types is
+        always forced to ['examination']."""
+        from landing.models import Event
+        from ..models import City
+        from django.utils.text import slugify
+
+        user = request.user
+        if not user.is_admin:
+            athlete = getattr(user, 'athlete', None)
+            if not athlete or not athlete.is_coach or not athlete.club_id:
+                return Response({'error': 'Permission denied'}, status=403)
+
+        d = request.data
+        title = d.get('title', '').strip()
+        if not title:
+            return Response({'title': ['This field is required.']}, status=400)
+        start_date = d.get('start_date')
+        if not start_date:
+            return Response({'start_date': ['This field is required.']}, status=400)
+        try:
+            parsed_start_date = self._parse_event_datetime(start_date)
+            parsed_end_date = self._parse_event_datetime(d.get('end_date'), fallback=parsed_start_date)
+        except ValidationError as exc:
+            return Response(exc.detail, status=400)
+        city = None
+        city_id = d.get('city')
+        if city_id not in [None, '']:
+            city = City.objects.filter(pk=city_id).first()
+            if not city:
+                return Response({'city': ['Invalid city selected.']}, status=400)
+
+        base_slug = slugify(title) or 'examen'
+        slug = base_slug
+        counter = 1
+        while Event.objects.filter(slug=slug).exists():
+            slug = f'{base_slug}-{counter}'
+            counter += 1
+
+        ev = Event.objects.create(
+            title=title,
+            slug=slug,
+            address=d.get('address', ''),
+            city=city,
+            start_date=parsed_start_date,
+            end_date=parsed_end_date,
+            description=d.get('description', ''),
+            event_types=['examination'],
+            status=d.get('status', 'upcoming'),
+        )
+        return Response(self._serialize_event(ev), status=201)
+
     def partial_update(self, request, pk=None):
         from landing.models import Event
         from ..models import City

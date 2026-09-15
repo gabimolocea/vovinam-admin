@@ -562,6 +562,21 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
             serializer.save(submitted_by_athlete=False, status=self.request.data.get('status') or 'approved')
             return
 
+        # A club coach directly recording a result for their own roster (from
+        # the coach dashboard) is trusted the same as an admin - no diploma
+        # photo or pending review needed, unlike an athlete self-reporting a
+        # claimed placement.
+        requester_athlete = getattr(self.request.user, 'athlete', None)
+        target_athlete = serializer.validated_data.get('athlete') or requester_athlete
+        is_club_coach = bool(
+            requester_athlete and requester_athlete.is_coach
+            and target_athlete and target_athlete.club_id
+            and target_athlete.club_id == requester_athlete.club_id
+        )
+        if is_club_coach:
+            serializer.save(submitted_by_athlete=False, status='approved')
+            return
+
         if not hasattr(self.request.user, 'athlete'):
             raise DRFValidationError("Only athletes can submit competition results")
 

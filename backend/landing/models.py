@@ -69,13 +69,19 @@ class NewsPost(SEOModel):
         help_text="Only admin users can be authors"
     )
     tags = models.CharField(
-        max_length=255, 
-        blank=True, 
+        max_length=255,
+        blank=True,
         help_text="Tags separated by commas"
+    )
+    tagged_athletes = models.ManyToManyField(
+        'api.Athlete',
+        blank=True,
+        related_name='tagged_news',
+        help_text="Athletes mentioned in this post - surfaced in their coach's feed",
     )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         ordering = ['-created_at']
         verbose_name = _('Post')

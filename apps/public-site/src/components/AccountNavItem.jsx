@@ -1,126 +1,37 @@
-import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@shared';
-import { ChevronDown, LogOut, User } from 'lucide-react';
+import { User } from 'lucide-react';
 
-/** Header "Cont" nav item - a plain link to /cont when signed out, or an
- * account/logout dropdown when signed in. The dropdown closes on outside
- * click, Escape, or navigation. */
-export default function AccountNavItem({ mobile = false, onNavigate }) {
-  const { isAuthenticated, logout, user, isAdmin, isCoach } = useAuth();
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef(null);
-  const closeTimer = useRef(null);
-
-  function handleEnter() {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    setOpen(true);
+/** Small circular avatar - the athlete's profile photo when set, otherwise
+ * a plain person icon in a tinted circle. Also used by Layout.jsx for the
+ * mobile closed-state top bar icon. */
+export function AccountAvatar({ user, size = 'h-6 w-6' }) {
+  const profileImage = user?.athlete?.profile_image;
+  if (profileImage) {
+    return <img src={profileImage} alt="" className={`${size} rounded-full object-cover`} />;
   }
+  return (
+    <span className={`flex ${size} items-center justify-center rounded-full bg-white/20`}>
+      <User className="h-3.5 w-3.5" fill="currentColor" />
+    </span>
+  );
+}
 
-  function handleLeave() {
-    closeTimer.current = setTimeout(() => setOpen(false), 150);
-  }
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    function handleClickOutside(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    }
-    function handleEscape(e) {
-      if (e.key === 'Escape') setOpen(false);
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [open]);
-
-  useEffect(() => () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-  }, []);
-
-  if (mobile) {
-    if (isAuthenticated) {
-      return (
-        <>
-          {user?.role !== 'supporter' && (
-            <Link to="/cont/profil" className="site-mobile-row block px-4 py-4 text-base" onClick={onNavigate}>
-              Vezi Profil
-            </Link>
-          )}
-          {(isAdmin || isCoach) && (
-            <Link to="/cont/aprobari" className="site-mobile-row block px-4 py-4 text-base" onClick={onNavigate}>
-              Aprobări
-            </Link>
-          )}
-          <Link to="/cont" className="site-mobile-row block px-4 py-4 text-base" onClick={onNavigate}>
-            Setări
-          </Link>
-          <button
-            type="button"
-            className="site-mobile-row block w-full px-4 py-4 text-left text-base uppercase"
-            onClick={() => {
-              if (onNavigate) onNavigate();
-              logout();
-            }}
-          >
-            Deconectare
-          </button>
-        </>
-      );
-    }
-    // Signed out: no row here - the mobile header's account icon already
-    // links straight to /cont for login/register.
-    return null;
-  }
+/** Desktop utility-bar "Cont" nav item - a plain link to /cont, always
+ * (signed in or out). Everything that used to live in a dropdown (profile,
+ * coach panel, approvals, settings, logout) is now on the /cont page
+ * itself as shortcut cards, so this is just an entry point - no menu, no
+ * submenu state. Mobile has its own persistent account icon in Layout.jsx's
+ * closed-state top bar, so it doesn't render this component at all. */
+export default function AccountNavItem() {
+  const { isAuthenticated, user } = useAuth();
 
   if (isAuthenticated) {
     return (
-      <div className="relative" ref={containerRef} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
-        <button
-          type="button"
-          className="site-utility-link inline-flex items-center gap-1"
-          aria-expanded={open}
-          aria-haspopup="true"
-          onClick={() => setOpen((v) => !v)}
-        >
-          {user?.athlete?.first_name || 'Contul meu'}
-          <ChevronDown className="h-3 w-3" />
-        </button>
-        {open && (
-          <div className="site-submenu absolute right-0 top-full z-50 mt-2 flex min-w-[14rem] flex-col py-3">
-            {user?.role !== 'supporter' && (
-              <Link to="/cont/profil" className="site-submenu-link px-6 py-3.5" onClick={() => setOpen(false)}>
-                Vezi Profil
-              </Link>
-            )}
-            {(isAdmin || isCoach) && (
-              <Link to="/cont/aprobari" className="site-submenu-link px-6 py-3.5" onClick={() => setOpen(false)}>
-                Aprobări
-              </Link>
-            )}
-            <Link to="/cont" className="site-submenu-link px-6 py-3.5" onClick={() => setOpen(false)}>
-              Setări
-            </Link>
-            <button
-              type="button"
-              className="site-submenu-link flex items-center gap-1.5 px-6 py-3.5 text-left"
-              onClick={() => {
-                setOpen(false);
-                logout();
-              }}
-            >
-              <LogOut className="h-3.5 w-3.5" /> Deconectare
-            </button>
-          </div>
-        )}
-      </div>
+      <Link to="/cont" className="site-utility-link inline-flex items-center gap-1.5">
+        <AccountAvatar user={user} />
+        {user?.athlete?.first_name || 'Contul meu'}
+      </Link>
     );
   }
 

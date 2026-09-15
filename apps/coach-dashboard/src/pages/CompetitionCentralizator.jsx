@@ -1,15 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Spinner } from '@shared/components/ui';
+import { Badge, Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Skeleton, Tabs, TabsList, TabsTrigger } from '../components/ui';
+import { ArrowLeft, Plus, X } from 'lucide-react';
 import useCoachCentralizator from '../hooks/useCoachCentralizator';
 
 const GENDER_LABELS = { male: 'MASCULIN', female: 'FEMININ', mixt: 'MIXT' };
-const GENDER_BG     = { male: 'bg-blue-100', female: 'bg-pink-100', mixt: 'bg-amber-100' };
+const GENDER_BG     = { male: 'bg-blue-500/10', female: 'bg-pink-500/10', mixt: 'bg-amber-500/10' };
 const TYPE_LABELS   = { solo: 'Solo', team: 'Echipă', teams: 'Echipă', fight: 'Luptă' };
 const isTeamCategoryType = (type) => type === 'team' || type === 'teams';
-const MODAL_SECONDARY_BUTTON = 'border border-black bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
-const MODAL_PRIMARY_BUTTON = 'border border-black bg-yellow-300 px-4 py-2.5 text-sm font-black text-black transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500';
-const MODAL_DANGER_BUTTON = 'border border-black bg-red-500 px-4 py-2.5 text-sm font-black text-white transition hover:bg-red-600 disabled:opacity-40';
 
 function formatGroupYears(group) {
   if (!group) return '';
@@ -50,11 +48,16 @@ export default function CompetitionCentralizator() {
   }, [ctx.enrollPickerCell?.catId, ctx.enrollPickerCell?.clubId]);
 
   if (ctx.loading) {
-    return <div className="flex-1 flex items-center justify-center"><Spinner /></div>;
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <Skeleton className="h-9 w-48" />
+        <Skeleton className="h-64" />
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex h-full flex-col">
       {/* ═══ TABLE ═══ */}
       <CentralizatorTable ctx={ctx} onBack={() => navigate('/competitions')} />
 
@@ -67,16 +70,16 @@ export default function CompetitionCentralizator() {
           maxWidth="max-w-md"
           footer={(
             <>
-              <button onClick={() => ctx.setConfirmModal(null)} className={MODAL_SECONDARY_BUTTON}>
+              <Button variant="outline" onClick={() => ctx.setConfirmModal(null)}>
                 Anulează
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={ctx.confirmModal.onConfirm}
                 disabled={ctx.busy}
-                className={ctx.confirmModal.color === 'orange' ? MODAL_PRIMARY_BUTTON : MODAL_DANGER_BUTTON}
+                variant={ctx.confirmModal.color === 'orange' ? 'default' : 'destructive'}
               >
                 {ctx.confirmModal.confirmLabel || 'Confirmă'}
-              </button>
+              </Button>
             </>
           )}
         />
@@ -91,17 +94,17 @@ export default function CompetitionCentralizator() {
           maxWidth="max-w-sm"
           footer={(
             <>
-              <button onClick={() => ctx.setWeightModal(null)} className={MODAL_SECONDARY_BUTTON}>
+              <Button variant="outline" onClick={() => ctx.setWeightModal(null)}>
                 Anulează
-              </button>
-              <button onClick={ctx.handleWeightSubmit} disabled={ctx.busy} className={MODAL_PRIMARY_BUTTON}>
+              </Button>
+              <Button onClick={ctx.handleWeightSubmit} disabled={ctx.busy}>
                 Înscrie
-              </button>
+              </Button>
             </>
           )}
         >
           <div className="flex items-center gap-3">
-            <input
+            <Input
               type="number"
               step="0.1"
               min="0"
@@ -109,11 +112,11 @@ export default function CompetitionCentralizator() {
               value={ctx.weightValue}
               onChange={(e) => ctx.setWeightValue(e.target.value)}
               placeholder="ex: 65.5"
-              className="frvv-input flex-1"
+              className="flex-1"
               autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') ctx.handleWeightSubmit(); }}
             />
-            <span className="inline-flex h-11 items-center border border-black bg-gray-100 px-3 text-sm font-bold text-gray-700">kg</span>
+            <span className="inline-flex h-10 items-center rounded-md border border-border bg-muted px-3 text-sm font-medium text-muted-foreground">kg</span>
           </div>
         </CoachModal>
       )}
@@ -177,41 +180,40 @@ export default function CompetitionCentralizator() {
             panelRef={ctx.enrollPickerRef}
             headerExtra={(
               <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="frvv-chip">{formatGroupLabel(ctx.groups.find((group) => group.id === cat?.group))}</span>
-                <span className="frvv-chip">{catName}</span>
-                <span className="frvv-chip">{TYPE_LABELS[cat?.type] || cat?.category_type || 'Categorie'}</span>
-                {isTeamCategory && <span className="frvv-chip">Construire echipă</span>}
+                <Badge variant="outline">{formatGroupLabel(ctx.groups.find((group) => group.id === cat?.group))}</Badge>
+                <Badge variant="outline">{catName}</Badge>
+                <Badge variant="outline">{TYPE_LABELS[cat?.type] || cat?.category_type || 'Categorie'}</Badge>
+                {isTeamCategory && <Badge variant="outline">Construire echipă</Badge>}
               </div>
             )}
             footer={(
               <>
-                <button onClick={() => ctx.setEnrollPickerCell(null)} className={MODAL_SECONDARY_BUTTON}>
+                <Button variant="outline" onClick={() => ctx.setEnrollPickerCell(null)}>
                   Închide
-                </button>
+                </Button>
                 {isTeamCategory && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => ctx.createTeamEnrollment(catId, teamSelection)}
                     disabled={!canSaveTeam}
-                    className={MODAL_PRIMARY_BUTTON}
                   >
                     {ctx.teamBuilderBusy ? 'Se înrolează...' : 'Înrolează echipa'}
-                  </button>
+                  </Button>
                 )}
               </>
             )}
           >
             <div className="space-y-4">
               {hasDateRange && (
-                <div className="border border-black/10 bg-yellow-50 px-3 py-2 text-xs text-gray-700">
+                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
                   Născuți {dateStart} – {allowYounger ? '∞ (tineri acceptați)' : dateEnd}
                 </div>
               )}
-              <div className="max-h-[52vh] overflow-y-auto border-2 border-black/10 bg-white">
+              <div className="max-h-[52vh] overflow-y-auto rounded-md border border-border">
               {isLoading ? (
-                <div className="p-6 text-center text-sm text-gray-500">Se încarcă…</div>
+                <div className="p-6 text-center text-sm text-muted-foreground">Se încarcă…</div>
               ) : athleteList.length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-500 italic">
+                <div className="p-6 text-center text-sm italic text-muted-foreground">
                   {hasDateRange
                     ? `Niciun sportiv din clubul tău nu se încadrează în intervalul de vârstă (${outOfRangeCount} exclu${outOfRangeCount === 1 ? 's' : 'și'}).`
                     : 'Niciun sportiv în clubul tău.'}
@@ -227,14 +229,14 @@ export default function CompetitionCentralizator() {
                     return (
                       <div
                         key={ath.id}
-                        className={`grid gap-3 border-b border-black/10 px-4 py-3 md:grid-cols-[minmax(0,1fr)_140px_120px] md:items-center ${isEnrolled ? 'bg-green-50' : 'hover:bg-yellow-50'}`}
+                        className={`grid gap-3 border-b border-border px-4 py-3 md:grid-cols-[minmax(0,1fr)_140px_120px] md:items-center ${isEnrolled ? 'bg-emerald-500/10' : 'hover:bg-accent'}`}
                       >
                         <div className="min-w-0">
-                          <div className="truncate text-base font-semibold text-gray-900">{ath.last_name} {ath.first_name}</div>
-                          <div className="truncate text-xs text-gray-500">{ath.club?.name || 'Fără club'}{dob ? ` · ${dob}` : ''}</div>
+                          <div className="truncate text-sm font-semibold">{ath.last_name} {ath.first_name}</div>
+                          <div className="truncate text-xs text-muted-foreground">{ath.club?.name || 'Fără club'}{dob ? ` · ${dob}` : ''}</div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <input
+                          <Input
                             type="number"
                             min="0"
                             max="200"
@@ -242,7 +244,7 @@ export default function CompetitionCentralizator() {
                             value={fightWeight}
                             onChange={(e) => setFightWeights((prev) => ({ ...prev, [ath.id]: e.target.value }))}
                             placeholder="Greutate"
-                            className="frvv-input w-full"
+                            className="w-full"
                             disabled={ctx.busy || isEnrolled}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && !isEnrolled && canEnrollFightAthlete(ath.id)) {
@@ -250,22 +252,22 @@ export default function CompetitionCentralizator() {
                               }
                             }}
                           />
-                          <span className="text-xs font-bold uppercase tracking-wide text-gray-500">kg</span>
+                          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">kg</span>
                         </div>
                         <div className="flex items-center justify-end">
                           {isEnrolled ? (
-                            <span className="inline-flex items-center border border-green-600 bg-green-100 px-3 py-2 text-xs font-black uppercase tracking-wide text-green-700">
+                            <Badge className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
                               Înscris
-                            </span>
+                            </Badge>
                           ) : (
-                            <button
+                            <Button
                               type="button"
+                              size="sm"
                               onClick={() => ctx.handleToggleEnroll(ath.id, catId, fightWeight)}
                               disabled={ctx.busy || !canEnrollFightAthlete(ath.id)}
-                              className={MODAL_PRIMARY_BUTTON}
                             >
                               Adaugă
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -282,28 +284,20 @@ export default function CompetitionCentralizator() {
                         ctx.handleToggleEnroll(ath.id, catId);
                       }}
                       disabled={ctx.busy || ctx.teamBuilderBusy}
-                      className={`w-full flex items-center gap-3 border-b border-black/10 px-4 py-3 text-left transition-colors disabled:opacity-50 ${
+                      className={`flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors disabled:opacity-50 ${
                         isTeamCategory
-                          ? isSelected
-                            ? 'bg-blue-50 hover:bg-blue-100 text-gray-800'
-                            : 'hover:bg-yellow-50 text-gray-700'
-                          : isEnrolled
-                            ? 'bg-green-50 hover:bg-green-100 text-gray-800'
-                            : 'hover:bg-yellow-50 text-gray-700'
+                          ? isSelected ? 'bg-blue-500/10 hover:bg-blue-500/15' : 'hover:bg-accent'
+                          : isEnrolled ? 'bg-emerald-500/10 hover:bg-emerald-500/15' : 'hover:bg-accent'
                       }`}
                     >
-                      <span className={`inline-flex h-6 w-6 items-center justify-center border text-sm font-bold ${
+                      <span className={`inline-flex h-6 w-6 items-center justify-center rounded border text-sm font-bold ${
                         isTeamCategory
-                          ? isSelected
-                            ? 'bg-blue-500 border-blue-500 text-white'
-                            : 'border-gray-300 text-transparent'
-                          : isEnrolled
-                            ? 'bg-green-500 border-green-500 text-white'
-                            : 'border-gray-300 text-transparent'
+                          ? isSelected ? 'border-blue-500 bg-blue-500 text-white' : 'border-input text-transparent'
+                          : isEnrolled ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-input text-transparent'
                       }`}>✓</span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-base font-semibold">{ath.last_name} {ath.first_name}</span>
-                        <span className="block truncate text-xs text-gray-500">{ath.club?.name || 'Fără club'}{dob ? ` · ${dob}` : ''}</span>
+                        <span className="block truncate text-sm font-semibold">{ath.last_name} {ath.first_name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{ath.club?.name || 'Fără club'}{dob ? ` · ${dob}` : ''}</span>
                       </span>
                     </button>
                   );
@@ -311,20 +305,20 @@ export default function CompetitionCentralizator() {
               )}
               </div>
               {outOfRangeCount > 0 && (
-                <div className="border border-black/10 bg-yellow-50 px-3 py-2 text-xs text-gray-600">
+                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
                   {outOfRangeCount} sportiv{outOfRangeCount === 1 ? '' : 'i'} din club nu se încadrează în vârstă
                 </div>
               )}
               {isTeamCategory && (
-                <div className="border border-black/10 bg-blue-50 px-4 py-3">
-                  <div className="text-xs font-bold uppercase tracking-wide text-gray-700">Echipă selectată</div>
-                  <div className="mt-1 text-sm text-gray-700">
+                <div className="rounded-md border border-border bg-blue-500/10 px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Echipă selectată</div>
+                  <div className="mt-1 text-sm">
                     {selectedAthletes.length > 0
                       ? selectedAthletes.map((ath) => `${ath.first_name} ${ath.last_name}`).join(' & ')
                       : 'Selectează minimum 2 sportivi.'}
                   </div>
                   {duplicateTeam && (
-                    <div className="mt-2 text-xs font-semibold text-red-600">
+                    <div className="mt-2 text-xs font-semibold text-destructive">
                       Echipa este deja înscrisă în această categorie.
                     </div>
                   )}
@@ -340,30 +334,17 @@ export default function CompetitionCentralizator() {
 
 function CoachModal({ onClose, title, description, maxWidth = 'max-w-md', headerExtra = null, footer = null, panelRef = null, children = null }) {
   return (
-    <div className="fixed inset-0 z-[320] flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
-      <div
-        ref={panelRef}
-        onClick={(e) => e.stopPropagation()}
-        className={`flex max-h-[88vh] w-full ${maxWidth} flex-col overflow-hidden border-2 border-black bg-white shadow-2xl`}
-      >
-        <div className="flex items-start justify-between gap-4 border-b-2 border-black bg-yellow-300 px-5 py-4">
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate text-xl font-black text-gray-900">{title}</h3>
-            {description ? <p className="mt-1 text-sm text-gray-700">{description}</p> : null}
-            {headerExtra}
-          </div>
-          <button onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center border-2 border-black bg-white text-lg font-black text-gray-700 transition hover:bg-yellow-100 hover:text-black">
-            ×
-          </button>
-        </div>
-        {children ? <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div> : null}
-        {footer ? (
-          <div className="flex flex-col-reverse gap-2 border-t-2 border-black bg-gray-50 px-5 py-4 sm:flex-row sm:justify-end">
-            {footer}
-          </div>
-        ) : null}
-      </div>
-    </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent ref={panelRef} className={`${maxWidth} flex max-h-[88vh] flex-col`}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+          {headerExtra}
+        </DialogHeader>
+        {children ? <div className="flex-1 overflow-y-auto">{children}</div> : null}
+        {footer ? <DialogFooter>{footer}</DialogFooter> : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -375,44 +356,28 @@ function CentralizatorTable({ ctx, onBack }) {
   const [activeTab, setActiveTab] = useState('tehnica');
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-4">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <button
-            onClick={onBack}
-            className="mb-3 inline-flex items-center gap-2 border border-black bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-gray-700 transition hover:bg-yellow-100 hover:text-black"
-          >
-            <span aria-hidden="true">←</span>
-            Înapoi la competiții
-          </button>
-          <div className="text-sm font-black uppercase tracking-wide text-gray-900">Centralizator club</div>
-        </div>
+    <div className="flex-1 overflow-auto p-4">
+      <div className="mb-4 flex flex-col gap-3">
+        <Button variant="outline" size="sm" onClick={onBack} className="w-fit">
+          <ArrowLeft className="h-4 w-4" /> Înapoi la competiții
+        </Button>
+        <h1 className="font-display text-2xl font-bold">Centralizator club</h1>
       </div>
 
-      {/* Deadline alert — full width */}
-      <div className={`mb-4 w-full border-2 px-4 py-3 text-sm font-bold uppercase tracking-wide text-center ${ctx.isCoachDeadlinePassed ? 'border-red-500 bg-red-100 text-red-700' : 'border-yellow-400 bg-yellow-100 text-yellow-900'}`}>
+      <div className={`mb-4 w-full rounded-md border px-4 py-3 text-center text-sm font-medium ${ctx.isCoachDeadlinePassed ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-amber-400/50 bg-amber-500/10 text-amber-700 dark:text-amber-400'}`}>
         {ctx.isCoachDeadlinePassed
           ? <>Termen limită de înscrieri: {ctx.coachDeadlineDateStr || ctx.eventDateStr || '—'} — Termenul a expirat. Înscrierile nu mai pot fi modificate.</>
           : <>Termen limită de înscrieri: {ctx.coachDeadlineDateStr || ctx.eventDateStr || '—'}</>
         }
       </div>
 
-      {/* Tabs — centered */}
       <div className="mb-4 flex justify-center">
-        <div className="inline-flex overflow-hidden border-2 border-black bg-white">
-          <button
-            onClick={() => setActiveTab('tehnica')}
-            className={`px-6 py-2 text-xs font-black uppercase tracking-wide transition ${activeTab === 'tehnica' ? 'bg-yellow-300 text-black' : 'bg-white text-gray-700 hover:bg-yellow-100'}`}
-          >
-            Tehnica
-          </button>
-          <button
-            onClick={() => setActiveTab('lupta')}
-            className={`border-l-2 border-black px-6 py-2 text-xs font-black uppercase tracking-wide transition ${activeTab === 'lupta' ? 'bg-yellow-300 text-black' : 'bg-white text-gray-700 hover:bg-yellow-100'}`}
-          >
-            Lupta
-          </button>
-        </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="tehnica">Tehnica</TabsTrigger>
+            <TabsTrigger value="lupta">Lupta</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {activeTab === 'tehnica' ? <CoachTehnicaView ctx={ctx} /> : <CoachLuptaView ctx={ctx} />}
@@ -439,7 +404,7 @@ function CoachTehnicaView({ ctx }) {
   }, [columnStructure]);
 
   if (techGroups.length === 0) {
-    return <div className="py-16 text-center text-sm italic text-gray-400">Nu există categorii de tehnică.</div>;
+    return <div className="py-16 text-center text-sm italic text-muted-foreground">Nu există categorii de tehnică.</div>;
   }
 
   return (
@@ -463,16 +428,16 @@ function CoachTehnicaView({ ctx }) {
                   });
 
             return (
-              <div key={cat.id} className="overflow-hidden border-2 border-black bg-white">
-                <div className="border-b border-black bg-yellow-300 px-3 py-2 text-sm font-black text-gray-900">
+              <div key={cat.id} className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="border-b border-border bg-muted px-3 py-2 text-sm font-semibold">
                   {formatGroupLabel(group)}
                 </div>
-                <div className={`border-b border-black px-3 py-2 text-xs font-bold uppercase tracking-wide ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-900`}>
+                <div className={`border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${GENDER_BG[cat.gender] || 'bg-muted'}`}>
                   {cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}
                 </div>
-                <div className="divide-y divide-gray-200">
+                <div className="divide-y divide-border">
                   {enrolled.length === 0 ? (
-                    <div className="px-3 py-4 text-sm italic text-gray-400">{isTeamCategory ? 'Nicio echipă înscrisă.' : 'Niciun sportiv înscris.'}</div>
+                    <div className="px-3 py-4 text-sm italic text-muted-foreground">{isTeamCategory ? 'Nicio echipă înscrisă.' : 'Niciun sportiv înscris.'}</div>
                   ) : enrolled.map((entry) => {
                     const athleteName = `${entry.athlete_details?.last_name || ''} ${entry.athlete_details?.first_name || ''}`.trim();
                     const teamMembers = (entry.members || []).map((member) => member.name).filter(Boolean).join(' & ');
@@ -480,28 +445,28 @@ function CoachTehnicaView({ ctx }) {
                     return (
                       <div key={entry.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-medium text-gray-900">{isTeamCategory ? teamLabel : athleteName}</div>
+                          <div className="truncate font-medium">{isTeamCategory ? teamLabel : athleteName}</div>
                           {isTeamCategory && teamMembers && teamMembers !== teamLabel && (
-                            <div className="truncate text-xs text-gray-500">{teamMembers}</div>
+                            <div className="truncate text-xs text-muted-foreground">{teamMembers}</div>
                           )}
-                          {isTeamCategory && entry.club_name && <div className="truncate text-xs text-gray-400">{entry.club_name}</div>}
+                          {isTeamCategory && entry.club_name && <div className="truncate text-xs text-muted-foreground">{entry.club_name}</div>}
                         </div>
                         <button
                           onClick={(e) => handleUnenroll(entry.id, isTeamCategory ? teamLabel : athleteName, cat.name, e, isTeamCategory ? { enrollmentType: 'team' } : undefined)}
                           disabled={busy || ctx.isCoachDeadlinePassed}
-                          className="inline-flex h-5 w-5 items-center justify-center border border-red-300 bg-red-50 text-xs font-bold text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-40"
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
                         >
-                          ×
+                          <X className="h-3 w-3" />
                         </button>
                       </div>
                     );
                   })}
                 </div>
-                <div className="border-t-2 border-black p-3">
-                  <button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="frvv-btn-add w-full disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 disabled:border-gray-400">
-                    <span className="frvv-btn-add-icon">+</span>
+                <div className="border-t border-border p-3">
+                  <Button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="w-full">
+                    <Plus className="h-4 w-4" />
                     {isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             );
@@ -531,7 +496,7 @@ function CoachLuptaView({ ctx }) {
   }, [columnStructure]);
 
   if (fightGroups.length === 0) {
-    return <div className="py-16 text-center text-sm italic text-gray-400">Nu există categorii de luptă.</div>;
+    return <div className="py-16 text-center text-sm italic text-muted-foreground">Nu există categorii de luptă.</div>;
   }
 
   return (
@@ -549,39 +514,39 @@ function CoachLuptaView({ ctx }) {
               });
 
             return (
-              <div key={cat.id} className="overflow-hidden border-2 border-black bg-white">
-                <div className="border-b border-black bg-yellow-300 px-3 py-2 text-sm font-black text-gray-900">
+              <div key={cat.id} className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="border-b border-border bg-muted px-3 py-2 text-sm font-semibold">
                   {formatGroupLabel(group)}
                 </div>
-                <div className={`border-b border-black px-3 py-2 text-xs font-bold uppercase tracking-wide ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-900`}>
+                <div className={`border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${GENDER_BG[cat.gender] || 'bg-muted'}`}>
                   {cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}
                 </div>
                 <table className="min-w-full border-collapse text-sm">
                   <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border-b border-black px-3 py-2 text-left text-xs font-bold text-gray-700">Sportiv</th>
-                      <th className="border-b border-black px-3 py-2 text-center text-xs font-bold text-gray-700">Greutate</th>
-                      <th className="border-b border-black px-3 py-2 text-center text-xs font-bold text-gray-700"></th>
+                    <tr className="bg-muted">
+                      <th className="border-b border-border px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Sportiv</th>
+                      <th className="border-b border-border px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Greutate</th>
+                      <th className="border-b border-border px-3 py-2 text-center text-xs font-semibold text-muted-foreground"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {enrolled.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-3 py-4 text-sm italic text-gray-400">Niciun sportiv înscris.</td>
+                        <td colSpan={3} className="px-3 py-4 text-sm italic text-muted-foreground">Niciun sportiv înscris.</td>
                       </tr>
                     ) : enrolled.map((entry) => {
                       const athleteName = `${entry.athlete_details?.last_name || ''} ${entry.athlete_details?.first_name || ''}`.trim();
                       return (
-                        <tr key={entry.id} className="border-b border-gray-200">
-                          <td className="px-3 py-2 font-medium text-gray-900">{athleteName}</td>
-                          <td className="px-3 py-2 text-center text-gray-600">{entry.weight || '—'}</td>
+                        <tr key={entry.id} className="border-b border-border">
+                          <td className="px-3 py-2 font-medium">{athleteName}</td>
+                          <td className="px-3 py-2 text-center text-muted-foreground">{entry.weight || '—'}</td>
                           <td className="px-3 py-2 text-center">
                             <button
                               onClick={(e) => handleUnenroll(entry.id, athleteName, cat.name, e)}
                               disabled={busy || ctx.isCoachDeadlinePassed}
-                              className="inline-flex h-5 w-5 items-center justify-center border border-red-300 bg-red-50 text-xs font-bold text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-40"
+                              className="inline-flex h-5 w-5 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
                             >
-                              ×
+                              <X className="h-3 w-3" />
                             </button>
                           </td>
                         </tr>
@@ -589,11 +554,11 @@ function CoachLuptaView({ ctx }) {
                     })}
                   </tbody>
                 </table>
-                <div className="border-t-2 border-black p-3">
-                  <button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="frvv-btn-add w-full disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 disabled:border-gray-400">
-                    <span className="frvv-btn-add-icon">+</span>
+                <div className="border-t border-border p-3">
+                  <Button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="w-full">
+                    <Plus className="h-4 w-4" />
                     Adaugă sportiv
-                  </button>
+                  </Button>
                 </div>
               </div>
             );

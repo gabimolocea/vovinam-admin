@@ -32,18 +32,23 @@ class NewsPostAdmin(admin.ModelAdmin):
     list_filter = ['published', 'featured', 'created_at', 'author']
     search_fields = ['title', 'content', 'excerpt', 'tags']
     prepopulated_fields = {'slug': ('title',)}
+    filter_horizontal = ['tagged_athletes']
     # Inline editing on the changelist was removed to avoid the global
     # "Save" button. Moderation and publication should be done via the
     # object change form or admin actions instead of list_editable.
     ordering = ['-created_at']
     inlines = [NewsPostGalleryInline]
-    
+
     fieldsets = (
         (_('Informații de bază'), {
             'fields': ('title', 'slug', 'author', 'excerpt', 'tags')
         }),
         (_('Conținut'), {
             'fields': ('content', 'featured_image', 'featured_image_alt')
+        }),
+        (_('Etichete'), {
+            'fields': ('tagged_athletes',),
+            'description': _('Sportivii etichetați aici apar în feed-ul antrenorului lor.'),
         }),
         (_('Setări publicare'), {
             'fields': ('published', 'featured')

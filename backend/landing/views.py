@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticatedOrReadOnly, BasePermission
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, BasePermission, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 import django_filters
 from django.utils import timezone
@@ -80,6 +80,18 @@ class NewsPostViewSet(viewsets.ModelViewSet):
         """Get recent news posts"""
         recent_posts = self.get_queryset().filter(published=True)[:5]
         serializer = NewsPostListSerializer(recent_posts, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def my_mentions(self, request):
+        """Published posts tagging the current user's own athlete profile -
+        powers the "mentioned in a noutate" entries in the coach dashboard
+        feed."""
+        athlete = getattr(request.user, 'athlete', None)
+        if not athlete:
+            return Response([])
+        posts = NewsPost.objects.filter(tagged_athletes=athlete, published=True).order_by('-created_at')[:10]
+        serializer = NewsPostListSerializer(posts, many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrReadOnly])

@@ -22,7 +22,7 @@ class ClubSerializer(serializers.ModelSerializer):
         model = Club
         fields = [
             'id', 'name', 'slug', 'description', 'address', 'mobile_number', 'website',
-            'facebook_url', 'instagram_url', 'tiktok_url',
+            'facebook_url', 'instagram_url', 'tiktok_url', 'youtube_url',
             'coaches', 'coach_ids', 'city', 'logo', 'athletes', 'display_order',
         ]
 
