@@ -233,21 +233,30 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     def get_can_edit(self, obj):
         return can_edit_object(self.context.get('request'), obj, IsClubCoachOrAdmin)
 
-    def get_status(self, obj):
-        # Approval status is workflow-only data, not public - only the
-        # athlete themself sees it (used by the "this is a preview of your
-        # public profile" banner on their own /cont/profil page).
+    def _can_review(self, obj):
+        # Approval-workflow data (status/admin_notes/certificate images,
+        # non-approved entries) is hidden from the public, but visible to
+        # whoever is authorized to review this athlete's profile: the
+        # athlete themself, their club coach, or an admin - the same set
+        # `can_edit` already uses, since reviewing and editing share the
+        # same authorization.
         request = self.context.get('request')
         is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
-        return obj.status if is_own_profile else None
+        return is_own_profile or self.get_can_edit(obj)
+
+    def get_status(self, obj):
+        # Approval status is workflow-only data, not public - only someone
+        # authorized to review this profile sees it (used by the "this is a
+        # preview of your public profile" banner on /cont/profil, and by the
+        # reviewer-only approve/reject controls on /sportivi/:id).
+        return obj.status if self._can_review(obj) else None
 
     def get_pending_profile_image(self, obj):
         return _safe_file_url(getattr(obj, 'pending_profile_image', None))
 
     def get_grade_history(self, obj):
-        request = self.context.get('request')
-        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
-        status_filter = {} if is_own_profile else {'status': 'approved'}
+        can_review = self._can_review(obj)
+        status_filter = {} if can_review else {'status': 'approved'}
         entries = obj.grade_history.filter(**status_filter).select_related('grade', 'event').order_by('-obtained_date')
         return [
             {
@@ -255,17 +264,16 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
                 'grade': GradeMinimalSerializer(entry.grade).data if entry.grade else None,
                 'obtained_date': _safe_scalar(entry.obtained_date),
                 'event': entry.event.title if entry.event else None,
-                'status': entry.status if is_own_profile else None,
-                'admin_notes': entry.admin_notes if is_own_profile else None,
-                'certificate_image': _safe_file_url(entry.certificate_image) if is_own_profile else None,
+                'status': entry.status if can_review else None,
+                'admin_notes': entry.admin_notes if can_review else None,
+                'certificate_image': _safe_file_url(entry.certificate_image) if can_review else None,
             }
             for entry in entries
         ]
 
     def get_results(self, obj):
-        request = self.context.get('request')
-        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
-        status_filter = {} if is_own_profile else {'status': 'approved'}
+        can_review = self._can_review(obj)
+        status_filter = {} if can_review else {'status': 'approved'}
         scores = CategoryAthleteScore.objects.filter(
             Q(athlete=obj) | Q(team_members=obj), **status_filter,
         ).distinct().select_related('category', 'category__event').order_by('-submitted_date')
@@ -278,16 +286,15 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
                 'placement_claimed': score.placement_claimed,
                 'team_name': score.team_name,
                 'status': score.status,
-                'admin_notes': score.admin_notes if is_own_profile else None,
-                'certificate_image': _safe_file_url(score.certificate_image) if is_own_profile else None,
+                'admin_notes': score.admin_notes if can_review else None,
+                'certificate_image': _safe_file_url(score.certificate_image) if can_review else None,
             }
             for score in scores
         ]
 
     def get_seminars(self, obj):
-        request = self.context.get('request')
-        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
-        status_filter = {} if is_own_profile else {'status': 'approved'}
+        can_review = self._can_review(obj)
+        status_filter = {} if can_review else {'status': 'approved'}
         entries = obj.seminar_participations.filter(**status_filter).select_related('event').order_by('-event__start_date')
         return [
             {
@@ -296,25 +303,24 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
                 'start_date': _safe_scalar(entry.event.start_date) if entry.event else None,
                 'end_date': _safe_scalar(entry.event.end_date) if entry.event else None,
                 'place': entry.event.address if entry.event else None,
-                'status': entry.status if is_own_profile else None,
-                'admin_notes': entry.admin_notes if is_own_profile else None,
-                'certificate_image': _safe_file_url(entry.participation_certificate) if is_own_profile else None,
+                'status': entry.status if can_review else None,
+                'admin_notes': entry.admin_notes if can_review else None,
+                'certificate_image': _safe_file_url(entry.participation_certificate) if can_review else None,
             }
             for entry in entries
         ]
 
     def _visas(self, obj, visa_type):
-        request = self.context.get('request')
-        is_own_profile = bool(request and request.user and request.user.is_authenticated and obj.user_id == request.user.id)
-        status_filter = {} if is_own_profile else {'status': 'approved'}
+        can_review = self._can_review(obj)
+        status_filter = {} if can_review else {'status': 'approved'}
         entries = obj.visas.filter(visa_type=visa_type, **status_filter).order_by('-issued_date')
         return [
             {
                 'id': entry.id,
                 'issued_date': _safe_scalar(entry.issued_date),
-                'status': entry.status if is_own_profile else None,
-                'admin_notes': entry.admin_notes if is_own_profile else None,
-                'certificate_image': _safe_file_url(entry.image) if is_own_profile else None,
+                'status': entry.status if can_review else None,
+                'admin_notes': entry.admin_notes if can_review else None,
+                'certificate_image': _safe_file_url(entry.image) if can_review else None,
             }
             for entry in entries
         ]

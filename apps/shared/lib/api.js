@@ -352,6 +352,7 @@ export const visaAPI = {
     delete: (id) => api.delete(`/visa-submissions/${id}/`),
     approve: (id, data) => api.post(`/visa-submissions/${id}/approve/`, data),
     reject: (id, data) => api.post(`/visa-submissions/${id}/reject/`, data),
+    pendingReview: () => api.get('/visa-submissions/pending_review/'),
     extractDiploma: (formData) => api.post('/visa-submissions/extract_diploma/', formData),
   },
 };
@@ -366,6 +367,7 @@ export const gradeHistoryAPI = {
     delete: (id) => api.delete(`/grade-submissions/${id}/`),
     approve: (id, data) => api.post(`/grade-submissions/${id}/approve/`, data),
     reject: (id, data) => api.post(`/grade-submissions/${id}/reject/`, data),
+    pendingReview: () => api.get('/grade-submissions/pending_review/'),
     extractDiploma: (formData) => api.post('/grade-submissions/extract_diploma/', formData),
   },
 };

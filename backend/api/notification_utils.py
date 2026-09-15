@@ -198,6 +198,7 @@ def notify_profile_image_submitted(athlete):
             notification_type='profile_image_submitted',
             title='Poză de profil în așteptare',
             message=f'{athlete.first_name} {athlete.last_name} a trimis o nouă poză de profil spre aprobare.',
+            action_data={'athlete_id': athlete.id, 'athlete_name': f'{athlete.first_name} {athlete.last_name}'},
         )
 
 
@@ -255,6 +256,7 @@ def create_result_submitted_notification(result):
             message=f'{athlete.first_name} {athlete.last_name} a trimis un rezultat la {result.category.name} de la {entity_name}.',
             related_result=result,
             action_data={
+                'athlete_id': athlete.id,
                 'athlete_name': f'{athlete.first_name} {athlete.last_name}',
                 'category_name': result.category.name,
                 'competition_name': getattr(result.category.competition, 'name', None) if getattr(result.category, 'competition', None) else None,
@@ -415,6 +417,7 @@ def create_grade_submitted_notification(grade_history):
             title='Examen de grad nou trimis spre aprobare',
             message=f'{athlete.first_name} {athlete.last_name} a trimis o cerere de examen de grad pentru {grade_history.grade.name}.',
             action_data={
+                'athlete_id': athlete.id,
                 'athlete_name': f'{athlete.first_name} {athlete.last_name}',
                 'grade_name': grade_history.grade.name,
                     'event': grade_history.event.id if getattr(grade_history, 'event', None) else None,
@@ -523,6 +526,7 @@ def create_seminar_submitted_notification(participation):
             message=(f'{athlete.first_name} {athlete.last_name} a trimis o cerere de participare la „{event.title}”.' if event else f'{athlete.first_name} {athlete.last_name} a trimis o cerere de participare la „{seminar.name}”.'),
             action_data=(
                 {
+                    'athlete_id': athlete.id,
                     'athlete_name': f'{athlete.first_name} {athlete.last_name}',
                     'event_id': event.pk,
                     'event_name': event.title,
@@ -530,6 +534,7 @@ def create_seminar_submitted_notification(participation):
                     'event_end_date': event.end_date.isoformat() if getattr(event, 'end_date', None) else None,
                     'event_place': getattr(event, 'address', None) or (event.city.name if getattr(event, 'city', None) else None),
                 } if event else {
+                    'athlete_id': athlete.id,
                     'athlete_name': f'{athlete.first_name} {athlete.last_name}',
                     'seminar_name': seminar.name if seminar else None,
                     'seminar_start_date': seminar.start_date.isoformat() if seminar and seminar.start_date else None,
@@ -634,7 +639,7 @@ def create_visa_submitted_notification(visa):
             notification_type='visa_submitted',
             title='Viză nouă trimisă spre aprobare',
             message=f'{athlete.first_name} {athlete.last_name} a trimis o viză {type_label} spre aprobare.',
-            action_data={'athlete_name': f'{athlete.first_name} {athlete.last_name}', 'visa_id': visa.pk, 'visa_type': visa.visa_type},
+            action_data={'athlete_id': athlete.id, 'athlete_name': f'{athlete.first_name} {athlete.last_name}', 'visa_id': visa.pk, 'visa_type': visa.visa_type},
         )
 
 

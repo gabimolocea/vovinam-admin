@@ -34,6 +34,8 @@ def athlete_detail(request, pk):
     during dynamic registrations in development. Returning this as a plain
     function-based view ensures a stable URL for these athlete pages.
     """
+    from ..permissions import IsClubCoachOrAdmin, can_edit_object
+
     try:
         athlete = Athlete.objects.select_related('club__city', 'city', 'current_grade').prefetch_related(
             'grade_history__grade', 'grade_history__event',
@@ -43,11 +45,18 @@ def athlete_detail(request, pk):
             'team_results__category__event',
         ).get(
             pk=pk,
-            status='approved',
             is_deleted=False,
         )
     except Athlete.DoesNotExist:
         return Response({'detail': 'Not found.'}, status=404)
+
+    # Not-yet-approved athletes stay hidden from the public, but the athlete
+    # themself, their club coach or an admin (i.e. whoever is authorized to
+    # review/approve this profile) can still open the page - that's what
+    # lets a notification link straight to the athlete's page for review.
+    if athlete.status != 'approved' and not can_edit_object(request, athlete, IsClubCoachOrAdmin):
+        return Response({'detail': 'Not found.'}, status=404)
+
     serializer = PublicAthleteDetailSerializer(athlete, context={'request': request})
     return Response(serializer.data)
 

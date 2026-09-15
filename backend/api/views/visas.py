@@ -182,6 +182,24 @@ class VisaSubmissionViewSet(viewsets.ModelViewSet):
             )
         return Response(result)
 
+    @action(detail=False, methods=['get'])
+    def pending_review(self, request):
+        """Visa submissions pending review: all of them for admins, or just
+        the submitting coach's own club's athletes for club coaches."""
+        user = request.user
+        if getattr(user, 'is_admin', False) or getattr(user, 'role', None) == 'admin':
+            qs = Visa.objects.filter(status='pending', submitted_by_athlete=True)
+        elif hasattr(user, 'athlete') and user.athlete and user.athlete.is_coach and user.athlete.club_id:
+            qs = Visa.objects.filter(
+                athlete__club_id=user.athlete.club_id, status='pending', submitted_by_athlete=True
+            )
+        else:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = qs.select_related('athlete').order_by('-submitted_date')
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def approve(self, request, pk=None):
         visa = self.get_object()

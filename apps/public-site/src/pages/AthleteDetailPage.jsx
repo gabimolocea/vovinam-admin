@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { useAuth, athleteAPI } from '@shared';
+import { useAuth, athleteAPI, gradeHistoryAPI, scoreAPI, visaAPI, seminarAPI } from '@shared';
 import { Alert, Badge, Button, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 import GalleryTab from '../components/GalleryTab';
@@ -57,6 +57,24 @@ const RESULT_LEVEL_TABS = [
 
 function EmptyTab({ message }) {
   return <p className="py-6 text-center text-sm text-[#00334d]/60">{message}</p>;
+}
+
+/** Inline Aprobă/Respinge pair shown next to a pending item when the viewer
+ * is authorized to review this athlete's profile (admin or club coach, see
+ * `canReview` below) - lets an admin approve/reject directly from the
+ * athlete's own page instead of needing Django admin or the flat
+ * /cont/aprobari queue. */
+function ReviewButtons({ busy, onApprove, onReject }) {
+  return (
+    <div className="mt-2 flex gap-2">
+      <Button type="button" size="sm" disabled={busy} onClick={onApprove}>
+        Aprobă
+      </Button>
+      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onReject}>
+        Respinge
+      </Button>
+    </div>
+  );
 }
 
 /** European/World results aren't scored in-app (the federation doesn't
@@ -221,6 +239,8 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
   const [addingSeminar, setAddingSeminar] = useState(false);
   const [addingMedicalVisa, setAddingMedicalVisa] = useState(false);
   const [resultsLevel, setResultsLevel] = useState('national');
+  const [reviewBusyKey, setReviewBusyKey] = useState(null);
+  const [reviewError, setReviewError] = useState('');
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -260,6 +280,60 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
   if (!authLoading && !user) return <Navigate to="/cont" replace />;
 
   const isPhotoPending = athlete?.profile_image_status === 'pending';
+  // Reviewing (approve/reject) shares its authorization with editing -
+  // `can_edit` is already true only for an admin, this athlete's club
+  // coach, or the athlete themself (server-side, club-scoped). Reviewing
+  // your own profile doesn't make sense, so ownProfile is excluded here.
+  const canReview = !ownProfile && Boolean(athlete?.can_edit);
+
+  async function refreshAthlete() {
+    const response = ownProfile ? await athleteAPI.myProfileDetail() : await athleteAPI.getPublic(id);
+    setAthlete(response.data);
+  }
+
+  async function reviewPhoto(approve) {
+    setReviewBusyKey('photo');
+    setReviewError('');
+    try {
+      if (approve) await athleteAPI.approveImage(athlete.id);
+      else await athleteAPI.rejectImage(athlete.id, 'Poza nu a fost aprobată.');
+      await refreshAthlete();
+    } catch {
+      setReviewError('Nu am putut procesa poza de profil.');
+    } finally {
+      setReviewBusyKey(null);
+    }
+  }
+
+  const REVIEW_API = {
+    grade: gradeHistoryAPI.submissions,
+    result: scoreAPI,
+    'medical-visa': visaAPI.submissions,
+    'annual-visa': visaAPI.submissions,
+    seminar: seminarAPI.submissions,
+  };
+  const REVIEW_REJECT_NOTE = {
+    grade: 'Examenul de grad nu a fost aprobat.',
+    result: 'Rezultatul nu a fost aprobat.',
+    'medical-visa': 'Viza nu a fost aprobată.',
+    'annual-visa': 'Viza nu a fost aprobată.',
+    seminar: 'Participarea la seminar nu a fost aprobată.',
+  };
+
+  async function reviewItem(kind, itemId, approve) {
+    setReviewBusyKey(`${kind}-${itemId}`);
+    setReviewError('');
+    try {
+      const api = REVIEW_API[kind];
+      if (approve) await api.approve(itemId, {});
+      else await api.reject(itemId, { notes: REVIEW_REJECT_NOTE[kind] });
+      await refreshAthlete();
+    } catch {
+      setReviewError('Nu am putut procesa cererea.');
+    } finally {
+      setReviewBusyKey(null);
+    }
+  }
 
   // Selecting a file just stages it locally (object URL preview) - nothing
   // is uploaded until the athlete confirms in the preview dialog, which is
@@ -439,6 +513,16 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
               <h1 className="font-display text-lg font-bold text-white sm:text-xl lg:text-2xl">{athlete.full_name}</h1>
               {athlete.current_grade?.name && <BeltBadge grade={athlete.current_grade.name} />}
               {photoError && <span className="text-xs text-red-300">{photoError}</span>}
+              {canReview && isPhotoPending && (
+                <div className="flex flex-col items-center gap-1 lg:items-start">
+                  <span className="text-xs text-white/70">Poză de profil în așteptare</span>
+                  <ReviewButtons
+                    busy={reviewBusyKey === 'photo'}
+                    onApprove={() => reviewPhoto(true)}
+                    onReject={() => reviewPhoto(false)}
+                  />
+                </div>
+              )}
             </div>
           </div>
           <div className="flex w-full flex-row flex-wrap items-start justify-center gap-3 lg:w-auto lg:justify-start lg:gap-4">
@@ -476,6 +560,8 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         {ownProfile && athlete.profile_image_status === 'rejected' && athlete.profile_image_admin_notes && (
           <Alert variant="destructive">Poza de profil trimisă a fost respinsă: {athlete.profile_image_admin_notes}</Alert>
         )}
+
+        {canReview && reviewError && <Alert variant="destructive">{reviewError}</Alert>}
 
         {photoPreview && (
           <FullScreenModal title="Previzualizare poză de profil" onClose={cancelPhotoUpload}>
@@ -553,7 +639,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                       <th className="px-4 py-3 font-medium">Categorie</th>
                       <th className="px-4 py-3 font-medium">Tip</th>
                       <th className="px-4 py-3 font-medium">Rezultat</th>
-                      {ownProfile && <th className="px-4 py-3 font-medium">Status</th>}
+                      {(ownProfile || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
                     </>
                   )}
                   rows={athlete.results.map((r) => (
@@ -562,13 +648,25 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                       <td className="px-4 py-3 text-[#00334d]/60">{r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''}</td>
                       <td className="px-4 py-3 text-[#00334d]/60">{RESULT_TYPE_LABELS[r.type] || r.type}</td>
                       <td className="px-4 py-3">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</td>
-                      {ownProfile && (
+                      {(ownProfile || canReview) && (
                         <td className="px-4 py-3">
                           <Badge variant={r.status === 'approved' ? 'default' : 'outline'}>
                             {RESULT_STATUS_LABELS[r.status] || r.status}
                           </Badge>
                           {r.status === 'rejected' && r.admin_notes && (
                             <p className="mt-1 text-xs text-[#00334d]/60">{r.admin_notes}</p>
+                          )}
+                          {r.certificate_image && (
+                            <a href={r.certificate_image} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-primary underline">
+                              Vezi diploma
+                            </a>
+                          )}
+                          {canReview && r.status === 'pending' && (
+                            <ReviewButtons
+                              busy={reviewBusyKey === `result-${r.id}`}
+                              onApprove={() => reviewItem('result', r.id, true)}
+                              onReject={() => reviewItem('result', r.id, false)}
+                            />
                           )}
                         </td>
                       )}
@@ -578,7 +676,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                     <li key={r.id} className="rounded-lg border border-[#dce0e5] p-4">
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium">{r.competition || '—'}</p>
-                        {ownProfile && (
+                        {(ownProfile || canReview) && (
                           <Badge variant={r.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
                             {RESULT_STATUS_LABELS[r.status] || r.status}
                           </Badge>
@@ -588,8 +686,20 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                         {r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''} · {RESULT_TYPE_LABELS[r.type] || r.type}
                       </p>
                       <p className="mt-2 text-sm font-semibold">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</p>
-                      {ownProfile && r.status === 'rejected' && r.admin_notes && (
+                      {(ownProfile || canReview) && r.status === 'rejected' && r.admin_notes && (
                         <p className="mt-1 text-xs text-[#00334d]/60">{r.admin_notes}</p>
+                      )}
+                      {canReview && r.certificate_image && (
+                        <a href={r.certificate_image} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-primary underline">
+                          Vezi diploma
+                        </a>
+                      )}
+                      {canReview && r.status === 'pending' && (
+                        <ReviewButtons
+                          busy={reviewBusyKey === `result-${r.id}`}
+                          onApprove={() => reviewItem('result', r.id, true)}
+                          onReject={() => reviewItem('result', r.id, false)}
+                        />
                       )}
                     </li>
                   ))}
@@ -635,7 +745,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <th className="px-4 py-3 font-medium">Grad</th>
                   <th className="px-4 py-3 font-medium">Data obținerii</th>
                   <th className="px-4 py-3 font-medium">Eveniment</th>
-                  {ownProfile && <th className="px-4 py-3 font-medium">Status</th>}
+                  {(ownProfile || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
                 </>
               )}
               rows={athlete.grade_history.map((g) => (
@@ -643,13 +753,25 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <td className="px-4 py-3 font-medium">{g.grade?.name || '—'}</td>
                   <td className="px-4 py-3 text-[#00334d]/60">{formatDate(g.obtained_date)}</td>
                   <td className="px-4 py-3 text-[#00334d]/60">{g.event || '—'}</td>
-                  {ownProfile && (
+                  {(ownProfile || canReview) && (
                     <td className="px-4 py-3">
                       <Badge variant={g.status === 'approved' ? 'default' : 'outline'}>
                         {RESULT_STATUS_LABELS[g.status] || g.status}
                       </Badge>
                       {g.status === 'rejected' && g.admin_notes && (
                         <p className="mt-1 text-xs text-[#00334d]/60">{g.admin_notes}</p>
+                      )}
+                      {g.certificate_image && (
+                        <a href={g.certificate_image} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-primary underline">
+                          Vezi certificatul
+                        </a>
+                      )}
+                      {canReview && g.status === 'pending' && (
+                        <ReviewButtons
+                          busy={reviewBusyKey === `grade-${g.id}`}
+                          onApprove={() => reviewItem('grade', g.id, true)}
+                          onReject={() => reviewItem('grade', g.id, false)}
+                        />
                       )}
                     </td>
                   )}
@@ -659,15 +781,27 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                 <li key={g.id} className="rounded-lg border border-[#dce0e5] p-4">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium">{g.grade?.name || '—'}</p>
-                    {ownProfile && (
+                    {(ownProfile || canReview) && (
                       <Badge variant={g.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
                         {RESULT_STATUS_LABELS[g.status] || g.status}
                       </Badge>
                     )}
                   </div>
                   <p className="mt-1 text-xs text-[#00334d]/60">{formatDate(g.obtained_date)}{g.event ? ` · ${g.event}` : ''}</p>
-                  {ownProfile && g.status === 'rejected' && g.admin_notes && (
+                  {(ownProfile || canReview) && g.status === 'rejected' && g.admin_notes && (
                     <p className="mt-1 text-xs text-[#00334d]/60">{g.admin_notes}</p>
+                  )}
+                  {canReview && g.certificate_image && (
+                    <a href={g.certificate_image} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-primary underline">
+                      Vezi certificatul
+                    </a>
+                  )}
+                  {canReview && g.status === 'pending' && (
+                    <ReviewButtons
+                      busy={reviewBusyKey === `grade-${g.id}`}
+                      onApprove={() => reviewItem('grade', g.id, true)}
+                      onReject={() => reviewItem('grade', g.id, false)}
+                    />
                   )}
                 </li>
               ))}
@@ -703,7 +837,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <th className="px-4 py-3 font-medium">Eveniment</th>
                   <th className="px-4 py-3 font-medium">Perioadă</th>
                   <th className="px-4 py-3 font-medium">Loc</th>
-                  {ownProfile && <th className="px-4 py-3 font-medium">Status</th>}
+                  {(ownProfile || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
                 </>
               )}
               rows={athlete.seminars.map((s) => (
@@ -711,13 +845,20 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <td className="px-4 py-3 font-medium">{s.event || '—'}</td>
                   <td className="px-4 py-3 text-[#00334d]/60">{formatDate(s.start_date)}{s.end_date ? ` – ${formatDate(s.end_date)}` : ''}</td>
                   <td className="px-4 py-3 text-[#00334d]/60">{s.place || '—'}</td>
-                  {ownProfile && (
+                  {(ownProfile || canReview) && (
                     <td className="px-4 py-3">
                       <Badge variant={s.status === 'approved' ? 'default' : 'outline'}>
                         {RESULT_STATUS_LABELS[s.status] || s.status}
                       </Badge>
                       {s.status === 'rejected' && s.admin_notes && (
                         <p className="mt-1 text-xs text-[#00334d]/60">{s.admin_notes}</p>
+                      )}
+                      {canReview && s.status === 'pending' && (
+                        <ReviewButtons
+                          busy={reviewBusyKey === `seminar-${s.id}`}
+                          onApprove={() => reviewItem('seminar', s.id, true)}
+                          onReject={() => reviewItem('seminar', s.id, false)}
+                        />
                       )}
                     </td>
                   )}
@@ -727,7 +868,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                 <li key={s.id} className="rounded-lg border border-[#dce0e5] p-4">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium">{s.event || '—'}</p>
-                    {ownProfile && (
+                    {(ownProfile || canReview) && (
                       <Badge variant={s.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
                         {RESULT_STATUS_LABELS[s.status] || s.status}
                       </Badge>
@@ -736,8 +877,15 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <p className="mt-1 text-xs text-[#00334d]/60">
                     {formatDate(s.start_date)}{s.end_date ? ` – ${formatDate(s.end_date)}` : ''}{s.place ? ` · ${s.place}` : ''}
                   </p>
-                  {ownProfile && s.status === 'rejected' && s.admin_notes && (
+                  {(ownProfile || canReview) && s.status === 'rejected' && s.admin_notes && (
                     <p className="mt-1 text-xs text-[#00334d]/60">{s.admin_notes}</p>
+                  )}
+                  {canReview && s.status === 'pending' && (
+                    <ReviewButtons
+                      busy={reviewBusyKey === `seminar-${s.id}`}
+                      onApprove={() => reviewItem('seminar', s.id, true)}
+                      onReject={() => reviewItem('seminar', s.id, false)}
+                    />
                   )}
                 </li>
               ))}
@@ -772,14 +920,26 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <span>Viză medicală</span>
                   <div className="flex items-center gap-3">
                     <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
-                    {ownProfile && (
+                    {(ownProfile || canReview) && (
                       <Badge variant={v.status === 'approved' ? 'default' : 'outline'}>
                         {RESULT_STATUS_LABELS[v.status] || v.status}
                       </Badge>
                     )}
                   </div>
-                  {ownProfile && v.status === 'rejected' && v.admin_notes && (
+                  {(ownProfile || canReview) && v.status === 'rejected' && v.admin_notes && (
                     <p className="text-xs text-[#00334d]/60">{v.admin_notes}</p>
+                  )}
+                  {canReview && v.certificate_image && (
+                    <a href={v.certificate_image} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
+                      Vezi documentul
+                    </a>
+                  )}
+                  {canReview && v.status === 'pending' && (
+                    <ReviewButtons
+                      busy={reviewBusyKey === `medical-visa-${v.id}`}
+                      onApprove={() => reviewItem('medical-visa', v.id, true)}
+                      onReject={() => reviewItem('medical-visa', v.id, false)}
+                    />
                   )}
                 </li>
               ))}
@@ -792,9 +952,31 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         athlete.annual_visas.length === 0 ? <EmptyTab message="Nicio viză anuală înregistrată." /> : (
           <ul className="flex flex-col gap-2">
             {athlete.annual_visas.map((v) => (
-              <li key={v.id} className="flex items-center justify-between rounded-lg border border-[#dce0e5] px-4 py-3 text-sm">
+              <li key={v.id} className="flex flex-col gap-1 rounded-lg border border-[#dce0e5] px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <span>Viză anuală</span>
-                <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
+                  {(ownProfile || canReview) && (
+                    <Badge variant={v.status === 'approved' ? 'default' : 'outline'}>
+                      {RESULT_STATUS_LABELS[v.status] || v.status}
+                    </Badge>
+                  )}
+                </div>
+                {(ownProfile || canReview) && v.status === 'rejected' && v.admin_notes && (
+                  <p className="text-xs text-[#00334d]/60">{v.admin_notes}</p>
+                )}
+                {canReview && v.certificate_image && (
+                  <a href={v.certificate_image} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
+                    Vezi documentul
+                  </a>
+                )}
+                {canReview && v.status === 'pending' && (
+                  <ReviewButtons
+                    busy={reviewBusyKey === `annual-visa-${v.id}`}
+                    onApprove={() => reviewItem('annual-visa', v.id, true)}
+                    onReject={() => reviewItem('annual-visa', v.id, false)}
+                  />
+                )}
               </li>
             ))}
           </ul>

@@ -529,12 +529,57 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
     """Athlete-submitted competition results awaiting approval - there was
     previously no standalone admin page for this model at all, so a
     self-reported result had no admin-side review surface."""
-    list_display = ('athlete', 'category', 'type', 'placement_claimed', 'status', 'submitted_by_athlete', 'submitted_date')
-    list_filter = ('status', 'submitted_by_athlete', 'type', 'placement_claimed')
-    search_fields = ('athlete__first_name', 'athlete__last_name', 'team_name', 'category__name', 'category__event__title')
+    list_display = ('athlete_link', 'event_display', 'category_link', 'type', 'placement_claimed', 'status', 'submitted_by_athlete', 'submitted_date')
+    list_filter = ('status', 'submitted_by_athlete', 'type', 'placement_claimed', 'category__event')
+    search_fields = ('athlete__first_name', 'athlete__last_name', 'team_name', 'team_members__first_name', 'team_members__last_name', 'category__name', 'category__event__title')
     autocomplete_fields = ('category', 'athlete', 'referee')
+    filter_horizontal = ('team_members',)
     readonly_fields = ('certificate_image_preview',)
     actions = ['approve_pending', 'reject_pending']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('athlete', 'category', 'category__event').prefetch_related('team_members')
+
+    def athlete_link(self, obj):
+        if not obj.athlete:
+            if obj.type == 'teams':
+                members = list(obj.team_members.all())
+                label = obj.team_name or _('Echipă fără nume')
+                if members:
+                    names = ', '.join(f'{m.first_name} {m.last_name}' for m in members)
+                    return format_html('{} <span style="color:#666;">({})</span>', label, names)
+                return label
+            return obj.team_name or '—'
+        try:
+            url = reverse('admin:api_athlete_change', args=(obj.athlete.pk,))
+            return format_html('<a href="{}">{}</a>', url, f'{obj.athlete.first_name} {obj.athlete.last_name}')
+        except Exception:
+            return f'{obj.athlete.first_name} {obj.athlete.last_name}'
+    athlete_link.short_description = _('Sportiv / Echipă')
+    athlete_link.admin_order_field = 'athlete__first_name'
+
+    def category_link(self, obj):
+        if not obj.category:
+            return '—'
+        try:
+            url = reverse('admin:api_category_change', args=(obj.category.pk,))
+            return format_html('<a href="{}">{}</a>', url, obj.category.name)
+        except Exception:
+            return obj.category.name
+    category_link.short_description = _('Categorie')
+    category_link.admin_order_field = 'category__name'
+
+    def event_display(self, obj):
+        event = obj.category.event if obj.category else None
+        if not event:
+            return '—'
+        try:
+            url = reverse('admin:api_event_change', args=(event.pk,))
+            return format_html('<a href="{}">{}</a>', url, event.title)
+        except Exception:
+            return event.title
+    event_display.short_description = _('Eveniment')
+    event_display.admin_order_field = 'category__event__title'
 
     def certificate_image_preview(self, obj):
         try:

@@ -638,11 +638,27 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
 
     def approve_profile_image(self, admin_user, notes=''):
         from django.utils import timezone
+        from django.core.files.base import ContentFile
+        import os
 
         if not self.pending_profile_image:
             raise ValueError('Nu există nicio imagine în așteptare.')
-        self.profile_image = self.pending_profile_image
+        # Copy the file bytes into `profile_image` (triggering a real upload
+        # under its own upload_to path) instead of just repointing the
+        # FieldFile reference - a plain reassignment left the file sitting
+        # under profile_images/pending/, which isn't necessarily served the
+        # same way as profile_images/ (e.g. by a CDN/storage backend), so the
+        # newly-approved picture silently failed to display.
+        pending = self.pending_profile_image
+        pending.open('rb')
+        try:
+            content = ContentFile(pending.read(), name=os.path.basename(pending.name))
+        finally:
+            pending.close()
+        old_pending_file = self.pending_profile_image
+        self.profile_image.save(content.name, content, save=False)
         self.pending_profile_image = None
+        old_pending_file.delete(save=False)
         self.profile_image_status = 'approved'
         self.profile_image_reviewed_date = timezone.now()
         self.profile_image_reviewed_by = admin_user
