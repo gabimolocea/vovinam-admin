@@ -90,7 +90,7 @@ class AthleteAdmin(admin.ModelAdmin):
     list_filter = ['status', 'is_coach', 'is_referee', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
     search_fields = ['first_name', 'last_name', 'license_series', 'cnp', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
-    readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link']
+    readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'license_image_preview']
     ordering = ['-submitted_date']
     inlines = [
         GradeHistoryInline,
@@ -103,7 +103,11 @@ class AthleteAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Informații personale', {
-            'fields': ('user', 'first_name', 'last_name', 'gender', 'license_series', 'cnp', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
+            'fields': ('user', 'first_name', 'last_name', 'gender', 'cnp', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
+        }),
+        ('Legitimație', {
+            'description': 'Verifică poza legitimației trimise de sportiv înainte de a aproba profilul.',
+            'fields': ('is_licensed', 'license_series', 'license_number', 'license_image_preview', 'license_request_document'),
         }),
         ('Informații sportive și club', {
             'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_referee')
@@ -172,7 +176,22 @@ class AthleteAdmin(admin.ModelAdmin):
             return '—'
         return obj.reviewed_date
     reviewed_date_display.short_description = _('Data revizuirii')
-    
+
+    def license_image_preview(self, obj):
+        try:
+            if obj.license_image and hasattr(obj.license_image, 'url'):
+                return format_html(
+                    '<a href="{0}" target="_blank" rel="noopener noreferrer">'
+                    '<img src="{0}" style="max-width:360px; max-height:360px; object-fit:contain; '
+                    'border:1px solid #ccc; border-radius:4px;" />'
+                    '</a>',
+                    obj.license_image.url
+                )
+        except Exception:
+            pass
+        return _('Sportivul nu a încărcat încă o poză a legitimației.')
+    license_image_preview.short_description = _('Poză legitimație')
+
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
     get_full_name.short_description = _('Nume')
