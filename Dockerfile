@@ -20,8 +20,10 @@ COPY apps/shared apps/shared
 # the environment (see apps/public-site/scripts/lib/fetch-content.mjs).
 ARG VITE_API_BASE_URL
 ARG VITE_SITE_URL
+ARG VITE_APP_URL
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL} \
-    VITE_SITE_URL=${VITE_SITE_URL}
+    VITE_SITE_URL=${VITE_SITE_URL} \
+    VITE_APP_URL=${VITE_APP_URL}
 
 RUN npm run build --workspace @vovinam/public-site
 
