@@ -3,15 +3,15 @@ import { useAuth } from '@shared';
 import { withSsoHandoff } from '@shared/lib/sso';
 import { User } from 'lucide-react';
 
-export const COACH_DASHBOARD_URL = import.meta.env.VITE_COACH_DASHBOARD_URL || 'http://localhost:5175';
-export const ATHLETE_DASHBOARD_URL = import.meta.env.VITE_ATHLETE_DASHBOARD_URL || 'http://localhost:5182';
+// The coach/athlete/admin dashboard is one app (role-based views), not two
+// separate ones - see apps/app. Both roles link to the same URL here, only
+// the label differs.
+export const APP_URL = import.meta.env.VITE_APP_URL || 'http://localhost:5175';
 
-/** True only once the coach/athlete dashboards' real URLs are configured at
- * build time. Until then those apps aren't deployed anywhere reachable, so
- * the localhost fallbacks above must never be linked to from production. */
-export const DASHBOARDS_DEPLOYED = Boolean(
-  import.meta.env.VITE_COACH_DASHBOARD_URL && import.meta.env.VITE_ATHLETE_DASHBOARD_URL,
-);
+/** True only once the dashboard app's real URL is configured at build time.
+ * Until then it isn't deployed anywhere reachable, so the localhost
+ * fallback above must never be linked to from production. */
+export const DASHBOARDS_DEPLOYED = Boolean(import.meta.env.VITE_APP_URL);
 
 /** True once an athlete's coach flag has cleared approval - the point at
  * which account management moves to the coach dashboard and drops off the
@@ -56,7 +56,7 @@ export default function AccountNavItem() {
 
   if (isAuthenticated && DASHBOARDS_DEPLOYED && isApprovedCoach(user)) {
     return (
-      <a href={withSsoHandoff(COACH_DASHBOARD_URL)} className="site-utility-link inline-flex items-center gap-1.5">
+      <a href={withSsoHandoff(APP_URL)} className="site-utility-link inline-flex items-center gap-1.5">
         <AccountAvatar user={user} />
         Panou antrenor
       </a>
@@ -65,7 +65,7 @@ export default function AccountNavItem() {
 
   if (isAuthenticated && DASHBOARDS_DEPLOYED && isApprovedAthlete(user)) {
     return (
-      <a href={withSsoHandoff(ATHLETE_DASHBOARD_URL)} className="site-utility-link inline-flex items-center gap-1.5">
+      <a href={withSsoHandoff(APP_URL)} className="site-utility-link inline-flex items-center gap-1.5">
         <AccountAvatar user={user} />
         Panou sportiv
       </a>

@@ -3,7 +3,7 @@ import { Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { ChevronRight, Menu, User, X } from 'lucide-react';
 import { useAuth } from '@shared';
 import { withSsoHandoff } from '@shared/lib/sso';
-import AccountNavItem, { AccountAvatar, isApprovedCoach, isApprovedAthlete, COACH_DASHBOARD_URL, ATHLETE_DASHBOARD_URL } from './AccountNavItem';
+import AccountNavItem, { AccountAvatar, isApprovedCoach, isApprovedAthlete, APP_URL, DASHBOARDS_DEPLOYED } from './AccountNavItem';
 import CookieConsentBanner from './CookieConsentBanner';
 import { trackPageview } from '../lib/analytics';
 
@@ -250,17 +250,17 @@ export default function Layout() {
             </span>
           </Link>
           <div className="-my-2 flex shrink-0 self-stretch items-stretch">
-            {isAuthenticated && isApprovedCoach(user) ? (
+            {isAuthenticated && DASHBOARDS_DEPLOYED && isApprovedCoach(user) ? (
               <a
-                href={withSsoHandoff(COACH_DASHBOARD_URL)}
+                href={withSsoHandoff(APP_URL)}
                 aria-label="Panou antrenor"
                 className="-mr-4 flex w-14 shrink-0 items-center justify-center text-foreground"
               >
                 <AccountAvatar user={user} size="h-7 w-7" />
               </a>
-            ) : isAuthenticated && isApprovedAthlete(user) ? (
+            ) : isAuthenticated && DASHBOARDS_DEPLOYED && isApprovedAthlete(user) ? (
               <a
-                href={withSsoHandoff(ATHLETE_DASHBOARD_URL)}
+                href={withSsoHandoff(APP_URL)}
                 aria-label="Panou sportiv"
                 className="-mr-4 flex w-14 shrink-0 items-center justify-center text-foreground"
               >

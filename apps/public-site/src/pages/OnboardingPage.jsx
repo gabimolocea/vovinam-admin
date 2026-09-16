@@ -7,7 +7,7 @@ import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { ATHLETE_STATUS_LABELS } from '../lib/athletes';
 import { withSsoHandoff } from '@shared/lib/sso';
-import { isApprovedCoach, isApprovedAthlete, COACH_DASHBOARD_URL, ATHLETE_DASHBOARD_URL, DASHBOARDS_DEPLOYED } from '../components/AccountNavItem';
+import { isApprovedCoach, isApprovedAthlete, APP_URL, DASHBOARDS_DEPLOYED } from '../components/AccountNavItem';
 
 /** Account management (profile, results/grades/etc, notifications,
  * password) has moved entirely to the coach/athlete dashboards - an
@@ -91,8 +91,7 @@ export default function OnboardingPage() {
   // Account management (profile, results/grades/etc, notifications,
   // password) has moved entirely to the coach/athlete dashboards - an
   // approved account is sent straight there instead of landing on /cont.
-  if (DASHBOARDS_DEPLOYED && isApprovedCoach(user)) return <ExternalRedirect url={withSsoHandoff(COACH_DASHBOARD_URL)} />;
-  if (DASHBOARDS_DEPLOYED && isApprovedAthlete(user)) return <ExternalRedirect url={withSsoHandoff(ATHLETE_DASHBOARD_URL)} />;
+  if (DASHBOARDS_DEPLOYED && (isApprovedCoach(user) || isApprovedAthlete(user))) return <ExternalRedirect url={withSsoHandoff(APP_URL)} />;
 
   // Everyone else (a supporter, or an athlete/coach whose profile isn't
   // approved yet) has nothing to manage here yet - just their account
