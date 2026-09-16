@@ -6,6 +6,13 @@ import { User } from 'lucide-react';
 export const COACH_DASHBOARD_URL = import.meta.env.VITE_COACH_DASHBOARD_URL || 'http://localhost:5175';
 export const ATHLETE_DASHBOARD_URL = import.meta.env.VITE_ATHLETE_DASHBOARD_URL || 'http://localhost:5182';
 
+/** True only once the coach/athlete dashboards' real URLs are configured at
+ * build time. Until then those apps aren't deployed anywhere reachable, so
+ * the localhost fallbacks above must never be linked to from production. */
+export const DASHBOARDS_DEPLOYED = Boolean(
+  import.meta.env.VITE_COACH_DASHBOARD_URL && import.meta.env.VITE_ATHLETE_DASHBOARD_URL,
+);
+
 /** True once an athlete's coach flag has cleared approval - the point at
  * which account management moves to the coach dashboard and drops off the
  * public site. Mirrors OnboardingPage.jsx's isApprovedCoach(). */
@@ -47,7 +54,7 @@ export function AccountAvatar({ user, size = 'h-6 w-6' }) {
 export default function AccountNavItem() {
   const { isAuthenticated, user } = useAuth();
 
-  if (isAuthenticated && isApprovedCoach(user)) {
+  if (isAuthenticated && DASHBOARDS_DEPLOYED && isApprovedCoach(user)) {
     return (
       <a href={withSsoHandoff(COACH_DASHBOARD_URL)} className="site-utility-link inline-flex items-center gap-1.5">
         <AccountAvatar user={user} />
@@ -56,7 +63,7 @@ export default function AccountNavItem() {
     );
   }
 
-  if (isAuthenticated && isApprovedAthlete(user)) {
+  if (isAuthenticated && DASHBOARDS_DEPLOYED && isApprovedAthlete(user)) {
     return (
       <a href={withSsoHandoff(ATHLETE_DASHBOARD_URL)} className="site-utility-link inline-flex items-center gap-1.5">
         <AccountAvatar user={user} />
