@@ -310,7 +310,7 @@ export default function CreateAthlete() {
         await visaAPI.submissions.create(visaFd);
       }
 
-      navigate('/profile?tab=sportivi');
+      navigate('/club?tab=sportivi');
     } catch (err) {
       const data = err.response?.data;
       if (data && typeof data === 'object') {
@@ -327,7 +327,7 @@ export default function CreateAthlete() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3">
-        <Button variant="outline" size="sm" className="w-fit" onClick={() => navigate('/profile?tab=sportivi')}>
+        <Button variant="outline" size="sm" className="w-fit" onClick={() => navigate('/club?tab=sportivi')}>
           <ArrowLeft className="h-4 w-4" /> Înapoi
         </Button>
         <h1 className="font-display text-2xl font-bold">Adaugă sportiv</h1>
@@ -652,7 +652,7 @@ export default function CreateAthlete() {
         </section>
 
         <div className="flex items-center justify-end gap-3 border-t border-border pt-6">
-          <Button type="button" variant="outline" onClick={() => navigate('/profile?tab=sportivi')}>
+          <Button type="button" variant="outline" onClick={() => navigate('/club?tab=sportivi')}>
             Anulează
           </Button>
           <Button

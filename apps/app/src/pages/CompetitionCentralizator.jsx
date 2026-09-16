@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '@shared';
 import { Badge, Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Skeleton, Tabs, TabsList, TabsTrigger } from '../components/ui';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import useCoachCentralizator from '../hooks/useCoachCentralizator';
@@ -353,6 +354,7 @@ function CoachModal({ onClose, title, description, maxWidth = 'max-w-md', header
    CENTRALIZATOR TABLE — coach's own club only
    ═══════════════════════════════════════════════════════ */
 function CentralizatorTable({ ctx, onBack }) {
+  const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('tehnica');
 
   return (
@@ -361,7 +363,7 @@ function CentralizatorTable({ ctx, onBack }) {
         <Button variant="outline" size="sm" onClick={onBack} className="w-fit">
           <ArrowLeft className="h-4 w-4" /> Înapoi la competiții
         </Button>
-        <h1 className="font-display text-2xl font-bold">Centralizator club</h1>
+        <h1 className="font-display text-2xl font-bold">{isAdmin ? 'Centralizator competiție' : 'Centralizator club'}</h1>
       </div>
 
       <div className={`mb-4 w-full rounded-md border px-4 py-3 text-center text-sm font-medium ${ctx.isCoachDeadlinePassed ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-amber-400/50 bg-amber-500/10 text-amber-700 dark:text-amber-400'}`}>
@@ -385,8 +387,15 @@ function CentralizatorTable({ ctx, onBack }) {
   );
 }
 
+/** Shows the coach's own club (myClubId set, filtered, editable) or, for
+ * an admin (myClubId null - see useCoachCentralizator), every club's
+ * enrollments read-only, with the club name shown per entry so the
+ * multi-club list stays legible - so an admin can eyeball the full
+ * pre-competition centralizator without leaving this panel for the
+ * LAN-oriented competition-admin app. */
 function CoachTehnicaView({ ctx }) {
   const { columnStructure, myClubId, handleCellClick, handleUnenroll, busy } = ctx;
+  const readOnly = myClubId == null;
 
   const techGroups = useMemo(() => {
     const seen = new Set();
@@ -415,11 +424,11 @@ function CoachTehnicaView({ ctx }) {
             const isTeamCategory = isTeamCategoryType(cat.type);
             const enrolled = isTeamCategory
               ? (cat.enrolled_teams || [])
-                  .filter((item) => (item.members || []).some((member) => (member.club?.id || member.club) === myClubId))
+                  .filter((item) => readOnly || (item.members || []).some((member) => (member.club?.id || member.club) === myClubId))
                   .slice()
                   .sort((a, b) => (a.team_name || '').localeCompare(b.team_name || ''))
               : (cat.enrolled_athletes || [])
-                  .filter((item) => (item.athlete_details?.club?.id || item.athlete_details?.club) === myClubId)
+                  .filter((item) => readOnly || (item.athlete_details?.club?.id || item.athlete_details?.club) === myClubId)
                   .slice()
                   .sort((a, b) => {
                     const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
@@ -450,24 +459,31 @@ function CoachTehnicaView({ ctx }) {
                             <div className="truncate text-xs text-muted-foreground">{teamMembers}</div>
                           )}
                           {isTeamCategory && entry.club_name && <div className="truncate text-xs text-muted-foreground">{entry.club_name}</div>}
+                          {readOnly && !isTeamCategory && entry.athlete_details?.club?.name && (
+                            <div className="truncate text-xs text-muted-foreground">{entry.athlete_details.club.name}</div>
+                          )}
                         </div>
-                        <button
-                          onClick={(e) => handleUnenroll(entry.id, isTeamCategory ? teamLabel : athleteName, cat.name, e, isTeamCategory ? { enrollmentType: 'team' } : undefined)}
-                          disabled={busy || ctx.isCoachDeadlinePassed}
-                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                        {!readOnly && (
+                          <button
+                            onClick={(e) => handleUnenroll(entry.id, isTeamCategory ? teamLabel : athleteName, cat.name, e, isTeamCategory ? { enrollmentType: 'team' } : undefined)}
+                            disabled={busy || ctx.isCoachDeadlinePassed}
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-                <div className="border-t border-border p-3">
-                  <Button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="w-full">
-                    <Plus className="h-4 w-4" />
-                    {isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="border-t border-border p-3">
+                    <Button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="w-full">
+                      <Plus className="h-4 w-4" />
+                      {isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}
+                    </Button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -479,6 +495,7 @@ function CoachTehnicaView({ ctx }) {
 
 function CoachLuptaView({ ctx }) {
   const { columnStructure, myClubId, handleCellClick, handleUnenroll, busy } = ctx;
+  const readOnly = myClubId == null;
 
   const fightGroups = useMemo(() => {
     const seen = new Set();
@@ -505,7 +522,7 @@ function CoachLuptaView({ ctx }) {
         <div key={`fight-${group.id}`} className="grid gap-4 md:grid-cols-2">
           {cats.map((cat) => {
             const enrolled = (cat.enrolled_athletes || [])
-              .filter((item) => (item.athlete_details?.club?.id || item.athlete_details?.club) === myClubId)
+              .filter((item) => readOnly || (item.athlete_details?.club?.id || item.athlete_details?.club) === myClubId)
               .slice()
               .sort((a, b) => {
                 const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
@@ -525,41 +542,47 @@ function CoachLuptaView({ ctx }) {
                   <thead>
                     <tr className="bg-muted">
                       <th className="border-b border-border px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Sportiv</th>
+                      {readOnly && <th className="border-b border-border px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Club</th>}
                       <th className="border-b border-border px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Greutate</th>
-                      <th className="border-b border-border px-3 py-2 text-center text-xs font-semibold text-muted-foreground"></th>
+                      {!readOnly && <th className="border-b border-border px-3 py-2 text-center text-xs font-semibold text-muted-foreground"></th>}
                     </tr>
                   </thead>
                   <tbody>
                     {enrolled.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-3 py-4 text-sm italic text-muted-foreground">Niciun sportiv înscris.</td>
+                        <td colSpan={readOnly ? 3 : 3} className="px-3 py-4 text-sm italic text-muted-foreground">Niciun sportiv înscris.</td>
                       </tr>
                     ) : enrolled.map((entry) => {
                       const athleteName = `${entry.athlete_details?.last_name || ''} ${entry.athlete_details?.first_name || ''}`.trim();
                       return (
                         <tr key={entry.id} className="border-b border-border">
                           <td className="px-3 py-2 font-medium">{athleteName}</td>
+                          {readOnly && <td className="px-3 py-2 text-muted-foreground">{entry.athlete_details?.club?.name || '—'}</td>}
                           <td className="px-3 py-2 text-center text-muted-foreground">{entry.weight || '—'}</td>
-                          <td className="px-3 py-2 text-center">
-                            <button
-                              onClick={(e) => handleUnenroll(entry.id, athleteName, cat.name, e)}
-                              disabled={busy || ctx.isCoachDeadlinePassed}
-                              className="inline-flex h-5 w-5 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </td>
+                          {!readOnly && (
+                            <td className="px-3 py-2 text-center">
+                              <button
+                                onClick={(e) => handleUnenroll(entry.id, athleteName, cat.name, e)}
+                                disabled={busy || ctx.isCoachDeadlinePassed}
+                                className="inline-flex h-5 w-5 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                <div className="border-t border-border p-3">
-                  <Button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="w-full">
-                    <Plus className="h-4 w-4" />
-                    Adaugă sportiv
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="border-t border-border p-3">
+                    <Button onClick={(e) => handleCellClick(myClubId, cat.id, e)} disabled={ctx.isCoachDeadlinePassed} className="w-full">
+                      <Plus className="h-4 w-4" />
+                      Adaugă sportiv
+                    </Button>
+                  </div>
+                )}
               </div>
             );
           })}

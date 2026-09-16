@@ -2,11 +2,14 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@shared';
 import { Alert, Skeleton } from '../components/ui';
 
-/** "Profilul meu" - a coach is an athlete too, so this is just the athlete
- * detail page pointed at their own record: same hero+tabs UI, same ability
+/** "Profilul meu" - every role that has an athlete record (a plain athlete,
+ * or a coach, who is an athlete too) lands here, which just points the
+ * athlete detail page at their own record: same hero+tabs UI, same ability
  * to add their own results/grades/seminars/visas (AthleteDetail.jsx hides
- * the review/approve buttons for a coach viewing themselves - see isSelf
- * there - since self-approval doesn't make sense). */
+ * the review/approve buttons when viewing yourself - see isSelf there -
+ * since self-approval doesn't make sense, and shows them for a coach/admin
+ * viewing someone else). An admin has no athlete record and never reaches
+ * this route - see RoleIndexRedirect in App.jsx. */
 export default function MyProfile() {
   const { user, loading } = useAuth();
 

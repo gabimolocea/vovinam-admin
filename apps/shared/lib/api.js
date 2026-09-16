@@ -150,13 +150,16 @@ export const athleteAPI = {
   rejectImage: (id, notes) => api.post(`/athletes/${id}/reject_image/`, { notes }),
   pendingImageApprovals: () => api.get('/athletes/pending_image_approvals/'),
   coachReminders: () => api.get('/athletes/coach-reminders/'),
+  pendingApprovals: () => api.get('/admin-approvals/pending/'),
 };
 
 // ── Clubs ─────────────────────────────────────────────
 export const clubAPI = {
   list: () => api.get('/clubs/'),
   get: (id) => api.get(`/clubs/${id}/`),
+  create: (data) => api.post('/clubs/', data),
   update: (id, data, config) => api.patch(`/clubs/${id}/`, data, config),
+  delete: (id) => api.delete(`/clubs/${id}/`),
   reorder: (order) => api.post('/clubs/reorder/', { order }),
 };
 
@@ -393,6 +396,7 @@ export const seminarAPI = {
     delete: (id) => api.delete(`/seminar-submissions/${id}/`),
     approve: (id, data) => api.post(`/seminar-submissions/${id}/approve/`, data),
     reject: (id, data) => api.post(`/seminar-submissions/${id}/reject/`, data),
+    pendingReview: () => api.get('/seminar-submissions/pending_review/'),
     extractDiploma: (formData) => api.post('/seminar-submissions/extract_diploma/', formData),
   },
 };

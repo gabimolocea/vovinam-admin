@@ -232,10 +232,12 @@ class CompetitionViewSet(viewsets.ViewSet):
         from django.utils.text import slugify
 
         user = request.user
+        organizing_club = None
         if not user.is_admin:
             athlete = getattr(user, 'athlete', None)
             if not athlete or not athlete.is_coach or not athlete.club_id:
                 return Response({'error': 'Permission denied'}, status=403)
+            organizing_club = athlete.club
 
         d = request.data
         title = d.get('title', '').strip()
@@ -273,6 +275,7 @@ class CompetitionViewSet(viewsets.ViewSet):
             description=d.get('description', ''),
             event_types=['examination'],
             status=d.get('status', 'upcoming'),
+            organizing_club=organizing_club,
         )
         return Response(self._serialize_event(ev), status=201)
 

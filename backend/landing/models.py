@@ -184,6 +184,20 @@ class Event(SEOModel):
         null=True,
         help_text='Select a city for this event'
     )
+    # Set only for an exam a club coach created themselves (see
+    # CompetitionViewSet.create_exam) - null for everything the federation
+    # organizes/publishes. Lets the public calendar show federation events
+    # only while club coaches and their athletes still see the exam in the
+    # dashboards' own exam pickers (those query a different, authenticated
+    # endpoint that doesn't filter on this field).
+    organizing_club = models.ForeignKey(
+        'api.Club',
+        on_delete=models.SET_NULL,
+        related_name='organized_events',
+        blank=True,
+        null=True,
+        help_text='Set only for a club-organized exam - excluded from the public calendar.'
+    )
     featured_image = models.ImageField(upload_to='events/', blank=True, null=True)
     featured_image_alt = models.CharField(
         max_length=100, 

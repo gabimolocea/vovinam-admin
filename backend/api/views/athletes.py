@@ -392,7 +392,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
         athletes not yet enrolled in any category, and upcoming grade-exam
         events. Empty for anyone without a club (e.g. admins, supporters)."""
         athlete = getattr(request.user, 'athlete', None)
-        club = athlete.club if athlete else None
+        club = athlete.club if athlete and athlete.is_coach else None
         empty = {'expiring_visas': [], 'competition_deadlines': [], 'upcoming_exams': []}
         if not club:
             return Response(empty)

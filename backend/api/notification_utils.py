@@ -653,23 +653,28 @@ def create_seminar_status_notification(participation, new_status, admin_user, ad
     athlete = participation.athlete
     seminar = getattr(participation, 'seminar', None)
     event = getattr(participation, 'event', None)
-    
+    # `event` is the current field (see TrainingSeminarParticipation's own
+    # docstring - `seminar` is legacy/deprecated), so it's set for every
+    # participation the frontend creates today; fall back to the legacy
+    # field only for old records that still only have it.
+    display_name = event.title if event else (seminar.name if seminar else 'seminar')
+
     # Map status to notification type and messages
     status_mapping = {
         'approved': {
             'type': 'seminar_approved',
             'title': 'Participare la seminar aprobată!',
-            'message': f'Felicitări! Participarea ta la „{seminar.name}” a fost aprobată.',
+            'message': f'Felicitări! Participarea ta la „{display_name}” a fost aprobată.',
         },
         'rejected': {
             'type': 'seminar_rejected',
             'title': 'Participare la seminar respinsă',
-            'message': f'Cererea ta de participare la „{seminar.name}” a fost respinsă.',
+            'message': f'Cererea ta de participare la „{display_name}” a fost respinsă.',
         },
         'revision_required': {
             'type': 'seminar_revision_required',
             'title': 'Participare la seminar - sunt necesare completări',
-            'message': f'Cererea ta de participare la „{seminar.name}” necesită completări.',
+            'message': f'Cererea ta de participare la „{display_name}” necesită completări.',
         }
     }
 

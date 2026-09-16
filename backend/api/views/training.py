@@ -13,7 +13,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from ..serializers import *
 from ..models import *
-from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
+from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin, IsResultReviewerOrAdmin
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
@@ -105,14 +105,37 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
             # Public access: allow anonymous viewers to see only approved participations for the athlete
             return TrainingSeminarParticipation.objects.filter(athlete__id=athlete_id, status='approved')
 
-        # Default behaviour: if the user has an athlete profile, return their participations.
-        if hasattr(self.request.user, 'athlete'):
-            return TrainingSeminarParticipation.objects.filter(athlete=self.request.user.athlete).select_related('event')
-        # Admins who didn't specify an athlete get all participations
-        if self.request.user.is_authenticated and getattr(self.request.user, 'role', None) == 'admin':
+        # Default behaviour: admins get everything; a club coach gets their
+        # whole club's participations (needed so e.g. approve()'s
+        # get_object() can find a club-mate's pending submission, not just
+        # their own - same scoping as GradeHistorySubmissionViewSet); anyone
+        # else just their own.
+        user = self.request.user
+        if user.is_authenticated and (getattr(user, 'is_admin', False) or getattr(user, 'role', None) == 'admin'):
             return TrainingSeminarParticipation.objects.all().select_related('event', 'athlete')
+        if hasattr(user, 'athlete') and user.athlete:
+            if user.athlete.is_coach and user.athlete.club_id:
+                return TrainingSeminarParticipation.objects.filter(athlete__club_id=user.athlete.club_id).select_related('event', 'athlete')
+            return TrainingSeminarParticipation.objects.filter(athlete=user.athlete).select_related('event')
         return TrainingSeminarParticipation.objects.none()
     
+    @action(detail=False, methods=['get'])
+    def pending_review(self, request):
+        """Seminar participations pending review: all of them for admins, or
+        just the submitting coach's own club's athletes for club coaches -
+        same pattern as grade/visa/score pending_review."""
+        user = request.user
+        if getattr(user, 'is_admin', False) or getattr(user, 'role', None) == 'admin':
+            qs = TrainingSeminarParticipation.objects.filter(status='pending')
+        elif hasattr(user, 'athlete') and user.athlete and user.athlete.is_coach and user.athlete.club_id:
+            qs = TrainingSeminarParticipation.objects.filter(athlete__club_id=user.athlete.club_id, status='pending')
+        else:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = qs.select_related('athlete', 'event').order_by('-submitted_date')
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['post'])
     def extract_diploma(self, request):
         """Best-effort AI reading of an uploaded seminar certificate photo,
@@ -137,9 +160,9 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
             )
         return Response(result)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def approve(self, request, pk=None):
-        """Admin action to approve a seminar participation"""
+        """Approve a seminar participation - the athlete's club coach or an admin."""
         participation = self.get_object()
         serializer = TrainingSeminarParticipationApprovalSerializer(data=request.data)
         
@@ -154,9 +177,9 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def reject(self, request, pk=None):
-        """Admin action to reject a seminar participation"""
+        """Reject a seminar participation - the athlete's club coach or an admin."""
         participation = self.get_object()
         serializer = TrainingSeminarParticipationApprovalSerializer(data=request.data)
         
@@ -171,9 +194,9 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
     def request_revision(self, request, pk=None):
-        """Admin action to request revision of a seminar participation"""
+        """Request revision of a seminar participation - the athlete's club coach or an admin."""
         participation = self.get_object()
         serializer = TrainingSeminarParticipationApprovalSerializer(data=request.data)
         

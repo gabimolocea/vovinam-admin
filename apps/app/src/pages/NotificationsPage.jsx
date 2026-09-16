@@ -28,7 +28,7 @@ const TAB_FOR_PREFIX = {
 // the coach's own profile page.
 function linkFor(notification) {
   const athleteId = notification.action_data?.athlete_id;
-  if (!athleteId) return '/my-profile';
+  if (!athleteId) return '/profil';
   if (notification.notification_type.startsWith('visa')) {
     const tab = notification.action_data?.visa_type === 'medical' ? 'medical' : 'vize';
     return `/athletes/${athleteId}?tab=${tab}`;
@@ -165,7 +165,7 @@ function NotificationSettingsDialog({ open, onOpenChange }) {
 }
 
 export default function NotificationsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, isCoach, loading: authLoading } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [mentions, setMentions] = useState([]);
   const [reminders, setReminders] = useState({ expiring_visas: [], competition_deadlines: [], upcoming_exams: [] });
@@ -180,11 +180,14 @@ export default function NotificationsPage() {
     if (authLoading || !user) return undefined;
     let isMounted = true;
 
+    // The grade-review queue and club reminders are a coach-only concept -
+    // only fetched for a coach, so a plain athlete or admin never triggers
+    // (or accidentally sees stale/empty results from) those calls.
     Promise.all([
       notificationAPI.list(),
       newsAPI.myMentions().catch(() => ({ data: [] })),
-      athleteAPI.coachReminders().catch(() => ({ data: null })),
-      gradeHistoryAPI.submissions.pendingReview().catch(() => ({ data: [] })),
+      isCoach ? athleteAPI.coachReminders().catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+      isCoach ? gradeHistoryAPI.submissions.pendingReview().catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
     ])
       .then(([notifRes, mentionsRes, remindersRes, pendingGradesRes]) => {
         if (!isMounted) return;
@@ -197,7 +200,7 @@ export default function NotificationsPage() {
       .finally(() => { if (isMounted) setLoading(false); });
 
     return () => { isMounted = false; };
-  }, [authLoading, user]);
+  }, [authLoading, user, isCoach]);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -274,7 +277,7 @@ export default function NotificationsPage() {
       className: 'bg-indigo-100 text-indigo-700',
       title: 'Examen de grad apropiat',
       message: `${e.event_name} are loc pe ${fmtDate(e.start_date)}.`,
-      to: '/profile?tab=examene',
+      to: '/club?tab=examene',
     })),
   ].sort((a, b) => new Date(a.sortDate) - new Date(b.sortDate));
 

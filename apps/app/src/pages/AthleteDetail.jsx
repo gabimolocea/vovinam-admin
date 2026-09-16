@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@shared';
 import {
   athleteAPI, gradeHistoryAPI, scoreAPI, visaAPI, seminarAPI, gradeAPI, competitionAPI, categoryAPI, groupAPI, MEDIA_BASE_URL,
 } from '@shared/lib/api';
@@ -14,7 +15,7 @@ import MedalIcon from '../components/MedalIcon';
 import GalleryTab from '../components/GalleryTab';
 import Lightbox from '../components/Lightbox';
 import ResponsiveTable from '../components/ResponsiveTable';
-import { Award, ChevronLeft, ChevronRight, ExternalLink, Pencil, Plus, Sparkles } from 'lucide-react';
+import { ArrowLeft, Award, Check, ChevronLeft, ChevronRight, ExternalLink, Pencil, Plus, Sparkles, X } from 'lucide-react';
 
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
 
@@ -65,7 +66,7 @@ const TABS = [
 /** Compact pill tab bar - horizontally scrollable with no visible
  * scrollbar (hidden via CSS), with left/right chevrons for navigation
  * that only render when there's actually more content to scroll to in
- * that direction. Mirrors the coach dashboard's own TabBar. */
+ * that direction. Mirrors the public site's own ScrollableTabs. */
 function TabBar({ activeKey, onSelect }) {
   const scrollRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -153,16 +154,28 @@ function StatusBadge({ status }) {
   return <Badge className={className}>{STATUS_LABELS[status] || status}</Badge>;
 }
 
-/** Text link to an uploaded diploma/certificate/document - kept out of the
- * Status column (it's not a status) and placed under the row's own title
- * instead, matching the public profile. Opens in the shared Lightbox
- * (zoom/download) rather than a new tab. */
+function ReviewButtons({ busy, onApprove, onReject }) {
+  return (
+    <div className="mt-3 flex gap-2">
+      <Button type="button" disabled={busy} onClick={onApprove}>
+        <Check className="h-4 w-4" /> Aprobă
+      </Button>
+      <Button type="button" variant="outline" disabled={busy} onClick={onReject}>
+        <X className="h-4 w-4" /> Respinge
+      </Button>
+    </div>
+  );
+}
+
+/** Clickable thumbnail for an uploaded diploma/certificate/document -
+ * always opens in the shared Lightbox (zoom/download) rather than a new
+ * tab, same as every other reviewer/self-view image in the app. */
 function CertificateThumb({ src, label = 'Vezi documentul', onOpen }) {
   const url = imgUrl(src);
   if (!url) return null;
   return (
-    <button type="button" onClick={() => onOpen({ image: url, alt_text: label })} className="mt-1 block text-xs text-primary underline">
-      {label}
+    <button type="button" onClick={() => onOpen({ image: url, alt_text: label })} className="mt-2 block w-fit" title={label}>
+      <img src={url} alt={label} className="h-24 w-32 rounded-md border border-border object-cover transition hover:opacity-90" />
     </button>
   );
 }
@@ -229,14 +242,18 @@ function InternationalMedalsPanel({ medals, ribbonColors }) {
   );
 }
 
+/** "Editează" - the athlete's own personal-record fields (name, birth date,
+ * contact, license, emergency contact). Coach-editable for their own club
+ * roster (backend: AthleteViewSet.update() trusts a club coach the same as
+ * an admin, no re-review needed). */
 function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   // Identity/license data is locked once the profile is approved - editing
   // it afterwards would let it drift from what was actually reviewed, so an
-  // approved athlete has to go through revision/re-review instead of
-  // quietly changing it here. Same rule as the coach dashboard.
+  // approved athlete's coach has to go through revision/re-review instead
+  // of quietly changing it here.
   const isApproved = athlete?.status === 'approved';
 
   useEffect(() => {
@@ -250,6 +267,7 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
         address: athlete.address || '',
         cnp: athlete.cnp || '',
         license_series: athlete.license_series || '',
+        license_number: athlete.license_number || '',
         emergency_contact_name: athlete.emergency_contact_name || '',
         emergency_contact_phone: athlete.emergency_contact_phone || '',
       });
@@ -266,7 +284,7 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
     setError('');
     setSaving(true);
     try {
-      await athleteAPI.updateMyProfile(form);
+      await athleteAPI.update(athlete.id, form);
       onSaved();
       onOpenChange(false);
     } catch (err) {
@@ -284,7 +302,7 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent fullScreen>
         <DialogHeader>
-          <DialogTitle>Editează datele mele</DialogTitle>
+          <DialogTitle>Editează datele sportivului</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && <Alert variant="destructive">{error}</Alert>}
@@ -333,10 +351,16 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
               <Textarea id="edit_address" rows={2} value={form.address} onChange={(e) => update('address', e.target.value)} />
             </div>
             {!isApproved && (
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="edit_license">Serie legitimație</Label>
-                <Input id="edit_license" value={form.license_series} onChange={(e) => update('license_series', e.target.value)} />
-              </div>
+              <>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="edit_license">Serie legitimație</Label>
+                  <Input id="edit_license" value={form.license_series} onChange={(e) => update('license_series', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="edit_license_number">Număr legitimație</Label>
+                  <Input id="edit_license_number" value={form.license_number} onChange={(e) => update('license_number', e.target.value)} />
+                </div>
+              </>
             )}
             <div className="flex flex-col gap-1">
               <Label htmlFor="edit_emergency_name">Contact de urgență (nume)</Label>
@@ -936,9 +960,8 @@ function AddVisaDialog({ open, onOpenChange, athlete, visaType, onCreated }) {
 }
 
 /** Preview dialog shown after picking a new profile photo - matches the
- * "confirm before it's sent for approval" flow already used on the public
- * site's own-profile page, since a plain athlete's photo change still goes
- * through review. */
+ * "confirm before it's applied/sent for approval" flow used everywhere
+ * else this photo-edit affordance appears (public site, athlete dashboard). */
 function PhotoPreviewDialog({ preview, uploading, error, onConfirm, onCancel }) {
   return (
     <Dialog open={!!preview} onOpenChange={(v) => !v && onCancel()}>
@@ -958,7 +981,7 @@ function PhotoPreviewDialog({ preview, uploading, error, onConfirm, onCancel }) 
           {error && <Alert variant="destructive">{error}</Alert>}
           <div className="flex w-full gap-3">
             <Button type="button" disabled={uploading} onClick={onConfirm} className="flex-1">
-              {uploading ? 'Se trimite…' : 'Trimite spre aprobare'}
+              {uploading ? 'Se trimite…' : 'Trimite'}
             </Button>
             <Button type="button" variant="outline" disabled={uploading} onClick={onCancel} className="flex-1">
               Anulează
@@ -970,7 +993,11 @@ function PhotoPreviewDialog({ preview, uploading, error, onConfirm, onCancel }) 
   );
 }
 
-export default function MyProfile() {
+export default function AthleteDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSelf = user?.athlete_id != null && String(user.athlete_id) === String(id);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = TABS.some((t) => t.key === searchParams.get('tab')) ? searchParams.get('tab') : 'info';
   const [resultsLevel, setResultsLevel] = useState('national');
@@ -978,6 +1005,8 @@ export default function MyProfile() {
   const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reviewBusyKey, setReviewBusyKey] = useState(null);
+  const [reviewError, setReviewError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [addResultOpen, setAddResultOpen] = useState(false);
   const [addGradeOpen, setAddGradeOpen] = useState(false);
@@ -987,16 +1016,16 @@ export default function MyProfile() {
   const [photoError, setPhotoError] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
   const [certificatePreview, setCertificatePreview] = useState(null);
-  const fileInputRef = useRef(null);
+  const photoInputRef = useRef(null);
 
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const res = await athleteAPI.myProfileDetail();
+      const res = await athleteAPI.getPublic(id);
       setAthlete(res.data);
     } catch {
-      setError('Nu am putut încărca profilul tău.');
+      setError('Nu am putut încărca profilul sportivului.');
     } finally {
       setLoading(false);
     }
@@ -1004,12 +1033,39 @@ export default function MyProfile() {
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   function setTab(key) {
     setSearchParams(key === 'info' ? {} : { tab: key });
   }
 
+  const canReview = Boolean(athlete?.can_edit);
+  // A coach can't review/approve their own pending submissions - even
+  // though they're their own club's reviewer, that'd be self-approval.
+  // Everything else canReview gates (seeing CNP/phone, editing, adding a
+  // result/grade/etc) still applies to a coach viewing their own profile.
+  const canApprove = canReview && !isSelf;
+
+  async function reviewPhoto(approve) {
+    setReviewBusyKey('photo');
+    setReviewError('');
+    try {
+      if (approve) await athleteAPI.approveImage(athlete.id);
+      else await athleteAPI.rejectImage(athlete.id, 'Poza nu a fost aprobată.');
+      await load();
+    } catch {
+      setReviewError('Nu am putut procesa poza de profil.');
+    } finally {
+      setReviewBusyKey(null);
+    }
+  }
+
+  // Selecting a file just stages it locally (object URL preview) - nothing
+  // is uploaded until confirmed. A coach uploading their own photo applies
+  // instantly (backend trusts a coach's own upload); for a roster athlete
+  // it's staged the same way as an athlete's own self-submission would be,
+  // needing a coach/admin to review it.
   function handlePhotoChange(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -1033,12 +1089,6 @@ export default function MyProfile() {
     setUploadingPhoto(true);
     setPhotoError('');
     try {
-      // Not athleteAPI.updateMyProfilePhoto() (PUT /athletes/my-profile/) -
-      // that endpoint writes profile_image directly and can flip the whole
-      // account back to 'pending' review, instead of staging just the
-      // photo behind profile_image_status like every other reviewer flow
-      // in the app. updatePhoto() (PATCH /athletes/:id/) is the endpoint
-      // that actually stages it correctly.
       await athleteAPI.updatePhoto(athlete.id, photoPreview.file);
       URL.revokeObjectURL(photoPreview.url);
       setPhotoPreview(null);
@@ -1047,6 +1097,36 @@ export default function MyProfile() {
       setPhotoError('Nu am putut încărca poza. Încearcă din nou.');
     } finally {
       setUploadingPhoto(false);
+    }
+  }
+
+  const REVIEW_API = {
+    grade: gradeHistoryAPI.submissions,
+    result: scoreAPI,
+    'medical-visa': visaAPI.submissions,
+    'annual-visa': visaAPI.submissions,
+    seminar: seminarAPI.submissions,
+  };
+  const REVIEW_REJECT_NOTE = {
+    grade: 'Examenul de grad nu a fost aprobat.',
+    result: 'Rezultatul nu a fost aprobat.',
+    'medical-visa': 'Viza nu a fost aprobată.',
+    'annual-visa': 'Viza nu a fost aprobată.',
+    seminar: 'Participarea la seminar nu a fost aprobată.',
+  };
+
+  async function reviewItem(kind, itemId, approve) {
+    setReviewBusyKey(`${kind}-${itemId}`);
+    setReviewError('');
+    try {
+      const api = REVIEW_API[kind];
+      if (approve) await api.approve(itemId, {});
+      else await api.reject(itemId, { notes: REVIEW_REJECT_NOTE[kind] });
+      await load();
+    } catch {
+      setReviewError('Nu am putut procesa cererea.');
+    } finally {
+      setReviewBusyKey(null);
     }
   }
 
@@ -1063,17 +1143,15 @@ export default function MyProfile() {
   if (error || !athlete) {
     return (
       <div className="flex flex-col gap-4">
-        <Alert variant="destructive">{error || 'Profil negăsit.'}</Alert>
+        <Button variant="outline" size="sm" onClick={() => navigate(-1)} className="w-fit">
+          <ArrowLeft className="h-4 w-4" /> Înapoi
+        </Button>
+        <Alert variant="destructive">{error || 'Sportiv negăsit.'}</Alert>
       </div>
     );
   }
 
   const isPhotoPending = athlete.profile_image_status === 'pending';
-  // No official grade yet, but a submission is awaiting review - preview
-  // its belt dimmed instead of showing nothing under the name.
-  const pendingGrade = !athlete.current_grade?.name
-    ? (athlete.grade_history || []).find((g) => g.status === 'pending')
-    : null;
   const results = athlete.results || [];
   const medals = athlete.medals || { gold: 0, silver: 0, bronze: 0 };
   const europeanMedals = athlete.international_medals?.european || { gold: 0, silver: 0, bronze: 0 };
@@ -1081,23 +1159,36 @@ export default function MyProfile() {
 
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="font-display text-xl font-bold">Profilul meu</h1>
+      <Button variant="outline" size="sm" onClick={() => navigate(-1)} className="w-fit">
+        <ArrowLeft className="h-4 w-4" /> Înapoi la sportivi
+      </Button>
+
+      {reviewError && <Alert variant="destructive">{reviewError}</Alert>}
 
       {/* Hero */}
       <div className="flex flex-col items-center gap-4 rounded-lg bg-sidebar px-6 py-6 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
           <div className="relative aspect-[3/2] w-40 shrink-0 bg-white/10 sm:w-48">
-            <div className="h-full w-full overflow-hidden rounded-lg">
-              {isPhotoPending && athlete.pending_profile_image ? (
-                <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} className="h-full w-full object-cover opacity-50 grayscale" />
-              ) : athlete.profile_image ? (
-                <img src={imgUrl(athlete.profile_image)} alt={athlete.full_name} className="h-full w-full object-cover" />
+            {isPhotoPending && athlete.pending_profile_image ? (
+              canReview ? (
+                <button
+                  type="button"
+                  onClick={() => setCertificatePreview({ image: imgUrl(athlete.pending_profile_image), alt_text: 'Poză de profil în așteptare' })}
+                  title="Vezi poza la dimensiune completă"
+                  className="block h-full w-full"
+                >
+                  <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
+                </button>
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-2xl font-display font-bold text-white/40">
-                  {athlete.first_name?.[0]}{athlete.last_name?.[0]}
-                </div>
-              )}
-            </div>
+                <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover opacity-50 grayscale" />
+              )
+            ) : athlete.profile_image ? (
+              <img src={imgUrl(athlete.profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center rounded-lg text-2xl font-display font-bold text-white/40">
+                {athlete.first_name?.[0]}{athlete.last_name?.[0]}
+              </div>
+            )}
             {isPhotoPending && athlete.pending_profile_image && (
               <span className="absolute inset-x-0 top-0 rounded-t-lg bg-black/60 py-0.5 text-center text-[10px] font-bold uppercase tracking-wide text-white">
                 Aștept aprobarea
@@ -1111,21 +1202,31 @@ export default function MyProfile() {
                 className="absolute -right-3 -top-3 h-14 w-14 rounded-full object-contain drop-shadow-md"
               />
             )}
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={uploadingPhoto}
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-1 right-1 h-6 w-6 rounded-full border-white/40 bg-sidebar p-0 text-white hover:bg-white/10 disabled:opacity-50"
-              title={isPhotoPending ? 'Trimite o altă poză - o va înlocui pe cea în așteptare' : 'Schimbă poza de profil'}
-            >
-              <Pencil className="h-3 w-3" />
-            </Button>
+            {canReview && (
+              <>
+                <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={uploadingPhoto || (isPhotoPending && !isSelf)}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="absolute bottom-1 right-1 h-7 w-7 rounded-full border-white/40 bg-sidebar p-0 text-white hover:bg-white/10 disabled:opacity-50"
+                  title={
+                    isPhotoPending && isSelf
+                      ? 'Trimite o altă poză - o va înlocui pe cea în așteptare'
+                      : isPhotoPending
+                        ? 'O poză este deja în așteptarea aprobării'
+                        : 'Schimbă poza de profil'
+                  }
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
           </div>
           <div className="flex flex-col items-center gap-2 sm:items-start">
-            <h2 className="font-display text-xl font-bold">{athlete.full_name}</h2>
+            <h1 className="font-display text-xl font-bold">{athlete.full_name}</h1>
             <a
               href={withSsoHandoff(`${PUBLIC_SITE_URL}/sportivi/${athlete.id}`)}
               target="_blank"
@@ -1134,13 +1235,10 @@ export default function MyProfile() {
             >
               Vezi profil public <ExternalLink className="h-3 w-3" />
             </a>
-            {athlete.current_grade?.name ? (
-              <BeltBadge grade={athlete.current_grade.name} />
-            ) : pendingGrade?.grade?.name ? (
-              <div className="opacity-50 grayscale" title="Examen în așteptarea aprobării">
-                <BeltBadge grade={pendingGrade.grade.name} />
-              </div>
-            ) : null}
+            {athlete.current_grade?.name && <BeltBadge grade={athlete.current_grade.name} />}
+            {canApprove && isPhotoPending && (
+              <ReviewButtons busy={reviewBusyKey === 'photo'} onApprove={() => reviewPhoto(true)} onReject={() => reviewPhoto(false)} />
+            )}
           </div>
         </div>
         <div className="flex flex-row flex-wrap items-start justify-center gap-3">
@@ -1154,22 +1252,28 @@ export default function MyProfile() {
 
       {tab === 'info' && (
         <div className="flex flex-col">
-          <Button variant="outline" onClick={() => setEditOpen(true)} className="mb-2 w-fit">
-            <Pencil className="h-4 w-4" /> Editează
-          </Button>
+          {canReview && (
+            <Button variant="outline" onClick={() => setEditOpen(true)} className="mb-2 w-fit">
+              <Pencil className="h-4 w-4" /> Editează
+            </Button>
+          )}
           <InfoRow label="Status cont" value={<StatusBadge status={athlete.status} />} />
           <InfoRow label="Club" value={athlete.club?.name} />
           <InfoRow label="Oraș" value={athlete.city?.name} />
           <InfoRow label="Data nașterii" value={fmtDate(athlete.date_of_birth)} />
           <InfoRow label="Roluri" value={[athlete.is_coach && 'Antrenor', athlete.is_referee && 'Arbitru'].filter(Boolean).join(', ') || 'Sportiv'} />
-          <InfoRow label="CNP" value={athlete.cnp} />
-          <InfoRow label="Serie legitimație" value={athlete.license_series} />
-          <InfoRow label="Telefon" value={athlete.mobile_number} />
-          <InfoRow label="Adresă" value={athlete.address} />
-          <InfoRow label="Data înregistrării" value={fmtDate(athlete.registered_date)} />
-          <InfoRow label="Expirare legitimație" value={fmtDate(athlete.expiration_date)} />
-          <InfoRow label="Contact urgență" value={athlete.emergency_contact_name} />
-          <InfoRow label="Telefon urgență" value={athlete.emergency_contact_phone} />
+          {canReview && (
+            <>
+              <InfoRow label="CNP" value={athlete.cnp} />
+              <InfoRow label="Serie legitimație" value={athlete.license_series} />
+              <InfoRow label="Telefon" value={athlete.mobile_number} />
+              <InfoRow label="Adresă" value={athlete.address} />
+              <InfoRow label="Data înregistrării" value={fmtDate(athlete.registered_date)} />
+              <InfoRow label="Expirare legitimație" value={fmtDate(athlete.expiration_date)} />
+              <InfoRow label="Contact urgență" value={athlete.emergency_contact_name} />
+              <InfoRow label="Telefon urgență" value={athlete.emergency_contact_phone} />
+            </>
+          )}
         </div>
       )}
 
@@ -1179,9 +1283,11 @@ export default function MyProfile() {
 
           {resultsLevel === 'national' && (
             <>
-              <Button className="w-fit" onClick={() => setAddResultOpen(true)}>
-                <Plus className="h-4 w-4" /> Adaugă rezultat
-              </Button>
+              {canReview && (
+                <Button className="w-fit" onClick={() => setAddResultOpen(true)}>
+                  <Plus className="h-4 w-4" /> Adaugă rezultat
+                </Button>
+              )}
               {results.length === 0 ? (
                 <EmptyTab message="Niciun rezultat înregistrat." />
               ) : (
@@ -1200,6 +1306,9 @@ export default function MyProfile() {
                       <td className="px-4 py-3 font-medium">
                         {r.competition || '—'}
                         <CertificateThumb src={r.certificate_image} label="Vezi diploma" onOpen={setCertificatePreview} />
+                        {canApprove && r.status === 'pending' && (
+                          <ReviewButtons busy={reviewBusyKey === `result-${r.id}`} onApprove={() => reviewItem('result', r.id, true)} onReject={() => reviewItem('result', r.id, false)} />
+                        )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''}
@@ -1230,6 +1339,9 @@ export default function MyProfile() {
                       )}
                       <p className="mt-2 text-sm font-semibold">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</p>
                       {r.status === 'rejected' && r.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{r.admin_notes}</p>}
+                      {canApprove && r.status === 'pending' && (
+                        <ReviewButtons busy={reviewBusyKey === `result-${r.id}`} onApprove={() => reviewItem('result', r.id, true)} onReject={() => reviewItem('result', r.id, false)} />
+                      )}
                     </li>
                   ))}
                 />
@@ -1249,9 +1361,11 @@ export default function MyProfile() {
 
       {tab === 'grade' && (
         <div className="flex flex-col gap-4">
-          <Button className="w-fit" onClick={() => setAddGradeOpen(true)}>
-            <Plus className="h-4 w-4" /> Adaugă grad
-          </Button>
+          {canReview && (
+            <Button className="w-fit" onClick={() => setAddGradeOpen(true)}>
+              <Plus className="h-4 w-4" /> Adaugă grad
+            </Button>
+          )}
           {(athlete.grade_history || []).length === 0 ? (
             <EmptyTab message="Niciun grad înregistrat." />
           ) : (
@@ -1269,6 +1383,9 @@ export default function MyProfile() {
                   <td className="px-4 py-3 font-medium">
                     {g.grade?.name || '—'}
                     <CertificateThumb src={g.certificate_image} label="Vezi certificatul" onOpen={setCertificatePreview} />
+                    {canApprove && g.status === 'pending' && (
+                      <ReviewButtons busy={reviewBusyKey === `grade-${g.id}`} onApprove={() => reviewItem('grade', g.id, true)} onReject={() => reviewItem('grade', g.id, false)} />
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(g.obtained_date)}</td>
                   <td className="px-4 py-3 text-muted-foreground">
@@ -1297,6 +1414,9 @@ export default function MyProfile() {
                     <p className="mt-1 text-xs text-muted-foreground">Examinatori: {[g.examiner_1_name, g.examiner_2_name].filter(Boolean).join(' · ')}</p>
                   )}
                   {g.status === 'rejected' && g.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{g.admin_notes}</p>}
+                  {canApprove && g.status === 'pending' && (
+                    <ReviewButtons busy={reviewBusyKey === `grade-${g.id}`} onApprove={() => reviewItem('grade', g.id, true)} onReject={() => reviewItem('grade', g.id, false)} />
+                  )}
                 </li>
               ))}
             />
@@ -1306,9 +1426,11 @@ export default function MyProfile() {
 
       {tab === 'seminarii' && (
         <div className="flex flex-col gap-4">
-          <Button className="w-fit" onClick={() => setAddSeminarOpen(true)}>
-            <Plus className="h-4 w-4" /> Adaugă participare
-          </Button>
+          {canReview && (
+            <Button className="w-fit" onClick={() => setAddSeminarOpen(true)}>
+              <Plus className="h-4 w-4" /> Adaugă participare
+            </Button>
+          )}
           {(athlete.seminars || []).length === 0 ? (
             <EmptyTab message="Nicio participare la seminarii." />
           ) : (
@@ -1325,6 +1447,9 @@ export default function MyProfile() {
                   <td className="px-4 py-3 font-medium">
                     {s.event || '—'}
                     <CertificateThumb src={s.certificate_image} label="Vezi certificatul" onOpen={setCertificatePreview} />
+                    {canApprove && s.status === 'pending' && (
+                      <ReviewButtons busy={reviewBusyKey === `seminar-${s.id}`} onApprove={() => reviewItem('seminar', s.id, true)} onReject={() => reviewItem('seminar', s.id, false)} />
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(s.start_date)}{s.end_date ? ` – ${fmtDate(s.end_date)}` : ''}</td>
                   <td className="px-4 py-3">
@@ -1344,6 +1469,9 @@ export default function MyProfile() {
                     {fmtDate(s.start_date)}{s.end_date ? ` – ${fmtDate(s.end_date)}` : ''}{s.place ? ` · ${s.place}` : ''}
                   </p>
                   {s.status === 'rejected' && s.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{s.admin_notes}</p>}
+                  {canApprove && s.status === 'pending' && (
+                    <ReviewButtons busy={reviewBusyKey === `seminar-${s.id}`} onApprove={() => reviewItem('seminar', s.id, true)} onReject={() => reviewItem('seminar', s.id, false)} />
+                  )}
                 </li>
               ))}
             />
@@ -1353,9 +1481,11 @@ export default function MyProfile() {
 
       {tab === 'medical' && (
         <div className="flex flex-col gap-4">
-          <Button className="w-fit" onClick={() => setAddVisaType('medical')}>
-            <Plus className="h-4 w-4" /> Adaugă viză medicală
-          </Button>
+          {canReview && (
+            <Button className="w-fit" onClick={() => setAddVisaType('medical')}>
+              <Plus className="h-4 w-4" /> Adaugă viză medicală
+            </Button>
+          )}
           {(athlete.medical_visas || []).length === 0 ? (
             <EmptyTab message="Nicio viză medicală înregistrată." />
           ) : (
@@ -1372,6 +1502,9 @@ export default function MyProfile() {
                   <td className="px-4 py-3 font-medium">
                     <span className="flex items-center gap-2"><Award className="h-3.5 w-3.5 text-muted-foreground" /> Viză medicală</span>
                     <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
+                    {canApprove && v.status === 'pending' && (
+                      <ReviewButtons busy={reviewBusyKey === `medical-visa-${v.id}`} onApprove={() => reviewItem('medical-visa', v.id, true)} onReject={() => reviewItem('medical-visa', v.id, false)} />
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(v.issued_date)}</td>
                   <td className="px-4 py-3">
@@ -1391,6 +1524,9 @@ export default function MyProfile() {
                   </div>
                   {v.status === 'rejected' && v.admin_notes && <p className="text-xs text-muted-foreground">{v.admin_notes}</p>}
                   <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
+                  {canApprove && v.status === 'pending' && (
+                    <ReviewButtons busy={reviewBusyKey === `medical-visa-${v.id}`} onApprove={() => reviewItem('medical-visa', v.id, true)} onReject={() => reviewItem('medical-visa', v.id, false)} />
+                  )}
                 </li>
               ))}
             />
@@ -1400,9 +1536,11 @@ export default function MyProfile() {
 
       {tab === 'vize' && (
         <div className="flex flex-col gap-4">
-          <Button className="w-fit" onClick={() => setAddVisaType('annual')}>
-            <Plus className="h-4 w-4" /> Adaugă viză anuală
-          </Button>
+          {canReview && (
+            <Button className="w-fit" onClick={() => setAddVisaType('annual')}>
+              <Plus className="h-4 w-4" /> Adaugă viză anuală
+            </Button>
+          )}
           {(athlete.annual_visas || []).length === 0 ? (
             <EmptyTab message="Nicio viză anuală înregistrată." />
           ) : (
@@ -1419,6 +1557,9 @@ export default function MyProfile() {
                   <td className="px-4 py-3 font-medium">
                     <span className="flex items-center gap-2"><Award className="h-3.5 w-3.5 text-muted-foreground" /> Viză anuală</span>
                     <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
+                    {canApprove && v.status === 'pending' && (
+                      <ReviewButtons busy={reviewBusyKey === `annual-visa-${v.id}`} onApprove={() => reviewItem('annual-visa', v.id, true)} onReject={() => reviewItem('annual-visa', v.id, false)} />
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(v.issued_date)}</td>
                   <td className="px-4 py-3">
@@ -1438,6 +1579,9 @@ export default function MyProfile() {
                   </div>
                   {v.status === 'rejected' && v.admin_notes && <p className="text-xs text-muted-foreground">{v.admin_notes}</p>}
                   <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
+                  {canApprove && v.status === 'pending' && (
+                    <ReviewButtons busy={reviewBusyKey === `annual-visa-${v.id}`} onApprove={() => reviewItem('annual-visa', v.id, true)} onReject={() => reviewItem('annual-visa', v.id, false)} />
+                  )}
                 </li>
               ))}
             />

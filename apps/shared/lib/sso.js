@@ -1,5 +1,5 @@
 /** Lightweight cross-app "SSO" for the FRVV suite of separate single-page
- * apps (public-site, coach-dashboard, athlete-dashboard, ...), each on its
+ * apps (public-site, the coach/athlete/admin app, ...), each on its
  * own origin/port with its own JWTs in localStorage. A plain link from one
  * app to another doesn't carry a session, since localStorage never crosses
  * origins - so a logged-in user landing on another app looks logged out
