@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authAPI } from '../lib/api';
+import { consumeSsoHandoff } from '../lib/sso';
 
 const AuthContext = createContext(null);
 
@@ -27,6 +28,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    // Pick up tokens handed off from another one of our apps (see
+    // withSsoHandoff) before checking the normal localStorage token, so a
+    // cross-app link lands the user already signed in here too.
+    consumeSsoHandoff();
     fetchUser();
   }, [fetchUser]);
 

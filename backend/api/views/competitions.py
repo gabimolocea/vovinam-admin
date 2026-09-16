@@ -41,8 +41,10 @@ class CompetitionViewSet(viewsets.ViewSet):
             events = events.filter(status=status_filter)
         elif event_type == 'competition' and request.user.is_authenticated and request.user.role == 'referee' and not request.user.is_admin:
             events = events.filter(status='ongoing')
-        # Prefetch categories + field assignments to avoid N+1 queries
-        events = events.prefetch_related(
+        # select_related('city') + prefetch categories/field assignments to
+        # avoid N+1 queries (one per event for city_name, one per category
+        # for its field assignment).
+        events = events.select_related('city').prefetch_related(
             'categories__field_assignment__field'
         )
         data = []

@@ -144,11 +144,6 @@ export const athleteAPI = {
   myProfileDetail: () => api.get('/athletes/my-profile-detail/'),
   createMyProfile: (data) => api.post('/athletes/my-profile/', data),
   updateMyProfile: (data) => api.put('/athletes/my-profile/', data),
-  updateMyProfilePhoto: (file) => {
-    const formData = new FormData();
-    formData.append('profile_image', file);
-    return api.put('/athletes/my-profile/', formData);
-  },
   approve: (id) => api.post(`/athletes/${id}/approve/`),
   process: (id, data) => api.post(`/athletes/${id}/process_application/`, data),
   approveImage: (id, notes) => api.post(`/athletes/${id}/approve_image/`, { notes }),

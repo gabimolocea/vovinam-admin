@@ -29,9 +29,20 @@ class AnnualVisaViewSet(viewsets.ViewSet):
     # endpoint continues to work while we migrate data into Visa.
     serializer_class = None  # set in __init__ below
 
-    def get_queryset(self):
+    def get_queryset(self, request=None):
         from ..models import Visa
-        return Visa.objects.filter(visa_type='annual')
+        queryset = Visa.objects.filter(visa_type='annual')
+        # my_club - scope to the requesting coach's own club, mirroring
+        # AthleteViewSet's my_club filter, instead of returning every visa
+        # in the whole federation on every request.
+        my_club = request.query_params.get('my_club') if request else None
+        if my_club and str(my_club).lower() in ('1', 'true', 'yes'):
+            user = request.user
+            if user and user.is_authenticated and getattr(user, 'athlete', None) and user.athlete.club_id:
+                queryset = queryset.filter(athlete__club_id=user.athlete.club_id)
+            else:
+                queryset = queryset.none()
+        return queryset
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -43,7 +54,7 @@ class AnnualVisaViewSet(viewsets.ViewSet):
             self.serializer_class = AnnualVisaSerializer
 
     def list(self, request):
-        queryset = self.get_queryset()
+        queryset = self.get_queryset(request)
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
@@ -78,9 +89,17 @@ class MedicalVisaViewSet(viewsets.ViewSet):
     # Proxy to the unified Visa model using visa_type='medical'
     serializer_class = None
 
-    def get_queryset(self):
+    def get_queryset(self, request=None):
         from ..models import Visa
-        return Visa.objects.filter(visa_type='medical')
+        queryset = Visa.objects.filter(visa_type='medical')
+        my_club = request.query_params.get('my_club') if request else None
+        if my_club and str(my_club).lower() in ('1', 'true', 'yes'):
+            user = request.user
+            if user and user.is_authenticated and getattr(user, 'athlete', None) and user.athlete.club_id:
+                queryset = queryset.filter(athlete__club_id=user.athlete.club_id)
+            else:
+                queryset = queryset.none()
+        return queryset
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -91,7 +110,7 @@ class MedicalVisaViewSet(viewsets.ViewSet):
             self.serializer_class = MedicalVisaSerializer
 
     def list(self, request):
-        queryset = self.get_queryset()
+        queryset = self.get_queryset(request)
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 

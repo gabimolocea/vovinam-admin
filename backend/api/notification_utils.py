@@ -505,6 +505,7 @@ def create_grade_submitted_notification(grade_history):
             action_data={
                 'athlete_id': athlete.id,
                 'athlete_name': f'{athlete.first_name} {athlete.last_name}',
+                'grade_history_id': grade_history.id,
                 'grade_name': grade_history.grade.name,
                     'event': grade_history.event.id if getattr(grade_history, 'event', None) else None,
                     'event_name': grade_history.event.title if getattr(grade_history, 'event', None) else None,
@@ -628,6 +629,7 @@ def create_seminar_submitted_notification(participation):
                 {
                     'athlete_id': athlete.id,
                     'athlete_name': f'{athlete.first_name} {athlete.last_name}',
+                    'participation_id': participation.id,
                     'event_id': event.pk,
                     'event_name': event.title,
                     'event_start_date': event.start_date.isoformat() if getattr(event, 'start_date', None) else None,
@@ -636,6 +638,7 @@ def create_seminar_submitted_notification(participation):
                 } if event else {
                     'athlete_id': athlete.id,
                     'athlete_name': f'{athlete.first_name} {athlete.last_name}',
+                    'participation_id': participation.id,
                     'seminar_name': seminar.name if seminar else None,
                     'seminar_start_date': seminar.start_date.isoformat() if seminar and seminar.start_date else None,
                     'seminar_end_date': seminar.end_date.isoformat() if seminar and seminar.end_date else None,

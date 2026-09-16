@@ -297,13 +297,21 @@ class AthleteViewSet(viewsets.ModelViewSet):
         if not is_owner_or_admin and not is_authorized_supporter and not is_club_coach:
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
-        # A new profile picture uploaded by anyone other than an admin is
-        # staged for approval (club coach or admin) instead of being applied
-        # directly — pull it out of the payload before it reaches the
-        # serializer, which would otherwise save it straight to `profile_image`.
+        # A coach uploading a new picture for their own profile is trusted
+        # like an admin here too - unlike an athlete's self-submitted photo,
+        # it doesn't need a coach/admin to review it.
+        is_self_coach = bool(
+            not is_admin and athlete.user == request.user
+            and requester_athlete and requester_athlete.is_coach
+        )
+
+        # A new profile picture uploaded by anyone else is staged for
+        # approval (club coach or admin) instead of being applied directly —
+        # pull it out of the payload before it reaches the serializer, which
+        # would otherwise save it straight to `profile_image`.
         data = request.data
         pending_image = None
-        if not is_admin:
+        if not is_admin and not is_self_coach:
             pending_image = request.FILES.get('profile_image')
             if pending_image is not None:
                 data = request.data.copy()
@@ -320,7 +328,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
             # a no-op submission (e.g. just reopening/saving the form
             # unchanged) doesn't needlessly pull the profile out of public
             # view while it's re-reviewed.
-            was_approved = not is_admin and not is_club_coach and athlete.status == 'approved'
+            was_approved = not is_admin and not is_club_coach and not is_self_coach and athlete.status == 'approved'
             previous_values = (
                 {field: getattr(athlete, field, None) for field in serializer.validated_data}
                 if was_approved else None
@@ -593,7 +601,19 @@ class AthleteViewSet(viewsets.ModelViewSet):
             if athlete.user != user and not user.is_admin:
                 return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
-            serializer = AthleteProfileSerializer(athlete, data=request.data, partial=True, context={'request': request})
+            # profile_image doesn't belong in this general-purpose field
+            # update - unlike the update() action above, this endpoint has
+            # no pending-image staging, so writing it here would apply the
+            # photo directly *and* (via the resubmit() below) drop the
+            # athlete's whole approval status back to pending just because
+            # the photo changed. AthleteViewSet.update() (PATCH
+            # /athletes/:id/) is the endpoint that stages it correctly.
+            data = request.data
+            if 'profile_image' in data:
+                data = data.copy()
+                del data['profile_image']
+
+            serializer = AthleteProfileSerializer(athlete, data=data, partial=True, context={'request': request})
             if serializer.is_valid():
                 was_approved = athlete.status == 'approved'
                 previous_values = (

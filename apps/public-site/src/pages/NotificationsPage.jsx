@@ -6,28 +6,17 @@ import { Skeleton } from '../components/ui';
 import Breadcrumbs from '../components/Breadcrumbs';
 import Seo from '../components/Seo';
 
-// Where each notification type routes to within the athlete's own profile -
-// keyed by the notification_type prefix (before the last "_verb").
-const TAB_FOR_PREFIX = {
-  result: 'rezultate',
-  grade: 'grade',
-  seminar: 'seminarii',
-  visa: 'vize',
-};
-
 // A notification is the *reviewer's* copy ("X a trimis ...") rather than the
 // submitter's own confirmation/decision notice when it carries an
 // `athlete_id` (see notification_utils.py: only the admin/coach-facing copy
 // includes it). Those route straight to that athlete's own page, where a
 // reviewer (admin/coach) sees the extra status info and approve/reject
-// controls inline - not to the recipient's own profile tab, which would
-// show the reviewer's own data instead of the submitter's.
+// controls inline - the submitter's own copy just goes to /cont instead,
+// which redirects to their dashboard (results/grades/etc are managed there
+// now, not on the public site).
 function linkFor(notification) {
   const athleteId = notification.action_data?.athlete_id;
-  if (athleteId) return `/sportivi/${athleteId}`;
-
-  const prefix = Object.keys(TAB_FOR_PREFIX).find((p) => notification.notification_type.startsWith(p));
-  return prefix ? `/cont/profil?tab=${TAB_FOR_PREFIX[prefix]}` : '/cont/profil';
+  return athleteId ? `/sportivi/${athleteId}` : '/cont';
 }
 
 const STATUS_STYLE = {

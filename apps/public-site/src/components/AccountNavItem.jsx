@@ -1,6 +1,24 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '@shared';
+import { withSsoHandoff } from '@shared/lib/sso';
 import { User } from 'lucide-react';
+
+export const COACH_DASHBOARD_URL = import.meta.env.VITE_COACH_DASHBOARD_URL || 'http://localhost:5175';
+export const ATHLETE_DASHBOARD_URL = import.meta.env.VITE_ATHLETE_DASHBOARD_URL || 'http://localhost:5182';
+
+/** True once an athlete's coach flag has cleared approval - the point at
+ * which account management moves to the coach dashboard and drops off the
+ * public site. Mirrors OnboardingPage.jsx's isApprovedCoach(). */
+export function isApprovedCoach(user) {
+  return user?.role !== 'supporter' && !!user?.athlete?.is_coach && user?.athlete?.status === 'approved';
+}
+
+/** True for any other approved athlete (not a coach - those go to the coach
+ * dashboard instead) - account management for them moves to the athlete
+ * dashboard, same idea as isApprovedCoach() above. */
+export function isApprovedAthlete(user) {
+  return user?.role !== 'supporter' && !!user?.athlete && user.athlete.status === 'approved' && !user.athlete.is_coach;
+}
 
 /** Small circular avatar - the athlete's profile photo when set, otherwise
  * a plain person icon in a tinted circle. Also used by Layout.jsx for the
@@ -17,14 +35,35 @@ export function AccountAvatar({ user, size = 'h-6 w-6' }) {
   );
 }
 
-/** Desktop utility-bar "Cont" nav item - a plain link to /cont, always
- * (signed in or out). Everything that used to live in a dropdown (profile,
- * coach panel, approvals, settings, logout) is now on the /cont page
- * itself as shortcut cards, so this is just an entry point - no menu, no
- * submenu state. Mobile has its own persistent account icon in Layout.jsx's
- * closed-state top bar, so it doesn't render this component at all. */
+/** Desktop utility-bar "Cont" nav item - a plain link to /cont for anyone
+ * signed in or out, except an approved coach, who goes straight to the
+ * coach dashboard instead: their account management lives entirely there
+ * now, so /cont has nothing for them. Everything that used to live in a
+ * dropdown (profile, coach panel, approvals, settings, logout) is now on
+ * the /cont page itself as shortcut cards, so this is just an entry point -
+ * no menu, no submenu state. Mobile has its own persistent account icon in
+ * Layout.jsx's closed-state top bar, so it doesn't render this component
+ * at all. */
 export default function AccountNavItem() {
   const { isAuthenticated, user } = useAuth();
+
+  if (isAuthenticated && isApprovedCoach(user)) {
+    return (
+      <a href={withSsoHandoff(COACH_DASHBOARD_URL)} className="site-utility-link inline-flex items-center gap-1.5">
+        <AccountAvatar user={user} />
+        Panou antrenor
+      </a>
+    );
+  }
+
+  if (isAuthenticated && isApprovedAthlete(user)) {
+    return (
+      <a href={withSsoHandoff(ATHLETE_DASHBOARD_URL)} className="site-utility-link inline-flex items-center gap-1.5">
+        <AccountAvatar user={user} />
+        Panou sportiv
+      </a>
+    );
+  }
 
   if (isAuthenticated) {
     return (

@@ -25,6 +25,10 @@ class UserSerializer(serializers.ModelSerializer):
                 profile_image = athlete.profile_image.url if athlete.profile_image else None
             except Exception:
                 profile_image = None
+            try:
+                pending_profile_image = athlete.pending_profile_image.url if athlete.pending_profile_image else None
+            except Exception:
+                pending_profile_image = None
             return {
                 'id': athlete.id,
                 'first_name': athlete.first_name,
@@ -33,6 +37,7 @@ class UserSerializer(serializers.ModelSerializer):
                 'is_coach': athlete.is_coach if hasattr(athlete, 'is_coach') else False,
                 'status': athlete.status,
                 'profile_image': profile_image,
+                'pending_profile_image': pending_profile_image,
             }
         return None
 
@@ -160,6 +165,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
         # Include athlete profile data if exists
         if hasattr(instance, 'athlete') and instance.athlete:
             athlete = instance.athlete
+            try:
+                profile_image = athlete.profile_image.url if athlete.profile_image else None
+            except Exception:
+                profile_image = None
+            try:
+                pending_profile_image = athlete.pending_profile_image.url if athlete.pending_profile_image else None
+            except Exception:
+                pending_profile_image = None
             representation['athlete'] = {
                 'id': athlete.id,
                 'first_name': athlete.first_name,
@@ -170,6 +183,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 'is_coach': athlete.is_coach if hasattr(athlete, 'is_coach') else False,
                 'is_referee': athlete.is_referee if hasattr(athlete, 'is_referee') else False,
                 'mobile_number': athlete.mobile_number,
+                'profile_image': profile_image,
+                'pending_profile_image': pending_profile_image,
             }
             representation['athlete_id'] = athlete.id
         

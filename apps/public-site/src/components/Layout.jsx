@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { ChevronRight, Menu, User, X } from 'lucide-react';
 import { useAuth } from '@shared';
-import AccountNavItem, { AccountAvatar } from './AccountNavItem';
-import NotificationBell from './NotificationBell';
+import { withSsoHandoff } from '@shared/lib/sso';
+import AccountNavItem, { AccountAvatar, isApprovedCoach, isApprovedAthlete, COACH_DASHBOARD_URL, ATHLETE_DASHBOARD_URL } from './AccountNavItem';
 import CookieConsentBanner from './CookieConsentBanner';
 import { trackPageview } from '../lib/analytics';
 
@@ -214,7 +214,6 @@ export default function Layout() {
               ))}
             </div>
             <div className="flex items-center gap-3">
-              <NotificationBell />
               <AccountNavItem />
             </div>
           </div>
@@ -251,23 +250,40 @@ export default function Layout() {
             </span>
           </Link>
           <div className="-my-2 flex shrink-0 self-stretch items-stretch">
-            <NotificationBell mobile />
-            <NavLink
-              to="/cont"
-              aria-label="Contul meu"
-              onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                `-mr-4 flex w-14 shrink-0 items-center justify-center ${
-                  isActive ? 'site-mobile-toggle' : 'text-foreground'
-                }`
-              }
-            >
-              {isAuthenticated ? (
+            {isAuthenticated && isApprovedCoach(user) ? (
+              <a
+                href={withSsoHandoff(COACH_DASHBOARD_URL)}
+                aria-label="Panou antrenor"
+                className="-mr-4 flex w-14 shrink-0 items-center justify-center text-foreground"
+              >
                 <AccountAvatar user={user} size="h-7 w-7" />
-              ) : (
-                <User className="h-5 w-5" fill="currentColor" aria-hidden="true" />
-              )}
-            </NavLink>
+              </a>
+            ) : isAuthenticated && isApprovedAthlete(user) ? (
+              <a
+                href={withSsoHandoff(ATHLETE_DASHBOARD_URL)}
+                aria-label="Panou sportiv"
+                className="-mr-4 flex w-14 shrink-0 items-center justify-center text-foreground"
+              >
+                <AccountAvatar user={user} size="h-7 w-7" />
+              </a>
+            ) : (
+              <NavLink
+                to="/cont"
+                aria-label="Contul meu"
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  `-mr-4 flex w-14 shrink-0 items-center justify-center ${
+                    isActive ? 'site-mobile-toggle' : 'text-foreground'
+                  }`
+                }
+              >
+                {isAuthenticated ? (
+                  <AccountAvatar user={user} size="h-7 w-7" />
+                ) : (
+                  <User className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+                )}
+              </NavLink>
+            )}
           </div>
         </div>
 

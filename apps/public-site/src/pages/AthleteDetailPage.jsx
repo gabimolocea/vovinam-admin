@@ -5,14 +5,9 @@ import { Alert, Badge, Button, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 import GalleryTab from '../components/GalleryTab';
 import Breadcrumbs from '../components/Breadcrumbs';
-import ResultSubmissionForm from '../components/ResultSubmissionForm';
-import GradeSubmissionForm from '../components/GradeSubmissionForm';
-import SeminarSubmissionForm from '../components/SeminarSubmissionForm';
-import MedicalVisaSubmissionForm from '../components/MedicalVisaSubmissionForm';
 import BeltBadge from '../components/BeltBadge';
 import MedalIcon from '../components/MedalIcon';
 import ResponsiveTable from '../components/ResponsiveTable';
-import { ATHLETE_STATUS_LABELS } from '../lib/athletes';
 import { ChevronLeft, ChevronRight, Clock, Pencil, X } from 'lucide-react';
 
 // Ribbon colors per competition level - national medals (computed
@@ -34,11 +29,11 @@ const RESULT_STATUS_LABELS = {
 const TABS = [
   { key: 'info', label: 'Info' },
   { key: 'rezultate', label: 'Rezultate' },
-  { key: 'grade', label: 'Istoric grade' },
-  { key: 'seminarii', label: 'Seminarii' },
-  { key: 'medical', label: 'Istoric Medical' },
+  { key: 'grade', label: 'Examene' },
+  { key: 'seminarii', label: 'Stagii' },
+  { key: 'medical', label: 'Vize medicale' },
   { key: 'vize', label: 'Vize anuale' },
-  { key: 'poze', label: 'Poze' },
+  { key: 'poze', label: 'Media' },
 ];
 
 function formatDate(value) {
@@ -92,6 +87,26 @@ function InternationalMedalsPanel({ medals, ribbonColors }) {
       <p className="max-w-sm text-center text-xs text-[#00334d]/60">
         Federația nu organizează competiții internaționale în aplicație - medaliile sunt introduse manual de un administrator.
       </p>
+    </div>
+  );
+}
+
+/** One "Info" tab row: label left, value right, divider below - stacked
+ * one under another instead of a 2-column grid. `private` rows always
+ * render (so the row list looks the same to every visitor) but blur a
+ * placeholder instead of the real value for anyone who isn't the athlete
+ * themself or an authorized reviewer - the server already never sends
+ * these fields' real values to such a viewer (see _reviewer_only in
+ * PublicAthleteDetailSerializer), so this is a "there's private data
+ * here" visual cue, not something hiding data that reached the client. */
+function InfoRow({ label, value, private: isPrivate, visible }) {
+  const blurred = isPrivate && !visible;
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-[#dce0e5] py-2.5 text-sm last:border-b-0">
+      <span className="shrink-0 text-[#00334d]/60">{label}</span>
+      <span className={`text-right font-display font-bold text-[#00334d] ${blurred ? 'select-none blur-[3px]' : ''}`}>
+        {blurred ? 'Informație privată' : (value || '—')}
+      </span>
     </div>
   );
 }
@@ -162,7 +177,7 @@ function ScrollableTabs({ items, activeKey, onSelect, variant = 'pill' }) {
             onClick={() => onSelect(key)}
             className={
               isPill
-                ? `shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-bold uppercase tracking-wide transition-all ${
+                ? `shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-bold tracking-wide transition-all ${
                     activeKey === key ? 'bg-white text-[#00334d] shadow-sm' : 'text-[#00334d]/60 hover:text-[#00334d]'
                   }`
                 : `-mb-px shrink-0 whitespace-nowrap border-b-2 pb-2 text-sm font-semibold transition-colors ${
@@ -215,13 +230,7 @@ function FullScreenModal({ title, onClose, children }) {
   );
 }
 
-/** `ownProfile`: renders the logged-in athlete's own profile (fetched via
- * /athletes/my-profile-detail/, which - unlike the public /public/ endpoint -
- * doesn't require status='approved') instead of a public athlete by :id.
- * Used by "Contul meu" so a pending/rejected athlete can preview their
- * profile exactly as it'll look once approved, without it being visible to
- * anyone else. */
-export default function AthleteDetailPage({ ownProfile = false, showSeo = true }) {
+export default function AthleteDetailPage({ showSeo = true }) {
   const { id } = useParams();
   const { user, loading: authLoading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -230,14 +239,9 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
   const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [noProfile, setNoProfile] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [addingResult, setAddingResult] = useState(false);
-  const [addingGrade, setAddingGrade] = useState(false);
-  const [addingSeminar, setAddingSeminar] = useState(false);
-  const [addingMedicalVisa, setAddingMedicalVisa] = useState(false);
   const [resultsLevel, setResultsLevel] = useState('national');
   const [reviewBusyKey, setReviewBusyKey] = useState(null);
   const [reviewError, setReviewError] = useState('');
@@ -250,20 +254,11 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
     async function load() {
       setLoading(true);
       setError('');
-      setNoProfile(false);
       try {
-        const response = ownProfile ? await athleteAPI.myProfileDetail() : await athleteAPI.getPublic(id);
+        const response = await athleteAPI.getPublic(id);
         if (isMounted) setAthlete(response.data);
-      } catch (err) {
-        if (!isMounted) return;
-        // A 404 here just means this account hasn't finished onboarding
-        // yet (no Athlete row at all) - that's not an error, so guide the
-        // user to the onboarding form instead of a generic failure message.
-        if (ownProfile && err.response?.status === 404) {
-          setNoProfile(true);
-        } else {
-          setError(ownProfile ? 'Nu am putut încărca profilul tău.' : 'Nu am putut încărca acest sportiv.');
-        }
+      } catch {
+        if (isMounted) setError('Nu am putut încărca acest sportiv.');
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -273,21 +268,26 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
     return () => {
       isMounted = false;
     };
-  }, [id, ownProfile, user, authLoading]);
+  }, [id, user, authLoading]);
 
-  // Athlete profiles (own or another athlete's) are only visible to signed-in
-  // users - anonymous visitors get sent to the login/register page instead.
+  // Athlete profiles are only visible to signed-in users - anonymous
+  // visitors get sent to the login/register page instead.
   if (!authLoading && !user) return <Navigate to="/cont" replace />;
 
   const isPhotoPending = athlete?.profile_image_status === 'pending';
-  // Reviewing (approve/reject) shares its authorization with editing -
-  // `can_edit` is already true only for an admin, this athlete's club
-  // coach, or the athlete themself (server-side, club-scoped). Reviewing
-  // your own profile doesn't make sense, so ownProfile is excluded here.
-  const canReview = !ownProfile && Boolean(athlete?.can_edit);
+  // This account's own athlete profile, editable only from the athlete/coach
+  // dashboard now - never here, and never reviewable (approving your own
+  // submission makes no sense either).
+  const isSelf = user?.athlete_id != null && String(user.athlete_id) === String(athlete?.id);
+  // Reviewing (approve/reject) and editing (the photo pencil below) share
+  // their authorization - `can_edit` is true for an admin, this athlete's
+  // club coach, or the athlete themself, but reviewing/editing your own
+  // profile from here doesn't apply anymore (that's dashboard-only now), so
+  // `isSelf` is excluded explicitly.
+  const canReview = Boolean(athlete?.can_edit) && !isSelf;
 
   async function refreshAthlete() {
-    const response = ownProfile ? await athleteAPI.myProfileDetail() : await athleteAPI.getPublic(id);
+    const response = await athleteAPI.getPublic(id);
     setAthlete(response.data);
   }
 
@@ -386,20 +386,6 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
     );
   }
 
-  if (noProfile) {
-    return (
-      <div className="pt-6 sm:pt-10">
-        <Alert variant="info">
-          <p>Nu ai încă un profil de sportiv completat.</p>
-          <p className="mt-1">
-            Completează <Link to="/onboarding/sportiv" className="font-medium underline">pasul de înregistrare a profilului</Link> - după trimitere,
-            profilul va fi vizibil public abia după ce este aprobat de un administrator.
-          </p>
-        </Alert>
-      </div>
-    );
-  }
-
   if (error || !athlete) {
     return (
       <div className="pt-6 sm:pt-10">
@@ -416,32 +402,22 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
     <div className="flex flex-col">
       {showSeo && (
         <Seo
-          title={ownProfile ? 'Profilul meu' : athlete.full_name}
-          description={ownProfile ? undefined : `Profilul sportivului ${athlete.full_name}, Federația Română de Vovinam Việt Võ Đạo.`}
-          path={ownProfile ? '/cont/profil' : `/sportivi/${athlete.id}`}
+          title={athlete.full_name}
+          description={`Profilul sportivului ${athlete.full_name}, Federația Română de Vovinam Việt Võ Đạo.`}
+          path={`/sportivi/${athlete.id}`}
           noindex
         />
       )}
 
-      <div className={`site-full-bleed relative overflow-hidden ${ownProfile ? 'pt-4 lg:pt-5' : ''}`} style={{ backgroundColor: '#0c223d' }}>
-        {!ownProfile && (
-          <Breadcrumbs
-            items={[
-              { label: 'Federație', to: '/despre' },
-              { label: 'Sportivi', to: '/sportivi' },
-              { label: athlete.full_name },
-            ]}
-            overlay
-          />
-        )}
-
-        {ownProfile && athlete.status && athlete.status !== 'approved' && athlete.status !== 'revision_required' && (
-          <div className="relative mx-auto w-full max-w-6xl px-4">
-            <Alert variant="info">
-              Acesta este profilul tău așa cum va arăta public. Cât timp este <strong>{(ATHLETE_STATUS_LABELS[athlete.status] || athlete.status).toLowerCase()}</strong>, nu este vizibil pentru nimeni altcineva.
-            </Alert>
-          </div>
-        )}
+      <div className="site-full-bleed relative overflow-hidden" style={{ backgroundColor: '#0c223d' }}>
+        <Breadcrumbs
+          items={[
+            { label: 'Federație', to: '/despre' },
+            { label: 'Sportivi', to: '/sportivi' },
+            { label: athlete.full_name },
+          ]}
+          overlay
+        />
 
         <div className="relative mx-auto flex w-full max-w-6xl flex-col items-center gap-3 px-4 py-4 text-center lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:py-6 lg:text-left">
           {/* Simplified landscape layout: just the photo and details side
@@ -501,7 +477,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   />
                 </Link>
               )}
-              {athlete.can_edit && (
+              {canReview && (
                 <>
                   <input
                     ref={fileInputRef}
@@ -562,21 +538,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         </div>
       </div>
 
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 py-6">
-        {ownProfile && athlete.status === 'revision_required' && (
-          <Alert variant="destructive">
-            {athlete.admin_notes || 'Un administrator a cerut completări la profilul tău. Te rugăm să-l actualizezi.'}
-          </Alert>
-        )}
-
-        {ownProfile && athlete.profile_image_status === 'pending' && (
-          <Alert>Noua ta poză de profil așteaptă aprobarea antrenorului sau a unui administrator - o vezi mai sus, estompată, până este aprobată. Nu poți trimite altă poză până atunci.</Alert>
-        )}
-
-        {ownProfile && athlete.profile_image_status === 'rejected' && athlete.profile_image_admin_notes && (
-          <Alert variant="destructive">Poza de profil trimisă a fost respinsă: {athlete.profile_image_admin_notes}</Alert>
-        )}
-
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6">
         {canReview && reviewError && <Alert variant="destructive">{reviewError}</Alert>}
 
         {photoPreview && (
@@ -602,23 +564,20 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
         )}
 
       {tab === 'info' && (
-        <div className="flex flex-col gap-4">
-          <dl className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1 text-sm">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-[#00334d]/60">Grad curent</dt>
-            <dd className="font-display font-bold text-[#00334d]">{athlete.current_grade?.name || '—'}</dd>
-          </div>
-          <div className="flex flex-col gap-1 text-sm">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-[#00334d]/60">Rol</dt>
-            <dd className="font-display font-bold text-[#00334d]">
-              {[athlete.is_coach && 'Antrenor', athlete.is_referee && 'Arbitru'].filter(Boolean).join(', ') || 'Sportiv'}
-            </dd>
-          </div>
-          <div className="flex flex-col gap-1 text-sm">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-[#00334d]/60">Data nașterii</dt>
-            <dd className="font-display font-bold text-[#00334d]">{athlete.date_of_birth ? formatDate(athlete.date_of_birth) : '—'}</dd>
-          </div>
-          </dl>
+        <div className="flex flex-col">
+          <InfoRow label="Status cont" value={RESULT_STATUS_LABELS[athlete.status] || athlete.status} private visible={isSelf || canReview} />
+          <InfoRow label="Club" value={athlete.club?.name} />
+          <InfoRow label="Oraș" value={athlete.city?.name} />
+          <InfoRow label="Data nașterii" value={athlete.date_of_birth ? formatDate(athlete.date_of_birth) : null} />
+          <InfoRow label="Rol" value={[athlete.is_coach && 'Antrenor', athlete.is_referee && 'Arbitru'].filter(Boolean).join(', ') || 'Sportiv'} />
+          <InfoRow label="CNP" value={athlete.cnp} private visible={isSelf || canReview} />
+          <InfoRow label="Serie legitimație" value={athlete.license_series} private visible={isSelf || canReview} />
+          <InfoRow label="Telefon" value={athlete.mobile_number} private visible={isSelf || canReview} />
+          <InfoRow label="Adresă" value={athlete.address} private visible={isSelf || canReview} />
+          <InfoRow label="Data înregistrării" value={athlete.registered_date ? formatDate(athlete.registered_date) : null} private visible={isSelf || canReview} />
+          <InfoRow label="Expirare legitimație" value={athlete.expiration_date ? formatDate(athlete.expiration_date) : null} private visible={isSelf || canReview} />
+          <InfoRow label="Contact urgență" value={athlete.emergency_contact_name} private visible={isSelf || canReview} />
+          <InfoRow label="Telefon urgență" value={athlete.emergency_contact_phone} private visible={isSelf || canReview} />
         </div>
       )}
 
@@ -628,25 +587,6 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
 
           {resultsLevel === 'national' && (
             <>
-              {ownProfile && !addingResult && (
-                <Button type="button" className="w-fit" onClick={() => setAddingResult(true)}>
-                  Adaugă rezultat
-                </Button>
-              )}
-              {ownProfile && addingResult && (
-                <FullScreenModal title="Adaugă rezultat" onClose={() => setAddingResult(false)}>
-                  <ResultSubmissionForm
-                    athleteId={athlete.id}
-                    athleteGender={athlete.gender}
-                    onCancel={() => setAddingResult(false)}
-                    onSubmitted={async () => {
-                      setAddingResult(false);
-                      const response = await athleteAPI.myProfileDetail();
-                      setAthlete(response.data);
-                    }}
-                  />
-                </FullScreenModal>
-              )}
               {athlete.results.length === 0 ? <EmptyTab message="Niciun rezultat înregistrat." /> : (
                 <ResponsiveTable
                   head={(
@@ -655,7 +595,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                       <th className="px-4 py-3 font-medium">Categorie</th>
                       <th className="px-4 py-3 font-medium">Tip</th>
                       <th className="px-4 py-3 font-medium">Rezultat</th>
-                      {(ownProfile || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
+                      {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
                     </>
                   )}
                   rows={athlete.results.map((r) => (
@@ -664,7 +604,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                       <td className="px-4 py-3 text-[#00334d]/60">{r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''}</td>
                       <td className="px-4 py-3 text-[#00334d]/60">{RESULT_TYPE_LABELS[r.type] || r.type}</td>
                       <td className="px-4 py-3">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</td>
-                      {(ownProfile || canReview) && (
+                      {(isSelf || canReview) && (
                         <td className="px-4 py-3">
                           <Badge variant={r.status === 'approved' ? 'default' : 'outline'}>
                             {RESULT_STATUS_LABELS[r.status] || r.status}
@@ -692,7 +632,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                     <li key={r.id} className="rounded-lg border border-[#dce0e5] p-4">
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium">{r.competition || '—'}</p>
-                        {(ownProfile || canReview) && (
+                        {(isSelf || canReview) && (
                           <Badge variant={r.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
                             {RESULT_STATUS_LABELS[r.status] || r.status}
                           </Badge>
@@ -702,7 +642,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                         {r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''} · {RESULT_TYPE_LABELS[r.type] || r.type}
                       </p>
                       <p className="mt-2 text-sm font-semibold">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</p>
-                      {(ownProfile || canReview) && r.status === 'rejected' && r.admin_notes && (
+                      {(isSelf || canReview) && r.status === 'rejected' && r.admin_notes && (
                         <p className="mt-1 text-xs text-[#00334d]/60">{r.admin_notes}</p>
                       )}
                       {canReview && r.certificate_image && (
@@ -736,24 +676,6 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
 
       {tab === 'grade' && (
         <div className="flex flex-col gap-4">
-          {ownProfile && !addingGrade && (
-            <Button type="button" className="w-fit" onClick={() => setAddingGrade(true)}>
-              Adaugă grad
-            </Button>
-          )}
-          {ownProfile && addingGrade && (
-            <FullScreenModal title="Adaugă grad" onClose={() => setAddingGrade(false)}>
-              <GradeSubmissionForm
-                athleteId={athlete.id}
-                onCancel={() => setAddingGrade(false)}
-                onSubmitted={async () => {
-                  setAddingGrade(false);
-                  const response = await athleteAPI.myProfileDetail();
-                  setAthlete(response.data);
-                }}
-              />
-            </FullScreenModal>
-          )}
           {athlete.grade_history.length === 0 ? <EmptyTab message="Niciun grad înregistrat." /> : (
             <ResponsiveTable
               head={(
@@ -761,7 +683,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <th className="px-4 py-3 font-medium">Grad</th>
                   <th className="px-4 py-3 font-medium">Data obținerii</th>
                   <th className="px-4 py-3 font-medium">Eveniment</th>
-                  {(ownProfile || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
+                  {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
                 </>
               )}
               rows={athlete.grade_history.map((g) => (
@@ -769,7 +691,7 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <td className="px-4 py-3 font-medium">{g.grade?.name || '—'}</td>
                   <td className="px-4 py-3 text-[#00334d]/60">{formatDate(g.obtained_date)}</td>
                   <td className="px-4 py-3 text-[#00334d]/60">{g.event || '—'}</td>
-                  {(ownProfile || canReview) && (
+                  {(isSelf || canReview) && (
                     <td className="px-4 py-3">
                       <Badge variant={g.status === 'approved' ? 'default' : 'outline'}>
                         {RESULT_STATUS_LABELS[g.status] || g.status}
@@ -797,14 +719,14 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                 <li key={g.id} className="rounded-lg border border-[#dce0e5] p-4">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium">{g.grade?.name || '—'}</p>
-                    {(ownProfile || canReview) && (
+                    {(isSelf || canReview) && (
                       <Badge variant={g.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
                         {RESULT_STATUS_LABELS[g.status] || g.status}
                       </Badge>
                     )}
                   </div>
                   <p className="mt-1 text-xs text-[#00334d]/60">{formatDate(g.obtained_date)}{g.event ? ` · ${g.event}` : ''}</p>
-                  {(ownProfile || canReview) && g.status === 'rejected' && g.admin_notes && (
+                  {(isSelf || canReview) && g.status === 'rejected' && g.admin_notes && (
                     <p className="mt-1 text-xs text-[#00334d]/60">{g.admin_notes}</p>
                   )}
                   {canReview && g.certificate_image && (
@@ -828,40 +750,20 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
 
       {tab === 'seminarii' && (
         <div className="flex flex-col gap-4">
-          {ownProfile && !addingSeminar && (
-            <Button type="button" className="w-fit" onClick={() => setAddingSeminar(true)}>
-              Adaugă seminar
-            </Button>
-          )}
-          {ownProfile && addingSeminar && (
-            <FullScreenModal title="Adaugă seminar" onClose={() => setAddingSeminar(false)}>
-              <SeminarSubmissionForm
-                athleteId={athlete.id}
-                onCancel={() => setAddingSeminar(false)}
-                onSubmitted={async () => {
-                  setAddingSeminar(false);
-                  const response = await athleteAPI.myProfileDetail();
-                  setAthlete(response.data);
-                }}
-              />
-            </FullScreenModal>
-          )}
           {athlete.seminars.length === 0 ? <EmptyTab message="Nicio participare la seminarii." /> : (
             <ResponsiveTable
               head={(
                 <>
                   <th className="px-4 py-3 font-medium">Eveniment</th>
                   <th className="px-4 py-3 font-medium">Perioadă</th>
-                  <th className="px-4 py-3 font-medium">Loc</th>
-                  {(ownProfile || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
+                  {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
                 </>
               )}
               rows={athlete.seminars.map((s) => (
                 <tr key={s.id}>
                   <td className="px-4 py-3 font-medium">{s.event || '—'}</td>
-                  <td className="px-4 py-3 text-[#00334d]/60">{formatDate(s.start_date)}{s.end_date ? ` – ${formatDate(s.end_date)}` : ''}</td>
-                  <td className="px-4 py-3 text-[#00334d]/60">{s.place || '—'}</td>
-                  {(ownProfile || canReview) && (
+                  <td className="px-4 py-3 text-[#00334d]/60">{formatDate(s.start_date)}</td>
+                  {(isSelf || canReview) && (
                     <td className="px-4 py-3">
                       <Badge variant={s.status === 'approved' ? 'default' : 'outline'}>
                         {RESULT_STATUS_LABELS[s.status] || s.status}
@@ -884,16 +786,14 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                 <li key={s.id} className="rounded-lg border border-[#dce0e5] p-4">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium">{s.event || '—'}</p>
-                    {(ownProfile || canReview) && (
+                    {(isSelf || canReview) && (
                       <Badge variant={s.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
                         {RESULT_STATUS_LABELS[s.status] || s.status}
                       </Badge>
                     )}
                   </div>
-                  <p className="mt-1 text-xs text-[#00334d]/60">
-                    {formatDate(s.start_date)}{s.end_date ? ` – ${formatDate(s.end_date)}` : ''}{s.place ? ` · ${s.place}` : ''}
-                  </p>
-                  {(ownProfile || canReview) && s.status === 'rejected' && s.admin_notes && (
+                  <p className="mt-1 text-xs text-[#00334d]/60">{formatDate(s.start_date)}</p>
+                  {(isSelf || canReview) && s.status === 'rejected' && s.admin_notes && (
                     <p className="mt-1 text-xs text-[#00334d]/60">{s.admin_notes}</p>
                   )}
                   {canReview && s.status === 'pending' && (
@@ -912,23 +812,6 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
 
       {tab === 'medical' && (
         <div className="flex flex-col gap-4">
-          {ownProfile && !addingMedicalVisa && (
-            <Button type="button" className="w-fit" onClick={() => setAddingMedicalVisa(true)}>
-              Adaugă viză medicală
-            </Button>
-          )}
-          {ownProfile && addingMedicalVisa && (
-            <FullScreenModal title="Adaugă viză medicală" onClose={() => setAddingMedicalVisa(false)}>
-              <MedicalVisaSubmissionForm
-                onCancel={() => setAddingMedicalVisa(false)}
-                onSubmitted={async () => {
-                  setAddingMedicalVisa(false);
-                  const response = await athleteAPI.myProfileDetail();
-                  setAthlete(response.data);
-                }}
-              />
-            </FullScreenModal>
-          )}
           {athlete.medical_visas.length === 0 ? <EmptyTab message="Nicio viză medicală înregistrată." /> : (
             <ul className="flex flex-col gap-2">
               {athlete.medical_visas.map((v) => (
@@ -936,13 +819,13 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                   <span>Viză medicală</span>
                   <div className="flex items-center gap-3">
                     <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
-                    {(ownProfile || canReview) && (
+                    {(isSelf || canReview) && (
                       <Badge variant={v.status === 'approved' ? 'default' : 'outline'}>
                         {RESULT_STATUS_LABELS[v.status] || v.status}
                       </Badge>
                     )}
                   </div>
-                  {(ownProfile || canReview) && v.status === 'rejected' && v.admin_notes && (
+                  {(isSelf || canReview) && v.status === 'rejected' && v.admin_notes && (
                     <p className="text-xs text-[#00334d]/60">{v.admin_notes}</p>
                   )}
                   {canReview && v.certificate_image && (
@@ -972,13 +855,13 @@ export default function AthleteDetailPage({ ownProfile = false, showSeo = true }
                 <span>Viză anuală</span>
                 <div className="flex items-center gap-3">
                   <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
-                  {(ownProfile || canReview) && (
+                  {(isSelf || canReview) && (
                     <Badge variant={v.status === 'approved' ? 'default' : 'outline'}>
                       {RESULT_STATUS_LABELS[v.status] || v.status}
                     </Badge>
                   )}
                 </div>
-                {(ownProfile || canReview) && v.status === 'rejected' && v.admin_notes && (
+                {(isSelf || canReview) && v.status === 'rejected' && v.admin_notes && (
                   <p className="text-xs text-[#00334d]/60">{v.admin_notes}</p>
                 )}
                 {canReview && v.certificate_image && (

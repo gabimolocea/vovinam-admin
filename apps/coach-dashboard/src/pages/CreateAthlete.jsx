@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api, { cityAPI, gradeAPI, competitionAPI } from '@shared/lib/api';
+import api, { athleteAPI, cityAPI, gradeAPI, competitionAPI, visaAPI } from '@shared/lib/api';
 import {
-  Alert, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Input, Label, Req,
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea,
+  Alert, Button, Checkbox, Input, Label, Req,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../components/ui';
-import { ArrowLeft, ImagePlus, Plus, Search, X } from 'lucide-react';
+import Lightbox from '../components/Lightbox';
+import { ArrowLeft, ImagePlus, Plus, Search, Sparkles, X } from 'lucide-react';
 
 const MAJOR_CITIES = ['București', 'Cluj-Napoca', 'Timișoara', 'Iași', 'Constanța', 'Brașov'];
 
@@ -15,14 +16,21 @@ const normalizeText = (value = '') =>
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
 
+// Legitimații often print names in ALL CAPS - the AI reads them verbatim, so
+// normalize to "Title Case" (incl. after hyphens/spaces) before prefilling.
+function toTitleCase(text) {
+  if (!text) return text;
+  return text.toLowerCase().replace(/(^|[\s-])\p{L}/gu, (match) => match.toUpperCase());
+}
+
 const INITIAL = {
   first_name: '',
   last_name: '',
   gender: '',
   license_series: '',
+  license_number: '',
   cnp: '',
   date_of_birth: '',
-  address: '',
   mobile_number: '',
   emergency_contact_name: '',
   emergency_contact_phone: '',
@@ -65,19 +73,32 @@ const LEVEL_OPTIONS = [
   { id: 'bad', name: 'Nesatisfăcător' },
 ];
 
+function SectionHeading({ children }) {
+  return <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{children}</h2>;
+}
+
 export default function CreateAthlete() {
   const navigate = useNavigate();
   const [form, setForm] = useState(INITIAL);
   const [gradeForm, setGradeForm] = useState(INITIAL_GRADE);
   const [profileImage, setProfileImage] = useState(null);
   const [profilePreview, setProfilePreview] = useState(null);
-  const [medicalCert, setMedicalCert] = useState(null);
+  const [medicalVisaImage, setMedicalVisaImage] = useState(null);
+  const [medicalVisaPreview, setMedicalVisaPreview] = useState(null);
+  const [medicalVisaDate, setMedicalVisaDate] = useState('');
+  const [licenseImage, setLicenseImage] = useState(null);
+  const [licensePreview, setLicensePreview] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState('');
+  const [exampleZoomOpen, setExampleZoomOpen] = useState(false);
   const [cities, setCities] = useState([]);
   const [grades, setGrades] = useState([]);
   const [exams, setExams] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef();
+  const licenseInputRef = useRef();
+  const medicalVisaInputRef = useRef();
   const cityBoxRef = useRef(null);
   const [cityQuery, setCityQuery] = useState('');
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
@@ -158,6 +179,58 @@ export default function CreateAthlete() {
     reader.readAsDataURL(file);
   };
 
+  const handleLicenseImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLicenseImage(file);
+    setAiNote('');
+    const reader = new FileReader();
+    reader.onloadend = () => setLicensePreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleMedicalVisaImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMedicalVisaImage(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setMedicalVisaPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  async function handleAiAutofill() {
+    if (!licenseImage) return;
+    setAiBusy(true);
+    setAiNote('');
+    try {
+      const formData = new FormData();
+      formData.append('image', licenseImage);
+      const { data } = await athleteAPI.extractLicense(formData);
+      const suggested = data?.suggested ?? {};
+
+      setForm((f) => ({
+        ...f,
+        first_name: f.first_name || toTitleCase(suggested.first_name) || f.first_name,
+        last_name: f.last_name || toTitleCase(suggested.last_name) || f.last_name,
+        date_of_birth: f.date_of_birth || suggested.date_of_birth || f.date_of_birth,
+        gender: f.gender || suggested.gender || f.gender,
+        cnp: f.cnp || suggested.cnp || f.cnp,
+        license_series: f.license_series || suggested.license_series || f.license_series,
+        license_number: f.license_number || suggested.license_number || f.license_number,
+        registered_date: f.registered_date || suggested.license_issued_date || f.registered_date,
+        expiration_date: f.expiration_date || suggested.license_expiry_date || f.expiration_date,
+      }));
+      if (!form.city && suggested.city_id && suggested.city_name) {
+        selectCity({ id: suggested.city_id, name: suggested.city_name });
+      }
+      setAiNote('Câmpurile au fost completate automat pe baza legitimației. Verifică-le înainte de a salva.');
+    } catch {
+      setAiNote('Completarea automată nu a funcționat de data aceasta. Completează câmpurile manual.');
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -177,6 +250,31 @@ export default function CreateAthlete() {
       return;
     }
 
+    if (!licenseImage) {
+      setError('Poza legitimației este obligatorie.');
+      return;
+    }
+
+    if (!form.license_series.trim() || !form.license_number.trim()) {
+      setError('Seria și numărul legitimației sunt obligatorii.');
+      return;
+    }
+
+    if (!form.cnp.trim()) {
+      setError('CNP-ul este obligatoriu.');
+      return;
+    }
+
+    if (!form.emergency_contact_name.trim() || !form.emergency_contact_phone.trim()) {
+      setError('Numele și telefonul contactului de urgență sunt obligatorii.');
+      return;
+    }
+
+    if (medicalVisaImage && !medicalVisaDate) {
+      setError('Data obținerii vizei medicale este obligatorie.');
+      return;
+    }
+
     setSaving(true);
     try {
       const fd = new FormData();
@@ -189,7 +287,7 @@ export default function CreateAthlete() {
       });
 
       if (profileImage) fd.append('profile_image', profileImage);
-      if (medicalCert) fd.append('medical_certificate', medicalCert);
+      if (licenseImage) fd.append('license_image', licenseImage);
 
       const athlete = await api.post('/athletes/', fd);
 
@@ -203,7 +301,16 @@ export default function CreateAthlete() {
         });
       }
 
-      navigate('/athletes');
+      if (medicalVisaImage) {
+        const visaFd = new FormData();
+        visaFd.append('athlete', athlete.data.id);
+        visaFd.append('visa_type', 'medical');
+        visaFd.append('issued_date', medicalVisaDate);
+        visaFd.append('image', medicalVisaImage);
+        await visaAPI.submissions.create(visaFd);
+      }
+
+      navigate('/profile?tab=sportivi');
     } catch (err) {
       const data = err.response?.data;
       if (data && typeof data === 'object') {
@@ -219,24 +326,100 @@ export default function CreateAthlete() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={() => navigate('/athletes')}>
+      <div className="flex flex-col gap-3">
+        <Button variant="outline" size="sm" className="w-fit" onClick={() => navigate('/profile?tab=sportivi')}>
           <ArrowLeft className="h-4 w-4" /> Înapoi
         </Button>
-        <div>
-          <h1 className="font-display text-2xl font-bold">Adaugă sportiv</h1>
-          <p className="text-sm text-muted-foreground">Completează profilul și documentele sportivului.</p>
-        </div>
+        <h1 className="font-display text-2xl font-bold">Adaugă sportiv</h1>
       </div>
 
       {error && <Alert variant="destructive" className="whitespace-pre-line">{error}</Alert>}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle as="h2" className="text-sm">Date personale</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Legitimație<Req /></SectionHeading>
+          <div className="flex flex-wrap items-start gap-6">
+            <div className="flex flex-col items-start gap-2">
+              <button
+                type="button"
+                onClick={() => licenseInputRef.current?.click()}
+                className="flex aspect-[3/2] w-40 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
+              >
+                {licensePreview ? (
+                  <img src={licensePreview} alt="Previzualizare legitimație" className="h-full w-full object-cover" />
+                ) : (
+                  <ImagePlus className="h-6 w-6" />
+                )}
+              </button>
+              <input ref={licenseInputRef} type="file" accept="image/*" onChange={handleLicenseImageChange} className="hidden" />
+              {licenseImage && <p className="max-w-[220px] truncate text-xs font-medium text-muted-foreground">{licenseImage.name}</p>}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={aiBusy || !licenseImage}
+                onClick={handleAiAutofill}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {aiBusy ? 'Se completează…' : 'Completează automat cu AI'}
+              </Button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setExampleZoomOpen(true)}
+              className="flex cursor-zoom-in flex-col items-center gap-1"
+              aria-label="Mărește exemplul de legitimație"
+            >
+              <img
+                src="/exemplu-legitimatie.jpg"
+                alt="Exemplu de poză cu legitimația sportivă"
+                className="h-24 w-auto rounded-md border border-border object-cover transition hover:opacity-90"
+              />
+              <span className="text-xs text-muted-foreground">Exemplu</span>
+            </button>
+          </div>
+          {aiNote && <p className="text-xs text-muted-foreground">{aiNote}</p>}
+
+          <Lightbox
+            image={exampleZoomOpen ? { image: '/exemplu-legitimatie.jpg', alt_text: 'Exemplu de poză cu legitimația sportivă' } : null}
+            onClose={() => setExampleZoomOpen(false)}
+          />
+        </section>
+
+        <section className="flex flex-col gap-4 border-t border-border pt-6">
+          <SectionHeading>Date personale</SectionHeading>
+          <div className="flex flex-col gap-1">
+            <Label>Fotografie sportiv</Label>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex aspect-[3/2] w-40 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
+              >
+                {profilePreview ? (
+                  <img src={profilePreview} alt="Preview" className="h-full w-full object-cover" />
+                ) : (
+                  <ImagePlus className="h-6 w-6" />
+                )}
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+              {profileImage && (
+                <div className="text-xs text-muted-foreground">
+                  <p className="max-w-[140px] truncate font-medium">{profileImage.name}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setProfileImage(null); setProfilePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                    className="mt-1 h-auto px-0 text-destructive hover:bg-transparent"
+                  >
+                    <X className="h-3 w-3" /> Șterge
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <Label htmlFor="ca_first_name">Prenume<Req /></Label>
               <Input id="ca_first_name" name="first_name" value={form.first_name} onChange={handleChange} required />
@@ -255,49 +438,25 @@ export default function CreateAthlete() {
               </Select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="ca_license">Serie legitimație</Label>
-              <Input id="ca_license" name="license_series" value={form.license_series} onChange={handleChange} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="ca_cnp">CNP</Label>
-              <Input id="ca_cnp" name="cnp" value={form.cnp} onChange={handleChange} maxLength={13} />
-            </div>
-            <div className="flex flex-col gap-1">
               <Label htmlFor="ca_dob">Data nașterii<Req /></Label>
               <Input id="ca_dob" name="date_of_birth" type="date" value={form.date_of_birth} onChange={handleChange} required />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_license">Serie legitimație<Req /></Label>
+              <Input id="ca_license" name="license_series" value={form.license_series} onChange={handleChange} required />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_license_number">Număr legitimație<Req /></Label>
+              <Input id="ca_license_number" name="license_number" value={form.license_number} onChange={handleChange} required />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_cnp">CNP<Req /></Label>
+              <Input id="ca_cnp" name="cnp" value={form.cnp} onChange={handleChange} maxLength={13} required />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="ca_phone">Telefon</Label>
               <Input id="ca_phone" name="mobile_number" value={form.mobile_number} onChange={handleChange} />
             </div>
-            <div className="flex flex-col gap-1 sm:col-span-2">
-              <Label htmlFor="ca_address">Adresă</Label>
-              <Textarea id="ca_address" name="address" value={form.address} onChange={handleChange} rows={3} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle as="h2" className="text-sm">Contact de urgență</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="ca_emg_name">Nume contact</Label>
-              <Input id="ca_emg_name" name="emergency_contact_name" value={form.emergency_contact_name} onChange={handleChange} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="ca_emg_phone">Telefon contact</Label>
-              <Input id="ca_emg_phone" name="emergency_contact_phone" value={form.emergency_contact_phone} onChange={handleChange} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle as="h2" className="text-sm">Date sportive</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
             <div ref={cityBoxRef} className="relative flex flex-col gap-1">
               <Label>Oraș</Label>
               <div className="relative">
@@ -352,22 +511,25 @@ export default function CreateAthlete() {
             </div>
             <div className="flex flex-col gap-3 sm:col-span-2">
               <div className="flex flex-wrap items-center gap-6">
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <label className="flex cursor-pointer items-center gap-2.5 text-base">
                   <Checkbox
+                    className="h-5 w-5"
                     checked={form.is_coach}
                     onCheckedChange={(checked) => setForm((f) => ({ ...f, is_coach: checked === true, is_instructor: checked === true ? false : f.is_instructor }))}
                   />
                   Antrenor
                 </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <label className="flex cursor-pointer items-center gap-2.5 text-base">
                   <Checkbox
+                    className="h-5 w-5"
                     checked={form.is_instructor}
                     onCheckedChange={(checked) => setForm((f) => ({ ...f, is_instructor: checked === true, is_coach: checked === true ? false : f.is_coach }))}
                   />
                   Instructor
                 </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <label className="flex cursor-pointer items-center gap-2.5 text-base">
                   <Checkbox
+                    className="h-5 w-5"
                     checked={form.is_referee}
                     onCheckedChange={(checked) => setForm((f) => ({ ...f, is_referee: checked === true, referee_level: checked === true ? f.referee_level : '', referee_category: checked === true ? f.referee_category : '' }))}
                   />
@@ -399,14 +561,26 @@ export default function CreateAthlete() {
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle as="h2" className="text-sm">Grad (opțional)</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
+        <section className="flex flex-col gap-4 border-t border-border pt-6">
+          <SectionHeading>Contact de urgență (părinte, tutore)</SectionHeading>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_emg_name">Nume contact<Req /></Label>
+              <Input id="ca_emg_name" name="emergency_contact_name" value={form.emergency_contact_name} onChange={handleChange} required />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ca_emg_phone">Telefon contact<Req /></Label>
+              <Input id="ca_emg_phone" name="emergency_contact_phone" value={form.emergency_contact_phone} onChange={handleChange} required />
+            </div>
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-4 border-t border-border pt-6">
+          <SectionHeading>Grad (opțional)</SectionHeading>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <Label>Grad acordat</Label>
               <Select value={gradeForm.grade} onValueChange={(v) => setGradeForm(prev => ({ ...prev, grade: v }))}>
@@ -443,64 +617,56 @@ export default function CreateAthlete() {
                 </SelectContent>
               </Select>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle as="h2" className="text-sm">Documente</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 pt-0 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <Label>Fotografie sportiv</Label>
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
-                >
-                  {profilePreview ? (
-                    <img src={profilePreview} alt="Preview" className="h-full w-full object-cover" />
-                  ) : (
-                    <ImagePlus className="h-6 w-6" />
-                  )}
-                </button>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                {profileImage && (
-                  <div className="text-xs text-muted-foreground">
-                    <p className="max-w-[140px] truncate font-medium">{profileImage.name}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { setProfileImage(null); setProfilePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                      className="mt-1 h-auto px-0 text-destructive hover:bg-transparent"
-                    >
-                      <X className="h-3 w-3" /> Șterge
-                    </Button>
-                  </div>
+        <section className="flex flex-col gap-4 border-t border-border pt-6">
+          <SectionHeading>Viză medicală</SectionHeading>
+          <div className="flex flex-col gap-1">
+            <Label>Dovadă (poză)</Label>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => medicalVisaInputRef.current?.click()}
+                className="flex aspect-[3/2] w-40 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
+              >
+                {medicalVisaPreview ? (
+                  <img src={medicalVisaPreview} alt="Previzualizare dovadă viză medicală" className="h-full w-full object-cover" />
+                ) : (
+                  <ImagePlus className="h-6 w-6" />
                 )}
-              </div>
+              </button>
+              <input ref={medicalVisaInputRef} type="file" accept="image/*" onChange={handleMedicalVisaImageChange} className="hidden" />
+              {medicalVisaImage && <p className="max-w-[220px] truncate text-xs font-medium text-muted-foreground">{medicalVisaImage.name}</p>}
             </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="ca_medcert">Certificat medical</Label>
-              <input
-                id="ca_medcert"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) => setMedicalCert(e.target.files?.[0] || null)}
-                className="block w-full text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-              />
-              {medicalCert && <p className="mt-1 truncate text-[11px] text-muted-foreground">{medicalCert.name}</p>}
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="flex flex-col gap-1 sm:w-1/2 sm:pr-2">
+            <Label htmlFor="ca_medical_visa_date">Data obținerii</Label>
+            <Input
+              id="ca_medical_visa_date"
+              type="date"
+              value={medicalVisaDate}
+              onChange={(e) => setMedicalVisaDate(e.target.value)}
+            />
+          </div>
+        </section>
 
-        <div className="flex items-center justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => navigate('/athletes')}>
+        <div className="flex items-center justify-end gap-3 border-t border-border pt-6">
+          <Button type="button" variant="outline" onClick={() => navigate('/profile?tab=sportivi')}>
             Anulează
           </Button>
-          <Button type="submit" disabled={saving}>
+          <Button
+            type="submit"
+            disabled={
+              saving
+              || !licenseImage
+              || !form.license_series.trim()
+              || !form.license_number.trim()
+              || !form.cnp.trim()
+              || !form.emergency_contact_name.trim()
+              || !form.emergency_contact_phone.trim()
+            }
+          >
             <Plus className="h-4 w-4" />
             {saving ? 'Se salvează…' : 'Salvează sportivul'}
           </Button>

@@ -23,18 +23,74 @@ from pathlib import Path
 from django.db import IntegrityError
 
 
+def _build_resolved_status_map(notifications):
+    """For each '*_submitted' notification (a request awaiting the reviewer's
+    action), look up whether the underlying item has since moved past
+    'pending' - so the frontend can grey out/mark cards already dealt with.
+    Batched per type (one query per type, not per notification) rather than
+    looking each one up individually."""
+    grade_ids, seminar_ids, visa_ids, result_ids, photo_athlete_ids = set(), set(), set(), set(), set()
+    for n in notifications:
+        data = n.action_data or {}
+        if n.notification_type == 'grade_submitted' and data.get('grade_history_id'):
+            grade_ids.add(data['grade_history_id'])
+        elif n.notification_type == 'seminar_submitted' and data.get('participation_id'):
+            seminar_ids.add(data['participation_id'])
+        elif n.notification_type == 'visa_submitted' and data.get('visa_id'):
+            visa_ids.add(data['visa_id'])
+        elif n.notification_type == 'result_submitted' and n.related_result_id:
+            result_ids.add(n.related_result_id)
+        elif n.notification_type == 'profile_image_submitted' and data.get('athlete_id'):
+            photo_athlete_ids.add(data['athlete_id'])
+
+    grade_status = dict(GradeHistory.objects.filter(id__in=grade_ids).values_list('id', 'status'))
+    seminar_status = dict(TrainingSeminarParticipation.objects.filter(id__in=seminar_ids).values_list('id', 'status'))
+    visa_status = dict(Visa.objects.filter(id__in=visa_ids).values_list('id', 'status'))
+    result_status = dict(CategoryAthleteScore.objects.filter(id__in=result_ids).values_list('id', 'status'))
+    photo_status = dict(Athlete.objects.filter(id__in=photo_athlete_ids).values_list('id', 'profile_image_status'))
+
+    status_map = {}
+    for n in notifications:
+        data = n.action_data or {}
+        current = None
+        if n.notification_type == 'grade_submitted':
+            current = grade_status.get(data.get('grade_history_id'))
+        elif n.notification_type == 'seminar_submitted':
+            current = seminar_status.get(data.get('participation_id'))
+        elif n.notification_type == 'visa_submitted':
+            current = visa_status.get(data.get('visa_id'))
+        elif n.notification_type == 'result_submitted':
+            current = result_status.get(n.related_result_id)
+        elif n.notification_type == 'profile_image_submitted':
+            current = photo_status.get(data.get('athlete_id'))
+        if current and current != 'pending':
+            status_map[n.id] = current
+    return status_map
+
+
 class NotificationViewSet(viewsets.ModelViewSet):
     """ViewSet for user notifications"""
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_queryset(self):
         """Return notifications for the current user"""
         # select_related('recipient') avoids one query per notification for
         # NotificationSerializer's recipient_name field (source='recipient.__str__') —
         # previously every row re-fetched the *same* user row from scratch.
         return Notification.objects.filter(recipient=self.request.user).select_related('recipient')
-    
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        items = page if page is not None else list(queryset)
+        context = self.get_serializer_context()
+        context['resolved_status_map'] = _build_resolved_status_map(items)
+        serializer = self.get_serializer(items, many=True, context=context)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['get'])
     def unread_count(self, request):
         """Get count of unread notifications"""

@@ -54,7 +54,6 @@ export default function App() {
         <Route path="inregistrare" element={<Navigate to="/cont?mode=register" replace />} />
         <Route path="cont" element={<AccountPage />} />
         <Route path="reseteaza-parola" element={<ResetPasswordPage />} />
-        <Route path="cont/profil" element={<AthleteDetailPage ownProfile />} />
         <Route path="onboarding/sportiv" element={<AthleteOnboardingPage />} />
         <Route path="cont/aprobari" element={<ApprovalsPage />} />
         <Route path="cont/notificari" element={<NotificationsPage />} />

@@ -224,7 +224,7 @@ export default function AthleteOnboardingPage() {
       }
       await athleteAPI.createMyProfile(payload);
       await refetchUser();
-      navigate('/cont/profil', { replace: true });
+      navigate('/cont', { replace: true });
     } catch (err) {
       const data = err.response?.data;
       const firstError = data && typeof data === 'object' ? Object.values(data)[0] : null;

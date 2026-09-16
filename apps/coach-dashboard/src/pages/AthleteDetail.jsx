@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@shared';
 import {
-  athleteAPI, gradeHistoryAPI, scoreAPI, visaAPI, seminarAPI, gradeAPI, competitionAPI, categoryAPI,
+  athleteAPI, gradeHistoryAPI, scoreAPI, visaAPI, seminarAPI, gradeAPI, competitionAPI, categoryAPI, groupAPI, MEDIA_BASE_URL,
 } from '@shared/lib/api';
+import { withSsoHandoff } from '@shared/lib/sso';
 import {
   Alert, Badge, Button, Checkbox, Skeleton, Input, Label, Req, Textarea,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -10,7 +12,16 @@ import {
 } from '../components/ui';
 import BeltBadge from '../components/BeltBadge';
 import MedalIcon from '../components/MedalIcon';
-import { ArrowLeft, Award, Check, Pencil, Plus, X } from 'lucide-react';
+import GalleryTab from '../components/GalleryTab';
+import { ArrowLeft, Award, Check, ChevronLeft, ChevronRight, ExternalLink, Pencil, Plus, Sparkles, X } from 'lucide-react';
+
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
+
+function imgUrl(path) {
+  if (!path) return null;
+  if (String(path).startsWith('http')) return path;
+  return `${MEDIA_BASE_URL}${String(path).startsWith('/') ? '' : '/'}${path}`;
+}
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -43,27 +54,70 @@ const RESULT_LEVEL_TABS = [
 const TABS = [
   { key: 'info', label: 'Info' },
   { key: 'rezultate', label: 'Rezultate' },
-  { key: 'grade', label: 'Istoric grade' },
-  { key: 'seminarii', label: 'Seminarii' },
-  { key: 'medical', label: 'Istoric Medical' },
+  { key: 'grade', label: 'Examene' },
+  { key: 'seminarii', label: 'Stagii' },
+  { key: 'medical', label: 'Vize medicale' },
   { key: 'vize', label: 'Vize anuale' },
+  { key: 'poze', label: 'Media' },
 ];
 
+/** Compact pill tab bar - horizontally scrollable with no visible
+ * scrollbar (hidden via CSS), with left/right chevrons for navigation
+ * that only render when there's actually more content to scroll to in
+ * that direction. Mirrors the public site's own ScrollableTabs. */
 function TabBar({ activeKey, onSelect }) {
+  const scrollRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    function update() {
+      setCanScrollLeft(el.scrollLeft > 1);
+      setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    }
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  function scrollByStep(direction) {
+    scrollRef.current?.scrollBy({ left: direction * 160, behavior: 'smooth' });
+  }
+
   return (
-    <div className="flex items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1">
-      {TABS.map(({ key, label }) => (
-        <button
-          key={key}
-          type="button"
-          onClick={() => onSelect(key)}
-          className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-bold uppercase tracking-wide transition-all ${
-            activeKey === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {label}
+    <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
+      {canScrollLeft && (
+        <button type="button" aria-label="Derulează la stânga" onClick={() => scrollByStep(-1)} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-background hover:text-foreground">
+          <ChevronLeft className="h-4 w-4" />
         </button>
-      ))}
+      )}
+      <div ref={scrollRef} role="tablist" className="scrollbar-hide flex flex-1 items-center gap-0.5 overflow-x-auto">
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={activeKey === key}
+            onClick={() => onSelect(key)}
+            className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-bold tracking-wide transition-all ${
+              activeKey === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {canScrollRight && (
+        <button type="button" aria-label="Derulează la dreapta" onClick={() => scrollByStep(1)} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-background hover:text-foreground">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -84,24 +138,6 @@ function SubTabs({ activeKey, onSelect }) {
         </button>
       ))}
     </div>
-  );
-}
-
-/** Status pill styled for use on the dark hero - the generic `StatusBadge`
- * below relies on `bg-primary`/`border-border`, which are both the exact
- * same navy as the hero background here and become invisible against it. */
-function HeroStatusBadge({ status }) {
-  if (!status) return null;
-  const className = {
-    approved: 'bg-emerald-500 text-white',
-    rejected: 'bg-red-500 text-white',
-    pending: 'bg-amber-500 text-white',
-    revision_required: 'bg-amber-600 text-white',
-  }[status] || 'bg-white/20 text-white';
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>
-      {STATUS_LABELS[status] || status}
-    </span>
   );
 }
 
@@ -132,18 +168,19 @@ function ReviewButtons({ busy, onApprove, onReject }) {
 /** Clickable thumbnail for an uploaded diploma/certificate/document, so a
  * reviewer can actually see the evidence instead of just a text link. */
 function CertificateThumb({ src, label = 'Vezi documentul' }) {
-  if (!src) return null;
+  const url = imgUrl(src);
+  if (!url) return null;
   return (
-    <a href={src} target="_blank" rel="noreferrer" className="mt-2 block w-fit" title={label}>
-      <img src={src} alt={label} className="h-24 w-32 rounded-md border border-border object-cover transition hover:opacity-90" />
+    <a href={url} target="_blank" rel="noreferrer" className="mt-2 block w-fit" title={label}>
+      <img src={url} alt={label} className="h-24 w-32 rounded-md border border-border object-cover transition hover:opacity-90" />
     </a>
   );
 }
 
-function FileField({ label, file, onChange }) {
+function FileField({ label, file, onChange, required = false }) {
   return (
     <div className="flex flex-col gap-1">
-      <Label>{label}</Label>
+      <Label>{label}{required && <Req />}</Label>
       <input
         type="file"
         accept="image/*"
@@ -166,6 +203,21 @@ function InfoRow({ label, value }) {
 
 function EmptyTab({ message }) {
   return <p className="py-6 text-center text-sm text-muted-foreground">{message}</p>;
+}
+
+/** One competition level's column of 3 medal icons (gold/silver/bronze),
+ * label above the icons - mirrors the public profile's own hero. */
+function MedalGroup({ label, medals, ribbonColors }) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-white/50">{label}</span>
+      <div className="flex items-center rounded-md bg-white/10 px-1.5 py-1">
+        {['gold', 'silver', 'bronze'].map((tier) => (
+          <MedalIcon key={tier} tier={tier} ribbonColors={ribbonColors} count={medals[tier]} className="h-7 w-6" />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** European/World medal counts aren't scored in-app (the federation
@@ -195,6 +247,11 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // Identity/license data is locked once the profile is approved - editing
+  // it afterwards would let it drift from what was actually reviewed, so an
+  // approved athlete's coach has to go through revision/re-review instead
+  // of quietly changing it here.
+  const isApproved = athlete?.status === 'approved';
 
   useEffect(() => {
     if (open && athlete) {
@@ -207,6 +264,7 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
         address: athlete.address || '',
         cnp: athlete.cnp || '',
         license_series: athlete.license_series || '',
+        license_number: athlete.license_number || '',
         emergency_contact_name: athlete.emergency_contact_name || '',
         emergency_contact_phone: athlete.emergency_contact_phone || '',
       });
@@ -239,51 +297,68 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Editează datele sportivului</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && <Alert variant="destructive">{error}</Alert>}
+          {isApproved && (
+            <Alert>Datele de identitate și legitimația nu mai pot fi modificate după aprobare.</Alert>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="edit_first_name">Prenume<Req /></Label>
-              <Input id="edit_first_name" required value={form.first_name} onChange={(e) => update('first_name', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="edit_last_name">Nume<Req /></Label>
-              <Input id="edit_last_name" required value={form.last_name} onChange={(e) => update('last_name', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="edit_dob">Data nașterii<Req /></Label>
-              <Input id="edit_dob" type="date" required value={form.date_of_birth} onChange={(e) => update('date_of_birth', e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Gen</Label>
-              <Select value={form.gender} onValueChange={(v) => update('gender', v)}>
-                <SelectTrigger><SelectValue placeholder="Nespecificat" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="male">Masculin</SelectItem>
-                  <SelectItem value="female">Feminin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!isApproved && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="edit_first_name">Prenume<Req /></Label>
+                  <Input id="edit_first_name" required value={form.first_name} onChange={(e) => update('first_name', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="edit_last_name">Nume<Req /></Label>
+                  <Input id="edit_last_name" required value={form.last_name} onChange={(e) => update('last_name', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="edit_dob">Data nașterii<Req /></Label>
+                  <Input id="edit_dob" type="date" required value={form.date_of_birth} onChange={(e) => update('date_of_birth', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label>Gen</Label>
+                  <Select value={form.gender} onValueChange={(v) => update('gender', v)}>
+                    <SelectTrigger><SelectValue placeholder="Nespecificat" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Masculin</SelectItem>
+                      <SelectItem value="female">Feminin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
             <div className="flex flex-col gap-1">
               <Label htmlFor="edit_mobile">Telefon</Label>
               <Input id="edit_mobile" value={form.mobile_number} onChange={(e) => update('mobile_number', e.target.value)} />
             </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="edit_cnp">CNP</Label>
-              <Input id="edit_cnp" value={form.cnp} onChange={(e) => update('cnp', e.target.value)} />
-            </div>
+            {!isApproved && (
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="edit_cnp">CNP</Label>
+                <Input id="edit_cnp" value={form.cnp} onChange={(e) => update('cnp', e.target.value)} />
+              </div>
+            )}
             <div className="flex flex-col gap-1 sm:col-span-2">
               <Label htmlFor="edit_address">Adresă</Label>
               <Textarea id="edit_address" rows={2} value={form.address} onChange={(e) => update('address', e.target.value)} />
             </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="edit_license">Serie legitimație</Label>
-              <Input id="edit_license" value={form.license_series} onChange={(e) => update('license_series', e.target.value)} />
-            </div>
+            {!isApproved && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="edit_license">Serie legitimație</Label>
+                  <Input id="edit_license" value={form.license_series} onChange={(e) => update('license_series', e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="edit_license_number">Număr legitimație</Label>
+                  <Input id="edit_license_number" value={form.license_number} onChange={(e) => update('license_number', e.target.value)} />
+                </div>
+              </>
+            )}
             <div className="flex flex-col gap-1">
               <Label htmlFor="edit_emergency_name">Contact de urgență (nume)</Label>
               <Input id="edit_emergency_name" value={form.emergency_contact_name} onChange={(e) => update('emergency_contact_name', e.target.value)} />
@@ -304,14 +379,18 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
 
 function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
   const [competitions, setCompetitions] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [categories, setCategories] = useState([]);
   const [clubmates, setClubmates] = useState([]);
-  const [form, setForm] = useState({ event: '', category: '', placement_claimed: '1st', team_members: [] });
+  const [form, setForm] = useState({ event: '', group: '', category: '', placement_claimed: '1st', team_members: [] });
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState('');
 
-  const selectedCategory = categories.find((c) => String(c.id) === form.category);
+  const categoriesInGroup = form.group ? categories.filter((c) => String(c.group) === form.group) : categories;
+  const selectedCategory = categoriesInGroup.find((c) => String(c.id) === form.category);
   const isTeam = selectedCategory?.type === 'team';
 
   // Mirrors Team.name / build_team_display_name in backend/api/models/teams.py:
@@ -330,23 +409,32 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
     if (open) {
       competitionAPI.list({ event_type: 'competition' }).then((r) => setCompetitions(r.data?.results ?? r.data ?? [])).catch(() => {});
       athleteAPI.list({ my_club: true }).then((r) => setClubmates((r.data?.results ?? r.data ?? []).filter((a) => a.id !== athlete.id))).catch(() => {});
-      setForm({ event: '', category: '', placement_claimed: '1st', team_members: [] });
+      setForm({ event: '', group: '', category: '', placement_claimed: '1st', team_members: [] });
+      setGroups([]);
       setCategories([]);
       setFile(null);
       setError('');
+      setAiNote('');
     }
   }, [open, athlete.id]);
 
   useEffect(() => {
     if (form.event) {
+      groupAPI.list({ event: form.event }).then((r) => setGroups(r.data?.results ?? r.data ?? [])).catch(() => setGroups([]));
       categoryAPI.list({ event: form.event }).then((r) => setCategories(r.data?.results ?? r.data ?? [])).catch(() => setCategories([]));
     } else {
+      setGroups([]);
       setCategories([]);
     }
   }, [form.event]);
 
   function update(field, value) {
-    setForm((f) => ({ ...f, [field]: value, ...(field === 'event' ? { category: '' } : {}) }));
+    setForm((f) => ({
+      ...f,
+      [field]: value,
+      ...(field === 'event' ? { group: '', category: '' } : {}),
+      ...(field === 'group' ? { category: '' } : {}),
+    }));
   }
 
   function toggleTeamMember(id, checked) {
@@ -356,9 +444,41 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
     }));
   }
 
+  async function handleAiAutofill() {
+    if (!file) {
+      setError('Încarcă mai întâi poza cu diploma pentru a folosi completarea automată.');
+      return;
+    }
+    setAiBusy(true);
+    setError('');
+    setAiNote('');
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const { data } = await scoreAPI.extractDiploma(formData);
+      const suggested = data?.suggested || {};
+      setForm((f) => ({
+        ...f,
+        event: suggested.event_id ? String(suggested.event_id) : f.event,
+        group: suggested.group_id ? String(suggested.group_id) : f.group,
+        category: suggested.category_id ? String(suggested.category_id) : f.category,
+        placement_claimed: suggested.placement_claimed || f.placement_claimed,
+      }));
+      setAiNote('Câmpurile au fost completate automat pe baza diplomei. Verifică-le înainte de a adăuga.');
+    } catch {
+      setAiNote('Completarea automată nu a funcționat de data aceasta. Completează câmpurile manual.');
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (!file) {
+      setError('Este necesară o fotografie cu diploma.');
+      return;
+    }
     setSaving(true);
     try {
       const formData = new FormData();
@@ -370,7 +490,7 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
         formData.append('team_name', teamName);
         form.team_members.forEach((id) => formData.append('team_members', id));
       }
-      if (file) formData.append('certificate_image', file);
+      formData.append('certificate_image', file);
       await scoreAPI.create(formData);
       onCreated();
       onOpenChange(false);
@@ -385,12 +505,27 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Adaugă rezultat</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && <Alert variant="destructive">{error}</Alert>}
+          <div className="flex flex-col gap-1">
+            <FileField label="Poză diplomă / certificat" file={file} onChange={setFile} required />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-1 w-fit"
+              disabled={aiBusy || !file}
+              onClick={handleAiAutofill}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {aiBusy ? 'Se completează…' : 'Completează automat cu AI'}
+            </Button>
+            {aiNote && <p className="text-xs text-muted-foreground">{aiNote}</p>}
+          </div>
           <div className="flex flex-col gap-1">
             <Label>Competiție<Req /></Label>
             <Select value={form.event} onValueChange={(v) => update('event', v)}>
@@ -401,11 +536,20 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
             </Select>
           </div>
           <div className="flex flex-col gap-1">
+            <Label>Grupă</Label>
+            <Select value={form.group} onValueChange={(v) => update('group', v)} disabled={!form.event || groups.length === 0}>
+              <SelectTrigger><SelectValue placeholder={!form.event ? 'Alege mai întâi competiția' : groups.length === 0 ? 'Fără grupe' : 'Alege grupa'} /></SelectTrigger>
+              <SelectContent>
+                {groups.map((g) => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
             <Label>Categorie<Req /></Label>
             <Select value={form.category} onValueChange={(v) => update('category', v)} disabled={!form.event}>
               <SelectTrigger><SelectValue placeholder={form.event ? 'Alege categoria' : 'Alege mai întâi competiția'} /></SelectTrigger>
               <SelectContent>
-                {categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                {categoriesInGroup.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -444,9 +588,8 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
               </div>
             </>
           )}
-          <FileField label="Poză diplomă / certificat (opțional)" file={file} onChange={setFile} />
           <DialogFooter>
-            <Button type="submit" disabled={saving || !form.category}>{saving ? 'Se salvează…' : 'Adaugă'}</Button>
+            <Button type="submit" disabled={saving || !form.category || !file}>{saving ? 'Se salvează…' : 'Adaugă'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -461,6 +604,8 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -469,6 +614,7 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
       setForm({ grade: '', event: '', obtained_date: '', level: 'good' });
       setFile(null);
       setError('');
+      setAiNote('');
     }
   }, [open]);
 
@@ -476,9 +622,40 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
+  async function handleAiAutofill() {
+    if (!file) {
+      setError('Încarcă mai întâi poza cu certificatul pentru a folosi completarea automată.');
+      return;
+    }
+    setAiBusy(true);
+    setError('');
+    setAiNote('');
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const { data } = await gradeHistoryAPI.submissions.extractDiploma(formData);
+      const suggested = data?.suggested || {};
+      setForm((f) => ({
+        ...f,
+        grade: suggested.grade_id ? String(suggested.grade_id) : f.grade,
+        event: suggested.event_id ? String(suggested.event_id) : f.event,
+        obtained_date: suggested.obtained_date || f.obtained_date,
+      }));
+      setAiNote('Câmpurile au fost completate automat pe baza certificatului. Verifică-le înainte de a adăuga.');
+    } catch {
+      setAiNote('Completarea automată nu a funcționat de data aceasta. Completează câmpurile manual.');
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (!file) {
+      setError('Este necesară o fotografie cu certificatul.');
+      return;
+    }
     setSaving(true);
     try {
       const formData = new FormData();
@@ -487,7 +664,7 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
       if (form.event) formData.append('event', form.event);
       formData.append('obtained_date', form.obtained_date);
       formData.append('level', form.level);
-      if (file) formData.append('certificate_image', file);
+      formData.append('certificate_image', file);
       await gradeHistoryAPI.submissions.create(formData);
       onCreated();
       onOpenChange(false);
@@ -502,12 +679,27 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Adaugă grad</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && <Alert variant="destructive">{error}</Alert>}
+          <div className="flex flex-col gap-1">
+            <FileField label="Poză certificat de grad" file={file} onChange={setFile} required />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-1 w-fit"
+              disabled={aiBusy || !file}
+              onClick={handleAiAutofill}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {aiBusy ? 'Se completează…' : 'Completează automat cu AI'}
+            </Button>
+            {aiNote && <p className="text-xs text-muted-foreground">{aiNote}</p>}
+          </div>
           <div className="flex flex-col gap-1">
             <Label>Grad<Req /></Label>
             <Select value={form.grade} onValueChange={(v) => update('grade', v)}>
@@ -542,9 +734,8 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
               </Select>
             </div>
           </div>
-          <FileField label="Poză certificat de grad (opțional)" file={file} onChange={setFile} />
           <DialogFooter>
-            <Button type="submit" disabled={saving || !form.grade}>{saving ? 'Se salvează…' : 'Adaugă'}</Button>
+            <Button type="submit" disabled={saving || !form.grade || !file}>{saving ? 'Se salvează…' : 'Adaugă'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -558,6 +749,8 @@ function AddSeminarDialog({ open, onOpenChange, athlete, onCreated }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -565,18 +758,45 @@ function AddSeminarDialog({ open, onOpenChange, athlete, onCreated }) {
       setForm({ event: '' });
       setFile(null);
       setError('');
+      setAiNote('');
     }
   }, [open]);
+
+  async function handleAiAutofill() {
+    if (!file) {
+      setError('Încarcă mai întâi poza cu certificatul pentru a folosi completarea automată.');
+      return;
+    }
+    setAiBusy(true);
+    setError('');
+    setAiNote('');
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const { data } = await seminarAPI.submissions.extractDiploma(formData);
+      const suggested = data?.suggested || {};
+      setForm((f) => ({ ...f, event: suggested.event_id ? String(suggested.event_id) : f.event }));
+      setAiNote('Câmpurile au fost completate automat pe baza certificatului. Verifică-le înainte de a adăuga.');
+    } catch {
+      setAiNote('Completarea automată nu a funcționat de data aceasta. Completează câmpurile manual.');
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (!file) {
+      setError('Este necesară o fotografie cu certificatul de participare.');
+      return;
+    }
     setSaving(true);
     try {
       const formData = new FormData();
       formData.append('athlete', athlete.id);
       formData.append('event', form.event);
-      if (file) formData.append('participation_certificate', file);
+      formData.append('participation_certificate', file);
       await seminarAPI.submissions.create(formData);
       onCreated();
       onOpenChange(false);
@@ -591,12 +811,27 @@ function AddSeminarDialog({ open, onOpenChange, athlete, onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Adaugă participare la seminar</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && <Alert variant="destructive">{error}</Alert>}
+          <div className="flex flex-col gap-1">
+            <FileField label="Poză certificat de participare" file={file} onChange={setFile} required />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-1 w-fit"
+              disabled={aiBusy || !file}
+              onClick={handleAiAutofill}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {aiBusy ? 'Se completează…' : 'Completează automat cu AI'}
+            </Button>
+            {aiNote && <p className="text-xs text-muted-foreground">{aiNote}</p>}
+          </div>
           <div className="flex flex-col gap-1">
             <Label>Eveniment<Req /></Label>
             <Select value={form.event} onValueChange={(v) => setForm({ event: v })}>
@@ -606,9 +841,8 @@ function AddSeminarDialog({ open, onOpenChange, athlete, onCreated }) {
               </SelectContent>
             </Select>
           </div>
-          <FileField label="Poză certificat de participare (opțional)" file={file} onChange={setFile} />
           <DialogFooter>
-            <Button type="submit" disabled={saving || !form.event}>{saving ? 'Se salvează…' : 'Adaugă'}</Button>
+            <Button type="submit" disabled={saving || !form.event || !file}>{saving ? 'Se salvează…' : 'Adaugă'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -621,25 +855,54 @@ function AddVisaDialog({ open, onOpenChange, athlete, visaType, onCreated }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState('');
 
   useEffect(() => {
     if (open) {
       setForm({ issued_date: '' });
       setFile(null);
       setError('');
+      setAiNote('');
     }
   }, [open]);
+
+  async function handleAiAutofill() {
+    if (!file) {
+      setError('Încarcă mai întâi poza cu legitimația pentru a folosi completarea automată.');
+      return;
+    }
+    setAiBusy(true);
+    setError('');
+    setAiNote('');
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const { data } = await visaAPI.submissions.extractDiploma(formData);
+      const suggested = data?.suggested || {};
+      setForm((f) => ({ ...f, issued_date: suggested.issued_date || f.issued_date }));
+      setAiNote('Data a fost completată automat pe baza legitimației. Verific-o înainte de a adăuga.');
+    } catch {
+      setAiNote('Completarea automată nu a funcționat de data aceasta. Completează data manual.');
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (!file) {
+      setError('Este necesară o fotografie cu documentul.');
+      return;
+    }
     setSaving(true);
     try {
       const formData = new FormData();
       formData.append('athlete', athlete.id);
       formData.append('visa_type', visaType);
       formData.append('issued_date', form.issued_date);
-      if (file) formData.append('image', file);
+      formData.append('image', file);
       await visaAPI.submissions.create(formData);
       onCreated();
       onOpenChange(false);
@@ -654,21 +917,74 @@ function AddVisaDialog({ open, onOpenChange, athlete, visaType, onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Adaugă viză {visaType === 'medical' ? 'medicală' : 'anuală'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && <Alert variant="destructive">{error}</Alert>}
           <div className="flex flex-col gap-1">
+            <FileField
+              label={visaType === 'medical' ? 'Poză legitimație / dovadă control medical' : 'Poză document'}
+              file={file}
+              onChange={setFile}
+              required
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-1 w-fit"
+              disabled={aiBusy || !file}
+              onClick={handleAiAutofill}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {aiBusy ? 'Se completează…' : 'Completează automat cu AI'}
+            </Button>
+            {aiNote && <p className="text-xs text-muted-foreground">{aiNote}</p>}
+          </div>
+          <div className="flex flex-col gap-1">
             <Label htmlFor="visa_date">Data emiterii<Req /></Label>
             <Input id="visa_date" type="date" required value={form.issued_date} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} />
           </div>
-          <FileField label={visaType === 'medical' ? 'Poză legitimație / dovadă control medical (opțional)' : 'Poză document (opțional)'} file={file} onChange={setFile} />
           <DialogFooter>
-            <Button type="submit" disabled={saving}>{saving ? 'Se salvează…' : 'Adaugă'}</Button>
+            <Button type="submit" disabled={saving || !file}>{saving ? 'Se salvează…' : 'Adaugă'}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Preview dialog shown after picking a new profile photo - matches the
+ * "confirm before it's applied/sent for approval" flow used everywhere
+ * else this photo-edit affordance appears (public site, athlete dashboard). */
+function PhotoPreviewDialog({ preview, uploading, error, onConfirm, onCancel }) {
+  return (
+    <Dialog open={!!preview} onOpenChange={(v) => !v && onCancel()}>
+      <DialogContent fullScreen>
+        <DialogHeader>
+          <DialogTitle>Previzualizare poză de profil</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col items-center gap-4">
+          {preview && (
+            <img
+              src={preview.url}
+              alt="Previzualizare poză de profil"
+              className="aspect-[3/2] w-full max-w-sm rounded-lg object-cover"
+            />
+          )}
+          <Alert>Orice schimbare a pozei de profil necesită aprobarea unui admin sau antrenor înainte de a deveni vizibilă public.</Alert>
+          {error && <Alert variant="destructive">{error}</Alert>}
+          <div className="flex w-full gap-3">
+            <Button type="button" disabled={uploading} onClick={onConfirm} className="flex-1">
+              {uploading ? 'Se trimite…' : 'Trimite'}
+            </Button>
+            <Button type="button" variant="outline" disabled={uploading} onClick={onCancel} className="flex-1">
+              Anulează
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -677,6 +993,8 @@ function AddVisaDialog({ open, onOpenChange, athlete, visaType, onCreated }) {
 export default function AthleteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSelf = user?.athlete_id != null && String(user.athlete_id) === String(id);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = TABS.some((t) => t.key === searchParams.get('tab')) ? searchParams.get('tab') : 'info';
   const [resultsLevel, setResultsLevel] = useState('national');
@@ -691,6 +1009,10 @@ export default function AthleteDetail() {
   const [addGradeOpen, setAddGradeOpen] = useState(false);
   const [addSeminarOpen, setAddSeminarOpen] = useState(false);
   const [addVisaType, setAddVisaType] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const photoInputRef = useRef(null);
 
   async function load() {
     setLoading(true);
@@ -715,6 +1037,11 @@ export default function AthleteDetail() {
   }
 
   const canReview = Boolean(athlete?.can_edit);
+  // A coach can't review/approve their own pending submissions - even
+  // though they're their own club's reviewer, that'd be self-approval.
+  // Everything else canReview gates (seeing CNP/phone, editing, adding a
+  // result/grade/etc) still applies to a coach viewing their own profile.
+  const canApprove = canReview && !isSelf;
 
   async function reviewPhoto(approve) {
     setReviewBusyKey('photo');
@@ -727,6 +1054,45 @@ export default function AthleteDetail() {
       setReviewError('Nu am putut procesa poza de profil.');
     } finally {
       setReviewBusyKey(null);
+    }
+  }
+
+  // Selecting a file just stages it locally (object URL preview) - nothing
+  // is uploaded until confirmed. A coach uploading their own photo applies
+  // instantly (backend trusts a coach's own upload); for a roster athlete
+  // it's staged the same way as an athlete's own self-submission would be,
+  // needing a coach/admin to review it.
+  function handlePhotoChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPhotoError('');
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return { file, url: URL.createObjectURL(file) };
+    });
+  }
+
+  function cancelPhotoUpload() {
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  }
+
+  async function confirmPhotoUpload() {
+    if (!photoPreview) return;
+    setUploadingPhoto(true);
+    setPhotoError('');
+    try {
+      await athleteAPI.updatePhoto(athlete.id, photoPreview.file);
+      URL.revokeObjectURL(photoPreview.url);
+      setPhotoPreview(null);
+      await load();
+    } catch {
+      setPhotoError('Nu am putut încărca poza. Încearcă din nou.');
+    } finally {
+      setUploadingPhoto(false);
     }
   }
 
@@ -798,46 +1164,91 @@ export default function AthleteDetail() {
       {/* Hero */}
       <div className="flex flex-col items-center gap-4 rounded-lg bg-sidebar px-6 py-6 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
-          <div className="relative aspect-[3/2] w-40 shrink-0 overflow-hidden rounded-lg bg-white/10 sm:w-48">
+          <div className="relative aspect-[3/2] w-40 shrink-0 bg-white/10 sm:w-48">
             {isPhotoPending && athlete.pending_profile_image ? (
               canReview ? (
-                <a href={athlete.pending_profile_image} target="_blank" rel="noopener noreferrer" title="Vezi poza la dimensiune completă">
-                  <img src={athlete.pending_profile_image} alt={athlete.full_name} className="h-full w-full object-cover" />
+                <a href={imgUrl(athlete.pending_profile_image)} target="_blank" rel="noopener noreferrer" title="Vezi poza la dimensiune completă">
+                  <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
                 </a>
               ) : (
-                <img src={athlete.pending_profile_image} alt={athlete.full_name} className="h-full w-full object-cover opacity-50 grayscale" />
+                <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover opacity-50 grayscale" />
               )
             ) : athlete.profile_image ? (
-              <img src={athlete.profile_image} alt={athlete.full_name} className="h-full w-full object-cover" />
+              <img src={imgUrl(athlete.profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-2xl font-display font-bold text-white/40">
+              <div className="flex h-full w-full items-center justify-center rounded-lg text-2xl font-display font-bold text-white/40">
                 {athlete.first_name?.[0]}{athlete.last_name?.[0]}
               </div>
+            )}
+            {isPhotoPending && athlete.pending_profile_image && (
+              <span className="absolute inset-x-0 top-0 rounded-t-lg bg-black/60 py-0.5 text-center text-[10px] font-bold uppercase tracking-wide text-white">
+                Aștept aprobarea
+              </span>
+            )}
+            {athlete.club?.logo && (
+              <img
+                src={imgUrl(athlete.club.logo)}
+                alt={athlete.club.name}
+                title={athlete.club.name}
+                className="absolute -right-3 -top-3 h-14 w-14 rounded-full object-contain drop-shadow-md"
+              />
+            )}
+            {canReview && (
+              <>
+                <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={uploadingPhoto || (isPhotoPending && !isSelf)}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="absolute bottom-1 right-1 h-7 w-7 rounded-full border-white/40 bg-sidebar p-0 text-white hover:bg-white/10 disabled:opacity-50"
+                  title={
+                    isPhotoPending && isSelf
+                      ? 'Trimite o altă poză - o va înlocui pe cea în așteptare'
+                      : isPhotoPending
+                        ? 'O poză este deja în așteptarea aprobării'
+                        : 'Schimbă poza de profil'
+                  }
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </>
             )}
           </div>
           <div className="flex flex-col items-center gap-2 sm:items-start">
             <h1 className="font-display text-xl font-bold">{athlete.full_name}</h1>
+            <a
+              href={withSsoHandoff(`${PUBLIC_SITE_URL}/sportivi/${athlete.id}`)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-white/70 underline hover:text-white"
+            >
+              Vezi profil public <ExternalLink className="h-3 w-3" />
+            </a>
             {athlete.current_grade?.name && <BeltBadge grade={athlete.current_grade.name} />}
-            <HeroStatusBadge status={athlete.status} />
-            {canReview && isPhotoPending && (
-              <div className="flex flex-col items-center gap-1 sm:items-start">
-                <span className="text-xs text-white/70">Poză de profil în așteptare</span>
-                <ReviewButtons busy={reviewBusyKey === 'photo'} onApprove={() => reviewPhoto(true)} onReject={() => reviewPhoto(false)} />
-              </div>
+            {canApprove && isPhotoPending && (
+              <ReviewButtons busy={reviewBusyKey === 'photo'} onApprove={() => reviewPhoto(true)} onReject={() => reviewPhoto(false)} />
             )}
           </div>
         </div>
-        {canReview && (
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="border-white/30 bg-transparent text-white hover:bg-white/10">
-            <Pencil className="h-3.5 w-3.5" /> Editează
-          </Button>
-        )}
+        <div className="flex flex-row flex-wrap items-start justify-center gap-3">
+          <MedalGroup label="Național" medals={medals} ribbonColors={NATIONAL_RIBBON} />
+          <MedalGroup label="European" medals={europeanMedals} ribbonColors={EUROPEAN_RIBBON} />
+          <MedalGroup label="Mondial" medals={worldMedals} ribbonColors={WORLD_RIBBON} />
+        </div>
       </div>
 
       <TabBar activeKey={tab} onSelect={setTab} />
 
       {tab === 'info' && (
         <div className="flex flex-col">
+          {canReview && (
+            <Button variant="outline" onClick={() => setEditOpen(true)} className="mb-2 w-fit">
+              <Pencil className="h-4 w-4" /> Editează
+            </Button>
+          )}
+          <InfoRow label="Status cont" value={<StatusBadge status={athlete.status} />} />
           <InfoRow label="Club" value={athlete.club?.name} />
           <InfoRow label="Oraș" value={athlete.city?.name} />
           <InfoRow label="Data nașterii" value={fmtDate(athlete.date_of_birth)} />
@@ -890,7 +1301,7 @@ export default function AthleteDetail() {
                       <p className="mt-1 text-sm font-semibold">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</p>
                       {r.status === 'rejected' && r.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{r.admin_notes}</p>}
                       <CertificateThumb src={r.certificate_image} label="Vezi diploma" />
-                      {canReview && r.status === 'pending' && (
+                      {canApprove && r.status === 'pending' && (
                         <ReviewButtons busy={reviewBusyKey === `result-${r.id}`} onApprove={() => reviewItem('result', r.id, true)} onReject={() => reviewItem('result', r.id, false)} />
                       )}
                     </li>
@@ -937,7 +1348,7 @@ export default function AthleteDetail() {
                   </div>
                   {g.status === 'rejected' && g.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{g.admin_notes}</p>}
                   <CertificateThumb src={g.certificate_image} label="Vezi certificatul" />
-                  {canReview && g.status === 'pending' && (
+                  {canApprove && g.status === 'pending' && (
                     <ReviewButtons busy={reviewBusyKey === `grade-${g.id}`} onApprove={() => reviewItem('grade', g.id, true)} onReject={() => reviewItem('grade', g.id, false)} />
                   )}
                 </li>
@@ -971,7 +1382,7 @@ export default function AthleteDetail() {
                   </div>
                   {s.status === 'rejected' && s.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{s.admin_notes}</p>}
                   <CertificateThumb src={s.certificate_image} label="Vezi certificatul" />
-                  {canReview && s.status === 'pending' && (
+                  {canApprove && s.status === 'pending' && (
                     <ReviewButtons busy={reviewBusyKey === `seminar-${s.id}`} onApprove={() => reviewItem('seminar', s.id, true)} onReject={() => reviewItem('seminar', s.id, false)} />
                   )}
                 </li>
@@ -1003,7 +1414,7 @@ export default function AthleteDetail() {
                   </div>
                   {v.status === 'rejected' && v.admin_notes && <p className="text-xs text-muted-foreground">{v.admin_notes}</p>}
                   <CertificateThumb src={v.certificate_image} label="Vezi documentul" />
-                  {canReview && v.status === 'pending' && (
+                  {canApprove && v.status === 'pending' && (
                     <ReviewButtons busy={reviewBusyKey === `medical-visa-${v.id}`} onApprove={() => reviewItem('medical-visa', v.id, true)} onReject={() => reviewItem('medical-visa', v.id, false)} />
                   )}
                 </li>
@@ -1035,7 +1446,7 @@ export default function AthleteDetail() {
                   </div>
                   {v.status === 'rejected' && v.admin_notes && <p className="text-xs text-muted-foreground">{v.admin_notes}</p>}
                   <CertificateThumb src={v.certificate_image} label="Vezi documentul" />
-                  {canReview && v.status === 'pending' && (
+                  {canApprove && v.status === 'pending' && (
                     <ReviewButtons busy={reviewBusyKey === `annual-visa-${v.id}`} onApprove={() => reviewItem('annual-visa', v.id, true)} onReject={() => reviewItem('annual-visa', v.id, false)} />
                   )}
                 </li>
@@ -1045,11 +1456,20 @@ export default function AthleteDetail() {
         </div>
       )}
 
+      {tab === 'poze' && <GalleryTab athleteId={athlete.id} />}
+
       <EditInfoDialog open={editOpen} onOpenChange={setEditOpen} athlete={athlete} onSaved={load} />
       <AddResultDialog open={addResultOpen} onOpenChange={setAddResultOpen} athlete={athlete} onCreated={load} />
       <AddGradeDialog open={addGradeOpen} onOpenChange={setAddGradeOpen} athlete={athlete} onCreated={load} />
       <AddSeminarDialog open={addSeminarOpen} onOpenChange={setAddSeminarOpen} athlete={athlete} onCreated={load} />
       <AddVisaDialog open={!!addVisaType} onOpenChange={(v) => !v && setAddVisaType(null)} athlete={athlete} visaType={addVisaType} onCreated={load} />
+      <PhotoPreviewDialog
+        preview={photoPreview}
+        uploading={uploadingPhoto}
+        error={photoError}
+        onConfirm={confirmPhotoUpload}
+        onCancel={cancelPhotoUpload}
+      />
     </div>
   );
 }

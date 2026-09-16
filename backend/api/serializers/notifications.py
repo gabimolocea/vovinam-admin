@@ -8,16 +8,24 @@ class NotificationSerializer(serializers.ModelSerializer):
     """Serializer for user notifications"""
     recipient_name = serializers.CharField(source='recipient.__str__', read_only=True)
     time_since_created = serializers.SerializerMethodField()
-    
+    resolved_status = serializers.SerializerMethodField()
+
     class Meta:
         model = Notification
         fields = [
             'id', 'recipient', 'recipient_name', 'notification_type', 'title', 'message',
             'is_read', 'created_at', 'read_at', 'time_since_created', 'related_result',
-            'related_competition', 'action_data'
+            'related_competition', 'action_data', 'resolved_status'
         ]
-        read_only_fields = ['recipient', 'created_at', 'read_at', 'time_since_created']
-    
+        read_only_fields = ['recipient', 'created_at', 'read_at', 'time_since_created', 'resolved_status']
+
+    def get_resolved_status(self, obj):
+        """'approved'/'rejected'/'revision_required' if this submitted-request
+        notification's underlying item has already been reviewed, else None -
+        set in bulk by NotificationViewSet.list() via the serializer context
+        (empty outside that action, e.g. on create/update responses)."""
+        return self.context.get('resolved_status_map', {}).get(obj.id)
+
     def get_time_since_created(self, obj):
         """Get human-readable time since notification was created"""
         from django.utils import timezone

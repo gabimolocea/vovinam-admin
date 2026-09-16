@@ -35,7 +35,7 @@ class AthleteDetailSerializer(serializers.ModelSerializer):
         model = Athlete
         fields = [
             'id', 'user', 'first_name', 'last_name', 'full_name',
-            'gender', 'gender_display', 'license_series', 'cnp', 'date_of_birth', 'address', 'mobile_number',
+            'gender', 'gender_display', 'license_series', 'license_number', 'cnp', 'date_of_birth', 'address', 'mobile_number',
             'emergency_contact_name', 'emergency_contact_phone',
             'previous_experience',
             'club', 'city', 'current_grade',
