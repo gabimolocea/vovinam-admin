@@ -140,7 +140,7 @@ function NotificationSettingsDialog({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Setări notificări</DialogTitle>
         </DialogHeader>

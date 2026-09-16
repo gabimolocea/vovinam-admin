@@ -108,7 +108,7 @@ export default function AdminClubs() {
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent fullScreen>
           <DialogHeader>
             <DialogTitle>Club nou</DialogTitle>
           </DialogHeader>

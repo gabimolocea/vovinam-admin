@@ -68,7 +68,6 @@ export default function CompetitionCentralizator() {
           onClose={() => ctx.setConfirmModal(null)}
           title={ctx.confirmModal.title}
           description={ctx.confirmModal.message}
-          maxWidth="max-w-md"
           footer={(
             <>
               <Button variant="outline" onClick={() => ctx.setConfirmModal(null)}>
@@ -92,7 +91,6 @@ export default function CompetitionCentralizator() {
           onClose={() => ctx.setWeightModal(null)}
           title="Greutate sportiv"
           description={ctx.weightModal.athleteName}
-          maxWidth="max-w-sm"
           footer={(
             <>
               <Button variant="outline" onClick={() => ctx.setWeightModal(null)}>
@@ -177,7 +175,6 @@ export default function CompetitionCentralizator() {
             onClose={() => ctx.setEnrollPickerCell(null)}
             title={clubName}
             description={isFightCat ? 'Selectează sportivii și completează greutatea.' : 'Selectează sportivii eligibili.'}
-            maxWidth="max-w-3xl"
             panelRef={ctx.enrollPickerRef}
             headerExtra={(
               <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
@@ -333,10 +330,10 @@ export default function CompetitionCentralizator() {
   );
 }
 
-function CoachModal({ onClose, title, description, maxWidth = 'max-w-md', headerExtra = null, footer = null, panelRef = null, children = null }) {
+function CoachModal({ onClose, title, description, headerExtra = null, footer = null, panelRef = null, children = null }) {
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent ref={panelRef} className={`${maxWidth} flex max-h-[88vh] flex-col`}>
+      <DialogContent fullScreen ref={panelRef}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}

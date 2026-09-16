@@ -253,7 +253,7 @@ function CreateExamDialog({ open, onOpenChange, clubName, onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Examen nou</DialogTitle>
         </DialogHeader>
@@ -311,7 +311,7 @@ function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onC
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Înregistrează rezultat examen</DialogTitle>
         </DialogHeader>
@@ -524,7 +524,7 @@ function EditClubDialog({ open, onOpenChange, club, onSaved }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent fullScreen>
         <DialogHeader>
           <DialogTitle>Detalii club</DialogTitle>
         </DialogHeader>
