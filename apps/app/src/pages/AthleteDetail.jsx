@@ -1159,9 +1159,11 @@ export default function AthleteDetail() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Button variant="outline" size="sm" onClick={() => navigate(-1)} className="w-fit">
-        <ArrowLeft className="h-4 w-4" /> Înapoi la sportivi
-      </Button>
+      {!isSelf && (
+        <Button variant="outline" size="sm" onClick={() => navigate(-1)} className="w-fit">
+          <ArrowLeft className="h-4 w-4" /> Înapoi la sportivi
+        </Button>
+      )}
 
       {reviewError && <Alert variant="destructive">{reviewError}</Alert>}
 
