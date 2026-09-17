@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { athleteAPI, gradeHistoryAPI, scoreAPI, seminarAPI, visaAPI } from '@shared/lib/api';
 import { Alert, Badge, Button, EmptyState, Skeleton } from '../components/ui';
-import { Check, X } from 'lucide-react';
+import { Check, Eye, X } from 'lucide-react';
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -101,7 +101,12 @@ export default function AdminApprovals() {
     setAccountBusyId(id);
     setAccountError('');
     try {
-      await athleteAPI.process(id, { action });
+      // The backend requires a reason for a rejection - same fixed default
+      // note used for every other reject action in the app (see
+      // AthleteDetail.jsx's REVIEW_REJECT_NOTE) rather than prompting for
+      // free text here.
+      const payload = action === 'reject' ? { action, notes: 'Cererea de înregistrare nu a fost aprobată.' } : { action };
+      await athleteAPI.process(id, payload);
       setAccounts((prev) => prev.filter((a) => a.id !== id));
     } catch {
       setAccountError('Nu am putut procesa cererea.');
@@ -142,6 +147,12 @@ export default function AdminApprovals() {
                   <p className="text-xs text-muted-foreground">{fmtDate(a.submitted_date)}</p>
                 </div>
                 <div className="flex gap-2">
+                  <Link
+                    to={`/athletes/${a.id}`}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input px-3 text-sm font-medium transition hover:bg-accent"
+                  >
+                    <Eye className="h-4 w-4" /> Vezi detalii
+                  </Link>
                   <Button type="button" size="sm" disabled={accountBusyId === a.id} onClick={() => processAccount(a.id, 'approve')}>
                     <Check className="h-4 w-4" /> Aprobă
                   </Button>
