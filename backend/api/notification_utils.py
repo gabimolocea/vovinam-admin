@@ -1,6 +1,7 @@
 """
 Utility functions for creating and managing notifications
 """
+from django.conf import settings as django_settings
 from django.utils import timezone
 from .models import Notification, User, NotificationSettings
 from .email_utils import send_status_email
@@ -47,7 +48,9 @@ def _send_status_channels(recipient, settings, notification_type, title, message
 
     if should_email:
         tab = DOMAIN_TABS.get(domain)
-        cta_path = f'/cont/profil?tab={tab}' if tab else None
+        # An athlete's own profile (grade/result/seminar/visa tabs) now
+        # lives in the dashboard app, not the public site's old /cont/profil.
+        cta_path = f"{django_settings.APP_URL.rstrip('/')}/profil?tab={tab}" if tab else None
         send_status_email(recipient, title, message, cta_label='Vezi profilul meu' if cta_path else None, cta_path=cta_path)
 
     suffix = next((s for s in STATUS_SUFFIXES if notification_type.endswith(s)), None)
@@ -172,7 +175,7 @@ def notify_account_approved(athlete):
             'participări la seminarii și vize medicale spre aprobare.'
         ),
         cta_label='Vezi profilul meu',
-        cta_path='/cont/profil',
+        cta_path=f"{django_settings.APP_URL.rstrip('/')}/profil",
     )
 
 
@@ -197,7 +200,7 @@ def notify_profile_update_approved(athlete):
             'Profilul tău este din nou vizibil public pe site.'
         ),
         cta_label='Vezi profilul meu',
-        cta_path='/cont/profil',
+        cta_path=f"{django_settings.APP_URL.rstrip('/')}/profil",
     )
 
 
@@ -244,10 +247,10 @@ def _submission_recipients(athlete):
 
 
 def notify_profile_image_submitted(athlete):
-    """Notify the athlete's club coaches (or all admins if no coach) that a
-    new profile picture is awaiting approval."""
-    coaches = _club_coach_recipients(athlete, exclude_user=athlete.user)
-    recipients = coaches or list(User.objects.filter(role='admin'))
+    """Notify admins and the athlete's club coaches that a new profile
+    picture is awaiting approval - same audience as any other submission
+    (see _submission_recipients), not coach-first-with-admin-fallback."""
+    recipients = _submission_recipients(athlete)
     for recipient in recipients:
         create_notification(
             recipient=recipient,
@@ -259,12 +262,11 @@ def notify_profile_image_submitted(athlete):
 
 
 def notify_athlete_registered(athlete):
-    """Notify the club's coaches (or all admins if no coach) that a new
-    athlete has self-registered into their club and awaits approval."""
-    if not athlete.club:
-        return
-    coaches = _club_coach_recipients(athlete, exclude_user=athlete.user)
-    recipients = coaches or list(User.objects.filter(role='admin'))
+    """Notify admins and the club's coaches (same audience as any other
+    submission - see _submission_recipients) that a new athlete/coach has
+    registered and awaits approval. Admins are notified even when the
+    athlete has no club yet - that's exactly the case a coach can't cover."""
+    recipients = _submission_recipients(athlete)
     for recipient in recipients:
         create_notification(
             recipient=recipient,

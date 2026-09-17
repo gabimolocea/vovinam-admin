@@ -441,6 +441,11 @@ else:
 # emails/WhatsApp messages (e.g. "see your approved result").
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5183')
 
+# Public URL of the coach/athlete/admin dashboard app - separate from
+# FRONTEND_URL (the public site) since that's where an approved/pending
+# member's own profile, notifications, etc. now live (see apps/app).
+APP_URL = os.environ.get('APP_URL', 'http://localhost:5175')
+
 # ============================================================================
 # WHATSAPP (Meta Cloud API) - optional status-change notifications. No-ops
 # gracefully (see api/whatsapp_utils.py) when unconfigured.

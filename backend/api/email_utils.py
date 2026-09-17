@@ -18,18 +18,28 @@ logger = logging.getLogger(__name__)
 
 def send_status_email(recipient, title, message, cta_label=None, cta_path=None):
     """Send the branded status-change email to `recipient` (a User).
-    `cta_path` is a path on the public site (e.g. '/cont/profil?tab=rezultate'),
-    turned into an absolute link via settings.FRONTEND_URL."""
+    `cta_path` is either a path on the public site (e.g. '/cont'), turned
+    into an absolute link via settings.FRONTEND_URL, or an already-absolute
+    URL (e.g. into the dashboard app at settings.APP_URL) used as-is - a
+    coach/athlete/admin's own profile, notifications, etc. now live there,
+    not on the public site."""
     if not recipient or not recipient.email:
         return
+
+    if cta_path and cta_path.startswith('http'):
+        cta_url = cta_path
+    elif cta_path:
+        cta_url = f"{settings.FRONTEND_URL.rstrip('/')}{cta_path}"
+    else:
+        cta_url = None
 
     context = {
         'recipient_name': recipient.get_full_name() or recipient.email,
         'title': title,
         'message': message,
         'cta_label': cta_label,
-        'cta_url': f"{settings.FRONTEND_URL.rstrip('/')}{cta_path}" if cta_path else None,
-        'settings_url': f"{settings.FRONTEND_URL.rstrip('/')}/cont?section=notificari",
+        'cta_url': cta_url,
+        'settings_url': f"{settings.APP_URL.rstrip('/')}/notifications",
         'logo_url': f"{settings.FRONTEND_URL.rstrip('/')}/frvv-logo.png",
     }
 
