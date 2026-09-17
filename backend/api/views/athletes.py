@@ -234,15 +234,25 @@ class AthleteViewSet(viewsets.ModelViewSet):
         if not request.user or not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Check if this is a coach creating an athlete for their club
+        # Check if this is a coach (or admin, for any club) creating an
+        # athlete directly rather than someone registering their own profile.
         is_coach = hasattr(request.user, 'athlete') and request.user.athlete and request.user.athlete.is_coach
+        is_admin = bool(request.user.is_admin)
         coach_create = request.data.get('coach_create', False)
 
-        if is_coach and coach_create:
-            # Coach creating athlete for their club
+        if (is_coach or is_admin) and coach_create:
+            # A coach's own club is implicit; an admin has no club of their
+            # own, so they must specify which club the athlete belongs to.
+            if is_admin:
+                club_id = request.data.get('club')
+                club = Club.objects.filter(pk=club_id).first() if club_id else None
+                if not club:
+                    return Response({'club': ['Clubul este obligatoriu.']}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                club = request.user.athlete.club
+
             serializer = AthleteSerializer(data=request.data, context={'request': request})
             if serializer.is_valid():
-                club = request.user.athlete.club
                 athlete = serializer.save(club=club, status='approved')
                 # Handle profile image upload
                 if 'profile_image' in request.FILES:

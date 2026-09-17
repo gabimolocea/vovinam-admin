@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api, { athleteAPI, cityAPI, gradeAPI, competitionAPI, visaAPI } from '@shared/lib/api';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import api, { athleteAPI, cityAPI, clubAPI, gradeAPI, competitionAPI, visaAPI } from '@shared/lib/api';
+import { useAuth } from '@shared';
 import {
   Alert, Button, Checkbox, Input, Label, Req,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -26,6 +27,7 @@ function toTitleCase(text) {
 const INITIAL = {
   first_name: '',
   last_name: '',
+  club: '',
   gender: '',
   license_series: '',
   license_number: '',
@@ -79,7 +81,12 @@ function SectionHeading({ children }) {
 
 export default function CreateAthlete() {
   const navigate = useNavigate();
-  const [form, setForm] = useState(INITIAL);
+  const { isAdmin } = useAuth();
+  const [searchParams] = useSearchParams();
+  const clubParam = searchParams.get('club') || '';
+  const backTo = isAdmin ? `/cluburi/${clubParam}` : '/club?tab=sportivi';
+  const [form, setForm] = useState({ ...INITIAL, club: clubParam });
+  const [clubs, setClubs] = useState([]);
   const [gradeForm, setGradeForm] = useState(INITIAL_GRADE);
   const [profileImage, setProfileImage] = useState(null);
   const [profilePreview, setProfilePreview] = useState(null);
@@ -109,7 +116,10 @@ export default function CreateAthlete() {
     competitionAPI.list({ event_type: 'examination' })
       .then(r => setExams(Array.isArray(r.data) ? r.data : r.data?.results ?? []))
       .catch(() => {});
-  }, []);
+    if (isAdmin) {
+      clubAPI.list().then(r => setClubs(r.data?.results || r.data || [])).catch(() => {});
+    }
+  }, [isAdmin]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -235,6 +245,11 @@ export default function CreateAthlete() {
     e.preventDefault();
     setError(null);
 
+    if (isAdmin && !form.club) {
+      setError('Clubul este obligatoriu.');
+      return;
+    }
+
     if (!form.first_name.trim() || !form.last_name.trim()) {
       setError('Prenumele și numele sunt obligatorii.');
       return;
@@ -310,7 +325,7 @@ export default function CreateAthlete() {
         await visaAPI.submissions.create(visaFd);
       }
 
-      navigate('/club?tab=sportivi');
+      navigate(backTo);
     } catch (err) {
       const data = err.response?.data;
       if (data && typeof data === 'object') {
@@ -327,7 +342,7 @@ export default function CreateAthlete() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3">
-        <Button variant="outline" size="sm" className="w-fit" onClick={() => navigate('/club?tab=sportivi')}>
+        <Button variant="outline" size="sm" className="w-fit" onClick={() => navigate(backTo)}>
           <ArrowLeft className="h-4 w-4" /> Înapoi
         </Button>
         <h1 className="font-display text-2xl font-bold">Adaugă sportiv</h1>
@@ -385,6 +400,21 @@ export default function CreateAthlete() {
             onClose={() => setExampleZoomOpen(false)}
           />
         </section>
+
+        {isAdmin && (
+          <section className="flex flex-col gap-4 border-t border-border pt-6">
+            <SectionHeading>Club</SectionHeading>
+            <div className="flex flex-col gap-1 sm:w-1/2 sm:pr-2">
+              <Label>Club<Req /></Label>
+              <Select value={form.club} onValueChange={(v) => update('club', v)}>
+                <SelectTrigger><SelectValue placeholder="Alege clubul" /></SelectTrigger>
+                <SelectContent>
+                  {clubs.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </section>
+        )}
 
         <section className="flex flex-col gap-4 border-t border-border pt-6">
           <SectionHeading>Date personale</SectionHeading>
@@ -652,13 +682,14 @@ export default function CreateAthlete() {
         </section>
 
         <div className="flex items-center justify-end gap-3 border-t border-border pt-6">
-          <Button type="button" variant="outline" onClick={() => navigate('/club?tab=sportivi')}>
+          <Button type="button" variant="outline" onClick={() => navigate(backTo)}>
             Anulează
           </Button>
           <Button
             type="submit"
             disabled={
               saving
+              || (isAdmin && !form.club)
               || !licenseImage
               || !form.license_series.trim()
               || !form.license_number.trim()

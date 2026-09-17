@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@shared';
 import Layout from './components/Layout';
-import { RequireAdmin, RequireCoach, RequireCoachOrAdmin } from './components/RoleGuards';
+import { RequireAdmin, RequireCoachOrAdmin } from './components/RoleGuards';
 import AthleteDetail from './pages/AthleteDetail';
 import CreateAthlete from './pages/CreateAthlete';
 import CompetitionsList from './pages/CompetitionsList';
@@ -46,7 +46,7 @@ export default function App() {
       <Route path="/" element={isAuthenticated ? <Layout /> : <RedirectToPublicLogin />}>
         <Route index element={<RoleIndexRedirect />} />
         <Route path="athletes" element={<Navigate to="/club?tab=sportivi" replace />} />
-        <Route path="athletes/new" element={<RequireCoach><CreateAthlete /></RequireCoach>} />
+        <Route path="athletes/new" element={<RequireCoachOrAdmin><CreateAthlete /></RequireCoachOrAdmin>} />
         <Route path="athletes/:id" element={<AthleteDetail />} />
         <Route path="competitions" element={<RequireCoachOrAdmin><CompetitionsList /></RequireCoachOrAdmin>} />
         <Route path="competitions/:eventId" element={<RequireCoachOrAdmin><CompetitionCentralizator /></RequireCoachOrAdmin>} />
