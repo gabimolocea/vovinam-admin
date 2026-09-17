@@ -1182,9 +1182,11 @@ export default function AthleteDetail() {
           <button
             type="button"
             onClick={handleLogout}
-            className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-white transition-colors hover:bg-white/20 lg:hidden"
+            title="Deconectare"
+            aria-label="Deconectare"
+            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 lg:hidden"
           >
-            <LogOut className="h-3.5 w-3.5" /> Deconectare
+            <LogOut className="h-4 w-4" />
           </button>
         )}
         <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
