@@ -297,9 +297,7 @@ function SidebarFooter({ onNavigate, mobile = false }) {
  * see useNavItems() above. */
 export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [headerHeight, setHeaderHeight] = useState(0);
   const [bottomNavHeight, setBottomNavHeight] = useState(0);
-  const headerRef = useRef(null);
   const bottomNavRef = useRef(null);
   const { user, isAdmin, isCoach } = useAuth();
   const athlete = user?.athlete;
@@ -307,19 +305,17 @@ export default function Sidebar() {
   const navItems = useNavItems({ isAdmin, isCoach });
   const fullName = athlete ? `${athlete.first_name || ''} ${athlete.last_name || ''}`.trim() : '';
 
-  // The drawer needs to sit exactly between the top bar and the bottom tab
-  // bar (both stay visible/on top so the bottom bar's own toggle keeps
-  // working to close the menu) rather than covering either - measured
-  // rather than hardcoded since both bars' heights depend on font/safe-area
-  // rendering.
+  // The drawer needs to stop exactly above the bottom tab bar (which stays
+  // visible/on top so its own "Mai mult" tab keeps working to close the
+  // menu) rather than covering it - measured rather than hardcoded since
+  // its height depends on safe-area-inset rendering.
   useEffect(() => {
-    function updateHeights() {
-      if (headerRef.current) setHeaderHeight(headerRef.current.offsetHeight);
+    function updateHeight() {
       if (bottomNavRef.current) setBottomNavHeight(bottomNavRef.current.offsetHeight);
     }
-    updateHeights();
-    window.addEventListener('resize', updateHeights);
-    return () => window.removeEventListener('resize', updateHeights);
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
   }, []);
 
   // Header shows the club logo (same for a coach or a plain athlete - both
@@ -330,36 +326,16 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile/tablet top bar - branding only now; navigation moved to the
-          bottom tab bar below. */}
-      <div ref={headerRef} className="relative z-[60] flex items-center justify-between border-b border-sidebar-border bg-sidebar px-4 py-3 text-sidebar-foreground lg:hidden">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          {club?.logo ? (
-            <img src={imgUrl(club.logo)} alt={club.name} width={28} height={28} className="shrink-0 rounded object-contain" />
-          ) : (
-            <Logo size={28} />
-          )}
-          <span className="truncate text-sm font-bold uppercase tracking-wide">{headerLabel}</span>
-        </div>
-        <a
-          href={withSsoHandoff(PUBLIC_SITE_URL)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="-my-3 flex shrink-0 items-center gap-1.5 self-stretch px-3 text-sidebar-foreground"
-          title="Vezi site-ul"
-        >
-          <ExternalLink className="h-5 w-5" aria-hidden="true" />
-          <span className="text-xs font-bold uppercase tracking-wide">Site</span>
-        </a>
-      </div>
-
+      {/* No standalone top bar below `lg` anymore - the bottom tab bar
+          covers navigation, and the desktop sidebar's own branding header
+          isn't rendered there (hidden lg:flex below) either. */}
       <BottomNav ref={bottomNavRef} navItems={navItems} moreOpen={mobileOpen} onToggleMore={() => setMobileOpen((v) => !v)} />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="left"
           className="h-auto w-full max-w-none overflow-y-auto border-none bg-[#071225] lg:hidden"
-          style={{ top: headerHeight, bottom: bottomNavHeight }}
+          style={{ top: 0, bottom: bottomNavHeight }}
         >
           <MobileNavLinks navItems={navItems} onNavigate={() => setMobileOpen(false)} />
           <SidebarFooter mobile onNavigate={() => setMobileOpen(false)} />
