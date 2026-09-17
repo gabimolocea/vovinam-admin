@@ -176,7 +176,8 @@ class PublicAthleteSerializer(serializers.ModelSerializer):
         model = Athlete
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'gender',
-            'club', 'city', 'current_grade', 'is_coach', 'is_referee',
+            'club', 'city', 'current_grade', 'is_coach', 'is_instructor', 'is_referee',
+            'referee_level', 'referee_category',
             'profile_image', 'medals', 'international_medals',
         ]
 

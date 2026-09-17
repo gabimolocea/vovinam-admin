@@ -219,6 +219,17 @@ function FileField({ label, file, onChange, required = false }) {
   );
 }
 
+const REFEREE_CATEGORY_LABELS = { A: 'Categoria A', B: 'Categoria B', C: 'Categoria C', stagiar: 'Stagiar' };
+
+function refereeLabel(athlete) {
+  if (athlete.referee_level === 'international') return 'Arbitru internațional';
+  if (athlete.referee_level === 'national') {
+    const category = REFEREE_CATEGORY_LABELS[athlete.referee_category];
+    return category ? `Arbitru național (${category})` : 'Arbitru național';
+  }
+  return 'Arbitru';
+}
+
 function InfoRow({ label, value }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-border py-2.5 text-sm last:border-b-0">
@@ -295,6 +306,10 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved, canManageRole })
         emergency_contact_name: athlete.emergency_contact_name || '',
         emergency_contact_phone: athlete.emergency_contact_phone || '',
         is_coach: athlete.is_coach || false,
+        is_instructor: athlete.is_instructor || false,
+        is_referee: athlete.is_referee || false,
+        referee_level: athlete.referee_level || '',
+        referee_category: athlete.referee_category || '',
       });
       setError('');
     }
@@ -320,8 +335,16 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved, canManageRole })
           emergency_contact_name: form.emergency_contact_name,
           emergency_contact_phone: form.emergency_contact_phone,
           is_coach: form.is_coach,
+          is_instructor: form.is_instructor,
+          is_referee: form.is_referee,
+          referee_level: form.is_referee ? form.referee_level : '',
+          referee_category: form.is_referee && form.referee_level === 'national' ? form.referee_category : '',
         }
-        : form;
+        : {
+          ...form,
+          referee_level: form.is_referee ? form.referee_level : '',
+          referee_category: form.is_referee && form.referee_level === 'national' ? form.referee_category : '',
+        };
       await athleteAPI.update(athlete.id, payload);
       onSaved();
       onOpenChange(false);
@@ -389,11 +412,55 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved, canManageRole })
               <Textarea id="edit_address" rows={2} value={form.address} onChange={(e) => update('address', e.target.value)} />
             </div>
             {canManageRole && (
-              <div className="sm:col-span-2">
-                <label className="flex cursor-pointer items-center gap-2.5 text-sm">
-                  <Checkbox checked={form.is_coach} onCheckedChange={(checked) => update('is_coach', checked === true)} />
-                  Antrenor
-                </label>
+              <div className="flex flex-col gap-3 sm:col-span-2">
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+                    <Checkbox
+                      checked={form.is_instructor}
+                      onCheckedChange={(checked) => setForm((f) => ({ ...f, is_instructor: checked === true, is_coach: checked === true ? false : f.is_coach }))}
+                    />
+                    Instructor
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+                    <Checkbox
+                      checked={form.is_coach}
+                      onCheckedChange={(checked) => setForm((f) => ({ ...f, is_coach: checked === true, is_instructor: checked === true ? false : f.is_instructor }))}
+                    />
+                    Antrenor
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+                    <Checkbox checked={form.is_referee} onCheckedChange={(checked) => update('is_referee', checked === true)} />
+                    Arbitru
+                  </label>
+                </div>
+                {form.is_referee && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1">
+                      <Label>Nivel arbitraj</Label>
+                      <Select value={form.referee_level} onValueChange={(v) => update('referee_level', v)}>
+                        <SelectTrigger><SelectValue placeholder="Nespecificat" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="national">Arbitru național</SelectItem>
+                          <SelectItem value="international">Arbitru internațional</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {form.referee_level === 'national' && (
+                      <div className="flex flex-col gap-1">
+                        <Label>Categorie arbitru</Label>
+                        <Select value={form.referee_category} onValueChange={(v) => update('referee_category', v)}>
+                          <SelectTrigger><SelectValue placeholder="Nespecificată" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="A">Categoria A</SelectItem>
+                            <SelectItem value="B">Categoria B</SelectItem>
+                            <SelectItem value="C">Categoria C</SelectItem>
+                            <SelectItem value="stagiar">Stagiar</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {!isApproved && (
@@ -1408,7 +1475,7 @@ export default function AthleteDetail() {
           <InfoRow label="Club" value={athlete.club?.name} />
           <InfoRow label="Oraș" value={athlete.city?.name} />
           <InfoRow label="Data nașterii" value={fmtDate(athlete.date_of_birth)} />
-          <InfoRow label="Roluri" value={[athlete.is_coach && 'Antrenor', athlete.is_referee && 'Arbitru'].filter(Boolean).join(', ') || 'Sportiv'} />
+          <InfoRow label="Roluri" value={[athlete.is_instructor && 'Instructor', athlete.is_coach && 'Antrenor', athlete.is_referee && refereeLabel(athlete)].filter(Boolean).join(', ') || 'Sportiv'} />
           {canReview && (
             <>
               <InfoRow label="CNP" value={athlete.cnp} />

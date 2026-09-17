@@ -40,6 +40,7 @@ class AthleteDetailSerializer(serializers.ModelSerializer):
             'previous_experience',
             'club', 'city', 'current_grade',
             'federation_role', 'federation_role_name', 'title', 'title_name', 'is_coach', 'is_instructor', 'is_referee',
+            'referee_level', 'referee_category',
             'status', 'registered_date', 'expiration_date',
             'status_display', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name',
             'admin_notes', 'approved_date', 'approved_by', 'profile_image', 'medical_certificate',
