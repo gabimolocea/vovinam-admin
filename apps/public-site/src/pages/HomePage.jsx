@@ -29,48 +29,60 @@ export default function HomePage() {
   useEffect(() => {
     let isMounted = true;
 
+    // Each section loads independently (Promise.allSettled, not .all) - a
+    // single slow/failed request (e.g. a cold backend on the very first hit)
+    // no longer blanks out the whole page behind one error banner. A failed
+    // section just falls back to its already-existing "nothing here yet"
+    // empty state, same as if there really were no content.
     async function load() {
       setLoading(true);
       setError('');
-      try {
-        const [heroResponse, newsResponse, videosResponse, eventsResponse] = await Promise.all([
-          publicContentAPI.news.list({ featured: true, page_size: 5 }),
-          publicContentAPI.news.list({ featured: true, page_size: 3 }),
-          publicContentAPI.videos.list({ featured: true, page_size: 8 }),
-          publicContentAPI.events.upcoming(),
-        ]);
-        if (!isMounted) return;
-        // The hero carousel only ever shows posts explicitly marked
-        // "Featured" in admin - no fallback to unfeatured posts here, so
-        // unchecking Featured reliably takes a post out of the carousel
-        // (including down to an empty carousel, which HeroCarousel already
-        // renders as nothing rather than showing unintended content).
-        const heroResults = heroResponse.data?.results ?? [];
-        let newsResults = newsResponse.data?.results ?? [];
-        let videosResults = videosResponse.data?.results ?? [];
-        // Fallback to the latest published items when nothing has been marked
-        // "featured" yet in admin (e.g. right after a fresh content import),
-        // so the homepage isn't empty while content curation catches up.
-        if (newsResults.length === 0) {
+
+      const [heroSettled, newsSettled, videosSettled, eventsSettled] = await Promise.allSettled([
+        publicContentAPI.news.list({ featured: true, page_size: 5 }),
+        publicContentAPI.news.list({ featured: true, page_size: 3 }),
+        publicContentAPI.videos.list({ featured: true, page_size: 8 }),
+        publicContentAPI.events.upcoming(),
+      ]);
+      if (!isMounted) return;
+
+      // The hero carousel only ever shows posts explicitly marked
+      // "Featured" in admin - no fallback to unfeatured posts here, so
+      // unchecking Featured reliably takes a post out of the carousel
+      // (including down to an empty carousel, which HeroCarousel already
+      // renders as nothing rather than showing unintended content).
+      const heroResults = heroSettled.status === 'fulfilled' ? (heroSettled.value.data?.results ?? []) : [];
+      let newsResults = newsSettled.status === 'fulfilled' ? (newsSettled.value.data?.results ?? []) : [];
+      let videosResults = videosSettled.status === 'fulfilled' ? (videosSettled.value.data?.results ?? []) : [];
+
+      // Fallback to the latest published items when nothing has been marked
+      // "featured" yet in admin (e.g. right after a fresh content import) -
+      // or when the featured request itself failed - so the homepage isn't
+      // empty while content curation catches up, or after a transient error.
+      if (newsResults.length === 0) {
+        try {
           const latestNews = await publicContentAPI.news.list({ page_size: 3 });
           if (!isMounted) return;
           newsResults = latestNews.data?.results ?? [];
-        }
-        if (videosResults.length === 0) {
+        } catch { /* keep the empty-state UI */ }
+      }
+      if (videosResults.length === 0) {
+        try {
           const latestVideos = await publicContentAPI.videos.list({ page_size: 8 });
           if (!isMounted) return;
           videosResults = latestVideos.data?.results ?? [];
-        }
-        setHeroSlides(heroResults);
-        setNews(newsResults);
-        setVideos(videosResults);
-        setNextEvent(eventsResponse.data?.[0] ?? null);
-      } catch {
-        if (!isMounted) return;
-        setError('Nu am putut încărca conținutul paginii principale.');
-      } finally {
-        if (isMounted) setLoading(false);
+        } catch { /* keep the empty-state UI */ }
       }
+      if (!isMounted) return;
+
+      setHeroSlides(heroResults);
+      setNews(newsResults);
+      setVideos(videosResults);
+      setNextEvent(eventsSettled.status === 'fulfilled' ? (eventsSettled.value.data?.[0] ?? null) : null);
+      if ([heroSettled, newsSettled, videosSettled, eventsSettled].every((r) => r.status === 'rejected')) {
+        setError('Nu am putut încărca conținutul paginii principale.');
+      }
+      setLoading(false);
     }
 
     load();

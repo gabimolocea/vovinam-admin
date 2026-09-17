@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { useAuth, athleteAPI, gradeHistoryAPI, scoreAPI, visaAPI, seminarAPI } from '@shared';
+import { useAuth, athleteAPI, gradeHistoryAPI, scoreAPI, visaAPI, seminarAPI, MEDIA_BASE_URL } from '@shared';
 import { Alert, Badge, Button, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 import GalleryTab from '../components/GalleryTab';
@@ -8,7 +8,17 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import BeltBadge from '../components/BeltBadge';
 import MedalIcon from '../components/MedalIcon';
 import ResponsiveTable from '../components/ResponsiveTable';
-import { ChevronLeft, ChevronRight, Clock, Pencil, X } from 'lucide-react';
+import Lightbox from '../components/Lightbox';
+import { Award, ChevronLeft, ChevronRight, Clock, Eye, Pencil, X } from 'lucide-react';
+
+// Resolves a media path returned by the API into an absolute URL - needed
+// in dev where the API and this app run on different ports, and harmless
+// in production where the value is already absolute (S3/Spaces).
+function imgUrl(path) {
+  if (!path) return null;
+  if (/^https?:\/\//.test(path)) return path;
+  return `${MEDIA_BASE_URL}${String(path).startsWith('/') ? '' : '/'}${path}`;
+}
 
 // Ribbon colors per competition level - national medals (computed
 // automatically from in-app scoring) get the Romanian flag's 3 colors;
@@ -50,8 +60,37 @@ const RESULT_LEVEL_TABS = [
   { key: 'world', label: 'Competiții Mondiale' },
 ];
 
-function EmptyTab({ message }) {
-  return <p className="py-6 text-center text-sm text-[#00334d]/60">{message}</p>;
+/** Color-coded status pill - mirrors the admin dashboard's own AthleteDetail
+ * StatusBadge exactly, so a result/grade/seminar/visa's status reads the
+ * same way on both. */
+function StatusBadge({ status }) {
+  if (!status) return null;
+  const className = {
+    approved: 'border-transparent bg-emerald-100 text-emerald-800',
+    rejected: 'border-transparent bg-red-100 text-red-800',
+    pending: 'border-transparent bg-amber-100 text-amber-800',
+    revision_required: 'border-transparent bg-amber-100 text-amber-800',
+  }[status] || '';
+  return <Badge className={className}>{RESULT_STATUS_LABELS[status] || status}</Badge>;
+}
+
+/** Link to an uploaded diploma/certificate/document - opens in the shared
+ * Lightbox (zoom/download) rather than a new tab, same as the admin
+ * dashboard. Renders nothing when there's no image, which also covers a
+ * non-reviewer viewer: the server never sends `certificate_image` to them
+ * in the first place (see PublicAthleteDetailSerializer). */
+function CertificateThumb({ src, label = 'Vezi documentul', onOpen }) {
+  const url = imgUrl(src);
+  if (!url) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen({ image: url, alt_text: label })}
+      className="mt-2 flex w-fit items-center gap-1 text-sm text-primary underline hover:text-primary/80"
+    >
+      <Eye className="h-3.5 w-3.5" /> {label}
+    </button>
+  );
 }
 
 /** Inline Aprobă/Respinge pair shown next to a pending item when the viewer
@@ -245,6 +284,7 @@ export default function AthleteDetailPage({ showSeo = true }) {
   const [resultsLevel, setResultsLevel] = useState('national');
   const [reviewBusyKey, setReviewBusyKey] = useState(null);
   const [reviewError, setReviewError] = useState('');
+  const [certificatePreview, setCertificatePreview] = useState(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -572,6 +612,7 @@ export default function AthleteDetailPage({ showSeo = true }) {
           <InfoRow label="Rol" value={[athlete.is_coach && 'Antrenor', athlete.is_referee && 'Arbitru'].filter(Boolean).join(', ') || 'Sportiv'} />
           <InfoRow label="CNP" value={athlete.cnp} private visible={isSelf || canReview} />
           <InfoRow label="Serie legitimație" value={athlete.license_series} private visible={isSelf || canReview} />
+          <InfoRow label="Email" value={athlete.email} private visible={isSelf || canReview} />
           <InfoRow label="Telefon" value={athlete.mobile_number} private visible={isSelf || canReview} />
           <InfoRow label="Adresă" value={athlete.address} private visible={isSelf || canReview} />
           <InfoRow label="Data înregistrării" value={athlete.registered_date ? formatDate(athlete.registered_date) : null} private visible={isSelf || canReview} />
@@ -586,82 +627,65 @@ export default function AthleteDetailPage({ showSeo = true }) {
           <ScrollableTabs items={RESULT_LEVEL_TABS} activeKey={resultsLevel} onSelect={setResultsLevel} variant="underline" />
 
           {resultsLevel === 'national' && (
-            <>
-              {athlete.results.length === 0 ? <EmptyTab message="Niciun rezultat înregistrat." /> : (
-                <ResponsiveTable
-                  head={(
-                    <>
-                      <th className="px-4 py-3 font-medium">Competiție</th>
-                      <th className="px-4 py-3 font-medium">Categorie</th>
-                      <th className="px-4 py-3 font-medium">Tip</th>
-                      <th className="px-4 py-3 font-medium">Rezultat</th>
-                      {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
-                    </>
-                  )}
-                  rows={athlete.results.map((r) => (
-                    <tr key={r.id}>
-                      <td className="px-4 py-3">{r.competition || '—'}</td>
-                      <td className="px-4 py-3 text-[#00334d]/60">{r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''}</td>
-                      <td className="px-4 py-3 text-[#00334d]/60">{RESULT_TYPE_LABELS[r.type] || r.type}</td>
-                      <td className="px-4 py-3">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</td>
-                      {(isSelf || canReview) && (
-                        <td className="px-4 py-3">
-                          <Badge variant={r.status === 'approved' ? 'default' : 'outline'}>
-                            {RESULT_STATUS_LABELS[r.status] || r.status}
-                          </Badge>
-                          {r.status === 'rejected' && r.admin_notes && (
-                            <p className="mt-1 text-xs text-[#00334d]/60">{r.admin_notes}</p>
-                          )}
-                          {r.certificate_image && (
-                            <a href={r.certificate_image} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-primary underline">
-                              Vezi diploma
-                            </a>
-                          )}
-                          {canReview && r.status === 'pending' && (
-                            <ReviewButtons
-                              busy={reviewBusyKey === `result-${r.id}`}
-                              onApprove={() => reviewItem('result', r.id, true)}
-                              onReject={() => reviewItem('result', r.id, false)}
-                            />
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                  cards={athlete.results.map((r) => (
-                    <li key={r.id} className="rounded-lg border border-[#dce0e5] p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium">{r.competition || '—'}</p>
-                        {(isSelf || canReview) && (
-                          <Badge variant={r.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
-                            {RESULT_STATUS_LABELS[r.status] || r.status}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-[#00334d]/60">
-                        {r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''} · {RESULT_TYPE_LABELS[r.type] || r.type}
-                      </p>
-                      <p className="mt-2 text-sm font-semibold">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</p>
-                      {(isSelf || canReview) && r.status === 'rejected' && r.admin_notes && (
-                        <p className="mt-1 text-xs text-[#00334d]/60">{r.admin_notes}</p>
-                      )}
-                      {canReview && r.certificate_image && (
-                        <a href={r.certificate_image} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-primary underline">
-                          Vezi diploma
-                        </a>
-                      )}
-                      {canReview && r.status === 'pending' && (
-                        <ReviewButtons
-                          busy={reviewBusyKey === `result-${r.id}`}
-                          onApprove={() => reviewItem('result', r.id, true)}
-                          onReject={() => reviewItem('result', r.id, false)}
-                        />
-                      )}
-                    </li>
-                  ))}
-                />
+            <ResponsiveTable
+              emptyMessage="Niciun rezultat înregistrat."
+              head={(
+                <>
+                  <th className="px-4 py-3 font-medium">Competiție</th>
+                  <th className="px-4 py-3 font-medium">Categorie</th>
+                  <th className="px-4 py-3 font-medium">Tip</th>
+                  <th className="px-4 py-3 font-medium">Rezultat</th>
+                  {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
+                </>
               )}
-            </>
+              rows={athlete.results.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-4 py-3 font-medium">
+                    {r.competition || '—'}
+                    <CertificateThumb src={r.certificate_image} label="Vezi diploma" onOpen={setCertificatePreview} />
+                    {canReview && r.status === 'pending' && (
+                      <ReviewButtons
+                        busy={reviewBusyKey === `result-${r.id}`}
+                        onApprove={() => reviewItem('result', r.id, true)}
+                        onReject={() => reviewItem('result', r.id, false)}
+                      />
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-[#00334d]/60">{r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''}</td>
+                  <td className="px-4 py-3 text-[#00334d]/60">{RESULT_TYPE_LABELS[r.type] || r.type}</td>
+                  <td className="px-4 py-3 font-semibold">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</td>
+                  {(isSelf || canReview) && (
+                    <td className="px-4 py-3">
+                      <StatusBadge status={r.status} />
+                      {r.status === 'rejected' && r.admin_notes && <p className="mt-1 text-xs text-[#00334d]/60">{r.admin_notes}</p>}
+                    </td>
+                  )}
+                </tr>
+              ))}
+              cards={athlete.results.map((r) => (
+                <li key={r.id} className="rounded-lg border border-[#dce0e5] p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium">{r.competition || '—'}</p>
+                    {(isSelf || canReview) && <StatusBadge status={r.status} />}
+                  </div>
+                  <CertificateThumb src={r.certificate_image} label="Vezi diploma" onOpen={setCertificatePreview} />
+                  <p className="mt-1 text-xs text-[#00334d]/60">
+                    {r.category || '—'}{r.team_name ? ` (${r.team_name})` : ''} · {RESULT_TYPE_LABELS[r.type] || r.type}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</p>
+                  {(isSelf || canReview) && r.status === 'rejected' && r.admin_notes && (
+                    <p className="mt-1 text-xs text-[#00334d]/60">{r.admin_notes}</p>
+                  )}
+                  {canReview && r.status === 'pending' && (
+                    <ReviewButtons
+                      busy={reviewBusyKey === `result-${r.id}`}
+                      onApprove={() => reviewItem('result', r.id, true)}
+                      onReject={() => reviewItem('result', r.id, false)}
+                    />
+                  )}
+                </li>
+              ))}
+            />
           )}
 
           {resultsLevel === 'european' && (
@@ -676,64 +700,21 @@ export default function AthleteDetailPage({ showSeo = true }) {
 
       {tab === 'grade' && (
         <div className="flex flex-col gap-4">
-          {athlete.grade_history.length === 0 ? <EmptyTab message="Niciun grad înregistrat." /> : (
-            <ResponsiveTable
-              head={(
-                <>
-                  <th className="px-4 py-3 font-medium">Grad</th>
-                  <th className="px-4 py-3 font-medium">Data obținerii</th>
-                  <th className="px-4 py-3 font-medium">Eveniment</th>
-                  {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
-                </>
-              )}
-              rows={athlete.grade_history.map((g) => (
-                <tr key={g.id}>
-                  <td className="px-4 py-3 font-medium">{g.grade?.name || '—'}</td>
-                  <td className="px-4 py-3 text-[#00334d]/60">{formatDate(g.obtained_date)}</td>
-                  <td className="px-4 py-3 text-[#00334d]/60">{g.event || '—'}</td>
-                  {(isSelf || canReview) && (
-                    <td className="px-4 py-3">
-                      <Badge variant={g.status === 'approved' ? 'default' : 'outline'}>
-                        {RESULT_STATUS_LABELS[g.status] || g.status}
-                      </Badge>
-                      {g.status === 'rejected' && g.admin_notes && (
-                        <p className="mt-1 text-xs text-[#00334d]/60">{g.admin_notes}</p>
-                      )}
-                      {g.certificate_image && (
-                        <a href={g.certificate_image} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-primary underline">
-                          Vezi certificatul
-                        </a>
-                      )}
-                      {canReview && g.status === 'pending' && (
-                        <ReviewButtons
-                          busy={reviewBusyKey === `grade-${g.id}`}
-                          onApprove={() => reviewItem('grade', g.id, true)}
-                          onReject={() => reviewItem('grade', g.id, false)}
-                        />
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-              cards={athlete.grade_history.map((g) => (
-                <li key={g.id} className="rounded-lg border border-[#dce0e5] p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium">{g.grade?.name || '—'}</p>
-                    {(isSelf || canReview) && (
-                      <Badge variant={g.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
-                        {RESULT_STATUS_LABELS[g.status] || g.status}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-[#00334d]/60">{formatDate(g.obtained_date)}{g.event ? ` · ${g.event}` : ''}</p>
-                  {(isSelf || canReview) && g.status === 'rejected' && g.admin_notes && (
-                    <p className="mt-1 text-xs text-[#00334d]/60">{g.admin_notes}</p>
-                  )}
-                  {canReview && g.certificate_image && (
-                    <a href={g.certificate_image} target="_blank" rel="noreferrer" className="mt-1 block text-xs text-primary underline">
-                      Vezi certificatul
-                    </a>
-                  )}
+          <ResponsiveTable
+            emptyMessage="Niciun grad înregistrat."
+            head={(
+              <>
+                <th className="px-4 py-3 font-medium">Grad</th>
+                <th className="px-4 py-3 font-medium">Data obținerii</th>
+                <th className="px-4 py-3 font-medium">Eveniment</th>
+                {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
+              </>
+            )}
+            rows={athlete.grade_history.map((g) => (
+              <tr key={g.id}>
+                <td className="px-4 py-3 font-medium">
+                  {g.grade?.name || '—'}
+                  <CertificateThumb src={g.certificate_image} label="Vezi certificatul" onOpen={setCertificatePreview} />
                   {canReview && g.status === 'pending' && (
                     <ReviewButtons
                       busy={reviewBusyKey === `grade-${g.id}`}
@@ -741,61 +722,57 @@ export default function AthleteDetailPage({ showSeo = true }) {
                       onReject={() => reviewItem('grade', g.id, false)}
                     />
                   )}
-                </li>
-              ))}
-            />
-          )}
+                </td>
+                <td className="px-4 py-3 text-[#00334d]/60">{formatDate(g.obtained_date)}</td>
+                <td className="px-4 py-3 text-[#00334d]/60">{g.event || '—'}</td>
+                {(isSelf || canReview) && (
+                  <td className="px-4 py-3">
+                    <StatusBadge status={g.status} />
+                    {g.status === 'rejected' && g.admin_notes && <p className="mt-1 text-xs text-[#00334d]/60">{g.admin_notes}</p>}
+                  </td>
+                )}
+              </tr>
+            ))}
+            cards={athlete.grade_history.map((g) => (
+              <li key={g.id} className="rounded-lg border border-[#dce0e5] p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium">{g.grade?.name || '—'}</p>
+                  {(isSelf || canReview) && <StatusBadge status={g.status} />}
+                </div>
+                <CertificateThumb src={g.certificate_image} label="Vezi certificatul" onOpen={setCertificatePreview} />
+                <p className="mt-1 text-xs text-[#00334d]/60">{formatDate(g.obtained_date)}{g.event ? ` · ${g.event}` : ''}</p>
+                {(isSelf || canReview) && g.status === 'rejected' && g.admin_notes && (
+                  <p className="mt-1 text-xs text-[#00334d]/60">{g.admin_notes}</p>
+                )}
+                {canReview && g.status === 'pending' && (
+                  <ReviewButtons
+                    busy={reviewBusyKey === `grade-${g.id}`}
+                    onApprove={() => reviewItem('grade', g.id, true)}
+                    onReject={() => reviewItem('grade', g.id, false)}
+                  />
+                )}
+              </li>
+            ))}
+          />
         </div>
       )}
 
       {tab === 'seminarii' && (
         <div className="flex flex-col gap-4">
-          {athlete.seminars.length === 0 ? <EmptyTab message="Nicio participare la seminarii." /> : (
-            <ResponsiveTable
-              head={(
-                <>
-                  <th className="px-4 py-3 font-medium">Eveniment</th>
-                  <th className="px-4 py-3 font-medium">Perioadă</th>
-                  {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
-                </>
-              )}
-              rows={athlete.seminars.map((s) => (
-                <tr key={s.id}>
-                  <td className="px-4 py-3 font-medium">{s.event || '—'}</td>
-                  <td className="px-4 py-3 text-[#00334d]/60">{formatDate(s.start_date)}</td>
-                  {(isSelf || canReview) && (
-                    <td className="px-4 py-3">
-                      <Badge variant={s.status === 'approved' ? 'default' : 'outline'}>
-                        {RESULT_STATUS_LABELS[s.status] || s.status}
-                      </Badge>
-                      {s.status === 'rejected' && s.admin_notes && (
-                        <p className="mt-1 text-xs text-[#00334d]/60">{s.admin_notes}</p>
-                      )}
-                      {canReview && s.status === 'pending' && (
-                        <ReviewButtons
-                          busy={reviewBusyKey === `seminar-${s.id}`}
-                          onApprove={() => reviewItem('seminar', s.id, true)}
-                          onReject={() => reviewItem('seminar', s.id, false)}
-                        />
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-              cards={athlete.seminars.map((s) => (
-                <li key={s.id} className="rounded-lg border border-[#dce0e5] p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium">{s.event || '—'}</p>
-                    {(isSelf || canReview) && (
-                      <Badge variant={s.status === 'approved' ? 'default' : 'outline'} className="shrink-0">
-                        {RESULT_STATUS_LABELS[s.status] || s.status}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-[#00334d]/60">{formatDate(s.start_date)}</p>
-                  {(isSelf || canReview) && s.status === 'rejected' && s.admin_notes && (
-                    <p className="mt-1 text-xs text-[#00334d]/60">{s.admin_notes}</p>
-                  )}
+          <ResponsiveTable
+            emptyMessage="Nicio participare la seminarii."
+            head={(
+              <>
+                <th className="px-4 py-3 font-medium">Eveniment</th>
+                <th className="px-4 py-3 font-medium">Perioadă</th>
+                {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
+              </>
+            )}
+            rows={athlete.seminars.map((s) => (
+              <tr key={s.id}>
+                <td className="px-4 py-3 font-medium">
+                  {s.event || '—'}
+                  <CertificateThumb src={s.certificate_image} label="Vezi certificatul" onOpen={setCertificatePreview} />
                   {canReview && s.status === 'pending' && (
                     <ReviewButtons
                       busy={reviewBusyKey === `seminar-${s.id}`}
@@ -803,36 +780,58 @@ export default function AthleteDetailPage({ showSeo = true }) {
                       onReject={() => reviewItem('seminar', s.id, false)}
                     />
                   )}
-                </li>
-              ))}
-            />
-          )}
+                </td>
+                <td className="px-4 py-3 text-[#00334d]/60">{formatDate(s.start_date)}{s.end_date ? ` – ${formatDate(s.end_date)}` : ''}</td>
+                {(isSelf || canReview) && (
+                  <td className="px-4 py-3">
+                    <StatusBadge status={s.status} />
+                    {s.status === 'rejected' && s.admin_notes && <p className="mt-1 text-xs text-[#00334d]/60">{s.admin_notes}</p>}
+                  </td>
+                )}
+              </tr>
+            ))}
+            cards={athlete.seminars.map((s) => (
+              <li key={s.id} className="rounded-lg border border-[#dce0e5] p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium">{s.event || '—'}</p>
+                  {(isSelf || canReview) && <StatusBadge status={s.status} />}
+                </div>
+                <CertificateThumb src={s.certificate_image} label="Vezi certificatul" onOpen={setCertificatePreview} />
+                <p className="mt-1 text-xs text-[#00334d]/60">
+                  {formatDate(s.start_date)}{s.end_date ? ` – ${formatDate(s.end_date)}` : ''}{s.place ? ` · ${s.place}` : ''}
+                </p>
+                {(isSelf || canReview) && s.status === 'rejected' && s.admin_notes && (
+                  <p className="mt-1 text-xs text-[#00334d]/60">{s.admin_notes}</p>
+                )}
+                {canReview && s.status === 'pending' && (
+                  <ReviewButtons
+                    busy={reviewBusyKey === `seminar-${s.id}`}
+                    onApprove={() => reviewItem('seminar', s.id, true)}
+                    onReject={() => reviewItem('seminar', s.id, false)}
+                  />
+                )}
+              </li>
+            ))}
+          />
         </div>
       )}
 
       {tab === 'medical' && (
         <div className="flex flex-col gap-4">
-          {athlete.medical_visas.length === 0 ? <EmptyTab message="Nicio viză medicală înregistrată." /> : (
-            <ul className="flex flex-col gap-2">
-              {athlete.medical_visas.map((v) => (
-                <li key={v.id} className="flex flex-col gap-1 rounded-lg border border-[#dce0e5] px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                  <span>Viză medicală</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
-                    {(isSelf || canReview) && (
-                      <Badge variant={v.status === 'approved' ? 'default' : 'outline'}>
-                        {RESULT_STATUS_LABELS[v.status] || v.status}
-                      </Badge>
-                    )}
-                  </div>
-                  {(isSelf || canReview) && v.status === 'rejected' && v.admin_notes && (
-                    <p className="text-xs text-[#00334d]/60">{v.admin_notes}</p>
-                  )}
-                  {canReview && v.certificate_image && (
-                    <a href={v.certificate_image} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
-                      Vezi documentul
-                    </a>
-                  )}
+          <ResponsiveTable
+            emptyMessage="Nicio viză medicală înregistrată."
+            head={(
+              <>
+                <th className="px-4 py-3 font-medium">Tip</th>
+                <th className="px-4 py-3 font-medium">Data obținerii</th>
+                {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
+              </>
+            )}
+            rows={athlete.medical_visas.map((v) => (
+              <tr key={v.id}>
+                <td className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2"><Award className="h-3.5 w-3.5 text-[#00334d]/60" /> Viză medicală</span>
+                  <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
                   {canReview && v.status === 'pending' && (
                     <ReviewButtons
                       busy={reviewBusyKey === `medical-visa-${v.id}`}
@@ -840,35 +839,84 @@ export default function AthleteDetailPage({ showSeo = true }) {
                       onReject={() => reviewItem('medical-visa', v.id, false)}
                     />
                   )}
-                </li>
-              ))}
-            </ul>
-          )}
+                </td>
+                <td className="px-4 py-3 text-[#00334d]/60">{formatDate(v.issued_date)}</td>
+                {(isSelf || canReview) && (
+                  <td className="px-4 py-3">
+                    <StatusBadge status={v.status} />
+                    {v.status === 'rejected' && v.admin_notes && <p className="mt-1 text-xs text-[#00334d]/60">{v.admin_notes}</p>}
+                  </td>
+                )}
+              </tr>
+            ))}
+            cards={athlete.medical_visas.map((v) => (
+              <li key={v.id} className="flex flex-col gap-1 rounded-lg border border-[#dce0e5] px-4 py-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex items-center gap-2"><Award className="h-3.5 w-3.5 text-[#00334d]/60" /> Viză medicală</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
+                    {(isSelf || canReview) && <StatusBadge status={v.status} />}
+                  </div>
+                </div>
+                {(isSelf || canReview) && v.status === 'rejected' && v.admin_notes && <p className="text-xs text-[#00334d]/60">{v.admin_notes}</p>}
+                <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
+                {canReview && v.status === 'pending' && (
+                  <ReviewButtons
+                    busy={reviewBusyKey === `medical-visa-${v.id}`}
+                    onApprove={() => reviewItem('medical-visa', v.id, true)}
+                    onReject={() => reviewItem('medical-visa', v.id, false)}
+                  />
+                )}
+              </li>
+            ))}
+          />
         </div>
       )}
 
       {tab === 'vize' && (
-        athlete.annual_visas.length === 0 ? <EmptyTab message="Nicio viză anuală înregistrată." /> : (
-          <ul className="flex flex-col gap-2">
-            {athlete.annual_visas.map((v) => (
-              <li key={v.id} className="flex flex-col gap-1 rounded-lg border border-[#dce0e5] px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <span>Viză anuală</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
-                  {(isSelf || canReview) && (
-                    <Badge variant={v.status === 'approved' ? 'default' : 'outline'}>
-                      {RESULT_STATUS_LABELS[v.status] || v.status}
-                    </Badge>
+        <div className="flex flex-col gap-4">
+          <ResponsiveTable
+            emptyMessage="Nicio viză anuală înregistrată."
+            head={(
+              <>
+                <th className="px-4 py-3 font-medium">Tip</th>
+                <th className="px-4 py-3 font-medium">Data obținerii</th>
+                {(isSelf || canReview) && <th className="px-4 py-3 font-medium">Status</th>}
+              </>
+            )}
+            rows={athlete.annual_visas.map((v) => (
+              <tr key={v.id}>
+                <td className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2"><Award className="h-3.5 w-3.5 text-[#00334d]/60" /> Viză anuală</span>
+                  <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
+                  {canReview && v.status === 'pending' && (
+                    <ReviewButtons
+                      busy={reviewBusyKey === `annual-visa-${v.id}`}
+                      onApprove={() => reviewItem('annual-visa', v.id, true)}
+                      onReject={() => reviewItem('annual-visa', v.id, false)}
+                    />
                   )}
+                </td>
+                <td className="px-4 py-3 text-[#00334d]/60">{formatDate(v.issued_date)}</td>
+                {(isSelf || canReview) && (
+                  <td className="px-4 py-3">
+                    <StatusBadge status={v.status} />
+                    {v.status === 'rejected' && v.admin_notes && <p className="mt-1 text-xs text-[#00334d]/60">{v.admin_notes}</p>}
+                  </td>
+                )}
+              </tr>
+            ))}
+            cards={athlete.annual_visas.map((v) => (
+              <li key={v.id} className="flex flex-col gap-1 rounded-lg border border-[#dce0e5] px-4 py-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex items-center gap-2"><Award className="h-3.5 w-3.5 text-[#00334d]/60" /> Viză anuală</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[#00334d]/60">{formatDate(v.issued_date)}</span>
+                    {(isSelf || canReview) && <StatusBadge status={v.status} />}
+                  </div>
                 </div>
-                {(isSelf || canReview) && v.status === 'rejected' && v.admin_notes && (
-                  <p className="text-xs text-[#00334d]/60">{v.admin_notes}</p>
-                )}
-                {canReview && v.certificate_image && (
-                  <a href={v.certificate_image} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
-                    Vezi documentul
-                  </a>
-                )}
+                {(isSelf || canReview) && v.status === 'rejected' && v.admin_notes && <p className="text-xs text-[#00334d]/60">{v.admin_notes}</p>}
+                <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
                 {canReview && v.status === 'pending' && (
                   <ReviewButtons
                     busy={reviewBusyKey === `annual-visa-${v.id}`}
@@ -878,12 +926,14 @@ export default function AthleteDetailPage({ showSeo = true }) {
                 )}
               </li>
             ))}
-          </ul>
-        )
+          />
+        </div>
       )}
 
       {tab === 'poze' && <GalleryTab athleteId={athlete.id} />}
       </div>
+
+      <Lightbox image={certificatePreview} onClose={() => setCertificatePreview(null)} />
     </div>
   );
 }

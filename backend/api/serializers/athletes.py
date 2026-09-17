@@ -240,8 +240,17 @@ class AthleteSerializer(serializers.ModelSerializer):
         # Add computed properties
         representation['can_edit_profile'] = instance.can_edit_profile
         representation['can_add_results'] = instance.can_add_results
-        
+
         return representation
+
+    def validate(self, attrs):
+        # Same rule as AthleteProfileSerializer's self-service edit - an
+        # admin/coach editing someone else's roles is still bound by it.
+        is_coach = attrs.get('is_coach', getattr(self.instance, 'is_coach', False))
+        is_instructor = attrs.get('is_instructor', getattr(self.instance, 'is_instructor', False))
+        if is_coach and is_instructor:
+            raise serializers.ValidationError('Un sportiv nu poate fi simultan antrenor și instructor.')
+        return attrs
 
 class CoachSimpleSerializer(serializers.ModelSerializer):
     """Minimal serializer used by the frontend when populating coach/examiner selects."""

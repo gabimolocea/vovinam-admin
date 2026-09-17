@@ -239,10 +239,6 @@ function InfoRow({ label, value }) {
   );
 }
 
-function EmptyTab({ message }) {
-  return <p className="py-6 text-center text-sm text-muted-foreground">{message}</p>;
-}
-
 /** One competition level's column of 3 medal icons (gold/silver/bronze),
  * label above the icons - mirrors the public profile's own hero. */
 function MedalGroup({ label, medals, ribbonColors }) {
@@ -1478,6 +1474,7 @@ export default function AthleteDetail() {
           <InfoRow label="Roluri" value={[athlete.is_instructor && 'Instructor', athlete.is_coach && 'Antrenor', athlete.is_referee && refereeLabel(athlete)].filter(Boolean).join(', ') || 'Sportiv'} />
           {canReview && (
             <>
+              <InfoRow label="Email" value={athlete.email} />
               <InfoRow label="CNP" value={athlete.cnp} />
               <InfoRow label="Serie legitimație" value={athlete.license_series} />
               <InfoRow label="Telefon" value={athlete.mobile_number} />
@@ -1502,11 +1499,9 @@ export default function AthleteDetail() {
                   <Plus className="h-4 w-4" /> Adaugă rezultat
                 </Button>
               )}
-              {results.length === 0 ? (
-                <EmptyTab message="Niciun rezultat înregistrat." />
-              ) : (
-                <ResponsiveTable
-                  head={(
+              <ResponsiveTable
+                emptyMessage="Niciun rezultat înregistrat."
+                head={(
                     <>
                       <th className="px-4 py-3 font-medium">Competiție</th>
                       <th className="px-4 py-3 font-medium">Categorie</th>
@@ -1559,7 +1554,6 @@ export default function AthleteDetail() {
                     </li>
                   ))}
                 />
-              )}
             </>
           )}
 
@@ -1580,10 +1574,8 @@ export default function AthleteDetail() {
               <Plus className="h-4 w-4" /> Adaugă grad
             </Button>
           )}
-          {(athlete.grade_history || []).length === 0 ? (
-            <EmptyTab message="Niciun grad înregistrat." />
-          ) : (
-            <ResponsiveTable
+          <ResponsiveTable
+              emptyMessage="Niciun grad înregistrat."
               head={(
                 <>
                   <th className="px-4 py-3 font-medium">Grad</th>
@@ -1634,7 +1626,6 @@ export default function AthleteDetail() {
                 </li>
               ))}
             />
-          )}
         </div>
       )}
 
@@ -1645,10 +1636,8 @@ export default function AthleteDetail() {
               <Plus className="h-4 w-4" /> Adaugă participare
             </Button>
           )}
-          {(athlete.seminars || []).length === 0 ? (
-            <EmptyTab message="Nicio participare la seminarii." />
-          ) : (
-            <ResponsiveTable
+          <ResponsiveTable
+              emptyMessage="Nicio participare la seminarii."
               head={(
                 <>
                   <th className="px-4 py-3 font-medium">Eveniment</th>
@@ -1689,7 +1678,6 @@ export default function AthleteDetail() {
                 </li>
               ))}
             />
-          )}
         </div>
       )}
 
@@ -1700,10 +1688,8 @@ export default function AthleteDetail() {
               <Plus className="h-4 w-4" /> Adaugă viză medicală
             </Button>
           )}
-          {(athlete.medical_visas || []).length === 0 ? (
-            <EmptyTab message="Nicio viză medicală înregistrată." />
-          ) : (
-            <ResponsiveTable
+          <ResponsiveTable
+              emptyMessage="Nicio viză medicală înregistrată."
               head={(
                 <>
                   <th className="px-4 py-3 font-medium">Tip</th>
@@ -1744,7 +1730,6 @@ export default function AthleteDetail() {
                 </li>
               ))}
             />
-          )}
         </div>
       )}
 
@@ -1755,10 +1740,8 @@ export default function AthleteDetail() {
               <Plus className="h-4 w-4" /> Adaugă viză anuală
             </Button>
           )}
-          {(athlete.annual_visas || []).length === 0 ? (
-            <EmptyTab message="Nicio viză anuală înregistrată." />
-          ) : (
-            <ResponsiveTable
+          <ResponsiveTable
+              emptyMessage="Nicio viză anuală înregistrată."
               head={(
                 <>
                   <th className="px-4 py-3 font-medium">Tip</th>
@@ -1799,7 +1782,6 @@ export default function AthleteDetail() {
                 </li>
               ))}
             />
-          )}
         </div>
       )}
 
