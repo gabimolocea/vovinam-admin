@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth, notificationAPI } from '@shared';
 import { clubAPI, MEDIA_BASE_URL } from '@shared/lib/api';
 import { withSsoHandoff } from '@shared/lib/sso';
@@ -177,13 +177,14 @@ function BottomNav({ navItems }) {
 
 function SidebarFooter() {
   const { logout } = useAuth();
-  const navigate = useNavigate();
 
   async function handleLogout() {
     await logout();
-    // No login page of this app's own - the root route redirects out to
-    // the public site's /cont once unauthenticated (see App.jsx).
-    navigate('/');
+    // No login page of this app's own, and nothing left here to come back
+    // to once signed out - send them to the public site's homepage rather
+    // than bouncing through its /cont login page (see App.jsx's own
+    // redirect for an unauthenticated direct visit).
+    window.location.href = PUBLIC_SITE_URL;
   }
 
   return (

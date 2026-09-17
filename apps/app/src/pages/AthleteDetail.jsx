@@ -1163,7 +1163,9 @@ export default function AthleteDetail() {
   // the one place every role always lands on first.
   async function handleLogout() {
     await logout();
-    navigate('/');
+    // Send them to the public site's homepage rather than bouncing through
+    // its /cont login page - same as the sidebar's own logout.
+    window.location.href = PUBLIC_SITE_URL;
   }
 
   const [accountBusy, setAccountBusy] = useState(false);

@@ -138,7 +138,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      <NextEventSection event={nextEvent} />
+      {loading ? (
+        <div className="mx-auto w-full max-w-7xl px-4 py-6">
+          <Skeleton className="h-72 w-full rounded-2xl" />
+        </div>
+      ) : (
+        <NextEventSection event={nextEvent} />
+      )}
 
       <section className="pb-12 pt-12 sm:pb-16 sm:pt-16">
         <div className="mb-4 flex flex-wrap items-center gap-6">
