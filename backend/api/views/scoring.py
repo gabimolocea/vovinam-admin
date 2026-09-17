@@ -24,6 +24,7 @@ from django.db import IntegrityError
 
 from ._common import (
     _compute_video_offset_ms,
+    _event_operational_lock_response,
     _is_category_assigned_referee,
     _log_category_score_event,
     _resolve_recording_session,
@@ -656,8 +657,18 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
     def approve(self, request, pk=None):
         """Admin action to approve a score"""
         score = self.get_object()
+        # Approving now actually writes CategoryAthlete/CategoryTeam.place
+        # and the category's award fields (previously a silent no-op) - so
+        # doing it while the event is locked for local/LAN operation risks
+        # having that write clobbered right back to None by the results
+        # import that follows the event, since that import overwrites
+        # unconditionally. Every other operational mutation on a locked
+        # event is already blocked the same way (see _common.py).
+        locked = _event_operational_lock_response(getattr(score.category, 'event', None))
+        if locked is not None:
+            return locked
         serializer = CategoryScoreApprovalSerializer(data=request.data)
-        
+
         if serializer.is_valid():
             notes = serializer.validated_data.get('notes', '')
             score.approve(request.user, notes)

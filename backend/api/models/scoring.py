@@ -29,6 +29,9 @@ from .competitions import (
     Category,
     CategoryAthlete,
     CategoryTeam,
+    SoloCategory,
+    TeamCategory,
+    FightCategory,
 )
 from .teams import Team
 class CategoryRefereeScore(models.Model):
@@ -422,12 +425,17 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
         with transaction.atomic():
             # Perform the transition without notifying yet; award/team
             # creation must succeed first so we never notify about a
-            # change that gets rolled back.
+            # change that gets rolled back. _transition_status's save()
+            # already runs _update_category_awards_text_only() below (the
+            # status-changed-to-approved check in save()), so this only
+            # needs to additionally create/enroll the team for a team
+            # result - save() alone can't do that, since the team's
+            # CategoryTeam through-row shouldn't be created before the
+            # result is actually approved.
             self._transition_status('approved', admin_user, notes)
 
-            # Auto-populate Category awards if placement is claimed
-            if self.submitted_by_athlete and self.placement_claimed:
-                self._update_category_awards()
+            if self.submitted_by_athlete and self.placement_claimed and self.type == 'teams':
+                self._create_or_update_team()
 
         # Notify only after the transaction has committed successfully.
         self._notify_result_status('approved', admin_user, notes)
@@ -459,49 +467,66 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
             self._award_team = team
         return self._award_team
     
+    # Maps an athlete's self-declared placement onto the numeric `place`
+    # stored on their CategoryAthlete/CategoryTeam enrollment row - the
+    # field the admin's "Sportivi"/"Echipe" inline actually displays and
+    # edits, as distinct from the Category's own first/second/third_place
+    # award fields set below.
+    PLACEMENT_TO_PLACE = {'1st': 1, '2nd': 2, '3rd': 3}
+
+    # `self.category` is a FK to the base `Category` model, so it's always
+    # a plain `Category` instance - never the SoloCategory/FightCategory/
+    # TeamCategory subclass whose table actually holds the
+    # first/second/third_place(_team) columns. Assigning those fields on
+    # the base instance was a silent no-op (nothing to persist them to);
+    # re-fetch as the concrete subclass so the save below has somewhere to
+    # go.
+    CATEGORY_SUBCLASS_BY_TYPE = {'solo': SoloCategory, 'fight': FightCategory, 'teams': TeamCategory}
+
     def _update_category_awards_text_only(self):
         """Update only the category text fields without creating teams"""
         if not self.category or not self.placement_claimed:
             return
-            
+
+        subclass = self.CATEGORY_SUBCLASS_BY_TYPE.get(self.type)
         category = self.category
+        if subclass:
+            try:
+                category = subclass.objects.get(pk=self.category_id)
+            except subclass.DoesNotExist:
+                pass
         placement = self.placement_claimed.lower().replace(' place', '').strip()
-        
+        place_number = self.PLACEMENT_TO_PLACE.get(placement)
+
         if self.type == 'teams' and self.team_members.exists():
-            # Team result - create/get team and update ForeignKey fields
+            # Team result - create/get team and update ForeignKey fields.
+            # The enrolled_categories through-row (CategoryTeam) doesn't
+            # exist yet here - it's only created by _create_or_update_team,
+            # which runs on approval - so its `place` is set there instead.
             team = self._get_or_create_team()
-            
+
             if placement == '1st':
                 category.first_place_team = team
-            elif placement == '2nd':  
+            elif placement == '2nd':
                 category.second_place_team = team
             elif placement == '3rd':
                 category.third_place_team = team
         else:
             # Individual result - update ForeignKey fields for all category types
-            self._ensure_athlete_enrolled()
-            
+            category_athlete = self._ensure_athlete_enrolled()
+            if place_number and category_athlete.place != place_number:
+                category_athlete.place = place_number
+                category_athlete.save(update_fields=['place'])
+
             if placement == '1st':
                 category.first_place = self.athlete
             elif placement == '2nd':
                 category.second_place = self.athlete
             elif placement == '3rd':
                 category.third_place = self.athlete
-                
+
         category.save()
 
-    def _update_category_awards(self):
-        """Update the Category model with the approved award placement and create teams"""
-        if not self.category or not self.placement_claimed:
-            return
-            
-        # First update the text fields
-        self._update_category_awards_text_only()
-        
-        # Then create team objects for team results
-        if self.type == 'teams' and self.team_members.exists():
-            self._create_or_update_team()
-    
     def _create_or_update_team(self):
         """
         Get/create the Team for this result's members and ensure it is
@@ -514,22 +539,25 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
 
         team = self._get_or_create_team()
 
-        CategoryTeam.objects.get_or_create(category=self.category, team=team)
+        category_team, _created = CategoryTeam.objects.get_or_create(category=self.category, team=team)
+        if self.placement_claimed:
+            placement = self.placement_claimed.lower().replace(' place', '').strip()
+            place_number = self.PLACEMENT_TO_PLACE.get(placement)
+            if place_number and category_team.place != place_number:
+                category_team.place = place_number
+                category_team.save(update_fields=['place'])
 
         return team
     
     def _ensure_athlete_enrolled(self):
-        """Ensure the athlete is enrolled in the category before awarding placement"""
-        try:
-            # Check if athlete is already enrolled
-            CategoryAthlete.objects.get(category=self.category, athlete=self.athlete)
-        except CategoryAthlete.DoesNotExist:
-            # Enroll the athlete in the category
-            CategoryAthlete.objects.create(
-                category=self.category,
-                athlete=self.athlete
-                # weight can be added later if needed
-            )
+        """Ensure the athlete is enrolled in the category before awarding
+        placement, and return their enrollment row either way."""
+        category_athlete, _created = CategoryAthlete.objects.get_or_create(
+            category=self.category,
+            athlete=self.athlete,
+            # weight can be added later if needed
+        )
+        return category_athlete
     
     @classmethod
     def create_category_if_needed(cls, competition, name, category_type='solo', gender='mixt', group=None):
