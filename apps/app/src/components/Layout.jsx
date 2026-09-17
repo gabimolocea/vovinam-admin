@@ -28,7 +28,10 @@ export default function Layout() {
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         <Sidebar />
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {/* Extra bottom padding below `lg` clears the fixed bottom tab
+              bar in Sidebar.jsx so the last bit of page content isn't
+              hidden behind it. */}
+          <div className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:py-8">
             <Outlet />
           </div>
         </main>
