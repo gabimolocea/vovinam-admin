@@ -27,6 +27,16 @@ export function isApprovedAthlete(user) {
   return user?.role !== 'supporter' && !!user?.athlete && user.athlete.status === 'approved' && !user.athlete.is_coach;
 }
 
+/** True for an athlete/coach account still awaiting admin approval - sent
+ * to the app too (unlike rejected/revision_required, which stay on the
+ * public site's onboarding flow instead): their own AthleteDetail edit
+ * rights don't depend on approval status, so there's no reason to make
+ * them wait to start filling in results/grades/etc, they just see a
+ * pending-approval banner there instead (see apps/app's Layout.jsx). */
+export function isPendingMember(user) {
+  return user?.role !== 'supporter' && !!user?.athlete && user.athlete.status === 'pending';
+}
+
 /** Small circular avatar - the athlete's profile photo when set, otherwise
  * a plain person icon in a tinted circle. Also used by Layout.jsx for the
  * mobile closed-state top bar icon. */
@@ -68,6 +78,15 @@ export default function AccountNavItem() {
       <a href={withSsoHandoff(APP_URL)} className="site-utility-link inline-flex items-center gap-1.5">
         <AccountAvatar user={user} />
         Panou sportiv
+      </a>
+    );
+  }
+
+  if (isAuthenticated && DASHBOARDS_DEPLOYED && isPendingMember(user)) {
+    return (
+      <a href={withSsoHandoff(APP_URL)} className="site-utility-link inline-flex items-center gap-1.5">
+        <AccountAvatar user={user} />
+        {user.athlete.is_coach ? 'Panou antrenor' : 'Panou sportiv'}
       </a>
     );
   }

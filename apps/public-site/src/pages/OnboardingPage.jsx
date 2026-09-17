@@ -7,7 +7,7 @@ import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { ATHLETE_STATUS_LABELS } from '../lib/athletes';
 import { withSsoHandoff } from '@shared/lib/sso';
-import { isApprovedCoach, isApprovedAthlete, APP_URL, DASHBOARDS_DEPLOYED } from '../components/AccountNavItem';
+import { isApprovedCoach, isApprovedAthlete, isPendingMember, APP_URL, DASHBOARDS_DEPLOYED } from '../components/AccountNavItem';
 
 /** Account management (profile, results/grades/etc, notifications,
  * password) has moved entirely to the coach/athlete dashboards - an
@@ -91,12 +91,19 @@ export default function OnboardingPage() {
   // Account management (profile, results/grades/etc, notifications,
   // password) has moved entirely to the coach/athlete dashboards - an
   // approved account is sent straight there instead of landing on /cont.
-  if (DASHBOARDS_DEPLOYED && (isApprovedCoach(user) || isApprovedAthlete(user))) return <ExternalRedirect url={withSsoHandoff(APP_URL)} />;
+  // A still-pending one goes there too: their own edit rights don't depend
+  // on approval status (see AthleteDetail.jsx/_can_review on the backend),
+  // so there's no reason to make them wait idle - they just see a
+  // pending-approval banner there instead of the message below.
+  if (DASHBOARDS_DEPLOYED && (isApprovedCoach(user) || isApprovedAthlete(user) || isPendingMember(user))) {
+    return <ExternalRedirect url={withSsoHandoff(APP_URL)} />;
+  }
 
-  // Everyone else (a supporter, or an athlete/coach whose profile isn't
-  // approved yet) has nothing to manage here yet - just their account
-  // status and a way to log out. No shortcuts, no settings tabs: those only
-  // make sense once there's a dashboard to actually use them from.
+  // Everyone else (a supporter, a rejected/revision-required athlete, or
+  // anyone pending while the dashboards aren't deployed) has nothing to
+  // manage here yet - just their account status and a way to log out. No
+  // shortcuts, no settings tabs: those only make sense once there's a
+  // dashboard to actually use them from.
   return (
     <div className="flex flex-col">
       <Seo title="Contul meu" path="/cont" noindex />
