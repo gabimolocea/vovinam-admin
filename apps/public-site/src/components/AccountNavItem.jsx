@@ -37,6 +37,15 @@ export function isPendingMember(user) {
   return user?.role !== 'supporter' && !!user?.athlete && user.athlete.status === 'pending';
 }
 
+/** True for a federation admin account - no athlete record of their own
+ * (see apps/app's App.jsx RoleIndexRedirect), so none of the checks above
+ * ever match them. Without this, an admin signing in at /cont had no
+ * redirect into the dashboard app at all and got stuck on the generic
+ * "supporter account" status screen. */
+export function isAdmin(user) {
+  return user?.role === 'admin';
+}
+
 /** Small circular avatar - the athlete's profile photo when set, otherwise
  * a plain person icon in a tinted circle. Also used by Layout.jsx for the
  * mobile closed-state top bar icon. */
@@ -87,6 +96,15 @@ export default function AccountNavItem() {
       <a href={withSsoHandoff(APP_URL)} className="site-utility-link inline-flex items-center gap-1.5">
         <AccountAvatar user={user} />
         {user.athlete.is_coach ? 'Panou antrenor' : 'Panou sportiv'}
+      </a>
+    );
+  }
+
+  if (isAuthenticated && DASHBOARDS_DEPLOYED && isAdmin(user)) {
+    return (
+      <a href={withSsoHandoff(APP_URL)} className="site-utility-link inline-flex items-center gap-1.5">
+        <AccountAvatar user={user} />
+        Panou admin
       </a>
     );
   }

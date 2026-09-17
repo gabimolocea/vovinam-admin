@@ -3,7 +3,7 @@ import { Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { ChevronRight, Menu, User, X } from 'lucide-react';
 import { useAuth } from '@shared';
 import { withSsoHandoff } from '@shared/lib/sso';
-import AccountNavItem, { AccountAvatar, isApprovedCoach, isApprovedAthlete, isPendingMember, APP_URL, DASHBOARDS_DEPLOYED } from './AccountNavItem';
+import AccountNavItem, { AccountAvatar, isApprovedCoach, isApprovedAthlete, isPendingMember, isAdmin, APP_URL, DASHBOARDS_DEPLOYED } from './AccountNavItem';
 import CookieConsentBanner from './CookieConsentBanner';
 import { trackPageview } from '../lib/analytics';
 
@@ -270,6 +270,14 @@ export default function Layout() {
               <a
                 href={withSsoHandoff(APP_URL)}
                 aria-label={user.athlete.is_coach ? 'Panou antrenor' : 'Panou sportiv'}
+                className="-mr-4 flex w-14 shrink-0 items-center justify-center text-foreground"
+              >
+                <AccountAvatar user={user} size="h-7 w-7" />
+              </a>
+            ) : isAuthenticated && DASHBOARDS_DEPLOYED && isAdmin(user) ? (
+              <a
+                href={withSsoHandoff(APP_URL)}
+                aria-label="Panou admin"
                 className="-mr-4 flex w-14 shrink-0 items-center justify-center text-foreground"
               >
                 <AccountAvatar user={user} size="h-7 w-7" />

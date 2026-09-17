@@ -7,7 +7,7 @@ import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { ATHLETE_STATUS_LABELS } from '../lib/athletes';
 import { withSsoHandoff } from '@shared/lib/sso';
-import { isApprovedCoach, isApprovedAthlete, isPendingMember, APP_URL, DASHBOARDS_DEPLOYED } from '../components/AccountNavItem';
+import { isApprovedCoach, isApprovedAthlete, isPendingMember, isAdmin, APP_URL, DASHBOARDS_DEPLOYED } from '../components/AccountNavItem';
 
 /** Account management (profile, results/grades/etc, notifications,
  * password) has moved entirely to the coach/athlete dashboards - an
@@ -95,7 +95,7 @@ export default function OnboardingPage() {
   // on approval status (see AthleteDetail.jsx/_can_review on the backend),
   // so there's no reason to make them wait idle - they just see a
   // pending-approval banner there instead of the message below.
-  if (DASHBOARDS_DEPLOYED && (isApprovedCoach(user) || isApprovedAthlete(user) || isPendingMember(user))) {
+  if (DASHBOARDS_DEPLOYED && (isApprovedCoach(user) || isApprovedAthlete(user) || isPendingMember(user) || isAdmin(user))) {
     return <ExternalRedirect url={withSsoHandoff(APP_URL)} />;
   }
 
