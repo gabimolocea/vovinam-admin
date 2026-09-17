@@ -15,7 +15,7 @@ import MedalIcon from '../components/MedalIcon';
 import GalleryTab from '../components/GalleryTab';
 import Lightbox from '../components/Lightbox';
 import ResponsiveTable from '../components/ResponsiveTable';
-import { ArrowLeft, Award, Check, ChevronLeft, ChevronRight, ExternalLink, Pencil, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Award, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, LogOut, Pencil, Plus, Sparkles, X } from 'lucide-react';
 
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
 
@@ -996,7 +996,7 @@ function PhotoPreviewDialog({ preview, uploading, error, onConfirm, onCancel }) 
 export default function AthleteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const isSelf = user?.athlete_id != null && String(user.athlete_id) === String(id);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = TABS.some((t) => t.key === searchParams.get('tab')) ? searchParams.get('tab') : 'info';
@@ -1046,6 +1046,15 @@ export default function AthleteDetail() {
   // Everything else canReview gates (seeing CNP/phone, editing, adding a
   // result/grade/etc) still applies to a coach viewing their own profile.
   const canApprove = canReview && !isSelf;
+
+  // Below `lg`, the sidebar's own bottom tab bar has no room for a
+  // "Deconectare" tab anymore (nav items + a direct site link already fill
+  // it) - it lives here instead, on your own profile only, since that's
+  // the one place every role always lands on first.
+  async function handleLogout() {
+    await logout();
+    navigate('/');
+  }
 
   async function reviewPhoto(approve) {
     setReviewBusyKey('photo');
@@ -1168,9 +1177,18 @@ export default function AthleteDetail() {
       {reviewError && <Alert variant="destructive">{reviewError}</Alert>}
 
       {/* Hero */}
-      <div className="flex flex-col items-center gap-4 rounded-lg bg-sidebar px-6 py-6 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between">
+      <div className="relative flex flex-col items-center gap-4 rounded-lg bg-sidebar px-6 py-6 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between">
+        {isSelf && (
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-white transition-colors hover:bg-white/20 lg:hidden"
+          >
+            <LogOut className="h-3.5 w-3.5" /> Deconectare
+          </button>
+        )}
         <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
-          <div className="relative aspect-[3/2] w-40 shrink-0 bg-white/10 sm:w-48">
+          <div className="relative aspect-[3/2] w-40 shrink-0 bg-white/10 sm:w-52">
             {isPhotoPending && athlete.pending_profile_image ? (
               canReview ? (
                 <button
@@ -1192,8 +1210,11 @@ export default function AthleteDetail() {
               </div>
             )}
             {isPhotoPending && athlete.pending_profile_image && (
-              <span className="absolute inset-x-0 top-0 rounded-t-lg bg-black/60 py-0.5 text-center text-[10px] font-bold uppercase tracking-wide text-white">
-                Aștept aprobarea
+              <span
+                className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white"
+                title="Poză în așteptarea aprobării"
+              >
+                <Clock className="h-3 w-3" />
               </span>
             )}
             {athlete.club?.logo && (

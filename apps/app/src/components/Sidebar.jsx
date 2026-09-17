@@ -1,16 +1,14 @@
-import { forwardRef, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth, notificationAPI } from '@shared';
 import { clubAPI, MEDIA_BASE_URL } from '@shared/lib/api';
 import { withSsoHandoff } from '@shared/lib/sso';
 import Logo from '@shared/components/Logo';
-import { Sheet, SheetContent } from './ui';
-import { Trophy, Building2, User, Bell, LogOut, X, ExternalLink, ShieldCheck, MoreHorizontal } from 'lucide-react';
+import { Trophy, Building2, User, Bell, LogOut, ExternalLink, ShieldCheck } from 'lucide-react';
 
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
 const COMPETITION_ADMIN_URL = import.meta.env.VITE_COMPETITION_ADMIN_URL || 'http://localhost:5191';
 const POLL_INTERVAL_MS = 60000;
-const ACTIVE_GOLD = '#edb654';
 
 function imgUrl(path) {
   if (!path) return null;
@@ -130,66 +128,16 @@ function NavLinks({ navItems, onNavigate }) {
   );
 }
 
-/** Full-width rows on the dark drawer background, bold uppercase text with
- * a hairline divider between rows - same visual language as the public
- * site's own mobile menu (.site-mobile-row), just with an icon per row
- * since this app's nav already has them. Active/hover only changes the
- * text/icon color (to the same gold), it doesn't fill the row - matching
- * the public site exactly rather than the desktop sidebar's filled style. */
-function MobileNavLinks({ navItems, onNavigate }) {
-  const unreadCount = useUnreadCount();
-
-  return (
-    <nav className="flex flex-col" aria-label="Navigație mobilă">
-      {navItems.map(({ to, label, icon: Icon, end, badgeKey }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={end}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            `flex items-center gap-3 border-b border-white/10 px-4 py-4 text-base font-bold uppercase tracking-wide transition-colors ${
-              isActive ? '' : 'text-white'
-            }`
-          }
-          style={({ isActive }) => ({ color: isActive ? ACTIVE_GOLD : undefined })}
-        >
-          <Icon className="h-5 w-5 shrink-0" />
-          {label}
-          {badgeKey === 'notifications' && unreadCount > 0 && (
-            <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-bold text-destructive-foreground">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </NavLink>
-      ))}
-      {navItems.some((item) => item.to === '/cluburi') && (
-        <a
-          href={COMPETITION_ADMIN_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 border-b border-white/10 px-4 py-4 text-base font-bold uppercase tracking-wide text-white"
-        >
-          <Trophy className="h-5 w-5 shrink-0" />
-          Competiții
-        </a>
-      )}
-    </nav>
-  );
-}
-
-/** Fixed tab bar on mobile/tablet (below `lg`) - icon + label, same role
- * nav items as the desktop sidebar, plus a trailing "Mai mult" tab that
- * opens the same drawer as before (MobileNavLinks + SidebarFooter: the
- * remaining role items again, "Vezi site-ul", "Deconectare", and for an
- * admin the external competition-admin link) rather than duplicating that
- * content into a second menu. */
-const BottomNav = forwardRef(function BottomNav({ navItems, moreOpen, onToggleMore }, ref) {
+/** Fixed tab bar on mobile/tablet (below `lg`) - icon + label, the role's
+ * own nav items, plus a trailing direct link out to the public site (no
+ * more drawer/overflow menu - "Deconectare" moved to the profile page's
+ * own hero instead, see AthleteDetail.jsx, since that's the only other
+ * thing that used to live behind it). */
+function BottomNav({ navItems }) {
   const unreadCount = useUnreadCount();
 
   return (
     <nav
-      ref={ref}
       className="fixed inset-x-0 bottom-0 z-[60] flex items-stretch border-t border-sidebar-border bg-sidebar text-sidebar-foreground lg:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       aria-label="Navigație principală"
@@ -214,56 +162,28 @@ const BottomNav = forwardRef(function BottomNav({ navItems, moreOpen, onToggleMo
           )}
         </NavLink>
       ))}
-      <button
-        type="button"
-        onClick={onToggleMore}
-        className={`flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors ${
-          moreOpen ? 'text-sidebar-accent' : 'text-sidebar-foreground/70 hover:text-sidebar-foreground'
-        }`}
-        aria-label={moreOpen ? 'Închide meniul' : 'Mai mult'}
-        aria-expanded={moreOpen}
+      <a
+        href={withSsoHandoff(PUBLIC_SITE_URL)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-bold uppercase tracking-wide text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground"
       >
-        {moreOpen ? <X className="h-5 w-5 shrink-0" /> : <MoreHorizontal className="h-5 w-5 shrink-0" />}
-        <span className="truncate">Mai mult</span>
-      </button>
+        <ExternalLink className="h-5 w-5 shrink-0" />
+        <span className="truncate">Site</span>
+      </a>
     </nav>
   );
-});
+}
 
-function SidebarFooter({ onNavigate, mobile = false }) {
+function SidebarFooter() {
   const { logout } = useAuth();
   const navigate = useNavigate();
 
   async function handleLogout() {
     await logout();
-    onNavigate?.();
     // No login page of this app's own - the root route redirects out to
     // the public site's /cont once unauthenticated (see App.jsx).
     navigate('/');
-  }
-
-  if (mobile) {
-    return (
-      <div className="flex flex-col">
-        <a
-          href={withSsoHandoff(PUBLIC_SITE_URL)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 border-b border-white/10 px-4 py-4 text-base font-bold uppercase tracking-wide text-white"
-        >
-          <Logo size={20} className="shrink-0" />
-          Vezi site-ul
-        </a>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-4 text-left text-base font-bold uppercase tracking-wide text-white"
-        >
-          <LogOut className="h-5 w-5 shrink-0" />
-          Deconectare
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -289,34 +209,16 @@ function SidebarFooter({ onNavigate, mobile = false }) {
   );
 }
 
-/** Desktop: fixed left sidebar. Mobile/tablet (below `lg`): a slim top
- * identification bar + a fixed bottom tab bar (icon+label per role nav
- * item, plus a trailing "Mai mult" tab) + a full-screen-style drawer with
- * the same nav content, opened from that tab, matching the public site's
- * own mobile menu look. Header widget and nav items both vary by role -
- * see useNavItems() above. */
+/** Desktop: fixed left sidebar. Mobile/tablet (below `lg`): just a fixed
+ * bottom tab bar (icon+label per role nav item, plus a direct link out to
+ * the public site) - no top bar, no drawer. Nav items vary by role - see
+ * useNavItems() above. */
 export default function Sidebar() {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [bottomNavHeight, setBottomNavHeight] = useState(0);
-  const bottomNavRef = useRef(null);
   const { user, isAdmin, isCoach } = useAuth();
   const athlete = user?.athlete;
   const club = useClubLogo(athlete?.club);
   const navItems = useNavItems({ isAdmin, isCoach });
   const fullName = athlete ? `${athlete.first_name || ''} ${athlete.last_name || ''}`.trim() : '';
-
-  // The drawer needs to stop exactly above the bottom tab bar (which stays
-  // visible/on top so its own "Mai mult" tab keeps working to close the
-  // menu) rather than covering it - measured rather than hardcoded since
-  // its height depends on safe-area-inset rendering.
-  useEffect(() => {
-    function updateHeight() {
-      if (bottomNavRef.current) setBottomNavHeight(bottomNavRef.current.offsetHeight);
-    }
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
-  }, []);
 
   // Header shows the club logo (same for a coach or a plain athlete - both
   // belong to a club) alongside the person's own name, not the club's name
@@ -326,21 +228,7 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* No standalone top bar below `lg` anymore - the bottom tab bar
-          covers navigation, and the desktop sidebar's own branding header
-          isn't rendered there (hidden lg:flex below) either. */}
-      <BottomNav ref={bottomNavRef} navItems={navItems} moreOpen={mobileOpen} onToggleMore={() => setMobileOpen((v) => !v)} />
-
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent
-          side="left"
-          className="h-auto w-full max-w-none overflow-y-auto border-none bg-[#071225] lg:hidden"
-          style={{ top: 0, bottom: bottomNavHeight }}
-        >
-          <MobileNavLinks navItems={navItems} onNavigate={() => setMobileOpen(false)} />
-          <SidebarFooter mobile onNavigate={() => setMobileOpen(false)} />
-        </SheetContent>
-      </Sheet>
+      <BottomNav navItems={navItems} />
 
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
