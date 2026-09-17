@@ -225,6 +225,7 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     cnp = serializers.SerializerMethodField()
     license_series = serializers.SerializerMethodField()
     license_number = serializers.SerializerMethodField()
+    license_image = serializers.SerializerMethodField()
     mobile_number = serializers.SerializerMethodField()
     address = serializers.SerializerMethodField()
     emergency_contact_name = serializers.SerializerMethodField()
@@ -237,7 +238,7 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
         fields = PublicAthleteSerializer.Meta.fields + [
             'date_of_birth', 'status', 'grade_history', 'results', 'seminars', 'annual_visas', 'medical_visas', 'can_edit',
             'profile_image_status', 'pending_profile_image', 'profile_image_admin_notes',
-            'cnp', 'license_series', 'license_number', 'mobile_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
+            'cnp', 'license_series', 'license_number', 'license_image', 'mobile_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
             'previous_experience', 'registered_date', 'expiration_date',
         ]
 
@@ -255,6 +256,9 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
 
     def get_license_number(self, obj):
         return self._reviewer_only(obj, obj.license_number)
+
+    def get_license_image(self, obj):
+        return self._reviewer_only(obj, _safe_file_url(obj.license_image))
 
     def get_mobile_number(self, obj):
         return self._reviewer_only(obj, obj.mobile_number)

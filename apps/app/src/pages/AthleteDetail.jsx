@@ -154,13 +154,28 @@ function StatusBadge({ status }) {
   return <Badge className={className}>{STATUS_LABELS[status] || status}</Badge>;
 }
 
-function ReviewButtons({ busy, onApprove, onReject }) {
+/** `light` is for placement directly on the dark hero background (see the
+ * photo-review usage below) - the default `bg-primary` is the exact same
+ * navy as that background (both `219 48% 17%`), so the approve button
+ * would otherwise render with no visible fill, just its icon and text. */
+function ReviewButtons({ busy, onApprove, onReject, light = false }) {
   return (
     <div className="mt-3 flex gap-2">
-      <Button type="button" disabled={busy} onClick={onApprove}>
+      <Button
+        type="button"
+        disabled={busy}
+        onClick={onApprove}
+        className={light ? 'bg-white text-sidebar hover:bg-white/90' : undefined}
+      >
         <Check className="h-4 w-4" /> Aprobă
       </Button>
-      <Button type="button" variant="outline" disabled={busy} onClick={onReject}>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={busy}
+        onClick={onReject}
+        className={light ? 'border-white/40 bg-transparent text-white hover:bg-white/10' : undefined}
+      >
         <X className="h-4 w-4" /> Respinge
       </Button>
     </div>
@@ -246,7 +261,7 @@ function InternationalMedalsPanel({ medals, ribbonColors }) {
  * contact, license, emergency contact). Coach-editable for their own club
  * roster (backend: AthleteViewSet.update() trusts a club coach the same as
  * an admin, no re-review needed). */
-function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
+function EditInfoDialog({ open, onOpenChange, athlete, onSaved, canManageRole }) {
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -270,6 +285,7 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
         license_number: athlete.license_number || '',
         emergency_contact_name: athlete.emergency_contact_name || '',
         emergency_contact_phone: athlete.emergency_contact_phone || '',
+        is_coach: athlete.is_coach || false,
       });
       setError('');
     }
@@ -284,7 +300,20 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
     setError('');
     setSaving(true);
     try {
-      await athleteAPI.update(athlete.id, form);
+      // The locked identity/license fields aren't shown once approved (see
+      // isApproved above) - don't resend their original values either, so a
+      // stale/malformed one already on the record (e.g. a missing
+      // date_of_birth) can't fail validation on a save that never touched it.
+      const payload = isApproved
+        ? {
+          mobile_number: form.mobile_number,
+          address: form.address,
+          emergency_contact_name: form.emergency_contact_name,
+          emergency_contact_phone: form.emergency_contact_phone,
+          is_coach: form.is_coach,
+        }
+        : form;
+      await athleteAPI.update(athlete.id, payload);
       onSaved();
       onOpenChange(false);
     } catch (err) {
@@ -350,6 +379,14 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved }) {
               <Label htmlFor="edit_address">Adresă</Label>
               <Textarea id="edit_address" rows={2} value={form.address} onChange={(e) => update('address', e.target.value)} />
             </div>
+            {canManageRole && (
+              <div className="sm:col-span-2">
+                <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+                  <Checkbox checked={form.is_coach} onCheckedChange={(checked) => update('is_coach', checked === true)} />
+                  Antrenor
+                </label>
+              </div>
+            )}
             {!isApproved && (
               <>
                 <div className="flex flex-col gap-1">
@@ -1262,7 +1299,7 @@ export default function AthleteDetail() {
             </a>
             {athlete.current_grade?.name && <BeltBadge grade={athlete.current_grade.name} />}
             {canApprove && isPhotoPending && (
-              <ReviewButtons busy={reviewBusyKey === 'photo'} onApprove={() => reviewPhoto(true)} onReject={() => reviewPhoto(false)} />
+              <ReviewButtons light busy={reviewBusyKey === 'photo'} onApprove={() => reviewPhoto(true)} onReject={() => reviewPhoto(false)} />
             )}
           </div>
         </div>
@@ -1283,6 +1320,20 @@ export default function AthleteDetail() {
             </Button>
           )}
           <InfoRow label="Status cont" value={<StatusBadge status={athlete.status} />} />
+          {athlete.license_image && (
+            <InfoRow
+              label="Legitimație"
+              value={(
+                <button
+                  type="button"
+                  onClick={() => setCertificatePreview({ image: imgUrl(athlete.license_image), alt_text: 'Legitimație' })}
+                  className="text-primary underline hover:text-primary/80"
+                >
+                  Vezi poza
+                </button>
+              )}
+            />
+          )}
           <InfoRow label="Club" value={athlete.club?.name} />
           <InfoRow label="Oraș" value={athlete.city?.name} />
           <InfoRow label="Data nașterii" value={fmtDate(athlete.date_of_birth)} />
@@ -1616,7 +1667,7 @@ export default function AthleteDetail() {
 
       {tab === 'poze' && <GalleryTab athleteId={athlete.id} />}
 
-      <EditInfoDialog open={editOpen} onOpenChange={setEditOpen} athlete={athlete} onSaved={load} />
+      <EditInfoDialog open={editOpen} onOpenChange={setEditOpen} athlete={athlete} onSaved={load} canManageRole={canApprove} />
       <AddResultDialog open={addResultOpen} onOpenChange={setAddResultOpen} athlete={athlete} onCreated={load} />
       <AddGradeDialog open={addGradeOpen} onOpenChange={setAddGradeOpen} athlete={athlete} onCreated={load} />
       <AddSeminarDialog open={addSeminarOpen} onOpenChange={setAddSeminarOpen} athlete={athlete} onCreated={load} />
