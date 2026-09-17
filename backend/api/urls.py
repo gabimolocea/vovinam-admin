@@ -137,7 +137,7 @@ urlpatterns = autocomplete_urlpatterns + [
     path('auth/profile-enhanced/', views.UserProfileView.as_view(), name='profile-enhanced'),
     path('onboarding/role/', views.OnboardingRoleView.as_view(), name='onboarding-role'),
     # legacy route removed: use /api/athletes/my-profile/ (provided by AthleteViewSet.my_profile)
-    path('admin-approvals/pending/', PendingApprovalsView.as_view(), name='pending-approvals'),
+    path('admin-approvals/list/', ApprovalsListView.as_view(), name='approvals-list'),
     
     # Reference data endpoints (non-conflicting with router)
     path('sports/', views.sports_list, name='sports-list'),

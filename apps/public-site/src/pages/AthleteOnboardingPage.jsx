@@ -60,10 +60,45 @@ export default function AthleteOnboardingPage() {
   const [ocrNotice, setOcrNotice] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [exampleZoomOpen, setExampleZoomOpen] = useState(false);
+  const [existingLicenseImage, setExistingLicenseImage] = useState(null);
+  const [prefillLoading, setPrefillLoading] = useState(false);
+
+  // A rejected/revision_required athlete reaches this same form to fix
+  // and resubmit their info, rather than a second copy of it - prefill
+  // from their existing (unapproved) profile instead of starting blank.
+  const isEditing = Boolean(user?.athlete);
 
   useEffect(() => {
     publicContentAPI.clubs.list().then((res) => setClubs(res.data ?? [])).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    setPrefillLoading(true);
+    athleteAPI.myProfileDetail().then(({ data }) => {
+      setForm({
+        first_name: data.first_name || '',
+        last_name: data.last_name || '',
+        date_of_birth: data.date_of_birth ? formatIsoToDisplay(data.date_of_birth) : '',
+        gender: data.gender || '',
+        mobile_number: data.mobile_number || '',
+        club: data.club?.id ? String(data.club.id) : '',
+        city: data.city?.id ? String(data.city.id) : '',
+        cnp: data.cnp || '',
+        nationality: data.nationality || 'Română',
+        license_series: data.license_series || '',
+        license_number: data.license_number || '',
+        registered_date: data.registered_date ? formatIsoToDisplay(data.registered_date) : '',
+        expiration_date: data.expiration_date ? formatIsoToDisplay(data.expiration_date) : '',
+        emergency_contact_name: data.emergency_contact_name || '',
+        emergency_contact_phone: data.emergency_contact_phone || '',
+      });
+      if (data.city) setSelectedCity(data.city);
+      if (data.license_image) setExistingLicenseImage(data.license_image);
+    }).catch(() => {
+      setError('Nu am putut încărca datele profilului tău. Completează-le din nou.');
+    }).finally(() => setPrefillLoading(false));
+  }, [isEditing]);
 
   // Revoke the previous object URL whenever the preview changes/unmounts,
   // so swapping the license photo doesn't leak blob URLs.
@@ -71,7 +106,7 @@ export default function AthleteOnboardingPage() {
     if (licenseImagePreview) URL.revokeObjectURL(licenseImagePreview);
   }, [licenseImagePreview]);
 
-  if (loading) {
+  if (loading || prefillLoading) {
     return (
       <div className="mx-auto flex w-full max-w-lg flex-col gap-6 pt-10 sm:pt-16">
         <Skeleton className="h-8 w-2/3" />
@@ -80,13 +115,13 @@ export default function AthleteOnboardingPage() {
     );
   }
   if (!user) return <Navigate to="/cont" replace />;
-  // Supporters never need this form, and an athlete/coach who already has
-  // a profile record shouldn't submit a second one. Gate on `user.athlete`
-  // itself rather than `user.profile_completed` - that flag can drift out
-  // of sync (e.g. an admin later deletes/rejects the profile), which would
-  // otherwise bounce the user straight back to /cont with no way to reach
-  // this form again.
-  if (user.role === 'supporter' || user.athlete) return <Navigate to="/cont" replace />;
+  // Supporters never need this form. An athlete/coach with an approved or
+  // still-pending profile shouldn't submit a second one, but a rejected or
+  // revision_required one reaches this same form in edit mode (see
+  // isEditing above) to fix their info and resubmit - anything else with
+  // an existing profile record bounces back to /cont.
+  const canEdit = user.athlete && ['rejected', 'revision_required'].includes(user.athlete.status);
+  if (user.role === 'supporter' || (user.athlete && !canEdit)) return <Navigate to="/cont" replace />;
 
   function clearFieldError(field) {
     setFieldErrors((errs) => (errs[field] ? { ...errs, [field]: false } : errs));
@@ -179,7 +214,10 @@ export default function AthleteOnboardingPage() {
       if (!form.license_number.trim()) errors.license_number = true;
       if (!displayToIso(form.registered_date)) errors.registered_date = true;
       if (!displayToIso(form.expiration_date)) errors.expiration_date = true;
-      if (!licenseImage) errors.license_image = true;
+      // Editing an existing (rejected/revision_required) profile already
+      // has a license photo on file - only require a fresh one when
+      // there's nothing to fall back to.
+      if (!licenseImage && !existingLicenseImage) errors.license_image = true;
     } else if (!licenseRequestDocument) {
       errors.license_request_document = true;
     }
@@ -222,7 +260,8 @@ export default function AthleteOnboardingPage() {
       } else if (licenseRequestDocument) {
         payload.append('license_request_document', licenseRequestDocument);
       }
-      await athleteAPI.createMyProfile(payload);
+      if (isEditing) await athleteAPI.updateMyProfile(payload);
+      else await athleteAPI.createMyProfile(payload);
       await refetchUser();
       navigate('/cont', { replace: true });
     } catch (err) {
@@ -238,6 +277,13 @@ export default function AthleteOnboardingPage() {
     <div className="mx-auto flex w-full max-w-lg flex-col gap-6 pt-10 sm:pt-16">
       <Seo title="Profil sportiv" path="/onboarding/sportiv" noindex />
       <h1 className="font-display text-3xl font-semibold leading-snug tracking-normal">Profil sportiv</h1>
+      {isEditing && (
+        <Alert>
+          {user.athlete.status === 'rejected'
+            ? 'Contul tău a fost respins. Corectează datele de mai jos și retrimite profilul spre aprobare.'
+            : 'Profilul tău are nevoie de completări. Corectează datele de mai jos și retrimite-l spre aprobare.'}
+        </Alert>
+      )}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <Alert variant="destructive">{error}</Alert>}
 
@@ -269,7 +315,10 @@ export default function AthleteOnboardingPage() {
 
         {isLicensed && (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="license_image">Poză legitimație<Req /></Label>
+            <Label htmlFor="license_image">Poză legitimație{!existingLicenseImage && <Req />}</Label>
+            {existingLicenseImage && !licenseImagePreview && (
+              <p className="text-xs text-muted-foreground">Ai deja o poză încărcată - alege una nouă doar dacă vrei să o înlocuiești.</p>
+            )}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
@@ -293,9 +342,9 @@ export default function AthleteOnboardingPage() {
                     onChange={handleLicenseImageChange}
                     className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                   />
-                  {licenseImagePreview ? (
+                  {licenseImagePreview || existingLicenseImage ? (
                     <img
-                      src={licenseImagePreview}
+                      src={licenseImagePreview || existingLicenseImage}
                       alt="Previzualizare legitimație"
                       className="pointer-events-none h-full w-auto rounded object-contain"
                     />
@@ -549,7 +598,7 @@ export default function AthleteOnboardingPage() {
         </div>
 
         <Button type="submit" disabled={busy}>
-          {busy ? 'Se trimite…' : 'Trimite profilul spre aprobare'}
+          {busy ? 'Se trimite…' : isEditing ? 'Retrimite profilul spre aprobare' : 'Trimite profilul spre aprobare'}
         </Button>
       </form>
 

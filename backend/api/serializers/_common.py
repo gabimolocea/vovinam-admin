@@ -233,13 +233,14 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     previous_experience = serializers.SerializerMethodField()
     registered_date = serializers.SerializerMethodField()
     expiration_date = serializers.SerializerMethodField()
+    nationality = serializers.SerializerMethodField()
 
     class Meta(PublicAthleteSerializer.Meta):
         fields = PublicAthleteSerializer.Meta.fields + [
             'date_of_birth', 'status', 'grade_history', 'results', 'seminars', 'annual_visas', 'medical_visas', 'can_edit',
             'profile_image_status', 'pending_profile_image', 'profile_image_admin_notes',
             'cnp', 'license_series', 'license_number', 'license_image', 'mobile_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
-            'previous_experience', 'registered_date', 'expiration_date',
+            'previous_experience', 'registered_date', 'expiration_date', 'nationality',
         ]
 
     def get_can_edit(self, obj):
@@ -271,6 +272,9 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
 
     def get_emergency_contact_phone(self, obj):
         return self._reviewer_only(obj, obj.emergency_contact_phone)
+
+    def get_nationality(self, obj):
+        return self._reviewer_only(obj, obj.nationality)
 
     def get_previous_experience(self, obj):
         return self._reviewer_only(obj, obj.previous_experience)

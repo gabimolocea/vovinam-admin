@@ -561,7 +561,14 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         # don't keep treating a previously-approved-then-rejected athlete as approved.
         self.approved_date = None
         self.approved_by = None
-        self._transition_status('rejected', admin_user, reason, set_notes=bool(reason))
+        self._transition_status(
+            'rejected', admin_user, reason, set_notes=bool(reason),
+            on_success=lambda obj, status, actor, notes: self._notify_account_rejected(notes),
+        )
+
+    def _notify_account_rejected(self, reason):
+        from ..notification_utils import notify_account_rejected
+        notify_account_rejected(self, reason)
     
     def request_revision(self, admin_user, reason=None):
         """Request revision of the athlete profile"""

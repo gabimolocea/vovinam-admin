@@ -13,7 +13,7 @@ import {
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../components/ui';
 import BeltBadge from '../components/BeltBadge';
-import { Building2, Calendar, ExternalLink, Globe, Link2, MapPin, Phone, Plus, Settings } from 'lucide-react';
+import { Building2, Calendar, ExternalLink, Globe, ImagePlus, Link2, MapPin, Phone, Plus, Settings } from 'lucide-react';
 
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
 
@@ -278,6 +278,8 @@ function CreateExamDialog({ open, onOpenChange, clubName, onCreated }) {
 
 function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onCreated }) {
   const [form, setForm] = useState({ athlete: '', event: '', grade: '', obtained_date: '', level: 'good' });
+  const [certificateFile, setCertificateFile] = useState(null);
+  const [certificatePreview, setCertificatePreview] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -285,20 +287,42 @@ function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onC
     setForm((f) => ({ ...f, [field]: value }));
   }
 
+  function handleCertificateChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCertificateFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setCertificatePreview(reader.result);
+    reader.readAsDataURL(file);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setSaving(true);
     try {
-      await gradeHistoryAPI.submissions.create({
-        athlete: form.athlete,
-        event: form.event,
-        grade: form.grade,
-        obtained_date: form.obtained_date,
-        level: form.level,
-      });
+      if (certificateFile) {
+        const formData = new FormData();
+        formData.append('athlete', form.athlete);
+        formData.append('event', form.event);
+        formData.append('grade', form.grade);
+        formData.append('obtained_date', form.obtained_date);
+        formData.append('level', form.level);
+        formData.append('certificate_image', certificateFile);
+        await gradeHistoryAPI.submissions.create(formData);
+      } else {
+        await gradeHistoryAPI.submissions.create({
+          athlete: form.athlete,
+          event: form.event,
+          grade: form.grade,
+          obtained_date: form.obtained_date,
+          level: form.level,
+        });
+      }
       onCreated();
       setForm({ athlete: '', event: '', grade: '', obtained_date: '', level: 'good' });
+      setCertificateFile(null);
+      setCertificatePreview(null);
       onOpenChange(false);
     } catch (err) {
       const data = err.response?.data;
@@ -343,6 +367,20 @@ function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onC
                 {grades.map((g) => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label>Certificat (opțional)</Label>
+            <div className="flex items-center gap-4">
+              <label className="flex aspect-[3/2] w-40 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent">
+                {certificatePreview ? (
+                  <img src={certificatePreview} alt="Previzualizare certificat" className="h-full w-full object-cover" />
+                ) : (
+                  <ImagePlus className="h-6 w-6" />
+                )}
+                <input type="file" accept="image/*" onChange={handleCertificateChange} className="hidden" />
+              </label>
+              {certificateFile && <p className="max-w-[220px] truncate text-xs text-muted-foreground">{certificateFile.name}</p>}
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1">

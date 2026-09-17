@@ -67,7 +67,7 @@ export default function AdminClubs() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold">Cluburi</h1>
-        <Button onClick={() => { setCreateError(''); setCreateOpen(true); }}>
+        <Button size="sm" onClick={() => { setCreateError(''); setCreateOpen(true); }}>
           <Plus className="h-4 w-4" /> Creează club
         </Button>
       </div>

@@ -150,7 +150,7 @@ export const athleteAPI = {
   rejectImage: (id, notes) => api.post(`/athletes/${id}/reject_image/`, { notes }),
   pendingImageApprovals: () => api.get('/athletes/pending_image_approvals/'),
   coachReminders: () => api.get('/athletes/coach-reminders/'),
-  pendingApprovals: () => api.get('/admin-approvals/pending/'),
+  approvalsList: (params) => api.get('/admin-approvals/list/', { params }),
 };
 
 // ── Clubs ─────────────────────────────────────────────

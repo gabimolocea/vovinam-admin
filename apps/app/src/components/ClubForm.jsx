@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert, Button, Input, Label, Req, Textarea,
 } from './ui';
 import CityAutocomplete from './CityAutocomplete';
+import { MEDIA_BASE_URL } from '@shared/lib/api';
+import { ImagePlus } from 'lucide-react';
+
+function imgUrl(path) {
+  if (!path) return null;
+  if (String(path).startsWith('http')) return path;
+  return `${MEDIA_BASE_URL}${String(path).startsWith('/') ? '' : '/'}${path}`;
+}
 
 /** Shared club data-entry fields, used both by the admin "create club"
  * dialog and the admin "edit club" page (`/cluburi/:id`). Coaches editing
@@ -11,11 +19,20 @@ import CityAutocomplete from './CityAutocomplete';
  * admin should change), so that dialog is kept separate rather than
  * reusing this one. */
 export default function ClubForm({ initial, onSubmit, submitLabel, error }) {
+  // A club created without a logo has no way to attach one until an admin
+  // comes back and edits it - require it up front instead. An existing
+  // club being edited already has one (or the admin can leave it as-is),
+  // so this only applies to a brand-new club.
+  const isCreating = !initial;
   const [form, setForm] = useState({
     name: '', city: '', address: '', mobile_number: '', website: '',
     facebook_url: '', instagram_url: '', youtube_url: '', description: '',
   });
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(null);
+  const [validationError, setValidationError] = useState('');
   const [saving, setSaving] = useState(false);
+  const logoInputRef = useRef();
 
   useEffect(() => {
     if (initial) {
@@ -32,6 +49,8 @@ export default function ClubForm({ initial, onSubmit, submitLabel, error }) {
         youtube_url: initial.youtube_url || '',
         description: initial.description || '',
       });
+      setLogoFile(null);
+      setLogoPreview(imgUrl(initial.logo));
     }
   }, [initial]);
 
@@ -39,11 +58,35 @@ export default function ClubForm({ initial, onSubmit, submitLabel, error }) {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
+  function handleLogoChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setLogoPreview(reader.result);
+    reader.readAsDataURL(file);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
+    setValidationError('');
+    if (isCreating && !logoFile) {
+      setValidationError('Sigla clubului este obligatorie.');
+      return;
+    }
     setSaving(true);
     try {
-      await onSubmit({ ...form, city: form.city || null });
+      const payload = { ...form, city: form.city || null };
+      if (logoFile) {
+        const formData = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value !== null && value !== undefined) formData.append(key, value);
+        });
+        formData.append('logo', logoFile);
+        await onSubmit(formData);
+      } else {
+        await onSubmit(payload);
+      }
     } finally {
       setSaving(false);
     }
@@ -51,7 +94,25 @@ export default function ClubForm({ initial, onSubmit, submitLabel, error }) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {error && <Alert variant="destructive" className="whitespace-pre-line">{error}</Alert>}
+      {(error || validationError) && <Alert variant="destructive" className="whitespace-pre-line">{error || validationError}</Alert>}
+      <div className="flex flex-col gap-1">
+        <Label>Siglă{isCreating && <Req />}</Label>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => logoInputRef.current?.click()}
+            className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
+          >
+            {logoPreview ? (
+              <img src={logoPreview} alt="Siglă club" className="h-full w-full object-contain" />
+            ) : (
+              <ImagePlus className="h-6 w-6" />
+            )}
+          </button>
+          <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
+          {logoFile && <p className="max-w-[220px] truncate text-xs text-muted-foreground">{logoFile.name}</p>}
+        </div>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
           <Label htmlFor="club_name">Nume<Req /></Label>
@@ -92,7 +153,7 @@ export default function ClubForm({ initial, onSubmit, submitLabel, error }) {
           <Input id="club_youtube" type="url" placeholder="https://youtube.com/…" value={form.youtube_url} onChange={(e) => update('youtube_url', e.target.value)} />
         </div>
       </div>
-      <Button type="submit" disabled={saving} className="w-fit">{saving ? 'Se salvează…' : submitLabel}</Button>
+      <Button type="submit" size="sm" disabled={saving || (isCreating && !logoFile)} className="w-fit">{saving ? 'Se salvează…' : submitLabel}</Button>
     </form>
   );
 }

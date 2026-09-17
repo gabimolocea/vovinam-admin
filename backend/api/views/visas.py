@@ -42,6 +42,11 @@ class AnnualVisaViewSet(viewsets.ViewSet):
                 queryset = queryset.filter(athlete__club_id=user.athlete.club_id)
             else:
                 queryset = queryset.none()
+        # club - an admin viewing a specific (not their own) club's roster,
+        # same idea as AthleteViewSet's own `club` filter.
+        club_id = request.query_params.get('club') if request else None
+        if club_id:
+            queryset = queryset.filter(athlete__club_id=club_id)
         return queryset
 
     def __init__(self, *args, **kwargs):
@@ -99,6 +104,9 @@ class MedicalVisaViewSet(viewsets.ViewSet):
                 queryset = queryset.filter(athlete__club_id=user.athlete.club_id)
             else:
                 queryset = queryset.none()
+        club_id = request.query_params.get('club') if request else None
+        if club_id:
+            queryset = queryset.filter(athlete__club_id=club_id)
         return queryset
 
     def __init__(self, *args, **kwargs):

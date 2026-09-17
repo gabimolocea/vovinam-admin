@@ -632,8 +632,9 @@ class AthleteViewSet(viewsets.ModelViewSet):
                 )
 
                 updated = serializer.save()
-                # If the athlete was in revision_required and user updated, resubmit
-                if updated.status == 'revision_required':
+                # If the athlete was in revision_required or rejected and the
+                # user updated their info, resubmit for a fresh review.
+                if updated.status in ('revision_required', 'rejected'):
                     updated.resubmit()
                 # Same idea for an edit to an already-approved profile: send
                 # it back for admin re-review instead of applying silently.
@@ -663,66 +664,178 @@ class CoachesViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
 
-class PendingApprovalsView(APIView):
-    """Admin view for pending athlete profile approvals"""
+class ApprovalsListView(APIView):
+    """Admin view of every approval-workflow item - new accounts, profile
+    photos, grades, results, seminars, visas - across every club, filtered
+    to one status ("Ìn așteptare"/"Aprobate"/"Respinse" on the frontend)
+    and optionally to a subset of domains. Replaces having to stitch
+    together six separate pending_review()-style endpoints by hand."""
     permission_classes = [IsAdmin]
-    
-    def get(self, request):
-        """Get all pending athlete profiles"""
-        pending_athletes = Athlete.objects.filter(status='pending').order_by('-submitted_date')
-        serializer = AthleteProfileSerializer(pending_athletes, many=True)
-        return Response({
-            'pending_count': pending_athletes.count(),
-            'profiles': serializer.data
-        })
-    
-    def post(self, request):
-        """Handle approval/rejection actions"""
-        profile_id = request.data.get('profile_id')
-        action = request.data.get('action')  # 'approve', 'reject', 'request_revision'
-        admin_notes = request.data.get('admin_notes', '')
-        
-        if not profile_id or not action:
-            return Response(
-                {'error': 'profile_id and action are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if action not in ['approve', 'reject', 'request_revision']:
-            return Response(
-                {'error': 'action must be approve, reject, or request_revision'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+    LIMIT = 200
+    VALID_STATUSES = ('pending', 'approved', 'rejected')
+
+    @staticmethod
+    def _reviewer_name(user):
+        if not user:
+            return None
+        return user.get_full_name() or user.email
+
+    @staticmethod
+    def _avatar_url(athlete):
+        if not athlete:
+            return None
         try:
-            with transaction.atomic():
-                athlete = Athlete.objects.select_for_update().get(id=profile_id)
+            return athlete.profile_image.url if athlete.profile_image else None
+        except Exception:
+            return None
 
-                if athlete.status != 'pending':
-                    return Response(
-                        {'error': 'Athlete profile is not in pending status'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+    @staticmethod
+    def _club_name(athlete):
+        return athlete.club.name if athlete and athlete.club_id else None
 
-                # Use the athlete workflow methods
-                if action == 'approve':
-                    athlete.approve(request.user)
-                elif action == 'reject':
-                    athlete.reject(request.user, admin_notes)
-                elif action == 'request_revision':
-                    athlete.request_revision(request.user, admin_notes)
-            
-            serializer = AthleteProfileSerializer(athlete)
-            return Response({
-                'message': f'Athlete profile {action}d successfully',
-                'profile': serializer.data
-            })
-            
-        except Athlete.DoesNotExist:
-            return Response(
-                {'error': 'Athlete profile not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+    def get(self, request):
+        status_filter = request.query_params.get('status', 'pending')
+        if status_filter not in self.VALID_STATUSES:
+            return Response({'error': 'status must be one of: pending, approved, rejected'}, status=status.HTTP_400_BAD_REQUEST)
+        is_pending = status_filter == 'pending'
+
+        domain_param = request.query_params.get('domain')
+        domains = {d.strip() for d in domain_param.split(',') if d.strip()} if domain_param else None
+
+        def wants(domain):
+            return not domains or domain in domains
+
+        items = []
+
+        if wants('account'):
+            qs = Athlete.objects.select_related('club', 'reviewed_by')
+            qs = qs.filter(status='pending').order_by('-submitted_date') if is_pending \
+                else qs.filter(status=status_filter, reviewed_date__isnull=False).order_by('-reviewed_date')
+            for athlete in qs[:self.LIMIT]:
+                items.append({
+                    'domain': 'account',
+                    'id': athlete.id,
+                    'athlete_id': athlete.id,
+                    'athlete_name': f'{athlete.first_name} {athlete.last_name}'.strip(),
+                    'avatar': self._avatar_url(athlete),
+                    'club': self._club_name(athlete),
+                    'detail': None,
+                    'status': athlete.status,
+                    # No tab: the account's own pending-approval banner and
+                    # Aprobă/Respinge live directly on the Info tab (the
+                    # default), not behind a specific one.
+                    'tab': None,
+                    'date': athlete.submitted_date if is_pending else athlete.reviewed_date,
+                    'reviewed_by': None if is_pending else self._reviewer_name(athlete.reviewed_by),
+                    'admin_notes': athlete.admin_notes,
+                })
+
+        if wants('photo'):
+            qs = Athlete.objects.select_related('club', 'profile_image_reviewed_by')
+            qs = qs.filter(profile_image_status='pending').order_by('-profile_image_submitted_date') if is_pending \
+                else qs.filter(profile_image_status=status_filter, profile_image_reviewed_date__isnull=False).order_by('-profile_image_reviewed_date')
+            for athlete in qs[:self.LIMIT]:
+                items.append({
+                    'domain': 'photo',
+                    'id': f'photo-{athlete.id}',
+                    'athlete_id': athlete.id,
+                    'athlete_name': f'{athlete.first_name} {athlete.last_name}'.strip(),
+                    'avatar': self._avatar_url(athlete),
+                    'club': self._club_name(athlete),
+                    'detail': None,
+                    'status': athlete.profile_image_status,
+                    # Same idea as the account domain - the photo review
+                    # controls sit in the profile hero, shown on every tab.
+                    'tab': None,
+                    'date': athlete.profile_image_submitted_date if is_pending else athlete.profile_image_reviewed_date,
+                    'reviewed_by': None if is_pending else self._reviewer_name(getattr(athlete, 'profile_image_reviewed_by', None)),
+                    'admin_notes': athlete.profile_image_admin_notes,
+                })
+
+        if wants('grade'):
+            qs = GradeHistory.objects.select_related('athlete__club', 'grade', 'reviewed_by')
+            qs = qs.filter(status='pending').order_by('-submitted_date') if is_pending \
+                else qs.filter(status=status_filter, reviewed_date__isnull=False).order_by('-reviewed_date')
+            for entry in qs[:self.LIMIT]:
+                items.append({
+                    'domain': 'grade',
+                    'id': f'grade-{entry.id}',
+                    'athlete_id': entry.athlete_id,
+                    'athlete_name': f'{entry.athlete.first_name} {entry.athlete.last_name}'.strip() if entry.athlete else None,
+                    'avatar': self._avatar_url(entry.athlete),
+                    'club': self._club_name(entry.athlete),
+                    'detail': entry.grade.name if entry.grade else None,
+                    'status': entry.status,
+                    'tab': 'grade',
+                    'date': entry.submitted_date if is_pending else entry.reviewed_date,
+                    'reviewed_by': None if is_pending else self._reviewer_name(entry.reviewed_by),
+                    'admin_notes': entry.admin_notes,
+                })
+
+        if wants('result'):
+            qs = CategoryAthleteScore.objects.select_related('athlete__club', 'category', 'reviewed_by')
+            qs = qs.filter(status='pending').order_by('-submitted_date') if is_pending \
+                else qs.filter(status=status_filter, reviewed_date__isnull=False).order_by('-reviewed_date')
+            for score in qs[:self.LIMIT]:
+                entity = getattr(score.category, 'event_or_competition', None) or getattr(score.category, 'competition', None)
+                entity_name = getattr(entity, 'name', None) or getattr(entity, 'title', None)
+                items.append({
+                    'domain': 'result',
+                    'id': f'result-{score.id}',
+                    'athlete_id': score.athlete_id,
+                    'athlete_name': f'{score.athlete.first_name} {score.athlete.last_name}'.strip() if score.athlete else (score.team_name or None),
+                    'avatar': self._avatar_url(score.athlete),
+                    'club': self._club_name(score.athlete),
+                    'detail': entity_name or (score.category.name if score.category else None),
+                    'status': score.status,
+                    'tab': 'rezultate',
+                    'date': score.submitted_date if is_pending else score.reviewed_date,
+                    'reviewed_by': None if is_pending else self._reviewer_name(score.reviewed_by),
+                    'admin_notes': score.admin_notes,
+                })
+
+        if wants('seminar'):
+            qs = TrainingSeminarParticipation.objects.select_related('athlete__club', 'event', 'reviewed_by')
+            qs = qs.filter(status='pending').order_by('-submitted_date') if is_pending \
+                else qs.filter(status=status_filter, reviewed_date__isnull=False).order_by('-reviewed_date')
+            for entry in qs[:self.LIMIT]:
+                items.append({
+                    'domain': 'seminar',
+                    'id': f'seminar-{entry.id}',
+                    'athlete_id': entry.athlete_id,
+                    'athlete_name': f'{entry.athlete.first_name} {entry.athlete.last_name}'.strip() if entry.athlete else None,
+                    'avatar': self._avatar_url(entry.athlete),
+                    'club': self._club_name(entry.athlete),
+                    'detail': entry.event.title if entry.event else None,
+                    'status': entry.status,
+                    'tab': 'seminarii',
+                    'date': entry.submitted_date if is_pending else entry.reviewed_date,
+                    'reviewed_by': None if is_pending else self._reviewer_name(entry.reviewed_by),
+                    'admin_notes': entry.admin_notes,
+                })
+
+        if wants('visa'):
+            qs = Visa.objects.select_related('athlete__club', 'reviewed_by')
+            qs = qs.filter(status='pending').order_by('-submitted_date') if is_pending \
+                else qs.filter(status=status_filter, reviewed_date__isnull=False).order_by('-reviewed_date')
+            for visa in qs[:self.LIMIT]:
+                items.append({
+                    'domain': 'visa',
+                    'id': f'visa-{visa.id}',
+                    'athlete_id': visa.athlete_id,
+                    'athlete_name': f'{visa.athlete.first_name} {visa.athlete.last_name}'.strip() if visa.athlete else None,
+                    'avatar': self._avatar_url(visa.athlete),
+                    'club': self._club_name(visa.athlete),
+                    'detail': 'Viză medicală' if visa.visa_type == 'medical' else 'Viză anuală',
+                    'status': visa.status,
+                    'tab': 'medical' if visa.visa_type == 'medical' else 'vize',
+                    'date': visa.submitted_date if is_pending else visa.reviewed_date,
+                    'reviewed_by': None if is_pending else self._reviewer_name(visa.reviewed_by),
+                    'admin_notes': visa.admin_notes,
+                })
+
+        items.sort(key=lambda item: item['date'], reverse=True)
+        return Response(items[:self.LIMIT])
 
 
 class MyAthleteProfileView(APIView):

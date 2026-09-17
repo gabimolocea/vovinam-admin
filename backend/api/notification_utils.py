@@ -23,10 +23,11 @@ DOMAIN_EMAIL_FIELDS = {
 DOMAIN_TABS = {'result': 'rezultate', 'grade': 'grade', 'seminar': 'seminarii', 'visa': 'vize'}
 STATUS_SUFFIXES = ('_approved', '_rejected', '_revision_required')
 
-# account_approved/profile_update_approved already send their own richer,
-# unconditional email (with a custom message and CTA) right after calling
-# create_notification() - skip them here so that email isn't sent twice.
-EMAILED_ELSEWHERE = {'account_approved', 'profile_update_approved'}
+# account_approved/account_rejected/profile_update_approved already send
+# their own richer, unconditional email (with a custom message and CTA)
+# right after calling create_notification() - skip them here so that email
+# isn't sent twice.
+EMAILED_ELSEWHERE = {'account_approved', 'account_rejected', 'profile_update_approved'}
 
 
 def _send_status_channels(recipient, settings, notification_type, title, message):
@@ -176,6 +177,33 @@ def notify_account_approved(athlete):
         ),
         cta_label='Vezi profilul meu',
         cta_path=f"{django_settings.APP_URL.rstrip('/')}/profil",
+    )
+
+
+def notify_account_rejected(athlete, reason=None):
+    """Sent when an athlete's brand-new account registration is rejected
+    (Athlete.reject()) - distinct from a per-submission rejection (result/
+    grade/etc, which already goes through _send_status_channels below).
+    `reason` is the reviewer's optional note; falls back to a generic
+    message when none was given."""
+    if not athlete.user:
+        return
+    detail = f'\n\nMotiv: {reason}' if reason else ''
+    create_notification(
+        recipient=athlete.user,
+        notification_type='account_rejected',
+        title='Cont respins',
+        message=f'Profilul tău de sportiv a fost respins de un administrator.{detail}',
+    )
+    send_status_email(
+        athlete.user,
+        title='Contul tău a fost respins',
+        message=(
+            f'Profilul tău de sportiv a fost respins de un administrator.{detail}\n\n'
+            'Poți relua înscrierea și trimite datele corectate spre aprobare.'
+        ),
+        cta_label='Reia înscrierea',
+        cta_path='/onboarding/sportiv',
     )
 
 

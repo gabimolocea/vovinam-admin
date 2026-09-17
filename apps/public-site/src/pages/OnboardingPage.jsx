@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@shared';
 import { Alert, Button, Skeleton } from '../components/ui';
-import { LogOut } from 'lucide-react';
+import { LogOut, RotateCcw } from 'lucide-react';
 import Seo from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { ATHLETE_STATUS_LABELS } from '../lib/athletes';
@@ -55,6 +55,11 @@ function AccountStatusPage({ user }) {
         <p className="font-display text-2xl font-bold text-[#00334d]">{label}</p>
       </div>
       <Alert>{message}</Alert>
+      {(status === 'rejected' || status === 'revision_required') && (
+        <Button type="button" as={Link} to="/onboarding/sportiv" className="gap-2">
+          <RotateCcw className="h-4 w-4" /> Reia înscrierea
+        </Button>
+      )}
       <Button type="button" variant="outline" onClick={logout} className="gap-2">
         <LogOut className="h-4 w-4" /> Deconectare
       </Button>

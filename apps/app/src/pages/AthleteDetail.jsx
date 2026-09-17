@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '@shared';
 import {
   athleteAPI, gradeHistoryAPI, scoreAPI, visaAPI, seminarAPI, gradeAPI, competitionAPI, categoryAPI, groupAPI, MEDIA_BASE_URL,
@@ -15,7 +15,8 @@ import MedalIcon from '../components/MedalIcon';
 import GalleryTab from '../components/GalleryTab';
 import Lightbox from '../components/Lightbox';
 import ResponsiveTable from '../components/ResponsiveTable';
-import { ArrowLeft, Award, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, LogOut, Pencil, Plus, Sparkles, X } from 'lucide-react';
+import RejectReasonDialog from '../components/RejectReasonDialog';
+import { ArrowLeft, Award, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, Eye, LogOut, Pencil, Plus, Sparkles, X } from 'lucide-react';
 
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
 
@@ -40,6 +41,8 @@ const STATUS_LABELS = {
   rejected: 'Respins',
   revision_required: 'Necesită completări',
 };
+const ACCOUNT_REJECT_NOTE = 'Cererea de înregistrare nu a fost aprobată.';
+const PHOTO_REJECT_NOTE = 'Poza nu a fost aprobată.';
 const PLACEMENT_LABELS = { '1st': '🥇 Locul 1', '2nd': '🥈 Locul 2', '3rd': '🥉 Locul 3' };
 const RESULT_TYPE_LABELS = { solo: 'Solo', teams: 'Echipe', fight: 'Luptă' };
 
@@ -182,15 +185,21 @@ function ReviewButtons({ busy, onApprove, onReject, light = false }) {
   );
 }
 
-/** Clickable thumbnail for an uploaded diploma/certificate/document -
- * always opens in the shared Lightbox (zoom/download) rather than a new
- * tab, same as every other reviewer/self-view image in the app. */
+/** Link to an uploaded diploma/certificate/document - opens in the shared
+ * Lightbox (zoom/download) rather than a new tab, same as every other
+ * reviewer/self-view image in the app. A text link rather than an inline
+ * thumbnail, so a table/card full of these doesn't turn into a wall of
+ * images. */
 function CertificateThumb({ src, label = 'Vezi documentul', onOpen }) {
   const url = imgUrl(src);
   if (!url) return null;
   return (
-    <button type="button" onClick={() => onOpen({ image: url, alt_text: label })} className="mt-2 block w-fit" title={label}>
-      <img src={url} alt={label} className="h-24 w-32 rounded-md border border-border object-cover transition hover:opacity-90" />
+    <button
+      type="button"
+      onClick={() => onOpen({ image: url, alt_text: label })}
+      className="mt-2 flex w-fit items-center gap-1 text-sm text-primary underline hover:text-primary/80"
+    >
+      <Eye className="h-3.5 w-3.5" /> {label}
     </button>
   );
 }
@@ -1033,7 +1042,8 @@ function PhotoPreviewDialog({ preview, uploading, error, onConfirm, onCancel }) 
 export default function AthleteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const location = useLocation();
+  const { user, logout, isAdmin } = useAuth();
   const isSelf = user?.athlete_id != null && String(user.athlete_id) === String(id);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = TABS.some((t) => t.key === searchParams.get('tab')) ? searchParams.get('tab') : 'info';
@@ -1093,12 +1103,33 @@ export default function AthleteDetail() {
     navigate('/');
   }
 
-  async function reviewPhoto(approve) {
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountError, setAccountError] = useState('');
+  const [rejectTarget, setRejectTarget] = useState(null);
+
+  // Approve/reject the athlete's own account registration (status pending)
+  // - distinct from reviewItem/reviewPhoto below, which review a specific
+  // submission (grade/result/etc) on an already-approved athlete.
+  async function processAccount(action, notes) {
+    setAccountBusy(true);
+    setAccountError('');
+    try {
+      const payload = action === 'reject' ? { action, notes } : { action };
+      await athleteAPI.process(athlete.id, payload);
+      await load();
+    } catch {
+      setAccountError('Nu am putut procesa cererea.');
+    } finally {
+      setAccountBusy(false);
+    }
+  }
+
+  async function reviewPhoto(approve, notes) {
     setReviewBusyKey('photo');
     setReviewError('');
     try {
       if (approve) await athleteAPI.approveImage(athlete.id);
-      else await athleteAPI.rejectImage(athlete.id, 'Poza nu a fost aprobată.');
+      else await athleteAPI.rejectImage(athlete.id, notes || 'Poza nu a fost aprobată.');
       await load();
     } catch {
       setReviewError('Nu am putut procesa poza de profil.');
@@ -1161,13 +1192,13 @@ export default function AthleteDetail() {
     seminar: 'Participarea la seminar nu a fost aprobată.',
   };
 
-  async function reviewItem(kind, itemId, approve) {
+  async function reviewItem(kind, itemId, approve, notes) {
     setReviewBusyKey(`${kind}-${itemId}`);
     setReviewError('');
     try {
       const api = REVIEW_API[kind];
       if (approve) await api.approve(itemId, {});
-      else await api.reject(itemId, { notes: REVIEW_REJECT_NOTE[kind] });
+      else await api.reject(itemId, { notes: notes || REVIEW_REJECT_NOTE[kind] });
       await load();
     } catch {
       setReviewError('Nu am putut procesa cererea.');
@@ -1203,11 +1234,51 @@ export default function AthleteDetail() {
   const europeanMedals = athlete.international_medals?.european || { gold: 0, silver: 0, bronze: 0 };
   const worldMedals = athlete.international_medals?.world || { gold: 0, silver: 0, bronze: 0 };
 
+  // React Router gives every entry reached via in-app navigation (a Link,
+  // navigate()) a random location.key; only a page landed on directly -
+  // a fresh load, a refresh, a pasted URL - keeps the literal 'default'
+  // key, since there's no actual history entry behind it. So: if we got
+  // here from somewhere else in the app (Aprobări, a club roster, a
+  // notification...), a real browser back reliably returns there; only
+  // when there's truly nothing to go back to do we fall back to the
+  // athlete's own club page.
+  const canGoBack = location.key !== 'default';
+  const backToClub = isAdmin && athlete.club?.id ? `/cluburi/${athlete.club.id}` : '/club?tab=sportivi';
+  const handleBack = () => (canGoBack ? navigate(-1) : navigate(backToClub));
+
+  const showPendingBanner = canApprove && athlete.status === 'pending';
+
   return (
-    <div className="flex flex-col gap-5">
+    <div className={`flex flex-col gap-5 ${showPendingBanner ? 'pt-16' : ''}`}>
+      {showPendingBanner && (
+        <div className="fixed inset-x-0 top-0 z-40 flex flex-wrap items-center justify-between gap-3 border-b border-amber-300 bg-amber-300 px-4 py-3 sm:px-6 lg:px-8">
+          <p className="text-sm font-medium text-amber-900">
+            Contul lui {athlete.full_name} așteaptă aprobare.
+          </p>
+          <div className="flex items-center gap-2">
+            {accountError && <span className="text-xs text-destructive">{accountError}</span>}
+            <Button size="sm" disabled={accountBusy} onClick={() => processAccount('approve')}>
+              <Check className="h-4 w-4" /> Aprobă
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={accountBusy}
+              onClick={() => setRejectTarget({
+                title: `Respinge contul lui ${athlete.full_name}`,
+                defaultNote: ACCOUNT_REJECT_NOTE,
+                onConfirm: (reason) => processAccount('reject', reason),
+              })}
+            >
+              <X className="h-4 w-4" /> Respinge
+            </Button>
+          </div>
+        </div>
+      )}
+
       {!isSelf && (
-        <Button variant="outline" size="sm" onClick={() => navigate(-1)} className="w-fit">
-          <ArrowLeft className="h-4 w-4" /> Înapoi la sportivi
+        <Button variant="outline" size="sm" onClick={handleBack} className="w-fit">
+          <ArrowLeft className="h-4 w-4" /> {canGoBack ? 'Înapoi' : 'Înapoi la club'}
         </Button>
       )}
 
@@ -1299,7 +1370,7 @@ export default function AthleteDetail() {
             </a>
             {athlete.current_grade?.name && <BeltBadge grade={athlete.current_grade.name} />}
             {canApprove && isPhotoPending && (
-              <ReviewButtons light busy={reviewBusyKey === 'photo'} onApprove={() => reviewPhoto(true)} onReject={() => reviewPhoto(false)} />
+              <ReviewButtons light busy={reviewBusyKey === 'photo'} onApprove={() => reviewPhoto(true)} onReject={() => setRejectTarget({ title: 'Respinge poza de profil', defaultNote: PHOTO_REJECT_NOTE, onConfirm: (reason) => reviewPhoto(false, reason) })} />
             )}
           </div>
         </div>
@@ -1383,7 +1454,7 @@ export default function AthleteDetail() {
                         {r.competition || '—'}
                         <CertificateThumb src={r.certificate_image} label="Vezi diploma" onOpen={setCertificatePreview} />
                         {canApprove && r.status === 'pending' && (
-                          <ReviewButtons busy={reviewBusyKey === `result-${r.id}`} onApprove={() => reviewItem('result', r.id, true)} onReject={() => reviewItem('result', r.id, false)} />
+                          <ReviewButtons busy={reviewBusyKey === `result-${r.id}`} onApprove={() => reviewItem('result', r.id, true)} onReject={() => setRejectTarget({ title: 'Respinge rezultatul', defaultNote: REVIEW_REJECT_NOTE.result, onConfirm: (reason) => reviewItem('result', r.id, false, reason) })} />
                         )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
@@ -1416,7 +1487,7 @@ export default function AthleteDetail() {
                       <p className="mt-2 text-sm font-semibold">{PLACEMENT_LABELS[r.placement_claimed] || '—'}</p>
                       {r.status === 'rejected' && r.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{r.admin_notes}</p>}
                       {canApprove && r.status === 'pending' && (
-                        <ReviewButtons busy={reviewBusyKey === `result-${r.id}`} onApprove={() => reviewItem('result', r.id, true)} onReject={() => reviewItem('result', r.id, false)} />
+                        <ReviewButtons busy={reviewBusyKey === `result-${r.id}`} onApprove={() => reviewItem('result', r.id, true)} onReject={() => setRejectTarget({ title: 'Respinge rezultatul', defaultNote: REVIEW_REJECT_NOTE.result, onConfirm: (reason) => reviewItem('result', r.id, false, reason) })} />
                       )}
                     </li>
                   ))}
@@ -1460,7 +1531,7 @@ export default function AthleteDetail() {
                     {g.grade?.name || '—'}
                     <CertificateThumb src={g.certificate_image} label="Vezi certificatul" onOpen={setCertificatePreview} />
                     {canApprove && g.status === 'pending' && (
-                      <ReviewButtons busy={reviewBusyKey === `grade-${g.id}`} onApprove={() => reviewItem('grade', g.id, true)} onReject={() => reviewItem('grade', g.id, false)} />
+                      <ReviewButtons busy={reviewBusyKey === `grade-${g.id}`} onApprove={() => reviewItem('grade', g.id, true)} onReject={() => setRejectTarget({ title: 'Respinge examenul de grad', defaultNote: REVIEW_REJECT_NOTE.grade, onConfirm: (reason) => reviewItem('grade', g.id, false, reason) })} />
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(g.obtained_date)}</td>
@@ -1491,7 +1562,7 @@ export default function AthleteDetail() {
                   )}
                   {g.status === 'rejected' && g.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{g.admin_notes}</p>}
                   {canApprove && g.status === 'pending' && (
-                    <ReviewButtons busy={reviewBusyKey === `grade-${g.id}`} onApprove={() => reviewItem('grade', g.id, true)} onReject={() => reviewItem('grade', g.id, false)} />
+                    <ReviewButtons busy={reviewBusyKey === `grade-${g.id}`} onApprove={() => reviewItem('grade', g.id, true)} onReject={() => setRejectTarget({ title: 'Respinge examenul de grad', defaultNote: REVIEW_REJECT_NOTE.grade, onConfirm: (reason) => reviewItem('grade', g.id, false, reason) })} />
                   )}
                 </li>
               ))}
@@ -1524,7 +1595,7 @@ export default function AthleteDetail() {
                     {s.event || '—'}
                     <CertificateThumb src={s.certificate_image} label="Vezi certificatul" onOpen={setCertificatePreview} />
                     {canApprove && s.status === 'pending' && (
-                      <ReviewButtons busy={reviewBusyKey === `seminar-${s.id}`} onApprove={() => reviewItem('seminar', s.id, true)} onReject={() => reviewItem('seminar', s.id, false)} />
+                      <ReviewButtons busy={reviewBusyKey === `seminar-${s.id}`} onApprove={() => reviewItem('seminar', s.id, true)} onReject={() => setRejectTarget({ title: 'Respinge participarea la seminar', defaultNote: REVIEW_REJECT_NOTE.seminar, onConfirm: (reason) => reviewItem('seminar', s.id, false, reason) })} />
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(s.start_date)}{s.end_date ? ` – ${fmtDate(s.end_date)}` : ''}</td>
@@ -1546,7 +1617,7 @@ export default function AthleteDetail() {
                   </p>
                   {s.status === 'rejected' && s.admin_notes && <p className="mt-1 text-xs text-muted-foreground">{s.admin_notes}</p>}
                   {canApprove && s.status === 'pending' && (
-                    <ReviewButtons busy={reviewBusyKey === `seminar-${s.id}`} onApprove={() => reviewItem('seminar', s.id, true)} onReject={() => reviewItem('seminar', s.id, false)} />
+                    <ReviewButtons busy={reviewBusyKey === `seminar-${s.id}`} onApprove={() => reviewItem('seminar', s.id, true)} onReject={() => setRejectTarget({ title: 'Respinge participarea la seminar', defaultNote: REVIEW_REJECT_NOTE.seminar, onConfirm: (reason) => reviewItem('seminar', s.id, false, reason) })} />
                   )}
                 </li>
               ))}
@@ -1579,7 +1650,7 @@ export default function AthleteDetail() {
                     <span className="flex items-center gap-2"><Award className="h-3.5 w-3.5 text-muted-foreground" /> Viză medicală</span>
                     <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
                     {canApprove && v.status === 'pending' && (
-                      <ReviewButtons busy={reviewBusyKey === `medical-visa-${v.id}`} onApprove={() => reviewItem('medical-visa', v.id, true)} onReject={() => reviewItem('medical-visa', v.id, false)} />
+                      <ReviewButtons busy={reviewBusyKey === `medical-visa-${v.id}`} onApprove={() => reviewItem('medical-visa', v.id, true)} onReject={() => setRejectTarget({ title: 'Respinge viza medicală', defaultNote: REVIEW_REJECT_NOTE['medical-visa'], onConfirm: (reason) => reviewItem('medical-visa', v.id, false, reason) })} />
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(v.issued_date)}</td>
@@ -1601,7 +1672,7 @@ export default function AthleteDetail() {
                   {v.status === 'rejected' && v.admin_notes && <p className="text-xs text-muted-foreground">{v.admin_notes}</p>}
                   <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
                   {canApprove && v.status === 'pending' && (
-                    <ReviewButtons busy={reviewBusyKey === `medical-visa-${v.id}`} onApprove={() => reviewItem('medical-visa', v.id, true)} onReject={() => reviewItem('medical-visa', v.id, false)} />
+                    <ReviewButtons busy={reviewBusyKey === `medical-visa-${v.id}`} onApprove={() => reviewItem('medical-visa', v.id, true)} onReject={() => setRejectTarget({ title: 'Respinge viza medicală', defaultNote: REVIEW_REJECT_NOTE['medical-visa'], onConfirm: (reason) => reviewItem('medical-visa', v.id, false, reason) })} />
                   )}
                 </li>
               ))}
@@ -1634,7 +1705,7 @@ export default function AthleteDetail() {
                     <span className="flex items-center gap-2"><Award className="h-3.5 w-3.5 text-muted-foreground" /> Viză anuală</span>
                     <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
                     {canApprove && v.status === 'pending' && (
-                      <ReviewButtons busy={reviewBusyKey === `annual-visa-${v.id}`} onApprove={() => reviewItem('annual-visa', v.id, true)} onReject={() => reviewItem('annual-visa', v.id, false)} />
+                      <ReviewButtons busy={reviewBusyKey === `annual-visa-${v.id}`} onApprove={() => reviewItem('annual-visa', v.id, true)} onReject={() => setRejectTarget({ title: 'Respinge viza anuală', defaultNote: REVIEW_REJECT_NOTE['annual-visa'], onConfirm: (reason) => reviewItem('annual-visa', v.id, false, reason) })} />
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{fmtDate(v.issued_date)}</td>
@@ -1656,7 +1727,7 @@ export default function AthleteDetail() {
                   {v.status === 'rejected' && v.admin_notes && <p className="text-xs text-muted-foreground">{v.admin_notes}</p>}
                   <CertificateThumb src={v.certificate_image} label="Vezi documentul" onOpen={setCertificatePreview} />
                   {canApprove && v.status === 'pending' && (
-                    <ReviewButtons busy={reviewBusyKey === `annual-visa-${v.id}`} onApprove={() => reviewItem('annual-visa', v.id, true)} onReject={() => reviewItem('annual-visa', v.id, false)} />
+                    <ReviewButtons busy={reviewBusyKey === `annual-visa-${v.id}`} onApprove={() => reviewItem('annual-visa', v.id, true)} onReject={() => setRejectTarget({ title: 'Respinge viza anuală', defaultNote: REVIEW_REJECT_NOTE['annual-visa'], onConfirm: (reason) => reviewItem('annual-visa', v.id, false, reason) })} />
                   )}
                 </li>
               ))}
@@ -1680,6 +1751,7 @@ export default function AthleteDetail() {
         onCancel={cancelPhotoUpload}
       />
       <Lightbox image={certificatePreview} onClose={() => setCertificatePreview(null)} />
+      <RejectReasonDialog target={rejectTarget} onOpenChange={setRejectTarget} />
     </div>
   );
 }

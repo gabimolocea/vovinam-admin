@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { athleteAPI, gradeHistoryAPI, scoreAPI, seminarAPI, visaAPI } from '@shared/lib/api';
-import { Alert, Badge, Button, EmptyState, Skeleton } from '../components/ui';
-import { Check, Eye, X } from 'lucide-react';
+import { athleteAPI } from '@shared/lib/api';
+import {
+  Alert, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '../components/ui';
+import {
+  Calendar, FileCheck, GraduationCap, Image, Trophy, UserPlus,
+} from 'lucide-react';
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -13,195 +18,165 @@ function fmtDate(d) {
   }
 }
 
-/** One row linking into the athlete's own page, where the actual
- * approve/reject controls already live (AthleteDetail.jsx's ReviewButtons)
- * - this page is a cross-club index into that, not a second copy of the
- * review UI. Only the "Conturi noi" section below is self-contained, since
- * account-registration approval has no equivalent surface elsewhere. */
-function PendingRow({ athleteId, athleteName, tab, detail, date }) {
+// Same icon per domain everywhere on this page (row icon + category
+// filter), so it all reads as one consistent picture.
+const DOMAIN_ICONS = {
+  account: UserPlus,
+  photo: Image,
+  grade: GraduationCap,
+  result: Trophy,
+  seminar: Calendar,
+  visa: FileCheck,
+};
+const DOMAIN_LABELS = {
+  account: 'Conturi noi',
+  photo: 'Poze de profil',
+  grade: 'Grade',
+  result: 'Rezultate',
+  seminar: 'Stagii',
+  visa: 'Vize',
+};
+
+/** A short description of what was actually submitted, per domain - just
+ * showing the raw detail value ("Viză anuală") read like a label, not a
+ * sentence, so this phrases it as an action instead ("A adăugat viza
+ * anuală"). The reviewer's note (e.g. a rejection reason) still takes
+ * priority when there is one, since that's the more relevant thing to
+ * see at that point. */
+function subtitleFor(item) {
+  if (item.admin_notes) return item.admin_notes;
+  switch (item.domain) {
+    case 'account': return 'S-a înregistrat';
+    case 'photo': return 'A adăugat poza de profil';
+    case 'grade': return item.detail ? `A trimis examenul de grad: ${item.detail}` : null;
+    case 'result': return item.detail ? `A trimis rezultatul: ${item.detail}` : null;
+    case 'seminar': return item.detail ? `A trimis participarea: ${item.detail}` : null;
+    case 'visa': return item.detail ? `A adăugat ${item.detail.toLowerCase()}` : null;
+    default: return item.detail || null;
+  }
+}
+
+/** One row - the athlete's own avatar (not a generic domain icon) with a
+ * status badge on its corner: a solid green check or red X once decided
+ * (mirrors the coach panel's own NotificationsPage.jsx STATUS_STYLE), or
+ * an amber clock while still pending - so "who" and "what happened" both
+ * read at a glance without opening the row. */
+function ApprovalRow({ item }) {
+  const DomainIcon = DOMAIN_ICONS[item.domain] || FileCheck;
+  // Every domain shows the athlete's club the same way - "Nume (Club)" -
+  // rather than only the account domain doing it, so every row reads
+  // with the same structure regardless of what it's about.
+  const displayName = item.club ? `${item.athlete_name || '—'} (${item.club})` : (item.athlete_name || '—');
+  const subtitle = subtitleFor(item);
   const content = (
     <>
-      <div>
-        <p className="font-medium">{athleteName || '—'}</p>
-        {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <DomainIcon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate font-medium">{displayName}</p>
+          {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
       </div>
-      <span className="text-xs text-muted-foreground">{fmtDate(date)}</span>
+      <p className="shrink-0 pl-[52px] text-left text-xs text-muted-foreground sm:pl-0 sm:text-right">
+        {fmtDate(item.date)}{item.reviewed_by && ` – ${item.reviewed_by}`}
+      </p>
     </>
   );
-  // A team result has no single athlete to link to (see team_members
-  // instead) - render it as a plain, non-clickable row rather than a
-  // broken link.
-  if (!athleteId) {
-    return <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-4 py-3 text-sm">{content}</div>;
+  if (!item.athlete_id) {
+    return <div className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3">{content}</div>;
   }
   return (
     <Link
-      to={`/athletes/${athleteId}${tab ? `?tab=${tab}` : ''}`}
-      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-4 py-3 text-sm transition hover:bg-accent"
+      to={`/athletes/${item.athlete_id}${item.tab ? `?tab=${item.tab}` : ''}`}
+      className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-accent sm:flex-row sm:items-center sm:justify-between sm:gap-3"
     >
       {content}
     </Link>
   );
 }
 
-function Section({ title, count, children }) {
+const EMPTY_MESSAGES = {
+  pending: 'Nu există nimic în așteptarea aprobării, în niciun club.',
+  approved: 'Nu există încă nicio aprobare înregistrată.',
+  rejected: 'Nu există încă nicio respingere înregistrată.',
+};
+
+/** One tab's worth of the list (pending/approved/rejected) - fetches once
+ * for that status and filters by category client-side, since the whole
+ * set is small enough that refetching per filter click would just add
+ * latency for no benefit. */
+function ApprovalsTab({ status, domain }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    athleteAPI.approvalsList({ status })
+      .then((r) => { if (active) setItems(r.data ?? []); })
+      .catch(() => { if (active) setError('Nu am putut încărca lista.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [status]);
+
+  if (loading) return <Skeleton className="h-64" />;
+  if (error) return <Alert variant="destructive">{error}</Alert>;
+
+  const filtered = domain ? items.filter((item) => item.domain === domain) : items;
+  if (filtered.length === 0) {
+    return <EmptyState title="Nimic aici" message={domain ? `Nimic în categoria „${DOMAIN_LABELS[domain]}”.` : EMPTY_MESSAGES[status]} />;
+  }
+
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        {title} {count > 0 && <Badge className="border-transparent bg-amber-100 text-amber-800">{count}</Badge>}
-      </h2>
-      {count === 0 ? <p className="text-sm text-muted-foreground">Nimic în așteptare.</p> : <div className="flex flex-col gap-2">{children}</div>}
-    </section>
+    <div className="flex flex-col gap-2">
+      {filtered.map((item) => <ApprovalRow key={`${item.domain}-${item.id}`} item={item} />)}
+    </div>
   );
 }
 
-/** Admin-only: everything pending review across every club in one place -
+/** Admin-only: every approval-workflow item across every club, split into
+ * "În așteptare" / "Aprobate" / "Respinse", each filterable by category -
  * new account registrations, profile photos, grades, results, seminar
  * participations, visas. Replaces the equivalent Django admin views. */
 export default function AdminApprovals() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [accounts, setAccounts] = useState([]);
-  const [photos, setPhotos] = useState([]);
-  const [grades, setGrades] = useState([]);
-  const [results, setResults] = useState([]);
-  const [seminars, setSeminars] = useState([]);
-  const [visas, setVisas] = useState([]);
-  const [accountBusyId, setAccountBusyId] = useState(null);
-  const [accountError, setAccountError] = useState('');
-
-  async function load() {
-    setLoading(true);
-    setError('');
-    try {
-      const [accountsRes, photosRes, gradesRes, resultsRes, seminarsRes, visasRes] = await Promise.all([
-        athleteAPI.pendingApprovals(),
-        athleteAPI.pendingImageApprovals(),
-        gradeHistoryAPI.submissions.pendingReview(),
-        scoreAPI.pendingReview(),
-        seminarAPI.submissions.pendingReview(),
-        visaAPI.submissions.pendingReview(),
-      ]);
-      setAccounts(accountsRes.data?.profiles ?? []);
-      setPhotos(photosRes.data ?? []);
-      setGrades(gradesRes.data ?? []);
-      setResults(resultsRes.data ?? []);
-      setSeminars(seminarsRes.data ?? []);
-      setVisas(visasRes.data ?? []);
-    } catch {
-      setError('Nu am putut încărca lista de aprobări.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); }, []);
-
-  async function processAccount(id, action) {
-    setAccountBusyId(id);
-    setAccountError('');
-    try {
-      // The backend requires a reason for a rejection - same fixed default
-      // note used for every other reject action in the app (see
-      // AthleteDetail.jsx's REVIEW_REJECT_NOTE) rather than prompting for
-      // free text here.
-      const payload = action === 'reject' ? { action, notes: 'Cererea de înregistrare nu a fost aprobată.' } : { action };
-      await athleteAPI.process(id, payload);
-      setAccounts((prev) => prev.filter((a) => a.id !== id));
-    } catch {
-      setAccountError('Nu am putut procesa cererea.');
-    } finally {
-      setAccountBusyId(null);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-9 w-48" />
-        <Skeleton className="h-64" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return <Alert variant="destructive">{error}</Alert>;
-  }
-
-  const totalCount = accounts.length + photos.length + grades.length + results.length + seminars.length + visas.length;
+  const [domain, setDomain] = useState('');
 
   return (
-    <div className="flex flex-col gap-8">
-      <h1 className="font-display text-2xl font-bold">Aprobări</h1>
-
-      {totalCount === 0 ? (
-        <EmptyState title="Totul e la zi" message="Nu există nimic în așteptarea aprobării, în niciun club." />
-      ) : (
-        <>
-          <Section title="Conturi noi" count={accounts.length}>
-            {accountError && <Alert variant="destructive">{accountError}</Alert>}
-            {accounts.map((a) => (
-              <div key={a.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{a.first_name} {a.last_name}</p>
-                  <p className="text-xs text-muted-foreground">{fmtDate(a.submitted_date)}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Link
-                    to={`/athletes/${a.id}`}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input px-3 text-sm font-medium transition hover:bg-accent"
-                  >
-                    <Eye className="h-4 w-4" /> Vezi detalii
-                  </Link>
-                  <Button type="button" size="sm" disabled={accountBusyId === a.id} onClick={() => processAccount(a.id, 'approve')}>
-                    <Check className="h-4 w-4" /> Aprobă
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" disabled={accountBusyId === a.id} onClick={() => processAccount(a.id, 'reject')}>
-                    <X className="h-4 w-4" /> Respinge
-                  </Button>
-                </div>
-              </div>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-bold">Aprobări</h1>
+        <Select value={domain || 'all'} onValueChange={(v) => setDomain(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toate categoriile</SelectItem>
+            {Object.keys(DOMAIN_LABELS).map((d) => (
+              <SelectItem key={d} value={d}>{DOMAIN_LABELS[d]}</SelectItem>
             ))}
-          </Section>
+          </SelectContent>
+        </Select>
+      </div>
 
-          <Section title="Poze de profil" count={photos.length}>
-            {photos.map((a) => (
-              <PendingRow key={a.id} athleteId={a.id} athleteName={a.full_name || `${a.first_name} ${a.last_name}`} date={a.profile_image_submitted_date} />
-            ))}
-          </Section>
+      <Tabs defaultValue="pending">
+        <TabsList>
+          <TabsTrigger value="pending">În așteptare</TabsTrigger>
+          <TabsTrigger value="approved">Aprobate</TabsTrigger>
+          <TabsTrigger value="rejected">Respinse</TabsTrigger>
+        </TabsList>
 
-          <Section title="Grade" count={grades.length}>
-            {grades.map((g) => (
-              <PendingRow key={g.id} athleteId={g.athlete} athleteName={g.athlete_name} tab="grade" detail={g.grade_name} date={g.submitted_date} />
-            ))}
-          </Section>
-
-          <Section title="Rezultate" count={results.length}>
-            {results.map((r) => (
-              <PendingRow key={r.id} athleteId={r.athlete?.id} athleteName={r.athlete?.name} tab="rezultate" detail={r.competition_name} date={r.submitted_date} />
-            ))}
-          </Section>
-
-          <Section title="Stagii" count={seminars.length}>
-            {seminars.map((s) => (
-              <PendingRow key={s.id} athleteId={s.athlete} athleteName={s.athlete_name} tab="seminarii" detail={s.seminar_name || s.event_name} date={s.submitted_date} />
-            ))}
-          </Section>
-
-          <Section title="Vize" count={visas.length}>
-            {visas.map((v) => (
-              <PendingRow
-                key={v.id}
-                athleteId={v.athlete}
-                athleteName={v.athlete_name}
-                tab={v.visa_type === 'medical' ? 'medical' : 'vize'}
-                detail={v.visa_type === 'medical' ? 'Viză medicală' : 'Viză anuală'}
-                date={v.submitted_date}
-              />
-            ))}
-          </Section>
-        </>
-      )}
+        <TabsContent value="pending" className="pt-4">
+          <ApprovalsTab status="pending" domain={domain} />
+        </TabsContent>
+        <TabsContent value="approved" className="pt-4">
+          <ApprovalsTab status="approved" domain={domain} />
+        </TabsContent>
+        <TabsContent value="rejected" className="pt-4">
+          <ApprovalsTab status="rejected" domain={domain} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
