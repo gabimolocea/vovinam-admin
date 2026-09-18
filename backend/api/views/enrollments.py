@@ -25,6 +25,86 @@ from django.db import IntegrityError
 from ._common import _event_operational_guard_response
 
 
+def enroll_category_athlete(user, payload):
+    """Enroll an athlete into a category on behalf of `user`. `payload` is
+    a plain dict matching CategoryAthleteSerializer's writable fields
+    (athlete, category, weight, disqualified) - the same shape
+    CategoryAthleteViewSet.create() receives as request.data. Applies the
+    same operational-lock and club-ownership checks create() always has.
+    Returns (data, error_response): exactly one of the two is not None.
+    Shared with api/assistant_tools.py so there is exactly one
+    implementation of "can this user enroll this athlete" for both the
+    REST endpoint and the AI assistant."""
+    payload = dict(payload)
+    category_id = payload.get('category')
+    if category_id:
+        category = Category.objects.select_related('event').filter(pk=category_id).first()
+        if not category:
+            return None, Response({'error': 'Categoria nu a fost găsită.'}, status=404)
+        locked = _event_operational_guard_response(user, category.event)
+        if locked:
+            return None, locked
+
+    if not user.is_admin:
+        athlete_id = payload.get('athlete')
+        if not athlete_id:
+            own_athlete = getattr(user, 'athlete', None)
+            if not own_athlete:
+                return None, Response({'error': 'Nu aveți un profil de sportiv asociat.'}, status=400)
+            athlete_id = own_athlete.id
+            payload['athlete'] = athlete_id
+        if athlete_id:
+            try:
+                target_athlete = Athlete.objects.get(pk=athlete_id)
+            except Athlete.DoesNotExist:
+                return None, Response({'error': 'Sportivul nu a fost găsit.'}, status=404)
+            own_athlete = getattr(user, 'athlete', None)
+            is_self_enrollment = own_athlete and target_athlete.id == own_athlete.id
+            user_club = getattr(own_athlete, 'club_id', None)
+            if not is_self_enrollment and (not user_club or target_athlete.club_id != user_club):
+                return None, Response({'error': 'Poți înscrie doar sportivi din clubul tău.'}, status=403)
+
+    serializer = CategoryAthleteSerializer(data=payload)
+    if serializer.is_valid():
+        serializer.save()
+        return serializer.data, None
+    return None, Response(serializer.errors, status=400)
+
+
+def _category_athlete_club_forbidden(user, instance):
+    """Coaches may only edit/remove enrollments from their own club -
+    shared by CategoryAthleteViewSet's own _club_forbidden_response and by
+    unenroll_category_athlete below."""
+    if user.is_admin:
+        return None
+    own_athlete = getattr(user, 'athlete', None)
+    user_club = getattr(own_athlete, 'club_id', None)
+    is_self_enrollment = own_athlete and instance.athlete_id == own_athlete.id
+    if not is_self_enrollment and (not user_club or instance.athlete.club_id != user_club):
+        return Response({'error': 'Poți modifica doar sportivi din clubul tău.'}, status=403)
+    return None
+
+
+def unenroll_category_athlete(user, category_athlete_id):
+    """Remove a CategoryAthlete enrollment on behalf of `user`, applying
+    the same checks as CategoryAthleteViewSet.destroy(). Returns
+    (data, error_response): exactly one of the two is not None. Shared
+    with api/assistant_tools.py, same reasoning as enroll_category_athlete
+    above."""
+    try:
+        instance = CategoryAthlete.objects.select_related('athlete', 'category__event').get(pk=category_athlete_id)
+    except CategoryAthlete.DoesNotExist:
+        return None, Response({'error': 'Înscrierea nu a fost găsită.'}, status=404)
+    forbidden = _category_athlete_club_forbidden(user, instance)
+    if forbidden:
+        return None, forbidden
+    locked = _event_operational_guard_response(user, getattr(instance.category, 'event', None))
+    if locked:
+        return None, locked
+    instance.delete()
+    return {'id': category_athlete_id}, None
+
+
 class CategoryAthleteViewSet(viewsets.ViewSet):
     """
     ViewSet for CategoryAthlete - basic enrollment without scores.
@@ -68,41 +148,10 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        # Non-admin users (coaches) can only enroll athletes from their own club
-        user = request.user
-        category_id = request.data.get('category')
-        if category_id:
-            category = Category.objects.select_related('event').filter(pk=category_id).first()
-            if not category:
-                return Response({'error': 'Categoria nu a fost găsită.'}, status=404)
-            locked = _event_operational_guard_response(user, category.event)
-            if locked:
-                return locked
-        payload = request.data.copy()
-        if not user.is_admin:
-            athlete_id = payload.get('athlete')
-            if not athlete_id:
-                own_athlete = getattr(user, 'athlete', None)
-                if not own_athlete:
-                    return Response({'error': 'Nu aveți un profil de sportiv asociat.'}, status=400)
-                athlete_id = own_athlete.id
-                payload['athlete'] = athlete_id
-            if athlete_id:
-                try:
-                    target_athlete = Athlete.objects.get(pk=athlete_id)
-                except Athlete.DoesNotExist:
-                    return Response({'error': 'Sportivul nu a fost găsit.'}, status=404)
-                own_athlete = getattr(user, 'athlete', None)
-                is_self_enrollment = own_athlete and target_athlete.id == own_athlete.id
-                user_club = getattr(own_athlete, 'club_id', None)
-                if not is_self_enrollment and (not user_club or target_athlete.club_id != user_club):
-                    return Response({'error': 'Poți înscrie doar sportivi din clubul tău.'}, status=403)
-
-        serializer = self.serializer_class(data=payload)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+        data, error = enroll_category_athlete(request.user, request.data)
+        if error:
+            return error
+        return Response(data, status=201)
 
     def retrieve(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
@@ -112,15 +161,7 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
     def _club_forbidden_response(self, request, instance):
         """Coaches may only edit/remove enrollments from their own club -
         mirrors the same check already applied on create()."""
-        user = request.user
-        if user.is_admin:
-            return None
-        own_athlete = getattr(user, 'athlete', None)
-        user_club = getattr(own_athlete, 'club_id', None)
-        is_self_enrollment = own_athlete and instance.athlete_id == own_athlete.id
-        if not is_self_enrollment and (not user_club or instance.athlete.club_id != user_club):
-            return Response({'error': 'Poți modifica doar sportivi din clubul tău.'}, status=403)
-        return None
+        return _category_athlete_club_forbidden(request.user, instance)
 
     def partial_update(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
@@ -137,14 +178,9 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
         return Response(serializer.errors, status=400)
 
     def destroy(self, request, pk=None):
-        instance = self.get_queryset().get(pk=pk)
-        forbidden = self._club_forbidden_response(request, instance)
-        if forbidden:
-            return forbidden
-        locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
-        if locked:
-            return locked
-        instance.delete()
+        data, error = unenroll_category_athlete(request.user, pk)
+        if error:
+            return error
         return Response(status=204)
 
 

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '@shared';
 import Sidebar from './Sidebar';
+import AssistantWidget from './AssistantWidget';
 
 /** Shown on every page while the account itself is still pending admin
  * approval - unlike a rejected/revision-required account (out of scope
@@ -55,6 +56,7 @@ export default function Layout() {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <PendingApprovalBanner />
+      <AssistantWidget />
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         <Sidebar hideDesktopSidebar={fullBleed} hideMobileBottomNav={fullBleed} />
         <main className={fullBleed ? `flex flex-1 flex-col ${boundedBelowLg ? 'overflow-hidden' : 'overflow-y-auto lg:overflow-hidden'}` : 'flex-1 overflow-y-auto'}>

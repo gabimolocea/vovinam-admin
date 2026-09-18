@@ -146,6 +146,12 @@ urlpatterns = autocomplete_urlpatterns + [
     # Bracket generation endpoints
     path('categories/<int:category_id>/generate-brackets/', views.generate_brackets, name='generate-brackets'),
     path('matches/<int:match_id>/advance-winner/', views.advance_match_winner, name='advance-match-winner'),
+
+    # AI chat assistant (admin/coach only - see api/assistant.py)
+    path('assistant/chat/', AssistantChatView.as_view(), name='assistant-chat'),
+    path('assistant/confirm/', AssistantConfirmView.as_view(), name='assistant-confirm'),
+    path('assistant/conversations/', AssistantConversationsListView.as_view(), name='assistant-conversations'),
+    path('assistant/conversations/<int:pk>/', AssistantConversationView.as_view(), name='assistant-conversation-detail'),
     
     # -------------------------------------------------------------------
     # Public, unauthenticated content endpoints for the new public-facing

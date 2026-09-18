@@ -417,6 +417,15 @@ export const notificationAPI = {
   markAllRead: () => api.post('/notifications/mark_all_read/'),
 };
 
+// ── AI chat assistant (admin/coach only, see backend/api/assistant.py) ──
+export const assistantAPI = {
+  chat: (message, conversationId) => api.post('/assistant/chat/', { message, conversation_id: conversationId }),
+  confirm: (conversationId, messageId, confirmed = true) =>
+    api.post('/assistant/confirm/', { conversation_id: conversationId, message_id: messageId, confirmed }),
+  listConversations: () => api.get('/assistant/conversations/'),
+  getConversation: (id) => api.get(`/assistant/conversations/${id}/`),
+};
+
 // ── News mentions (authenticated) ─────────────────────
 export const newsAPI = {
   myMentions: () => api.get('/landing/news/my_mentions/'),

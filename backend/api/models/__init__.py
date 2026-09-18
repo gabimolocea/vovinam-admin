@@ -26,4 +26,5 @@ from .supporters import *  # noqa: F401,F403
 from .notifications import *  # noqa: F401,F403
 from .videos import *  # noqa: F401,F403
 from .fields import *  # noqa: F401,F403
+from .assistant import *  # noqa: F401,F403
 

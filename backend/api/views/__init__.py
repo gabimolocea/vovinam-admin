@@ -60,6 +60,7 @@ from .notifications import *  # noqa: F401,F403
 from .supporters import *  # noqa: F401,F403
 from .training import *  # noqa: F401,F403
 from .sync import *  # noqa: F401,F403
+from .assistant import *  # noqa: F401,F403
 
 # `import *` only pulls in names that don't start with an underscore, but
 # api/admin.py imports a couple of the legacy-sync private helpers directly

@@ -110,6 +110,12 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    # Only the 'assistant' scope is actually used (by AssistantChatView/
+    # AssistantConfirmView, see api/views/assistant.py) - no
+    # DEFAULT_THROTTLE_CLASSES is set, so this doesn't apply anywhere else.
+    'DEFAULT_THROTTLE_RATES': {
+        'assistant': '20/min',
+    },
 }
 
 customColorPalette = [
