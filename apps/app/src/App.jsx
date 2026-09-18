@@ -12,6 +12,7 @@ import ClubPage from './pages/ClubPage';
 import AdminClubs from './pages/AdminClubs';
 import AdminClubEdit from './pages/AdminClubEdit';
 import AdminApprovals from './pages/AdminApprovals';
+import AssistantReportPage from './pages/AssistantReportPage';
 import MyProfile from './pages/MyProfile';
 import NotificationsPage from './pages/NotificationsPage';
 
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="cluburi" element={<RequireAdmin><AdminClubs /></RequireAdmin>} />
         <Route path="cluburi/:id" element={<RequireAdmin><AdminClubEdit /></RequireAdmin>} />
         <Route path="aprobari" element={<RequireAdmin><AdminApprovals /></RequireAdmin>} />
+        <Route path="asistent-ai" element={<RequireAdmin><AssistantReportPage /></RequireAdmin>} />
         <Route path="profil" element={<MyProfile />} />
         <Route path="notifications" element={<NotificationsPage />} />
       </Route>

@@ -424,6 +424,7 @@ export const assistantAPI = {
     api.post('/assistant/confirm/', { conversation_id: conversationId, message_id: messageId, confirmed }),
   listConversations: () => api.get('/assistant/conversations/'),
   getConversation: (id) => api.get(`/assistant/conversations/${id}/`),
+  report: (days) => api.get('/assistant/report/', { params: { days } }),
 };
 
 // ── News mentions (authenticated) ─────────────────────

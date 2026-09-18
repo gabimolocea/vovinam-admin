@@ -209,3 +209,72 @@ def run_assistant_turn(user, history, message_text):
         'tool_calls': tool_calls_log,
         'pending_confirmation': None,
     }
+
+
+def build_usage_report(since, until):
+    """Aggregate real assistant usage between `since` and `until`
+    (datetimes) for an admin to review periodically - which questions get
+    asked, which tools get used, where a tool call actually failed. This
+    is how the assistant is meant to get "smarter" over time: not by
+    retraining anything, but by an admin reading real conversations here
+    and refining SYSTEM_PROMPT/the tool set in assistant_tools.py based on
+    what shows up (see the fix in this same file for a case exactly like
+    that - the model claiming to have "prepared" a write it never
+    actually called)."""
+    from .models import AssistantMessage
+
+    messages = AssistantMessage.objects.filter(
+        created_at__gte=since, created_at__lt=until,
+    ).select_related('conversation__user', 'conversation__user__athlete')
+
+    user_messages = [m for m in messages if m.role == 'user']
+    assistant_messages = [m for m in messages if m.role == 'assistant']
+
+    tool_usage = {}
+    write_action_counts = {'proposed': 0, 'confirmed': 0, 'cancelled': 0, 'failed': 0, 'pending': 0}
+    recent_errors = []
+
+    for m in assistant_messages:
+        for call in (m.tool_calls or []):
+            tool_name = call.get('tool', '?')
+            result = call.get('result') or {}
+            stats = tool_usage.setdefault(tool_name, {'tool': tool_name, 'count': 0, 'errors': 0})
+            stats['count'] += 1
+            has_error = bool(result.get('error'))
+            if has_error:
+                stats['errors'] += 1
+                recent_errors.append({
+                    'tool': tool_name,
+                    'args': call.get('args'),
+                    'error': result.get('error'),
+                    'created_at': m.created_at,
+                    'user': m.conversation.user.get_full_name() or m.conversation.user.email,
+                })
+            if result.get('requires_confirmation'):
+                write_action_counts['proposed'] += 1
+                status = result.get('status', 'pending')
+                write_action_counts[status] = write_action_counts.get(status, 0) + 1
+
+    recent_errors.sort(key=lambda e: e['created_at'], reverse=True)
+
+    recent_questions = [
+        {
+            'content': m.content,
+            'created_at': m.created_at,
+            'user': m.conversation.user.get_full_name() or m.conversation.user.email,
+        }
+        for m in sorted(user_messages, key=lambda m: m.created_at, reverse=True)
+    ]
+
+    return {
+        'period': {'since': since, 'until': until},
+        'totals': {
+            'conversations': len({m.conversation_id for m in messages}),
+            'user_messages': len(user_messages),
+            'assistant_messages': len(assistant_messages),
+        },
+        'tool_usage': sorted(tool_usage.values(), key=lambda t: t['count'], reverse=True),
+        'write_actions': write_action_counts,
+        'recent_questions': recent_questions[:50],
+        'recent_errors': recent_errors[:50],
+    }

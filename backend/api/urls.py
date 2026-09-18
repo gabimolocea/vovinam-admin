@@ -152,6 +152,7 @@ urlpatterns = autocomplete_urlpatterns + [
     path('assistant/confirm/', AssistantConfirmView.as_view(), name='assistant-confirm'),
     path('assistant/conversations/', AssistantConversationsListView.as_view(), name='assistant-conversations'),
     path('assistant/conversations/<int:pk>/', AssistantConversationView.as_view(), name='assistant-conversation-detail'),
+    path('assistant/report/', AssistantReportView.as_view(), name='assistant-report'),
     
     # -------------------------------------------------------------------
     # Public, unauthenticated content endpoints for the new public-facing

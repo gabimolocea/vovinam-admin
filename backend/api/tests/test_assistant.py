@@ -12,7 +12,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from api.models import Athlete, Category, CategoryAthlete, Club, FightCategory
+from api.models import AssistantConversation, AssistantMessage, Athlete, Category, CategoryAthlete, Club, FightCategory
 from api.assistant_tools import tool_list_categories, _visible_club_ids
 from landing.models import Event
 
@@ -257,6 +257,81 @@ class AssistantVisibilityToolTests(TestCase):
         self.assertEqual(_visible_club_ids(self.coach_user, self.future_deadline_event), {self.club_a.id})
         self.assertIsNone(_visible_club_ids(self.coach_user, self.past_deadline_event))
         self.assertIsNone(_visible_club_ids(self.admin, self.future_deadline_event))
+
+
+class AssistantReportTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            username='assistant-report-admin', email='report-admin@example.com', password='testpass123',
+            role='admin', is_staff=True,
+        )
+        self.coach_user = User.objects.create_user(
+            username='assistant-report-coach', email='report-coach@example.com', password='testpass123', role='athlete',
+        )
+        Athlete.objects.create(user=self.coach_user, first_name='Report', last_name='Coach', is_coach=True, status='approved')
+
+        conversation = AssistantConversation.objects.create(user=self.coach_user)
+        AssistantMessage.objects.create(conversation=conversation, role='user', content='cum inscriu un sportiv?')
+        AssistantMessage.objects.create(
+            conversation=conversation, role='assistant', content='iată cum...',
+            tool_calls=[{'tool': 'list_clubs', 'args': {}, 'result': {'clubs': []}}],
+        )
+        AssistantMessage.objects.create(conversation=conversation, role='user', content='inscrie-l pe Ion la categoria X')
+        AssistantMessage.objects.create(
+            conversation=conversation, role='assistant', content='am pregătit acțiunea',
+            tool_calls=[{
+                'tool': 'enroll_athlete', 'args': {'athlete_id': 1, 'category_id': 2},
+                'result': {'requires_confirmation': True, 'status': 'confirmed', 'summary': '...', 'tool': 'enroll_athlete', 'args': {}},
+            }],
+        )
+        AssistantMessage.objects.create(conversation=conversation, role='user', content='inscrie-l pe Vasile la alt club')
+        AssistantMessage.objects.create(
+            conversation=conversation, role='assistant', content='nu am putut',
+            tool_calls=[{
+                'tool': 'enroll_athlete', 'args': {'athlete_id': 99, 'category_id': 2},
+                'result': {'error': 'Poți înscrie doar sportivi din clubul tău.'},
+            }],
+        )
+
+        old_conversation = AssistantConversation.objects.create(user=self.coach_user)
+        old_message = AssistantMessage.objects.create(conversation=old_conversation, role='user', content='mesaj vechi')
+        AssistantMessage.objects.filter(pk=old_message.pk).update(created_at=timezone.now() - timedelta(days=30))
+
+    def test_non_admin_forbidden(self):
+        self.client.force_authenticate(user=self.coach_user)
+        response = self.client.get('/api/assistant/report/')
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_report_aggregates_recent_usage(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/api/assistant/report/', {'days': 7})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload['totals']['conversations'], 1)
+        self.assertEqual(payload['totals']['user_messages'], 3)
+        self.assertEqual(len(payload['recent_questions']), 3)
+
+        tool_usage_by_name = {t['tool']: t for t in payload['tool_usage']}
+        self.assertEqual(tool_usage_by_name['list_clubs']['count'], 1)
+        self.assertEqual(tool_usage_by_name['list_clubs']['errors'], 0)
+        self.assertEqual(tool_usage_by_name['enroll_athlete']['count'], 2)
+        self.assertEqual(tool_usage_by_name['enroll_athlete']['errors'], 1)
+
+        self.assertEqual(payload['write_actions']['proposed'], 1)
+        self.assertEqual(payload['write_actions']['confirmed'], 1)
+
+        self.assertEqual(len(payload['recent_errors']), 1)
+        self.assertEqual(payload['recent_errors'][0]['tool'], 'enroll_athlete')
+
+    def test_days_parameter_excludes_older_messages(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/api/assistant/report/', {'days': 60})
+        payload = response.json()
+        self.assertEqual(payload['totals']['conversations'], 2)
+        self.assertEqual(payload['totals']['user_messages'], 4)
 
 
 class AssistantThrottleTests(TestCase):

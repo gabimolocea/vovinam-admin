@@ -2,6 +2,9 @@
 tool-calling orchestration and api/assistant_tools.py for the actual
 data-access/security-enforcing tool functions. Kept as plain APIViews
 (not a ViewSet) since this isn't CRUD over one resource."""
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -182,3 +185,25 @@ class AssistantConversationsListView(_AssistantAccessMixin, APIView):
                 for c in conversations
             ],
         })
+
+
+class AssistantReportView(APIView):
+    """Admin-only periodic usage report - see assistant.build_usage_report.
+    Not the same access gate as the chat/confirm endpoints: a coach can
+    use the assistant but never sees the aggregate report of everyone
+    else's conversations, only an admin does."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not getattr(request.user, 'is_admin', False):
+            return Response({'error': 'Raportul este disponibil doar pentru administratori.'}, status=403)
+
+        try:
+            days = int(request.query_params.get('days', 7))
+        except (TypeError, ValueError):
+            return Response({'error': 'Parametrul days trebuie să fie un număr întreg.'}, status=400)
+        days = max(1, min(days, 90))
+
+        until = timezone.now()
+        since = until - timedelta(days=days)
+        return Response(assistant.build_usage_report(since, until))
