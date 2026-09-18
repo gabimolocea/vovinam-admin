@@ -384,7 +384,7 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved, canManageRole })
                 <div className="flex flex-col gap-1">
                   <Label>Gen</Label>
                   <Select value={form.gender} onValueChange={(v) => update('gender', v)}>
-                    <SelectTrigger><SelectValue placeholder="Nespecificat" /></SelectTrigger>
+                    <SelectTrigger aria-label="Gen"><SelectValue placeholder="Nespecificat" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="male">Masculin</SelectItem>
                       <SelectItem value="female">Feminin</SelectItem>
@@ -434,7 +434,7 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved, canManageRole })
                     <div className="flex flex-col gap-1">
                       <Label>Nivel arbitraj</Label>
                       <Select value={form.referee_level} onValueChange={(v) => update('referee_level', v)}>
-                        <SelectTrigger><SelectValue placeholder="Nespecificat" /></SelectTrigger>
+                        <SelectTrigger aria-label="Nivel arbitraj"><SelectValue placeholder="Nespecificat" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="national">Arbitru național</SelectItem>
                           <SelectItem value="international">Arbitru internațional</SelectItem>
@@ -445,7 +445,7 @@ function EditInfoDialog({ open, onOpenChange, athlete, onSaved, canManageRole })
                       <div className="flex flex-col gap-1">
                         <Label>Categorie arbitru</Label>
                         <Select value={form.referee_category} onValueChange={(v) => update('referee_category', v)}>
-                          <SelectTrigger><SelectValue placeholder="Nespecificată" /></SelectTrigger>
+                          <SelectTrigger aria-label="Categorie arbitru"><SelectValue placeholder="Nespecificată" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="A">Categoria A</SelectItem>
                             <SelectItem value="B">Categoria B</SelectItem>
@@ -641,7 +641,7 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
           <div className="flex flex-col gap-1">
             <Label>Competiție<Req /></Label>
             <Select value={form.event} onValueChange={(v) => update('event', v)}>
-              <SelectTrigger><SelectValue placeholder="Alege competiția" /></SelectTrigger>
+              <SelectTrigger aria-label="Competiție"><SelectValue placeholder="Alege competiția" /></SelectTrigger>
               <SelectContent>
                 {competitions.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
               </SelectContent>
@@ -650,7 +650,7 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
           <div className="flex flex-col gap-1">
             <Label>Grupă</Label>
             <Select value={form.group} onValueChange={(v) => update('group', v)} disabled={!form.event || groups.length === 0}>
-              <SelectTrigger><SelectValue placeholder={!form.event ? 'Alege mai întâi competiția' : groups.length === 0 ? 'Fără grupe' : 'Alege grupa'} /></SelectTrigger>
+              <SelectTrigger aria-label="Grupă"><SelectValue placeholder={!form.event ? 'Alege mai întâi competiția' : groups.length === 0 ? 'Fără grupe' : 'Alege grupa'} /></SelectTrigger>
               <SelectContent>
                 {groups.map((g) => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
               </SelectContent>
@@ -659,7 +659,7 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
           <div className="flex flex-col gap-1">
             <Label>Categorie<Req /></Label>
             <Select value={form.category} onValueChange={(v) => update('category', v)} disabled={!form.event}>
-              <SelectTrigger><SelectValue placeholder={form.event ? 'Alege categoria' : 'Alege mai întâi competiția'} /></SelectTrigger>
+              <SelectTrigger aria-label="Categorie"><SelectValue placeholder={form.event ? 'Alege categoria' : 'Alege mai întâi competiția'} /></SelectTrigger>
               <SelectContent>
                 {categoriesInGroup.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
               </SelectContent>
@@ -668,7 +668,7 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
           <div className="flex flex-col gap-1">
             <Label>Loc obținut<Req /></Label>
             <Select value={form.placement_claimed} onValueChange={(v) => update('placement_claimed', v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Loc obținut"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="1st">Locul 1</SelectItem>
                 <SelectItem value="2nd">Locul 2</SelectItem>
@@ -695,8 +695,8 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <Label>Nume echipă (generat automat)</Label>
-                <Input value={teamName} disabled readOnly />
+                <Label htmlFor="team_name_readonly">Nume echipă (generat automat)</Label>
+                <Input id="team_name_readonly" value={teamName} disabled readOnly />
               </div>
             </>
           )}
@@ -815,7 +815,7 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
           <div className="flex flex-col gap-1">
             <Label>Grad<Req /></Label>
             <Select value={form.grade} onValueChange={(v) => update('grade', v)}>
-              <SelectTrigger><SelectValue placeholder="Alege gradul" /></SelectTrigger>
+              <SelectTrigger aria-label="Grad"><SelectValue placeholder="Alege gradul" /></SelectTrigger>
               <SelectContent>
                 {grades.map((g) => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
               </SelectContent>
@@ -824,7 +824,7 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
           <div className="flex flex-col gap-1">
             <Label>Examen</Label>
             <Select value={form.event} onValueChange={(v) => update('event', v)}>
-              <SelectTrigger><SelectValue placeholder="Fără examen asociat" /></SelectTrigger>
+              <SelectTrigger aria-label="Examen"><SelectValue placeholder="Fără examen asociat" /></SelectTrigger>
               <SelectContent>
                 {exams.map((ev) => <SelectItem key={ev.id} value={String(ev.id)}>{ev.name}</SelectItem>)}
               </SelectContent>
@@ -838,7 +838,7 @@ function AddGradeDialog({ open, onOpenChange, athlete, onCreated }) {
             <div className="flex flex-col gap-1">
               <Label>Nivel</Label>
               <Select value={form.level} onValueChange={(v) => update('level', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Nivel"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="good">Bine</SelectItem>
                   <SelectItem value="bad">Slab</SelectItem>
@@ -947,7 +947,7 @@ function AddSeminarDialog({ open, onOpenChange, athlete, onCreated }) {
           <div className="flex flex-col gap-1">
             <Label>Eveniment<Req /></Label>
             <Select value={form.event} onValueChange={(v) => setForm({ event: v })}>
-              <SelectTrigger><SelectValue placeholder="Alege seminarul" /></SelectTrigger>
+              <SelectTrigger aria-label="Eveniment"><SelectValue placeholder="Alege seminarul" /></SelectTrigger>
               <SelectContent>
                 {events.map((ev) => <SelectItem key={ev.id} value={String(ev.id)}>{ev.name}</SelectItem>)}
               </SelectContent>
@@ -1357,7 +1357,7 @@ export default function AthleteDetail() {
             onClick={handleLogout}
             title="Deconectare"
             aria-label="Deconectare"
-            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 lg:hidden"
+            className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 lg:hidden"
           >
             <LogOut className="h-4 w-4" />
           </button>
@@ -1409,7 +1409,14 @@ export default function AthleteDetail() {
                   variant="outline"
                   disabled={uploadingPhoto || (isPhotoPending && !isSelf)}
                   onClick={() => photoInputRef.current?.click()}
-                  className="absolute bottom-1 right-1 h-7 w-7 rounded-full border-white/40 bg-sidebar p-0 text-white hover:bg-white/10 disabled:opacity-50"
+                  className="absolute bottom-0 right-0 h-9 w-9 rounded-full border-white/40 bg-sidebar p-0 text-white hover:bg-white/10 disabled:opacity-50"
+                  aria-label={
+                    isPhotoPending && isSelf
+                      ? 'Trimite o altă poză - o va înlocui pe cea în așteptare'
+                      : isPhotoPending
+                        ? 'O poză este deja în așteptarea aprobării'
+                        : 'Schimbă poza de profil'
+                  }
                   title={
                     isPhotoPending && isSelf
                       ? 'Trimite o altă poză - o va înlocui pe cea în așteptare'

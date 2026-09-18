@@ -54,6 +54,7 @@ export default function GalleryTab({ athleteId, clubSlug }) {
             key={photo.id}
             type="button"
             onClick={() => setActiveIndex(i)}
+            aria-label={photo.alt_text || photo.caption || `Vezi poza ${i + 1}`}
             className="group relative aspect-square overflow-hidden rounded-lg bg-muted"
           >
             <img

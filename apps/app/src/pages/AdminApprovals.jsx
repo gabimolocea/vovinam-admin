@@ -150,7 +150,7 @@ export default function AdminApprovals() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold">Aprobări</h1>
         <Select value={domain || 'all'} onValueChange={(v) => setDomain(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Filtrează după categorie" className="w-[200px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Toate categoriile</SelectItem>
             {Object.keys(DOMAIN_LABELS).map((d) => (

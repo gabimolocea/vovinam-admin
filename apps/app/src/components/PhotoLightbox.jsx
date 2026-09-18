@@ -144,6 +144,8 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
               type="button"
               disabled={!isAuthenticated || reacting}
               onClick={() => handleReact('like')}
+              aria-label={`Apreciază${detail.my_reaction === 'like' ? ' (apreciat deja)' : ''}`}
+              aria-pressed={detail.my_reaction === 'like'}
               className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition disabled:opacity-40 ${detail.my_reaction === 'like' ? 'bg-primary/20 text-primary' : 'bg-white/10 hover:bg-white/20'}`}
             >
               <ThumbsUp className="h-4 w-4" /> {detail.like_count}
@@ -152,6 +154,8 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
               type="button"
               disabled={!isAuthenticated || reacting}
               onClick={() => handleReact('dislike')}
+              aria-label={`Nu apreciază${detail.my_reaction === 'dislike' ? ' (selectat deja)' : ''}`}
+              aria-pressed={detail.my_reaction === 'dislike'}
               className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition disabled:opacity-40 ${detail.my_reaction === 'dislike' ? 'bg-destructive/20 text-destructive' : 'bg-white/10 hover:bg-white/20'}`}
             >
               <ThumbsDown className="h-4 w-4" /> {detail.dislike_count}
@@ -196,6 +200,7 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
             value={commentText}
             onChange={(event) => setCommentText(event.target.value)}
             placeholder={isAuthenticated ? 'Scrie un comentariu…' : 'Autentifică-te pentru a comenta'}
+            aria-label="Comentariu"
             disabled={!isAuthenticated || posting}
             rows={1}
             className="min-h-0 flex-1 resize-none bg-white/10 text-white placeholder:text-white/40"

@@ -16,7 +16,7 @@ const normalizeText = (value = '') =>
  * list into the DOM unusably; this mirrors CreateAthlete.jsx's own
  * search-as-you-type combobox instead. `value` is a city id (or ''/null),
  * `onChange` receives the new city id. */
-export default function CityAutocomplete({ value, onChange }) {
+export default function CityAutocomplete({ value, onChange, id, 'aria-label': ariaLabel }) {
   const [cities, setCities] = useState([]);
   const [query, setQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -78,6 +78,8 @@ export default function CityAutocomplete({ value, onChange }) {
     <div ref={boxRef} className="relative">
       <div className="relative">
         <Input
+          id={id}
+          aria-label={ariaLabel}
           value={query}
           onChange={handleQueryChange}
           onFocus={() => setShowSuggestions(true)}

@@ -130,11 +130,19 @@ function NavLinks({ navItems, onNavigate }) {
 
 /** Fixed tab bar on mobile/tablet (below `lg`) - icon + label, the role's
  * own nav items, plus a trailing direct link out to the public site (no
- * more drawer/overflow menu - "Deconectare" moved to the profile page's
- * own hero instead, see AthleteDetail.jsx, since that's the only other
- * thing that used to live behind it). */
-function BottomNav({ navItems }) {
+ * more drawer/overflow menu - a coach/athlete's "Deconectare" lives on
+ * their own profile page's hero instead, see AthleteDetail.jsx). An admin
+ * has no athlete profile of their own to ever land on that hero, and the
+ * desktop sidebar's own logout button is hidden below `lg` - so without
+ * this, an admin on mobile/tablet would have no way to log out at all. */
+function BottomNav({ navItems, isAdmin }) {
+  const { logout } = useAuth();
   const unreadCount = useUnreadCount();
+
+  async function handleLogout() {
+    await logout();
+    window.location.href = PUBLIC_SITE_URL;
+  }
 
   return (
     <nav
@@ -171,6 +179,16 @@ function BottomNav({ navItems }) {
         <ExternalLink className="h-5 w-5 shrink-0" />
         <span className="truncate">Site</span>
       </a>
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-bold uppercase tracking-wide text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground"
+        >
+          <LogOut className="h-5 w-5 shrink-0" />
+          <span className="truncate">Deconectare</span>
+        </button>
+      )}
     </nav>
   );
 }
@@ -229,7 +247,7 @@ export default function Sidebar() {
 
   return (
     <>
-      <BottomNav navItems={navItems} />
+      <BottomNav navItems={navItems} isAdmin={isAdmin} />
 
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">

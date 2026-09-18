@@ -290,15 +290,15 @@ export const DialogContent = forwardRef(function DialogContent({ className, chil
             // Below `lg` (mobile/tablet): a true fullscreen panel. From
             // `lg` up (desktop): a right-side drawer instead - full height,
             // capped width, sliding in from the edge.
-            ? 'fixed inset-0 z-[70] flex w-full max-w-none min-w-0 flex-col gap-4 border-0 bg-card p-6 text-card-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 overflow-y-auto [&>*]:min-w-0 lg:inset-y-0 lg:left-auto lg:right-0 lg:h-full lg:max-w-lg lg:border-l lg:border-border lg:data-[state=open]:slide-in-from-right lg:data-[state=closed]:slide-out-to-right'
-            : 'fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg min-w-0 -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 max-h-[90vh] overflow-x-hidden overflow-y-auto [&>*]:min-w-0',
+            ? 'fixed inset-0 z-[70] flex w-full max-w-none min-w-0 flex-col gap-4 border-0 bg-card p-6 text-card-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 overflow-x-hidden overflow-y-auto [&>*]:min-w-0 [&_*]:min-w-0 lg:inset-y-0 lg:left-auto lg:right-0 lg:h-full lg:max-w-lg lg:border-l lg:border-border lg:data-[state=open]:slide-in-from-right lg:data-[state=closed]:slide-out-to-right'
+            : 'fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg min-w-0 -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 max-h-[90vh] overflow-x-hidden overflow-y-auto [&>*]:min-w-0 [&_*]:min-w-0',
           className,
         )}
         {...props}
       >
         {children}
         {showClose && (
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring">
+          <DialogPrimitive.Close className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full opacity-70 outline-none transition-colors hover:bg-accent hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring">
             <X className="h-4 w-4" />
             <span className="sr-only">Închide</span>
           </DialogPrimitive.Close>

@@ -344,7 +344,7 @@ function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onC
           <div className="flex flex-col gap-1">
             <Label>Sportiv<Req /></Label>
             <Select value={form.athlete} onValueChange={(v) => update('athlete', v)}>
-              <SelectTrigger><SelectValue placeholder="Alege sportivul" /></SelectTrigger>
+              <SelectTrigger aria-label="Sportiv"><SelectValue placeholder="Alege sportivul" /></SelectTrigger>
               <SelectContent>
                 {athletes.map((a) => <SelectItem key={a.id} value={String(a.id)}>{`${a.last_name || ''} ${a.first_name || ''}`.trim()}</SelectItem>)}
               </SelectContent>
@@ -353,7 +353,7 @@ function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onC
           <div className="flex flex-col gap-1">
             <Label>Examen<Req /></Label>
             <Select value={form.event} onValueChange={(v) => update('event', v)}>
-              <SelectTrigger><SelectValue placeholder="Alege examenul" /></SelectTrigger>
+              <SelectTrigger aria-label="Examen"><SelectValue placeholder="Alege examenul" /></SelectTrigger>
               <SelectContent>
                 {exams.map((ev) => <SelectItem key={ev.id} value={String(ev.id)}>{ev.name}</SelectItem>)}
               </SelectContent>
@@ -362,7 +362,7 @@ function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onC
           <div className="flex flex-col gap-1">
             <Label>Grad obținut<Req /></Label>
             <Select value={form.grade} onValueChange={(v) => update('grade', v)}>
-              <SelectTrigger><SelectValue placeholder="Alege gradul" /></SelectTrigger>
+              <SelectTrigger aria-label="Grad obținut"><SelectValue placeholder="Alege gradul" /></SelectTrigger>
               <SelectContent>
                 {grades.map((g) => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
               </SelectContent>
@@ -371,7 +371,7 @@ function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onC
           <div className="flex flex-col gap-1">
             <Label>Certificat (opțional)</Label>
             <div className="flex items-center gap-4">
-              <label className="flex aspect-[3/2] w-40 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent">
+              <label aria-label="Încarcă certificatul" className="flex aspect-[3/2] w-40 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent">
                 {certificatePreview ? (
                   <img src={certificatePreview} alt="Previzualizare certificat" className="h-full w-full object-cover" />
                 ) : (
@@ -390,7 +390,7 @@ function AddGradeResultDialog({ open, onOpenChange, exams, athletes, grades, onC
             <div className="flex flex-col gap-1">
               <Label>Nivel</Label>
               <Select value={form.level} onValueChange={(v) => update('level', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Nivel"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="good">Bine</SelectItem>
                   <SelectItem value="bad">Slab</SelectItem>

@@ -101,6 +101,7 @@ export default function ClubForm({ initial, onSubmit, submitLabel, error }) {
           <button
             type="button"
             onClick={() => logoInputRef.current?.click()}
+            aria-label="Încarcă sigla clubului"
             className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
           >
             {logoPreview ? (
@@ -119,8 +120,8 @@ export default function ClubForm({ initial, onSubmit, submitLabel, error }) {
           <Input id="club_name" required value={form.name} onChange={(e) => update('name', e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
-          <Label>Oraș</Label>
-          <CityAutocomplete value={form.city} onChange={(cityId) => update('city', cityId)} />
+          <Label htmlFor="club_city">Oraș</Label>
+          <CityAutocomplete id="club_city" value={form.city} onChange={(cityId) => update('city', cityId)} />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="club_phone">Telefon</Label>

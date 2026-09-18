@@ -358,6 +358,7 @@ export default function CreateAthlete() {
               <button
                 type="button"
                 onClick={() => licenseInputRef.current?.click()}
+                aria-label="Încarcă poza legitimației"
                 className="flex aspect-[3/2] w-40 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
               >
                 {licensePreview ? (
@@ -407,7 +408,7 @@ export default function CreateAthlete() {
             <div className="flex flex-col gap-1 sm:w-1/2 sm:pr-2">
               <Label>Club<Req /></Label>
               <Select value={form.club} onValueChange={(v) => update('club', v)}>
-                <SelectTrigger><SelectValue placeholder="Alege clubul" /></SelectTrigger>
+                <SelectTrigger aria-label="Club"><SelectValue placeholder="Alege clubul" /></SelectTrigger>
                 <SelectContent>
                   {clubs.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
                 </SelectContent>
@@ -424,6 +425,7 @@ export default function CreateAthlete() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
+                aria-label="Încarcă fotografia sportivului"
                 className="flex aspect-[3/2] w-40 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
               >
                 {profilePreview ? (
@@ -461,7 +463,7 @@ export default function CreateAthlete() {
             <div className="flex flex-col gap-1">
               <Label>Gen<Req /></Label>
               <Select value={form.gender} onValueChange={(v) => update('gender', v)}>
-                <SelectTrigger><SelectValue placeholder="Alege" /></SelectTrigger>
+                <SelectTrigger aria-label="Gen"><SelectValue placeholder="Alege" /></SelectTrigger>
                 <SelectContent>
                   {GENDER_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                 </SelectContent>
@@ -488,9 +490,10 @@ export default function CreateAthlete() {
               <Input id="ca_phone" name="mobile_number" value={form.mobile_number} onChange={handleChange} />
             </div>
             <div ref={cityBoxRef} className="relative flex flex-col gap-1">
-              <Label>Oraș</Label>
+              <Label htmlFor="ca_city">Oraș</Label>
               <div className="relative">
                 <Input
+                  id="ca_city"
                   value={cityQuery}
                   onChange={handleCityChange}
                   onFocus={() => setShowCitySuggestions(true)}
@@ -571,7 +574,7 @@ export default function CreateAthlete() {
                   <div className="flex flex-col gap-1">
                     <Label>Nivel arbitraj</Label>
                     <Select value={form.referee_level} onValueChange={(v) => update('referee_level', v)}>
-                      <SelectTrigger><SelectValue placeholder="Alege" /></SelectTrigger>
+                      <SelectTrigger aria-label="Nivel arbitraj"><SelectValue placeholder="Alege" /></SelectTrigger>
                       <SelectContent>
                         {REFEREE_LEVEL_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                       </SelectContent>
@@ -581,7 +584,7 @@ export default function CreateAthlete() {
                     <div className="flex flex-col gap-1">
                       <Label>Categorie arbitru</Label>
                       <Select value={form.referee_category} onValueChange={(v) => update('referee_category', v)}>
-                        <SelectTrigger><SelectValue placeholder="Alege" /></SelectTrigger>
+                        <SelectTrigger aria-label="Categorie arbitru"><SelectValue placeholder="Alege" /></SelectTrigger>
                         <SelectContent>
                           {REFEREE_CATEGORY_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                         </SelectContent>
@@ -614,7 +617,7 @@ export default function CreateAthlete() {
             <div className="flex flex-col gap-1">
               <Label>Grad acordat</Label>
               <Select value={gradeForm.grade} onValueChange={(v) => setGradeForm(prev => ({ ...prev, grade: v }))}>
-                <SelectTrigger><SelectValue placeholder="Alege" /></SelectTrigger>
+                <SelectTrigger aria-label="Grad acordat"><SelectValue placeholder="Alege" /></SelectTrigger>
                 <SelectContent>
                   {grades.map((g) => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
                 </SelectContent>
@@ -623,7 +626,7 @@ export default function CreateAthlete() {
             <div className="flex flex-col gap-1">
               <Label>Examen</Label>
               <Select value={gradeForm.event} onValueChange={(v) => setGradeForm(prev => ({ ...prev, event: v }))}>
-                <SelectTrigger><SelectValue placeholder="Alege examenul" /></SelectTrigger>
+                <SelectTrigger aria-label="Examen"><SelectValue placeholder="Alege examenul" /></SelectTrigger>
                 <SelectContent>
                   {exams.map((ev) => <SelectItem key={ev.id} value={String(ev.id)}>{ev.name}</SelectItem>)}
                 </SelectContent>
@@ -641,7 +644,7 @@ export default function CreateAthlete() {
             <div className="flex flex-col gap-1">
               <Label>Nivel</Label>
               <Select value={gradeForm.level} onValueChange={(v) => setGradeForm(prev => ({ ...prev, level: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Nivel"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {LEVEL_OPTIONS.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                 </SelectContent>
@@ -658,6 +661,7 @@ export default function CreateAthlete() {
               <button
                 type="button"
                 onClick={() => medicalVisaInputRef.current?.click()}
+                aria-label="Încarcă dovada vizei medicale"
                 className="flex aspect-[3/2] w-40 shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-input bg-muted text-muted-foreground transition hover:bg-accent"
               >
                 {medicalVisaPreview ? (
