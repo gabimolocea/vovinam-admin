@@ -232,7 +232,7 @@ function SidebarFooter() {
  * bottom tab bar (icon+label per role nav item, plus a direct link out to
  * the public site) - no top bar, no drawer. Nav items vary by role - see
  * useNavItems() above. */
-export default function Sidebar() {
+export default function Sidebar({ hideDesktopSidebar = false, hideMobileBottomNav = false }) {
   const { user, isAdmin, isCoach } = useAuth();
   const athlete = user?.athlete;
   const club = useClubLogo(athlete?.club);
@@ -247,21 +247,29 @@ export default function Sidebar() {
 
   return (
     <>
-      <BottomNav navItems={navItems} isAdmin={isAdmin} />
+      {/* A data-dense full-bleed page (e.g. the admin Centralizator) can
+          hide this on mobile/tablet too, when it has its own bottom tab
+          bar (Centralizator/Tehnica/Lupta) that would otherwise stack
+          underneath this one. */}
+      {!hideMobileBottomNav && <BottomNav navItems={navItems} isAdmin={isAdmin} />}
 
-      {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
-        <div className="flex items-center gap-2 px-4 py-5">
-          {club?.logo ? (
-            <img src={imgUrl(club.logo)} alt={club.name} width={40} height={40} className="shrink-0 rounded object-contain" />
-          ) : (
-            <Logo size={40} />
-          )}
-          <p className="truncate text-sm font-bold uppercase tracking-wide">{headerLabel}</p>
-        </div>
-        <NavLinks navItems={navItems} />
-        <SidebarFooter />
-      </aside>
+      {/* Desktop sidebar - a data-dense full-bleed page (e.g. the admin
+          Centralizator matrix) can hide this on desktop to reclaim its
+          width, while still keeping BottomNav for mobile/tablet nav. */}
+      {!hideDesktopSidebar && (
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
+          <div className="flex items-center gap-2 px-4 py-5">
+            {club?.logo ? (
+              <img src={imgUrl(club.logo)} alt={club.name} width={40} height={40} className="shrink-0 rounded object-contain" />
+            ) : (
+              <Logo size={40} />
+            )}
+            <p className="truncate text-sm font-bold uppercase tracking-wide">{headerLabel}</p>
+          </div>
+          <NavLinks navItems={navItems} />
+          <SidebarFooter />
+        </aside>
+      )}
     </>
   );
 }

@@ -60,10 +60,31 @@ def _resolve_round(match_id: int, round_number: int | None):
     return MatchRound.objects.filter(match_id=match_id, round_number=round_number).first()
 
 
-def _upsert_category_athlete(entry: dict[str, Any]):
+def _upsert_category_athlete(entry: dict[str, Any], fight_bracket_by_category_id: dict[int, tuple[int, str]]):
+    category_id = entry['category_id']
+    athlete_id = entry['athlete_id']
+
+    # Fight categories are mutually-exclusive weight brackets within the
+    # same group+gender - an athlete sits in exactly one at a time. LAN
+    # moving them to a different bracket (post-weigh-in reassignment)
+    # changes which (category_id, athlete_id) pair this entry carries, so
+    # a plain update_or_create keyed on that pair can't find the athlete's
+    # old bracket row and just creates a second one instead of moving it -
+    # leaving the athlete enrolled in both the old and new bracket. Drop
+    # any other bracket enrollment for this athlete in the same group+
+    # gender first, so cloud ends up with the single bracket LAN chose.
+    bracket = fight_bracket_by_category_id.get(category_id)
+    if bracket is not None:
+        sibling_category_ids = [
+            cid for cid, other_bracket in fight_bracket_by_category_id.items()
+            if other_bracket == bracket and cid != category_id
+        ]
+        if sibling_category_ids:
+            CategoryAthlete.objects.filter(athlete_id=athlete_id, category_id__in=sibling_category_ids).delete()
+
     obj, _created = CategoryAthlete.objects.update_or_create(
-        category_id=entry['category_id'],
-        athlete_id=entry['athlete_id'],
+        category_id=category_id,
+        athlete_id=athlete_id,
         defaults={
             'weight': entry.get('weight'),
             'place': entry.get('place'),
@@ -261,6 +282,10 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
 
     existing_category_ids = _existing_event_category_ids(event.id)
     existing_match_ids = _existing_event_match_ids(event.id)
+    fight_bracket_by_category_id: dict[int, tuple[int, str]] = {
+        row['id']: (row['group_id'], row['gender'])
+        for row in FightCategory.objects.filter(event_id=event.id).values('id', 'group_id', 'gender')
+    }
 
     for entry in category_results_payload:
         if entry['id'] not in existing_category_ids:
@@ -304,7 +329,7 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValidationError({'category_athletes': f"Category {entry['category_id']} does not exist in cloud. Creating new local categories is not supported by result sync."})
         if not Athlete.objects.filter(pk=entry['athlete_id']).exists():
             raise ValidationError({'category_athletes': f"Athlete {entry['athlete_id']} does not exist in cloud. Creating new local athletes is not supported by result sync."})
-        _upsert_category_athlete(entry)
+        _upsert_category_athlete(entry, fight_bracket_by_category_id)
         imported['category_athletes'] += 1
 
     for entry in category_teams_payload:

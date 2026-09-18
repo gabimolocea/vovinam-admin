@@ -1,24 +1,43 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ArrowUp, GripVertical, Plus, X } from 'lucide-react';
-import { Alert, Button, Input } from './ui';
-import { GENDER_BG, GENDER_LABELS, TYPE_LABELS, isTeamCategoryType } from '../lib/centralizator';
+import { Input } from './ui';
+import { GENDER_LABELS, TYPE_LABELS, isTeamCategoryType } from '../lib/centralizator';
 
 /**
- * Admin-only desktop matrix (club × category) for the Centralizator: full
- * structure CRUD, drag-reorder, and enrollment - ported from
+ * Desktop matrix (club × category) for the Centralizator - ported from
  * apps/competition-admin's CentralizatorPage.jsx, restyled with apps/app's
  * real component library instead of the .frvv-* brutalist skin. Rendered
- * only at md:+ width; below that, the caller falls back to the existing
- * read-only card-grid (CoachTehnicaView/CoachLuptaView).
+ * only at lg:+ width; below that, the caller falls back to the per-category
+ * card grid (CoachTehnicaView/CoachLuptaView).
+ *
+ * Shared between admin and coach (same ctx shape - a coach's own hook is a
+ * subset of admin's, see useCoachCentralizator/useAdminCentralizator):
+ * - Structure CRUD (rename/add/delete/drag-reorder groups & categories) is
+ *   admin-only - `isAdminUser` (true when ctx.myClubId is null, since only
+ *   admin has no club of their own) gates all of it off for a coach.
+ * - A coach can only enroll/unenroll in their own club's row; every other
+ *   club's cells render read-only for them.
+ * - Before the coach registration deadline passes, a coach sees only their
+ *   own club's row at all (and no participant-count footer) - other clubs'
+ *   entries and totals stay hidden until the deadline closes, so clubs
+ *   can't see each other's provisional rosters while registration is still
+ *   open. Admin always sees everything.
  */
 // ctx.countPerCat always counts enrolled_athletes.length regardless of
 // category type (harmless in the coach hook, which never shows team
 // categories' counts) - compute the real count here instead of reusing it.
 const participantCount = (cat) => (isTeamCategoryType(cat.type) ? (cat.enrolled_teams?.length ?? 0) : (cat.enrolled_athletes?.length ?? 0));
 
+// The shared GENDER_BG tokens are translucent (nice over a card background
+// in the read-only coach grid), but these header rows are sticky - a
+// translucent background lets scrolled-under body rows bleed through, so
+// this table uses its own fully opaque tint instead.
+const GENDER_HEADER_BG = { male: 'bg-blue-100 dark:bg-blue-950', female: 'bg-pink-100 dark:bg-pink-950', mixt: 'bg-amber-100 dark:bg-amber-950' };
+
 export default function AdminCentralizatorMatrix({ ctx }) {
   const {
-    columnStructure, allCols, clubRows, groups,
+    columnStructure, allCols, clubs, categories, groups,
+    myClubId, isCoachDeadlinePassed,
     dragType, dragId, dragOverId,
     editingGroupId, editingGroupName, setEditingGroupId, setEditingGroupName,
     editingCatId, editingCatName, setEditingCatId, setEditingCatName,
@@ -31,13 +50,44 @@ export default function AdminCentralizatorMatrix({ ctx }) {
     handleClubDragStart, handleClubDragOver, handleClubDrop,
     handleCellClick, handleDeleteGroup, handleDeleteCat,
     handleUnenroll,
-    generatingDefaults,
-    showStandardStructureBanner,
-    handleGenerateStandardStructure,
-    dismissStandardStructureBanner,
   } = ctx;
 
+  const isAdminUser = myClubId == null;
+  const canSeeAllClubs = isAdminUser || isCoachDeadlinePassed;
+  const visibleClubs = canSeeAllClubs ? clubs : clubs.filter((c) => c.id === myClubId);
+
   const totalColSpan = 1 + columnStructure.reduce((sum, col) => sum + 1 + Math.max(col.cats.length, 1), 0) + 1;
+
+  // A club's rows are otherwise a single axis shared across every category
+  // column (one row per athlete), so an athlete enrolled in only one
+  // category still occupies - and leaves blank - a row in every other
+  // column too, scattering each column's filled cells at whatever row its
+  // particular athletes landed on. Building an independent, packed list
+  // per (club, category) instead means every column's entries start at
+  // row 1 regardless of what any other column looks like.
+  const enrollmentsByClubAndCategory = useMemo(() => {
+    const map = {};
+    for (const cat of categories) {
+      const isTeam = isTeamCategoryType(cat.type);
+      const entries = isTeam ? (cat.enrolled_teams || []) : (cat.enrolled_athletes || []);
+      for (const entry of entries) {
+        let clubId, name;
+        if (isTeam) {
+          const firstMember = entry.members?.[0];
+          clubId = firstMember?.club?.id ?? 0;
+          name = entry.team_name || (entry.members || []).map((m) => m.name).filter(Boolean).join(' & ') || 'Echipă';
+        } else {
+          const a = entry.athlete_details;
+          clubId = a?.club?.id ?? 0;
+          name = `${a?.last_name || ''} ${a?.first_name || ''}`.trim();
+        }
+        if (!map[clubId]) map[clubId] = {};
+        if (!map[clubId][cat.id]) map[clubId][cat.id] = [];
+        map[clubId][cat.id].push({ enrollmentId: entry.id, name, isTeam, weight: isTeam ? null : entry.weight });
+      }
+    }
+    return map;
+  }, [categories]);
 
   const openGroupModal = (atIndex) => {
     setGroupModal({ atIndex });
@@ -49,71 +99,48 @@ export default function AdminCentralizatorMatrix({ ctx }) {
   };
 
   return (
-    <div>
-      {showStandardStructureBanner && (
-        <Alert className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start justify-between gap-3 md:flex-1">
-            <div>
-              <div className="text-sm font-semibold">Structură standard competiție</div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Generează doar grupele și categoriile standard care lipsesc. Elementele existente rămân neschimbate și nu se duplică.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={dismissStandardStructureBanner}
-              aria-label="Ascunde această secțiune"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-accent"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <Button onClick={handleGenerateStandardStructure} disabled={busy || generatingDefaults} className="w-full md:w-auto">
-            {generatingDefaults ? 'Se generează…' : 'Generează categorii și grupe standard'}
-          </Button>
-        </Alert>
-      )}
-
-      <div className="overflow-auto rounded-lg border border-border bg-card">
-        <table className="w-max min-w-full border-collapse text-sm">
-          {/* ═══ ROW 1: Group headers + "+" add-group column ═══ */}
-          <thead className="sticky top-0 z-20">
+    <div className="min-h-0 flex-1 overflow-auto bg-card">
+      <table className="w-max min-w-full border-collapse text-xs">
+        {/* ═══ ROW 1: Group headers + "+" add-group column ═══ */}
+        <thead className="sticky top-0 z-20">
             <tr>
               <th
-                className="sticky left-0 z-40 min-w-[170px] border border-border bg-muted px-4 py-4 text-left text-sm font-bold uppercase tracking-wide lg:min-w-[220px]"
+                className="sticky left-0 z-40 min-w-[130px] border border-sidebar-border bg-muted px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-wide lg:min-w-[170px]"
                 rowSpan={3}
               >
                 Club
               </th>
               {columnStructure.map((col, ci) => (
                 <React.Fragment key={col.group.id}>
-                  <th className="group/insert relative w-0 border-none p-0" rowSpan={3}>
-                    <div className="absolute inset-y-0 -left-2 -right-2 z-30 flex items-center justify-center">
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); openGroupModal(ci); }}
-                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border bg-card px-2.5 py-1.5 text-[10px] font-semibold opacity-0 shadow-sm transition-all hover:bg-accent group-hover/insert:opacity-100"
-                        aria-label="Adaugă grupă aici"
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Grupă
-                      </button>
-                    </div>
-                  </th>
+                  {isAdminUser && (
+                    <th className="group/insert relative w-0 border-none p-0" rowSpan={3}>
+                      <div className="absolute inset-y-0 -left-2 -right-2 z-30 flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openGroupModal(ci); }}
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-sidebar-border bg-card px-2.5 py-1.5 text-[10px] font-semibold opacity-0 shadow-sm transition-all hover:bg-accent group-hover/insert:opacity-100"
+                          aria-label="Adaugă grupă aici"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Grupă
+                        </button>
+                      </div>
+                    </th>
+                  )}
 
                   <th
                     colSpan={col.colSpan}
-                    draggable
-                    onDragStart={(e) => handleGroupDragStart(e, col.group.id)}
-                    onDragOver={(e) => handleGroupDragOver(e, col.group.id)}
-                    onDrop={(e) => handleGroupDrop(e, col.group.id)}
+                    draggable={isAdminUser}
+                    onDragStart={(e) => isAdminUser && handleGroupDragStart(e, col.group.id)}
+                    onDragOver={(e) => isAdminUser && handleGroupDragOver(e, col.group.id)}
+                    onDrop={(e) => isAdminUser && handleGroupDrop(e, col.group.id)}
                     onDragEnd={handleDragEnd}
-                    className={`relative cursor-grab whitespace-nowrap border border-border bg-amber-500/15 px-4 py-3 text-center text-sm font-bold transition-all active:cursor-grabbing ${
+                    className={`relative whitespace-nowrap border border-sidebar-border bg-amber-100 px-2 py-1 text-center text-xs font-bold transition-all dark:bg-amber-950 ${isAdminUser ? 'cursor-grab active:cursor-grabbing' : ''} ${
                       dragType === 'group' && dragId === col.group.id ? 'scale-95 opacity-40' : ''
                     } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-primary ring-inset' : ''}`}
                   >
                     <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5">
-                      <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-40" aria-hidden="true" />
-                      {editingGroupId === col.group.id ? (
+                      {isAdminUser && <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-40" aria-hidden="true" />}
+                      {isAdminUser && editingGroupId === col.group.id ? (
                         <Input
                           value={editingGroupName}
                           onChange={(e) => setEditingGroupName(e.target.value)}
@@ -121,14 +148,14 @@ export default function AdminCentralizatorMatrix({ ctx }) {
                           onKeyDown={(e) => { if (e.key === 'Enter') handleGroupRenameSubmit(col.group); if (e.key === 'Escape') setEditingGroupId(null); }}
                           onClick={(e) => e.stopPropagation()}
                           aria-label="Nume grupă"
-                          className="h-7 w-28 px-1.5 py-0.5 text-center text-xs font-semibold"
+                          className="h-6 w-24 px-1.5 py-0.5 text-center text-xs font-semibold"
                           autoFocus
                         />
                       ) : (
                         <span
-                          onDoubleClick={(e) => { e.stopPropagation(); handleGroupRenameStart(col.group); }}
-                          className="cursor-text"
-                          title="Dublu-click pentru a redenumi"
+                          onDoubleClick={(e) => { if (!isAdminUser) return; e.stopPropagation(); handleGroupRenameStart(col.group); }}
+                          className={isAdminUser ? 'cursor-text' : ''}
+                          title={isAdminUser ? 'Dublu-click pentru a redenumi' : undefined}
                         >
                           {col.group.name}
                           {(col.group.birth_date_start || col.group.birth_year_start) && (col.group.birth_date_end || col.group.birth_year_end) && (
@@ -140,61 +167,69 @@ export default function AdminCentralizatorMatrix({ ctx }) {
                           )}
                         </span>
                       )}
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleToggleAllowYounger(col.group); }}
-                        aria-pressed={!!col.group.allow_younger}
-                        aria-label={col.group.allow_younger ? 'Acceptă sportivi mai tineri (activ) - dezactivează' : 'Permite sportivi mai tineri să urce la categorie superioară'}
-                        title={col.group.allow_younger ? 'Acceptă sportivi mai tineri (activ)' : 'Permite sportivi mai tineri'}
-                        className={`inline-flex h-6 items-center gap-0.5 rounded-full px-1.5 text-[10px] font-medium transition ${
-                          col.group.allow_younger ? 'bg-amber-400/40 text-amber-900 hover:bg-amber-400/55 dark:text-amber-200' : 'bg-card/70 text-muted-foreground hover:bg-card'
-                        }`}
-                      >
-                        <ArrowUp className="h-3 w-3" />
-                        <span className="hidden sm:inline">{col.group.allow_younger ? 'Tineri ✓' : 'Tineri'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); openCatModal(col.group.id); }}
-                        aria-label={`Adaugă categorie în ${col.group.name}`}
-                        title="Adaugă categorie"
-                        className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 text-[10px] font-semibold transition hover:bg-card"
-                      >
-                        <Plus className="h-3 w-3" /><span className="hidden sm:inline">Categorie</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleDeleteGroup(col.group.id); }}
-                        aria-label={`Șterge grupa ${col.group.name}`}
-                        title="Șterge grupa"
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive hover:text-destructive-foreground"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                      {isAdminUser && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleToggleAllowYounger(col.group); }}
+                          aria-pressed={!!col.group.allow_younger}
+                          aria-label={col.group.allow_younger ? 'Acceptă sportivi mai tineri (activ) - dezactivează' : 'Permite sportivi mai tineri să urce la categorie superioară'}
+                          title={col.group.allow_younger ? 'Acceptă sportivi mai tineri (activ)' : 'Permite sportivi mai tineri'}
+                          className={`inline-flex h-5 items-center gap-0.5 rounded-full px-1.5 text-[10px] font-medium transition ${
+                            col.group.allow_younger ? 'bg-amber-400/40 text-amber-900 hover:bg-amber-400/55 dark:text-amber-200' : 'bg-card/70 text-muted-foreground hover:bg-card'
+                          }`}
+                        >
+                          <ArrowUp className="h-3 w-3" />
+                          <span className="hidden sm:inline">{col.group.allow_younger ? 'Tineri ✓' : 'Tineri'}</span>
+                        </button>
+                      )}
+                      {isAdminUser && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openCatModal(col.group.id); }}
+                          aria-label={`Adaugă categorie în ${col.group.name}`}
+                          title="Adaugă categorie"
+                          className="inline-flex h-5 items-center gap-1 rounded-md border border-sidebar-border bg-card/80 px-1.5 text-[10px] font-semibold transition hover:bg-card"
+                        >
+                          <Plus className="h-3 w-3" /><span className="hidden sm:inline">Categorie</span>
+                        </button>
+                      )}
+                      {isAdminUser && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteGroup(col.group.id); }}
+                          aria-label={`Șterge grupa ${col.group.name}`}
+                          title="Șterge grupa"
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive hover:text-destructive-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </th>
                 </React.Fragment>
               ))}
 
+              {isAdminUser && (
               <th className="group/insert relative w-0 border-none p-0" rowSpan={3}>
                 <div className="absolute inset-y-0 -left-2 right-0 z-30 flex items-center justify-center" style={{ minWidth: '24px' }}>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); openGroupModal(columnStructure.length); }}
-                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border bg-card px-2.5 py-1.5 text-[10px] font-semibold opacity-0 shadow-sm transition-all hover:bg-accent group-hover/insert:opacity-100"
+                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-sidebar-border bg-card px-2.5 py-1.5 text-[10px] font-semibold opacity-0 shadow-sm transition-all hover:bg-accent group-hover/insert:opacity-100"
                     aria-label="Adaugă grupă"
                   >
                     <Plus className="h-3.5 w-3.5" /> Grupă
                   </button>
                 </div>
               </th>
+              )}
             </tr>
 
             {/* ═══ ROW 2: Gender sub-headers ═══ */}
             <tr>
               {columnStructure.map((col) =>
                 col.genderSections.length === 0 ? (
-                  <th key={`g-empty-${col.group.id}`} className="border border-border bg-muted px-1 py-1 text-center text-xs italic text-muted-foreground">
+                  <th key={`g-empty-${col.group.id}`} className="border border-sidebar-border bg-muted px-1 py-0.5 text-center text-[10px] italic text-muted-foreground">
                     Fără categorii
                   </th>
                 ) : (
@@ -202,7 +237,7 @@ export default function AdminCentralizatorMatrix({ ctx }) {
                     <th
                       key={`${col.group.id}-${gs.gender}`}
                       colSpan={gs.colSpan}
-                      className={`${GENDER_BG[gs.gender] || 'bg-muted'} border border-border px-2 py-2 text-center text-sm font-bold uppercase tracking-wide`}
+                      className={`${GENDER_HEADER_BG[gs.gender] || 'bg-muted'} border border-sidebar-border px-1.5 py-1 text-center text-[11px] font-bold uppercase tracking-wide`}
                     >
                       {GENDER_LABELS[gs.gender] || gs.gender}
                     </th>
@@ -215,7 +250,7 @@ export default function AdminCentralizatorMatrix({ ctx }) {
             <tr>
               {allCols.length === 0 && columnStructure.length > 0 ? (
                 columnStructure.map((col) => (
-                  <th key={`empty-${col.group.id}`} className="min-w-[80px] border border-border bg-muted px-1 py-1 text-center text-xs italic text-muted-foreground">
+                  <th key={`empty-${col.group.id}`} className="min-w-[70px] border border-sidebar-border bg-muted px-1 py-0.5 text-center text-[10px] italic text-muted-foreground">
                     click + sus
                   </th>
                 ))
@@ -223,18 +258,18 @@ export default function AdminCentralizatorMatrix({ ctx }) {
                 allCols.map((cat) => (
                   <th
                     key={cat.id}
-                    draggable
-                    onDragStart={(e) => handleCatDragStart(e, cat.id)}
-                    onDragOver={(e) => handleCatDragOver(e, cat.id)}
-                    onDrop={(e) => handleCatDrop(e, cat.id)}
+                    draggable={isAdminUser}
+                    onDragStart={(e) => isAdminUser && handleCatDragStart(e, cat.id)}
+                    onDragOver={(e) => isAdminUser && handleCatDragOver(e, cat.id)}
+                    onDrop={(e) => isAdminUser && handleCatDrop(e, cat.id)}
                     onDragEnd={handleDragEnd}
-                    className={`group/cat min-w-[150px] cursor-grab border border-border bg-muted px-3 py-3 text-center text-sm font-semibold transition-all active:cursor-grabbing ${
+                    className={`group/cat min-w-[130px] border border-sidebar-border bg-muted px-1.5 py-1 text-center text-[11px] font-semibold transition-all ${isAdminUser ? 'cursor-grab active:cursor-grabbing' : ''} ${
                       dragType === 'category' && dragId === cat.id ? 'scale-95 opacity-40' : ''
                     } ${dragType === 'category' && dragOverId === cat.id ? 'bg-primary/10 ring-2 ring-primary ring-inset' : ''}`}
-                    title={`${cat.name} (${TYPE_LABELS[cat.type] || cat.type}) — trage pentru a reordona`}
+                    title={isAdminUser ? `${cat.name} (${TYPE_LABELS[cat.type] || cat.type}) — trage pentru a reordona` : cat.name}
                   >
                     <div className="relative whitespace-normal leading-tight">
-                      {editingCatId === cat.id ? (
+                      {isAdminUser && editingCatId === cat.id ? (
                         <Input
                           value={editingCatName}
                           onChange={(e) => setEditingCatName(e.target.value)}
@@ -242,28 +277,30 @@ export default function AdminCentralizatorMatrix({ ctx }) {
                           onKeyDown={(e) => { if (e.key === 'Enter') handleCatRenameSubmit(cat); if (e.key === 'Escape') setEditingCatId(null); }}
                           onClick={(e) => e.stopPropagation()}
                           aria-label="Nume categorie"
-                          className="h-7 w-full px-1 py-0.5 text-center text-[11px] font-medium"
+                          className="h-6 w-full px-1 py-0.5 text-center text-[10px] font-medium"
                           autoFocus
                         />
                       ) : (
                         <span
-                          onDoubleClick={(e) => { e.stopPropagation(); handleCatRenameStart(cat); }}
-                          className="cursor-text"
-                          title="Dublu-click pentru a redenumi"
+                          onDoubleClick={(e) => { if (!isAdminUser) return; e.stopPropagation(); handleCatRenameStart(cat); }}
+                          className={isAdminUser ? 'cursor-text' : ''}
+                          title={isAdminUser ? 'Dublu-click pentru a redenumi' : undefined}
                         >
                           {cat.name.replace(/ - (Masculin|Feminin|Mixt)/i, '')}
                         </span>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCat(cat.id)}
-                        disabled={busy}
-                        aria-label={`Șterge categoria ${cat.name}`}
-                        title="Șterge categoria"
-                        className="absolute -right-2 -top-2 hidden h-6 w-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition hover:bg-destructive/90 group-hover/cat:inline-flex"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                      {isAdminUser && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCat(cat.id)}
+                          disabled={busy}
+                          aria-label={`Șterge categoria ${cat.name}`}
+                          title="Șterge categoria"
+                          className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition hover:bg-destructive/90 group-hover/cat:inline-flex"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      )}
                     </div>
                   </th>
                 ))
@@ -273,133 +310,130 @@ export default function AdminCentralizatorMatrix({ ctx }) {
 
           {/* ═══ BODY: one row per athlete, grouped by club ═══ */}
           <tbody>
-            {clubRows.length === 0 ? (
+            {visibleClubs.length === 0 ? (
               <tr>
-                <td colSpan={totalColSpan} className="px-4 py-12 text-center text-sm italic text-muted-foreground">
+                <td colSpan={totalColSpan} className="px-4 py-12 text-center text-xs italic text-muted-foreground">
                   {groups.length === 0
                     ? 'Treci cu mouse-ul între coloane pentru a adăuga prima grupă de vârstă.'
                     : allCols.length === 0
                       ? 'Apasă + pe header-ul fiecărei grupe pentru a adăuga categorii.'
-                      : 'Niciun club în baza de date.'}
+                      : !canSeeAllClubs
+                        ? 'Clubul tău nu a fost găsit.'
+                        : 'Niciun club în baza de date.'}
                 </td>
               </tr>
             ) : (
-              clubRows.map(({ clubId, club, athletes }) => {
-                const rowCount = Math.max(athletes.length, 1);
+              visibleClubs.map((club) => {
+                const clubId = club.id;
+                // A coach may only enroll/unenroll in their own club's row -
+                // every other club's cells render read-only for them (and,
+                // before the deadline, other clubs aren't even in
+                // visibleClubs at all - see canSeeAllClubs above).
+                const canEditClub = isAdminUser || clubId === myClubId;
+                const editDisabled = !isAdminUser && isCoachDeadlinePassed;
+                const perCat = enrollmentsByClubAndCategory[clubId] || {};
+                const maxCount = allCols.reduce((max, cat) => Math.max(max, perCat[cat.id]?.length || 0), 0);
                 const isDraggedClub = dragType === 'club' && dragId === clubId;
                 const isDragOverClub = dragType === 'club' && dragOverId === clubId;
-                const firstAvailableAthleteRowByCategory = new Map();
-                allCols.forEach((cat) => {
-                  const firstIndex = athletes.findIndex((ath) => !ath.enrollments?.[cat.id]);
-                  firstAvailableAthleteRowByCategory.set(cat.id, firstIndex);
-                });
+                // Row 0 of every club is a pinned "add" row - one visible
+                // button per category, always in the same place, instead
+                // of an add affordance chasing the first empty slot down
+                // an athlete's own row (which moved every time enrollment
+                // counts changed and left gaps scattered through the block).
+                const totalRows = maxCount + 1;
 
-                const clubHandleCell = (rowSpan) => (
+                const clubHandleCell = (
                   <td
-                    className="sticky left-0 z-10 cursor-grab select-none border border-border bg-card px-4 py-3 align-top text-sm font-semibold active:cursor-grabbing"
-                    rowSpan={rowSpan}
-                    draggable
-                    onDragStart={(e) => handleClubDragStart(e, clubId)}
-                    onDragOver={(e) => handleClubDragOver(e, clubId)}
-                    onDrop={(e) => handleClubDrop(e, clubId)}
+                    className={`sticky left-0 z-10 select-none border border-sidebar-border bg-card px-2 py-1 align-top text-xs font-semibold ${isAdminUser ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    rowSpan={totalRows}
+                    draggable={isAdminUser}
+                    onDragStart={(e) => isAdminUser && handleClubDragStart(e, clubId)}
+                    onDragOver={(e) => isAdminUser && handleClubDragOver(e, clubId)}
+                    onDrop={(e) => isAdminUser && handleClubDrop(e, clubId)}
                     onDragEnd={handleDragEnd}
                   >
                     <div className="flex items-center gap-1.5">
-                      <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-40" aria-hidden="true" />
-                      <span className="truncate">{club}</span>
+                      {isAdminUser && <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-40" aria-hidden="true" />}
+                      <span className="truncate">{club.name}</span>
                     </div>
                   </td>
                 );
 
-                return athletes.length === 0 ? (
-                  <tr
-                    key={`club-${clubId}`}
-                    className={`border-t-2 border-border transition-colors hover:bg-accent/40 ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-primary ring-inset' : ''}`}
-                  >
-                    {clubHandleCell(1)}
-                    {columnStructure.map((col) => (
-                      <React.Fragment key={`grp-${col.group.id}`}>
-                        <td className="w-0 border-none p-0" />
-                        {col.cats.length === 0 ? (
-                          <td className="border border-border" />
-                        ) : (
-                          col.cats.map((cat) => (
-                            <td
-                              key={cat.id}
-                              onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                              className={`cursor-pointer border border-border px-2 py-2 text-center transition-colors ${
-                                enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id ? 'bg-primary/10 ring-2 ring-primary ring-inset' : 'hover:bg-accent/50'
-                              }`}
-                            >
-                              <span className="mx-auto inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                                <Plus className="h-3 w-3" />
-                                <span className="hidden lg:inline">{isTeamCategoryType(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv'}</span>
-                                <span className="lg:hidden">Adaugă</span>
-                              </span>
-                            </td>
-                          ))
-                        )}
-                      </React.Fragment>
-                    ))}
-                    <td className="border border-border/40" />
-                  </tr>
-                ) : (
+                return (
                   <React.Fragment key={`club-${clubId}`}>
-                    {athletes.map((ath, athIdx) => (
-                      <tr
-                        key={ath.id}
-                        className={`${athIdx === 0 ? 'border-t-2 border-border' : ''} transition-colors hover:bg-accent/40 ${isDraggedClub ? 'opacity-40' : ''}`}
-                      >
-                        {athIdx === 0 && clubHandleCell(rowCount)}
+                    <tr
+                      className={`border-t-2 border-sidebar-border bg-muted/40 transition-colors hover:bg-accent/40 ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-primary ring-inset' : ''}`}
+                    >
+                      {clubHandleCell}
+                      {columnStructure.map((col) => (
+                        <React.Fragment key={`grp-${col.group.id}`}>
+                          <td className="w-0 border-none p-0" />
+                          {col.cats.length === 0 ? (
+                            <td className="border border-sidebar-border" />
+                          ) : (
+                            col.cats.map((cat) => {
+                              if (!canEditClub) return <td key={cat.id} className="border border-sidebar-border" />;
+                              const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
+                              const label = isTeamCategoryType(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv';
+                              return (
+                                <td
+                                  key={cat.id}
+                                  className={`border border-sidebar-border p-0.5 text-center ${isPickerOpen ? 'bg-primary/10 ring-2 ring-primary ring-inset' : ''}`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleCellClick(clubId, cat.id, e)}
+                                    disabled={editDisabled}
+                                    title={label}
+                                    className="flex w-full items-center justify-center gap-1 rounded-md bg-primary px-1.5 py-1 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+                                  >
+                                    <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                    <span className="truncate">{label}</span>
+                                  </button>
+                                </td>
+                              );
+                            })
+                          )}
+                        </React.Fragment>
+                      ))}
+                      <td className="border border-sidebar-border/40" />
+                    </tr>
+
+                    {Array.from({ length: maxCount }).map((_, rowIdx) => (
+                      <tr key={rowIdx} className={`transition-colors hover:bg-accent/40 ${isDraggedClub ? 'opacity-40' : ''}`}>
                         {columnStructure.map((col) => (
                           <React.Fragment key={`grp-${col.group.id}`}>
                             <td className="w-0 border-none p-0" />
                             {col.cats.length === 0 ? (
-                              <td className="border border-border" />
+                              <td className="border border-sidebar-border" />
                             ) : (
                               col.cats.map((cat) => {
-                                const enrollment = ath.enrollments[cat.id];
-                                const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
-                                const firstAvailableRowIndex = firstAvailableAthleteRowByCategory.get(cat.id);
-                                const showAddButton = !enrollment && firstAvailableRowIndex === athIdx;
+                                const entry = (perCat[cat.id] || [])[rowIdx];
+                                if (!entry) return <td key={cat.id} className="border border-sidebar-border" />;
                                 return (
-                                  <td
-                                    key={cat.id}
-                                    onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                                    className={`cursor-pointer border border-border px-2 py-2 text-center transition-colors ${
-                                      isPickerOpen
-                                        ? 'bg-primary/10 ring-2 ring-primary ring-inset'
-                                        : enrollment ? 'bg-emerald-500/10 hover:bg-emerald-500/15' : 'hover:bg-accent/50'
-                                    }`}
-                                  >
-                                    {enrollment ? (
-                                      <span className="flex items-center justify-between gap-2" title={ath.name}>
-                                        <span className="min-w-0 truncate text-left font-medium leading-tight">{ath.name}</span>
+                                  <td key={cat.id} title={entry.name} className="border border-sidebar-border bg-emerald-500/10 px-1 py-0.5 text-center">
+                                    <span className="flex items-center justify-between gap-1">
+                                      <span className="min-w-0 truncate text-left font-medium leading-tight">{entry.name}</span>
+                                      {canEditClub && (
                                         <button
                                           type="button"
-                                          onClick={(e) => handleUnenroll(enrollment.id, ath.name, cat.name, e)}
-                                          disabled={busy}
-                                          aria-label={`Dezînscrie ${ath.name}`}
-                                          title="Scoate sportivul din categorie"
-                                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-destructive transition hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                                          onClick={(e) => handleUnenroll(entry.enrollmentId, entry.name, cat.name, e, { groupName: col.group.name, weight: entry.weight, ...(entry.isTeam ? { enrollmentType: 'team' } : null) })}
+                                          disabled={busy || editDisabled}
+                                          aria-label={`Dezînscrie ${entry.name}`}
+                                          title="Scoate din categorie"
+                                          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-destructive transition hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
                                         >
-                                          <X className="h-3.5 w-3.5" />
+                                          <X className="h-2.5 w-2.5" />
                                         </button>
-                                      </span>
-                                    ) : showAddButton ? (
-                                      <span className="mx-auto inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                                        <Plus className="h-3 w-3" />
-                                        <span className="hidden xl:inline">{isTeamCategoryType(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv'}</span>
-                                        <span className="xl:hidden">Adaugă</span>
-                                      </span>
-                                    ) : null}
+                                      )}
+                                    </span>
                                   </td>
                                 );
                               })
                             )}
                           </React.Fragment>
                         ))}
-                        <td className="border border-border/40" />
+                        <td className="border border-sidebar-border/40" />
                       </tr>
                     ))}
                   </React.Fragment>
@@ -408,33 +442,35 @@ export default function AdminCentralizatorMatrix({ ctx }) {
             )}
           </tbody>
 
-          {/* ═══ FOOTER: participant count per category ═══ */}
-          {allCols.length > 0 && (
+          {/* ═══ FOOTER: participant count per category - hidden from a
+              coach until the deadline passes, so per-category totals
+              (which reveal other clubs' registration activity even
+              without names) stay hidden while registration is open. ═══ */}
+          {allCols.length > 0 && canSeeAllClubs && (
             <tfoot>
-              <tr className="border-t-2 border-border bg-muted">
-                <td className="sticky left-0 z-10 border border-border bg-muted px-4 py-3 text-sm font-semibold">
-                  Număr participanți
+              <tr className="border-t-2 border-sidebar-border bg-muted">
+                <td className="sticky left-0 z-10 border border-sidebar-border bg-muted px-2 py-1 text-xs font-semibold">
+                  Nr. participanți
                 </td>
                 {columnStructure.map((col) => (
                   <React.Fragment key={`f-${col.group.id}`}>
                     <td className="w-0 border-none bg-muted p-0" />
                     {col.cats.length === 0 ? (
-                      <td className="border border-border bg-muted" />
+                      <td className="border border-sidebar-border bg-muted" />
                     ) : (
                       col.cats.map((cat) => (
-                        <td key={cat.id} className="border border-border px-2 py-3 text-center text-base font-bold">
+                        <td key={cat.id} className="border border-sidebar-border px-1 py-1 text-center text-xs font-bold">
                           {participantCount(cat)}
                         </td>
                       ))
                     )}
                   </React.Fragment>
                 ))}
-                <td className="border border-border/40 bg-muted" />
+                <td className="border border-sidebar-border/40 bg-muted" />
               </tr>
             </tfoot>
           )}
-        </table>
-      </div>
+      </table>
     </div>
   );
 }

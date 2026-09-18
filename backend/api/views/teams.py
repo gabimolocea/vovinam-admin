@@ -187,8 +187,26 @@ class CategoryTeamViewSet(viewsets.ViewSet):
         serializer = self.serializer_class(instance)
         return Response(serializer.data)
 
+    def _club_forbidden_response(self, request, instance):
+        """Coaches may only edit/remove their own club's team enrollments -
+        same rule as CategoryAthleteViewSet. A Team has no club field of
+        its own (it's just a set of member athletes), so club membership
+        is checked via those members instead."""
+        user = request.user
+        if user.is_admin:
+            return None
+        own_athlete = getattr(user, 'athlete', None)
+        user_club = getattr(own_athlete, 'club_id', None)
+        member_club_ids = set(instance.team.members.values_list('athlete__club_id', flat=True))
+        if not user_club or user_club not in member_club_ids:
+            return Response({'error': 'Poți modifica doar echipe din clubul tău.'}, status=403)
+        return None
+
     def partial_update(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
+        forbidden = self._club_forbidden_response(request, instance)
+        if forbidden:
+            return forbidden
         locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
         if locked:
             return locked
@@ -203,6 +221,9 @@ class CategoryTeamViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
+        forbidden = self._club_forbidden_response(request, instance)
+        if forbidden:
+            return forbidden
         locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
         if locked:
             return locked

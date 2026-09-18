@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { categoryAPI, groupAPI, clubAPI, competitionAPI } from '@shared/lib/api';
 import useCoachCentralizator from './useCoachCentralizator';
 
@@ -31,19 +31,6 @@ export default function useAdminCentralizator(eventId) {
   const [dragOverId, setDragOverId] = useState(null);
 
   const [generatingDefaults, setGeneratingDefaults] = useState(false);
-  const [showStandardStructureBanner, setShowStandardStructureBanner] = useState(true);
-
-  useEffect(() => {
-    if (!eventId) return;
-    const stored = localStorage.getItem(`admin-centralizator-standard-structure-banner:${eventId}`);
-    setShowStandardStructureBanner(stored !== 'hidden');
-  }, [eventId]);
-
-  const dismissStandardStructureBanner = useCallback(() => {
-    if (!eventId) return;
-    localStorage.setItem(`admin-centralizator-standard-structure-banner:${eventId}`, 'hidden');
-    setShowStandardStructureBanner(false);
-  }, [eventId]);
 
   /* ── group/category CRUD ── */
   const handleCustomGroup = async (e) => {
@@ -243,7 +230,6 @@ export default function useAdminCentralizator(eventId) {
       const { data } = await competitionAPI.generateStandardGroupsCategories(eventId);
       await fetchAll();
       const result = data?.result || {};
-      dismissStandardStructureBanner();
       window.alert(
         `Sincronizare finalizată. Grupe create: ${result.groups_created || 0}, actualizate: ${result.groups_updated || 0}; categorii create: ${result.categories_created || 0}, actualizate: ${result.categories_updated || 0}.`
       );
@@ -261,7 +247,7 @@ export default function useAdminCentralizator(eventId) {
     groupModal, setGroupModal, groupForm, setGroupForm,
     catModal, setCatModal, catForm, setCatForm,
     dragType, dragId, dragOverId,
-    generatingDefaults, showStandardStructureBanner, dismissStandardStructureBanner,
+    generatingDefaults,
     handleGenerateStandardStructure,
     handleCustomGroup, handleDeleteGroup,
     handleAddCustomCat, handleDeleteCat,

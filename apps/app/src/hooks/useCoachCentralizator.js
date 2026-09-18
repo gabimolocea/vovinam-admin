@@ -138,6 +138,14 @@ const formatDateRo = (date) => {
   const allCols = useMemo(() => columnStructure.flatMap(s => s.cats), [columnStructure]);
 
   const { clubRows, athleteMap } = useMemo(() => {
+    // Column index of each category's group, matching columnStructure's
+    // left-to-right order - used below to cluster a club's athletes so
+    // the matrix's shared row axis stays compact (see groupIndexFor).
+    const groupOrder = {};
+    groups.forEach((g, i) => { groupOrder[g.id] = i; });
+    const catGroupIndex = {};
+    for (const cat of categories) catGroupIndex[cat.id] = groupOrder[cat.group] ?? Infinity;
+
     const aMap = {};
     for (const cat of categories) {
       for (const enrollment of (cat.enrolled_athletes || [])) {
@@ -163,12 +171,33 @@ const formatDateRo = (date) => {
       athletesByClubId[ath.clubId].push(ath);
     }
 
+    // The matrix renders every athlete of a club on the same shared row
+    // axis across ALL group columns, so an athlete enrolled only in a
+    // later group still occupies a row spanning the earlier groups' cells
+    // too - left blank there. Sorting purely by enrollment count (as
+    // before) scatters different groups' athletes across the whole row
+    // range, leaving blank cells above populated ones almost everywhere.
+    // Clustering by the earliest group an athlete is enrolled in first
+    // keeps each group's athletes together at the top of their own
+    // block instead, so within any given group's columns the populated
+    // rows come first.
+    const groupIndexFor = (ath) => {
+      let min = Infinity;
+      for (const catId of Object.keys(ath.enrollments)) {
+        const idx = catGroupIndex[catId];
+        if (idx !== undefined && idx < min) min = idx;
+      }
+      return min;
+    };
+
     // Coach sees only their own club
     const filteredClubs = myClubId ? clubs.filter(c => c.id === myClubId) : clubs;
     const rows = filteredClubs.map(club => ({
       clubId: club.id,
       club: club.name,
       athletes: (athletesByClubId[club.id] || []).sort((a, b) => {
+        const groupDiff = groupIndexFor(a) - groupIndexFor(b);
+        if (groupDiff !== 0) return groupDiff;
         const aCount = Object.keys(a.enrollments || {}).length;
         const bCount = Object.keys(b.enrollments || {}).length;
         if (aCount !== bCount) return bCount - aCount;
@@ -177,7 +206,7 @@ const formatDateRo = (date) => {
     }));
 
     return { clubRows: rows, athleteMap: aMap };
-  }, [categories, clubs]);
+  }, [categories, clubs, groups, myClubId]);
 
   const countPerCat = useMemo(() => {
     const counts = {};
@@ -200,11 +229,14 @@ const formatDateRo = (date) => {
       return;
     }
     const enrollmentType = options.enrollmentType || 'athlete';
+    const details = [
+      options.groupName && `grupa „${options.groupName}"`,
+      options.weight != null && options.weight !== '' && `greutate ${options.weight} kg`,
+    ].filter(Boolean).join(', ');
+    const subject = enrollmentType === 'team' ? 'echipa' : 'sportivul';
     setConfirmModal({
       title: enrollmentType === 'team' ? 'Scoate echipa' : 'Scoate sportivul',
-      message: enrollmentType === 'team'
-        ? `Ești sigur că vrei să scoți echipa „${athleteName}" din categoria „${catName}"?`
-        : `Ești sigur că vrei să scoți sportivul „${athleteName}" din categoria „${catName}"?`,
+      message: `Ești sigur că vrei să scoți ${subject} „${athleteName}" din categoria „${catName}"${details ? `, ${details}` : ''}?`,
       icon: '🚫',
       color: 'orange',
       confirmLabel: enrollmentType === 'team' ? 'Scoate echipa' : 'Scoate din categorie',
@@ -222,6 +254,19 @@ const formatDateRo = (date) => {
     });
   };
 
+  // `my_club=true` gets a coach the full AthleteSerializer (gender +
+  // date_of_birth included) for their own club, instead of the trimmed
+  // public/minimal one - see backend's Athlete ViewSet.get_serializer_class.
+  // Only valid when clubId is genuinely the caller's own club.
+  const ensureClubAthletes = async (clubId) => {
+    if (clubId == null || clubAthleteCache[clubId]) return;
+    try {
+      const res = await athleteAPI.list({ club: clubId, ...(clubId === myClubId ? { my_club: true } : {}) });
+      const athletes = Array.isArray(res.data) ? res.data : res.data.results ?? [];
+      setClubAthleteCache(prev => ({ ...prev, [clubId]: athletes }));
+    } catch (err) { console.error('Failed to fetch athletes', err); }
+  };
+
   const handleCellClick = async (clubId, catId, e) => {
     e.stopPropagation();
     if (isCoachDeadlinePassed && !isAdmin) {
@@ -237,13 +282,10 @@ const formatDateRo = (date) => {
       return;
     }
     setEnrollPickerCell({ clubId, catId });
-    if (!clubAthleteCache[clubId]) {
-      try {
-        const res = await athleteAPI.list({ club: clubId });
-        const athletes = Array.isArray(res.data) ? res.data : res.data.results ?? [];
-        setClubAthleteCache(prev => ({ ...prev, [clubId]: athletes }));
-      } catch (err) { console.error('Failed to fetch athletes', err); }
-    }
+    // clubId is null when admin opens the picker from a per-category card
+    // (no club context yet - see the club-picker step in CompetitionCentralizator.jsx)
+    // rather than a matrix cell; nothing to fetch until a club is chosen.
+    await ensureClubAthletes(clubId);
   };
 
   const handleToggleEnroll = async (athleteId, catId, weight) => {
@@ -367,6 +409,7 @@ const formatDateRo = (date) => {
     fetchAll,
     handleUnenroll,
     handleCellClick,
+    ensureClubAthletes,
     handleToggleEnroll,
     handleWeightSubmit,
     createTeamEnrollment,
