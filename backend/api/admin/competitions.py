@@ -598,12 +598,18 @@ class CategoryAthleteScoreAdmin(admin.ModelAdmin):
 
     def approve_pending(self, request, queryset):
         count = 0
+        failures = []
         for obj in queryset.filter(status='pending'):
-            obj.approve(request.user)
-            count += 1
+            try:
+                obj.approve(request.user)
+                count += 1
+            except ValidationError as exc:
+                failures.append(f'{obj} — {"; ".join(exc.messages)}')
         if count:
             self.message_user(request, f'{count} rezultat(e) aprobat(e).', level=messages.SUCCESS)
-        else:
+        if failures:
+            self.message_user(request, 'Nu au putut fi aprobate: ' + ' | '.join(failures), level=messages.ERROR)
+        if not count and not failures:
             self.message_user(request, 'Niciun rezultat selectat nu este în așteptare.', level=messages.WARNING)
     approve_pending.short_description = _('Aprobă rezultatele în așteptare (pentru selecție)')
 

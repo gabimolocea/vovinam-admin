@@ -76,8 +76,11 @@ export default function ApprovalsPage() {
       if (approve) await scoreAPI.approve(resultId, {});
       else await scoreAPI.reject(resultId, { notes: 'Rezultatul nu a fost aprobat.' });
       setResults((prev) => prev.filter((r) => r.id !== resultId));
-    } catch {
-      setError('Nu am putut procesa rezultatul.');
+    } catch (err) {
+      // Approving can fail for a real, actionable reason (e.g. the claimed
+      // place is already held by someone else) - show that instead of a
+      // generic message, so the admin knows what to do next.
+      setError(err?.response?.data?.error || 'Nu am putut procesa rezultatul.');
     } finally {
       setBusyId(null);
     }

@@ -405,6 +405,44 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
             # Only update category text fields, don't create teams during auto-save
             self._update_category_awards_text_only()
     
+    def _conflicting_placement_holder(self):
+        """If another athlete/team already holds this result's claimed
+        placement in the category, return a human-readable label for them
+        - None if the placement is unclaimed, or already held by this same
+        athlete/team (re-approving/correcting the same claim isn't a
+        conflict). Mirrors the exact lookup _update_category_awards_text_only
+        would otherwise silently overwrite."""
+        if not self.category or not self.placement_claimed:
+            return None
+        placement = self.placement_claimed.lower().replace(' place', '').strip()
+
+        subclass = self.CATEGORY_SUBCLASS_BY_TYPE.get(self.type)
+        category = self.category
+        if subclass:
+            try:
+                category = subclass.objects.get(pk=self.category_id)
+            except subclass.DoesNotExist:
+                return None
+
+        if self.type == 'teams':
+            field = {'1st': 'first_place_team', '2nd': 'second_place_team', '3rd': 'third_place_team'}.get(placement)
+            holder = getattr(category, field, None) if field else None
+            if not holder:
+                return None
+            # Same identity check Team.get_or_create_by_members uses - an
+            # exact member-set match means this IS that team, not a conflict.
+            current_members = set(self.team_members.values_list('pk', flat=True))
+            holder_members = set(holder.members.values_list('athlete_id', flat=True))
+            if current_members == holder_members:
+                return None
+            return holder.name
+
+        field = {'1st': 'first_place', '2nd': 'second_place', '3rd': 'third_place'}.get(placement)
+        holder = getattr(category, field, None) if field else None
+        if not holder or holder.pk == self.athlete_id:
+            return None
+        return f"{holder.first_name} {holder.last_name}".strip()
+
     def approve(self, admin_user, notes=''):
         """
         Approve the athlete-submitted result and auto-populate Category
@@ -421,6 +459,15 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
             raise ValidationError(
                 f"A team result requires at least {Team.MIN_MEMBERS} team members before it can be approved."
             )
+
+        if self.submitted_by_athlete and self.placement_claimed:
+            conflicting_holder = self._conflicting_placement_holder()
+            if conflicting_holder:
+                place_label = dict(self.PLACEMENT_CHOICES).get(self.placement_claimed, self.placement_claimed)
+                raise ValidationError(
+                    f"{place_label} la această categorie este deja ocupat de {conflicting_holder}. "
+                    "Respinge mai întâi rezultatul existent înainte de a-l aproba pe acesta."
+                )
 
         with transaction.atomic():
             # Perform the transition without notifying yet; award/team

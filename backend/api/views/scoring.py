@@ -671,13 +671,16 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
 
         if serializer.is_valid():
             notes = serializer.validated_data.get('notes', '')
-            score.approve(request.user, notes)
-            
+            try:
+                score.approve(request.user, notes)
+            except DjangoValidationError as exc:
+                return Response({'error': '; '.join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+
             return Response({
                 'message': 'Result approved successfully',
                 'status': score.status
             })
-        
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'], permission_classes=[IsResultReviewerOrAdmin])
