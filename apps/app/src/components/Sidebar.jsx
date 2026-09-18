@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth, notificationAPI } from '@shared';
 import { clubAPI, MEDIA_BASE_URL } from '@shared/lib/api';
-import { withSsoHandoff } from '@shared/lib/sso';
+import { withSsoHandoff, withSsoLogoutSignal } from '@shared/lib/sso';
+import { suppressPublicLoginRedirect } from '../lib/logoutRedirect';
 import Logo from '@shared/components/Logo';
 import { Trophy, Building2, User, Bell, LogOut, ExternalLink, ShieldCheck } from 'lucide-react';
 
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5179';
 const COMPETITION_ADMIN_URL = import.meta.env.VITE_COMPETITION_ADMIN_URL || 'http://localhost:5191';
 const POLL_INTERVAL_MS = 60000;
 
@@ -139,9 +140,12 @@ function BottomNav({ navItems, isAdmin }) {
   const { logout } = useAuth();
   const unreadCount = useUnreadCount();
 
-  async function handleLogout() {
-    await logout();
-    window.location.href = PUBLIC_SITE_URL;
+  function handleLogout() {
+    // See the matching comment in SidebarFooter's handleLogout below for
+    // why both of these are needed.
+    suppressPublicLoginRedirect();
+    logout();
+    window.location.href = withSsoLogoutSignal(PUBLIC_SITE_URL);
   }
 
   return (
@@ -196,13 +200,29 @@ function BottomNav({ navItems, isAdmin }) {
 function SidebarFooter() {
   const { logout } = useAuth();
 
-  async function handleLogout() {
-    await logout();
+  function handleLogout() {
     // No login page of this app's own, and nothing left here to come back
     // to once signed out - send them to the public site's homepage rather
     // than bouncing through its /cont login page (see App.jsx's own
-    // redirect for an unauthenticated direct visit).
-    window.location.href = PUBLIC_SITE_URL;
+    // redirect for an unauthenticated direct visit). The signal clears any
+    // token handed off there earlier (see withSsoLogoutSignal).
+    //
+    // suppressPublicLoginRedirect() matters here: logout() flips
+    // isAuthenticated to false, which would otherwise mount App.jsx's
+    // RedirectToPublicLogin and race this navigation with its own plain,
+    // hash-less bounce to PUBLIC_SITE_URL + '/cont' - and that one
+    // reliably wins (its effect fires before the browser commits to
+    // whichever navigation was requested first), silently dropping the
+    // sso_logout hash so the public site never clears its own handed-off
+    // token. See logoutRedirect.js for the full explanation.
+    //
+    // logout() is called without awaiting it, then we navigate right
+    // after: logout() clears this app's own tokens synchronously (before
+    // its first await), so they're gone even though we leave immediately
+    // after and never let its awaited API call finish.
+    suppressPublicLoginRedirect();
+    logout();
+    window.location.href = withSsoLogoutSignal(PUBLIC_SITE_URL);
   }
 
   return (

@@ -68,14 +68,21 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try {
-      await authAPI.logout();
-    } catch {
-      /* ignore */
-    }
+    // Clear local state synchronously, before awaiting anything: a caller
+    // that fires logout() and immediately navigates away (see Sidebar.jsx/
+    // AthleteDetail.jsx, which do this deliberately to win a race against
+    // App.jsx's own unauthenticated redirect) needs this app's own tokens
+    // gone *before* the page can be torn down by that navigation - an
+    // await up front would let the browser leave mid-flight and skip it.
+    const refresh = localStorage.getItem('refreshToken');
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     setUser(null);
+    try {
+      await authAPI.logout(refresh);
+    } catch {
+      /* ignore */
+    }
   };
 
   const value = {

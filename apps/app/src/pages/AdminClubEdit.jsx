@@ -12,7 +12,7 @@ import {
   ArrowLeft, Building2, ExternalLink, Globe, Link2, MapPin, Phone, Plus, Settings,
 } from 'lucide-react';
 
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5179';
 
 function imgUrl(path) {
   if (!path) return null;

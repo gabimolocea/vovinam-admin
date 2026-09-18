@@ -48,7 +48,15 @@ export default api;
 // ── Auth ──────────────────────────────────────────────
 export const authAPI = {
   login: (email, password) => api.post('/auth/login/', { email, password }),
-  logout: () => api.post('/auth/logout/'),
+  // Without the refresh token, LogoutView has nothing to blacklist and
+  // silently no-ops - the old tokens stay fully valid until they expire
+  // on their own, which is what let a stale/leaked one (see sso.js) keep
+  // authenticating a "logged out" user on another of our apps.
+  // Takes the refresh token explicitly rather than reading it from
+  // localStorage itself: callers need to clear localStorage *before*
+  // firing this request (see AuthContext's logout()), so by the time this
+  // runs, localStorage no longer has it.
+  logout: (refresh) => api.post('/auth/logout/', { refresh }),
   me: () => api.get('/auth/me/'),
   sessionCheck: () => api.get('/auth/session-check/'),
   register: (data) => api.post('/auth/register-enhanced/', data),

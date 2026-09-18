@@ -10,7 +10,7 @@ import {
 } from '../components/ui';
 import Lightbox from '../components/Lightbox';
 
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5179';
 
 // Where each notification type routes within the athlete's reviewer tabs.
 // Visa is special-cased below - it splits across two tabs (medical vs

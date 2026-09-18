@@ -4,7 +4,8 @@ import { useAuth } from '@shared';
 import {
   athleteAPI, gradeHistoryAPI, scoreAPI, visaAPI, seminarAPI, gradeAPI, competitionAPI, categoryAPI, groupAPI, MEDIA_BASE_URL,
 } from '@shared/lib/api';
-import { withSsoHandoff } from '@shared/lib/sso';
+import { withSsoHandoff, withSsoLogoutSignal } from '@shared/lib/sso';
+import { suppressPublicLoginRedirect } from '../lib/logoutRedirect';
 import {
   Alert, Badge, Button, Checkbox, Skeleton, Input, Label, Req, Textarea,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -18,7 +19,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RejectReasonDialog from '../components/RejectReasonDialog';
 import { ArrowLeft, Award, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, Eye, LogOut, Pencil, Plus, Sparkles, X } from 'lucide-react';
 
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5179';
 
 function imgUrl(path) {
   if (!path) return null;
@@ -1161,11 +1162,12 @@ export default function AthleteDetail() {
   // "Deconectare" tab anymore (nav items + a direct site link already fill
   // it) - it lives here instead, on your own profile only, since that's
   // the one place every role always lands on first.
-  async function handleLogout() {
-    await logout();
-    // Send them to the public site's homepage rather than bouncing through
-    // its /cont login page - same as the sidebar's own logout.
-    window.location.href = PUBLIC_SITE_URL;
+  function handleLogout() {
+    // See the matching comment on Sidebar.jsx's own handleLogout for why
+    // both of these are needed.
+    suppressPublicLoginRedirect();
+    logout();
+    window.location.href = withSsoLogoutSignal(PUBLIC_SITE_URL);
   }
 
   const [accountBusy, setAccountBusy] = useState(false);

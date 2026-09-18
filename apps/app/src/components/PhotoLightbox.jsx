@@ -4,7 +4,7 @@ import { publicContentAPI } from '@shared/lib/api';
 import { ChevronLeft, ChevronRight, MessageCircle, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { Button, Spinner, Textarea } from './ui';
 
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5183';
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5179';
 
 /**
  * Facebook-style fullscreen photo viewer for the tagged gallery feature:

@@ -22,10 +22,30 @@ export function withSsoHandoff(url) {
   return `${url}#${params.toString()}`;
 }
 
+/** Counterpart to withSsoHandoff for logging out: a handed-off token sits
+ * in the OTHER origin's own localStorage (never cleared by this origin's
+ * own logout(), since localStorage never crosses origins) and keeps
+ * authenticating that origin's own AuthProvider even after the user signs
+ * out here - making logout look like it silently did nothing whenever
+ * they'd ever followed a withSsoHandoff link before. Tack this onto the
+ * post-logout redirect URL so the destination clears its own copy too. */
+export function withSsoLogoutSignal(url) {
+  return `${url}#sso_logout=1`;
+}
+
 export function consumeSsoHandoff() {
   const hash = window.location.hash;
-  if (!hash || !hash.includes('sso_at=')) return;
+  if (!hash) return;
   const params = new URLSearchParams(hash.slice(1));
+
+  if (params.has('sso_logout')) {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    return;
+  }
+
+  if (!hash.includes('sso_at=')) return;
   const accessToken = params.get('sso_at');
   if (!accessToken) return;
   localStorage.setItem('authToken', accessToken);
