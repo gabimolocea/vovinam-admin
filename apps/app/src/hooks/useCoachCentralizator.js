@@ -10,7 +10,7 @@ const isTeamCategoryType = (type) => type === 'team' || type === 'teams';
  * is restricted to the coach's own club only.
  */
 export default function useCoachCentralizator(eventId) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const myClubId = user?.athlete?.club ?? null;
 
   const [groups, setGroups]         = useState([]);
@@ -195,7 +195,7 @@ const formatDateRo = (date) => {
 
   const handleUnenroll = (enrollmentId, athleteName, catName, e, options = {}) => {
     e.stopPropagation();
-    if (isCoachDeadlinePassed && !user?.is_admin) {
+    if (isCoachDeadlinePassed && !isAdmin) {
       window.alert('Deadline-ul pentru completarea centralizatorului a expirat.');
       return;
     }
@@ -224,12 +224,13 @@ const formatDateRo = (date) => {
 
   const handleCellClick = async (clubId, catId, e) => {
     e.stopPropagation();
-    if (isCoachDeadlinePassed && !user?.is_admin) {
+    if (isCoachDeadlinePassed && !isAdmin) {
       window.alert('Deadline-ul pentru completarea centralizatorului a expirat.');
       return;
     }
-    // Only allow opening the picker for the coach's own club
-    if (clubId !== myClubId) return;
+    // A coach may only open the picker for their own club; an admin
+    // (myClubId is null - no athlete/club of their own) can open it for any.
+    if (myClubId != null && clubId !== myClubId) return;
 
     if (enrollPickerCell && enrollPickerCell.clubId === clubId && enrollPickerCell.catId === catId) {
       setEnrollPickerCell(null);
@@ -246,7 +247,7 @@ const formatDateRo = (date) => {
   };
 
   const handleToggleEnroll = async (athleteId, catId, weight) => {
-    if (isCoachDeadlinePassed && !user?.is_admin) {
+    if (isCoachDeadlinePassed && !isAdmin) {
       window.alert('Deadline-ul pentru completarea centralizatorului a expirat.');
       return;
     }
@@ -261,7 +262,10 @@ const formatDateRo = (date) => {
         // If fight category and no weight provided yet, show weight modal
         const isFight = cat?.type === 'fight' || cat?.category_type === 'fight';
         if (isFight && weight === undefined) {
-          const allAthletes = clubAthleteCache[myClubId] || [];
+          // Use the picker's actual target club, not the caller's own -
+          // for an admin (myClubId null) these differ, and reading
+          // myClubId here would always look up the wrong cache entry.
+          const allAthletes = clubAthleteCache[enrollPickerCell?.clubId ?? myClubId] || [];
           const ath = allAthletes.find(a => a.id === athleteId);
           const athName = ath ? `${ath.last_name} ${ath.first_name}` : `#${athleteId}`;
           setWeightModal({ athleteId, catId, athleteName: athName });
@@ -285,7 +289,7 @@ const formatDateRo = (date) => {
   };
 
   const createTeamEnrollment = async (catId, athleteIds) => {
-    if (isCoachDeadlinePassed && !user?.is_admin) {
+    if (isCoachDeadlinePassed && !isAdmin) {
       window.alert('Deadline-ul pentru completarea centralizatorului a expirat.');
       return;
     }
@@ -293,10 +297,11 @@ const formatDateRo = (date) => {
     if (!cat || !isTeamCategoryType(cat.type) || athleteIds.length < 2) return;
 
     const selectedIds = [...new Set((athleteIds || []).map(Number).filter(Boolean))];
-    const clubAthletes = clubAthleteCache[myClubId] || [];
+    // Same as above - the picker's actual target club, not the caller's own.
+    const clubAthletes = clubAthleteCache[enrollPickerCell?.clubId ?? myClubId] || [];
     const selectedAthletes = clubAthletes.filter((athlete) => selectedIds.includes(athlete.id));
     if (selectedAthletes.length !== selectedIds.length) {
-      window.alert('Poți adăuga doar sportivi din clubul tău.');
+      window.alert('Poți adăuga doar sportivi din clubul selectat.');
       return;
     }
 

@@ -417,6 +417,14 @@ class CompetitionViewSet(viewsets.ViewSet):
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
 
+        # Generating structure for an event actively running on a LAN venue
+        # instance risks the cloud creating groups/categories the local
+        # instance never sees before results sync back - same class of bug
+        # as CategoryAthleteScoreViewSet.approve() (see scoring.py).
+        locked = _event_operational_lock_response(ev)
+        if locked is not None:
+            return locked
+
         result = ensure_standard_competition_groups_and_categories(ev)
         return Response({
             'detail': 'Standard groups and categories generated successfully.',

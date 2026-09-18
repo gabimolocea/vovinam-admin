@@ -4,11 +4,10 @@ import { useAuth } from '@shared';
 import { Badge, Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Skeleton, Tabs, TabsList, TabsTrigger } from '../components/ui';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import useCoachCentralizator from '../hooks/useCoachCentralizator';
-
-const GENDER_LABELS = { male: 'MASCULIN', female: 'FEMININ', mixt: 'MIXT' };
-const GENDER_BG     = { male: 'bg-blue-500/10', female: 'bg-pink-500/10', mixt: 'bg-amber-500/10' };
-const TYPE_LABELS   = { solo: 'Solo', team: 'Echipă', teams: 'Echipă', fight: 'Luptă' };
-const isTeamCategoryType = (type) => type === 'team' || type === 'teams';
+import useAdminCentralizator from '../hooks/useAdminCentralizator';
+import AdminCentralizatorMatrix from '../components/AdminCentralizatorMatrix';
+import { GroupFormModal, CategoryFormModal } from '../components/AdminStructureModals';
+import { GENDER_LABELS, GENDER_BG, TYPE_LABELS, isTeamCategoryType } from '../lib/centralizator';
 
 function formatGroupYears(group) {
   if (!group) return '';
@@ -36,7 +35,12 @@ function formatGroupLabel(group) {
 export default function CompetitionCentralizator() {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const ctx = useCoachCentralizator(eventId);
+  const { isAdmin } = useAuth();
+  // Both hooks are always called (fixed order, per rules-of-hooks) - the
+  // inactive one gets eventId=null so it never fetches or holds state.
+  const coachCtx = useCoachCentralizator(isAdmin ? null : eventId);
+  const adminCtx = useAdminCentralizator(isAdmin ? eventId : null);
+  const ctx = isAdmin ? adminCtx : coachCtx;
   const [teamSelection, setTeamSelection] = useState([]);
   const [fightWeights, setFightWeights] = useState({});
 
@@ -213,8 +217,8 @@ export default function CompetitionCentralizator() {
               ) : athleteList.length === 0 ? (
                 <div className="p-6 text-center text-sm italic text-muted-foreground">
                   {hasDateRange
-                    ? `Niciun sportiv din clubul tău nu se încadrează în intervalul de vârstă (${outOfRangeCount} exclu${outOfRangeCount === 1 ? 's' : 'și'}).`
-                    : 'Niciun sportiv în clubul tău.'}
+                    ? `Niciun sportiv din ${isAdmin ? 'acest club' : 'clubul tău'} nu se încadrează în intervalul de vârstă (${outOfRangeCount} exclu${outOfRangeCount === 1 ? 's' : 'și'}).`
+                    : `Niciun sportiv în ${isAdmin ? 'acest club' : 'clubul tău'}.`}
                 </div>
               ) : (
                 athleteList.map(ath => {
@@ -370,16 +374,26 @@ function CentralizatorTable({ ctx, onBack }) {
         }
       </div>
 
-      <div className="mb-4 flex justify-center">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="tehnica">Tehnica</TabsTrigger>
-            <TabsTrigger value="lupta">Lupta</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+      {isAdmin && (
+        <div className="hidden md:block">
+          <AdminCentralizatorMatrix ctx={ctx} />
+          <GroupFormModal ctx={ctx} />
+          <CategoryFormModal ctx={ctx} />
+        </div>
+      )}
 
-      {activeTab === 'tehnica' ? <CoachTehnicaView ctx={ctx} /> : <CoachLuptaView ctx={ctx} />}
+      <div className={isAdmin ? 'md:hidden' : ''}>
+        <div className="mb-4 flex justify-center">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList>
+              <TabsTrigger value="tehnica">Tehnica</TabsTrigger>
+              <TabsTrigger value="lupta">Lupta</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {activeTab === 'tehnica' ? <CoachTehnicaView ctx={ctx} /> : <CoachLuptaView ctx={ctx} />}
+      </div>
     </div>
   );
 }
@@ -462,11 +476,13 @@ function CoachTehnicaView({ ctx }) {
                         </div>
                         {!readOnly && (
                           <button
+                            type="button"
                             onClick={(e) => handleUnenroll(entry.id, isTeamCategory ? teamLabel : athleteName, cat.name, e, isTeamCategory ? { enrollmentType: 'team' } : undefined)}
                             disabled={busy || ctx.isCoachDeadlinePassed}
-                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                            aria-label={`Dezînscrie ${isTeamCategory ? teamLabel : athleteName}`}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </div>
@@ -559,11 +575,13 @@ function CoachLuptaView({ ctx }) {
                           {!readOnly && (
                             <td className="px-3 py-2 text-center">
                               <button
+                                type="button"
                                 onClick={(e) => handleUnenroll(entry.id, athleteName, cat.name, e)}
                                 disabled={busy || ctx.isCoachDeadlinePassed}
-                                className="inline-flex h-5 w-5 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                                aria-label={`Dezînscrie ${athleteName}`}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
                               >
-                                <X className="h-3 w-3" />
+                                <X className="h-3.5 w-3.5" />
                               </button>
                             </td>
                           )}

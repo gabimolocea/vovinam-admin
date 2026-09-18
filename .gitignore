@@ -26,6 +26,7 @@ test_*.py
 !backend/api/tests/test_live_state_performance.py
 !backend/api/tests/test_bulk_operations.py
 !backend/api/tests/test_assigned_referee_score_permissions.py
+!backend/api/tests/test_event_sync_lock.py
 
 # Environment Variables
 .env
