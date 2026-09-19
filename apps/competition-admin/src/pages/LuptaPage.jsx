@@ -1,7 +1,7 @@
 import React, { useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import { fightWeightAPI, athleteAPI, enrollmentAPI, categoryAPI } from '@shared/lib/api';
-import { formatGroupBadgeLabel } from '@shared/components/ui';
+import { formatGroupBadgeLabel } from '../components/ui';
 
 /* ═══════════════════════════════════════════════════════════════════
    LUPTA PAGE  –  Fight category weigh-in workflow
@@ -664,7 +664,7 @@ export default function LuptaPage() {
 
   if (fightGroups.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white text-gray-400 text-sm italic p-4 text-center">
+      <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground text-sm italic p-4 text-center">
         <span>📋 Nu există categorii de tip Luptă. Creează-le din tab-ul Centralizator.</span>
       </div>
     );
@@ -673,7 +673,7 @@ export default function LuptaPage() {
   const genderOrder = ['male', 'female', 'mixt'];
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-3 md:p-4">
+    <div className="flex-1 overflow-auto bg-background p-3 md:p-4">
       <div inert={isEditLocked ? '' : undefined} className={isEditLocked ? 'opacity-95' : ''}>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <button
@@ -681,8 +681,8 @@ export default function LuptaPage() {
             onClick={() => setActiveStage('pre')}
             className={`rounded border px-3 py-1.5 text-xs font-semibold ${
               activeStage === 'pre'
-                ? 'border-yellow-500 bg-yellow-300 text-black'
-                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                ? 'border-secondary bg-secondary text-secondary-foreground'
+                : 'border-input bg-background text-muted-foreground hover:bg-muted'
             }`}
           >
             Etapa 1 - Pre-inscriere
@@ -692,8 +692,8 @@ export default function LuptaPage() {
             onClick={() => setActiveStage('enroll')}
             className={`rounded border px-3 py-1.5 text-xs font-semibold ${
               activeStage === 'enroll'
-                ? 'border-yellow-500 bg-yellow-300 text-black'
-                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                ? 'border-secondary bg-secondary text-secondary-foreground'
+                : 'border-input bg-background text-muted-foreground hover:bg-muted'
             }`}
           >
             Etapa 2 - Inscriere pe categorii
@@ -716,23 +716,23 @@ export default function LuptaPage() {
         )}
 
         {activeStage === 'pre' && (
-          <div className="w-full overflow-x-auto border-2 border-black bg-white">
-            <div className="border-b border-black bg-yellow-50 px-3 py-2 text-xs font-semibold text-gray-700">
+          <div className="w-full overflow-x-auto border-2 border-border bg-card">
+            <div className="border-b border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
               Etapa 1: Tabel unic pre-inscriere (sportivi inscrisi de antrenori la Lupta)
             </div>
-            <div className="flex flex-wrap items-center gap-2 border-b border-black bg-white px-3 py-2 text-xs">
-              <span className="font-semibold text-gray-700">Sortare:</span>
+            <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2 text-xs">
+              <span className="font-semibold text-muted-foreground">Sortare:</span>
               <button
                 type="button"
                 onClick={() => togglePreSort('club')}
-                className={`rounded border px-2 py-1 ${preSortField === 'club' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                className={`rounded border px-2 py-1 ${preSortField === 'club' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-input bg-background text-muted-foreground'}`}
               >
                 Club {preSortField === 'club' ? (preSortDir === 'asc' ? '↑' : '↓') : ''}
               </button>
               <button
                 type="button"
                 onClick={() => togglePreSort('name')}
-                className={`rounded border px-2 py-1 ${preSortField === 'name' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                className={`rounded border px-2 py-1 ${preSortField === 'name' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-input bg-background text-muted-foreground'}`}
               >
                 Nume {preSortField === 'name' ? (preSortDir === 'asc' ? '↑' : '↓') : ''}
               </button>
@@ -754,7 +754,7 @@ export default function LuptaPage() {
               <tbody>
                 {preEnrollmentRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="border border-black px-3 py-3 text-center text-xs italic text-gray-500">
+                    <td colSpan={9} className="border border-border px-3 py-3 text-center text-xs italic text-muted-foreground">
                       Nu exista sportivi inscrisi la Lupta de catre antrenori.
                     </td>
                   </tr>
@@ -773,9 +773,9 @@ export default function LuptaPage() {
                     const groupLabel = row.group_years ? `${row.group_name} (${row.group_years})` : row.group_name;
                     return (
                       <tr key={`pre-row-${row.key}`}>
-                        <td className="border border-black px-2 py-1 text-xs text-gray-700">{groupLabel}</td>
-                        <td className="border border-black px-2 py-1 text-xs text-gray-700">{GENDER_LABELS[row.category_gender] || row.category_gender}</td>
-                        <td className="border border-black px-2 py-1 text-sm text-gray-900">
+                        <td className="border border-border px-2 py-1 text-xs text-muted-foreground">{groupLabel}</td>
+                        <td className="border border-border px-2 py-1 text-xs text-muted-foreground">{GENDER_LABELS[row.category_gender] || row.category_gender}</td>
+                        <td className="border border-border px-2 py-1 text-sm text-foreground">
                           <button
                             type="button"
                             onClick={() => openAthleteDrawer(row.athlete_details)}
@@ -784,18 +784,18 @@ export default function LuptaPage() {
                             {athleteLabel}
                           </button>
                         </td>
-                        <td className="border border-black px-2 py-1 text-xs text-gray-700">{formatAgeRo(row.athlete_details?.date_of_birth)}</td>
-                        <td className="border border-black px-1 py-1 text-center text-xs">
+                        <td className="border border-border px-2 py-1 text-xs text-muted-foreground">{formatAgeRo(row.athlete_details?.date_of_birth)}</td>
+                        <td className="border border-border px-1 py-1 text-center text-xs">
                           <input
                             type="number"
                             step="0.1"
                             min="0"
                             value={row.submitted_weight || ''}
                             readOnly
-                            className="w-20 cursor-not-allowed rounded border border-gray-200 bg-gray-50 px-1 py-0.5 text-center text-xs text-gray-700"
+                            className="w-20 cursor-not-allowed rounded border border-border bg-muted px-1 py-0.5 text-center text-xs text-muted-foreground"
                           />
                         </td>
-                        <td className="border border-black px-1 py-1 text-center text-xs">
+                        <td className="border border-border px-1 py-1 text-center text-xs">
                           <input
                             type="number"
                             step="0.1"
@@ -805,13 +805,13 @@ export default function LuptaPage() {
                             onBlur={async (event) => {
                               await saveConfirmedWeight(row, event.target.value);
                             }}
-                            className="w-20 rounded border border-gray-300 px-1 py-0.5 text-center text-xs"
+                            className="w-20 rounded border border-input px-1 py-0.5 text-center text-xs"
                           />
                         </td>
-                        <td className="border border-black px-2 py-1 text-xs text-blue-700">
+                        <td className="border border-border px-2 py-1 text-xs text-blue-700">
                           {suggestedId ? (categories.find((cat) => cat.id === suggestedId)?.name || '—') : 'Fara sugestie'}
                         </td>
-                        <td className="border border-black px-1 py-1 text-xs">
+                        <td className="border border-border px-1 py-1 text-xs">
                           <select
                             value={selectedTarget}
                             onChange={(event) => {
@@ -819,7 +819,7 @@ export default function LuptaPage() {
                               setPreAssignTargets((prev) => ({ ...prev, [row.key]: nextValue }));
                               setPreAssignManual((prev) => ({ ...prev, [row.key]: nextValue !== '' }));
                             }}
-                            className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                            className="w-full rounded border border-input px-2 py-1 text-xs"
                           >
                             <option value="">Selecteaza categoria</option>
                             {options.map((cat) => (
@@ -827,7 +827,7 @@ export default function LuptaPage() {
                             ))}
                           </select>
                         </td>
-                        <td className="border border-black px-1 py-1 text-center">
+                        <td className="border border-border px-1 py-1 text-center">
                           <button
                             type="button"
                             disabled={!selectedTarget || busy}
@@ -914,7 +914,7 @@ export default function LuptaPage() {
                 return (
                   <div key={`${group.id}-${gender}`} className="space-y-3">
                   {activeStage === 'enroll' && (
-                  <div className="w-full overflow-x-auto border-2 border-black bg-white">
+                  <div className="w-full overflow-x-auto border-2 border-border bg-card">
                   <table className="w-full border-collapse text-sm" style={{ minWidth: '700px' }}>
                     <colgroup>
                       <col className="w-[100px]" />{/* CATEGORIE */}
@@ -928,7 +928,7 @@ export default function LuptaPage() {
                     <thead>
                       <tr>
                         <th colSpan={7}
-                          className="bg-yellow-300 border border-black px-2 sm:px-3 py-1.5 text-center font-bold text-sm text-gray-900">
+                          className="bg-secondary border border-border px-2 sm:px-3 py-1.5 text-center font-bold text-sm text-foreground">
                           {group.name}
                           {(group.birth_date_start || group.birth_year_start) && (
                             <span className="font-normal ml-1">
@@ -951,7 +951,7 @@ export default function LuptaPage() {
                       </tr>
                       <tr>
                         <th colSpan={7}
-                          className={`border border-black px-3 py-1 text-center font-bold text-sm uppercase tracking-wide ${
+                          className={`border border-border px-3 py-1 text-center font-bold text-sm uppercase tracking-wide ${
                             gender === 'male' ? 'bg-blue-200 text-blue-900'
                             : gender === 'female' ? 'bg-pink-200 text-pink-900'
                             : 'bg-amber-200 text-amber-900'
@@ -975,29 +975,29 @@ export default function LuptaPage() {
                           return (
                             <tr key={`add-${ri}`} className="hover:bg-green-50/30">
                               {/* NUME PRACTICANT — add button */}
-                              <td className="border border-black px-2 py-1 text-sm border-b-2 border-b-black"
+                              <td className="border border-border px-2 py-1 text-sm border-b-2 border-b-border"
                                 ref={el => { pickerBtnRefs.current[row.cat.id] = el; }}
                               >
                                 <button
                                   onClick={(e) => openPicker(row.cat.id, e)}
                                   disabled={busy}
-                                  className="frvv-btn-add !px-3 !py-1 text-xs disabled:opacity-40"
+                                  className="inline-flex items-center justify-center gap-2 rounded-md bg-primary !px-3 !py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-40"
                                   title="Adaugă sportiv în categorie"
                                 >
-                                  <span className="frvv-btn-add-icon">+</span>
+                                  <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-white/40 bg-white/15 text-sm leading-none">+</span>
                                   Adaugă sportiv
                                 </button>
                               </td>
                               {/* GREUTATE ÎNREGISTRATĂ */}
-                              <td className="border border-black border-b-2 border-b-black"></td>
+                              <td className="border border-border border-b-2 border-b-border"></td>
                               {/* GREUTATE ZI COMPETIȚIE */}
-                              <td className="border border-black border-b-2 border-b-black"></td>
+                              <td className="border border-border border-b-2 border-b-border"></td>
                               {/* DQ */}
-                              <td className="border border-black border-b-2 border-b-black"></td>
+                              <td className="border border-border border-b-2 border-b-border"></td>
                               {/* MOTIV DQ */}
-                              <td className="border border-black border-b-2 border-b-black"></td>
+                              <td className="border border-border border-b-2 border-b-border"></td>
                               {/* ACȚIUNI */}
-                              <td className="border border-black border-b-2 border-b-black"></td>
+                              <td className="border border-border border-b-2 border-b-border"></td>
                             </tr>
                           );
                         }
@@ -1019,13 +1019,13 @@ export default function LuptaPage() {
                         const isEditingDay = editingCell?.categoryId === row.cat.id && editingCell?.athleteId === athleteId && editingCell?.field === 'current_weight_kg';
                         const isEditingReason = editingCell?.categoryId === row.cat.id && editingCell?.athleteId === athleteId && editingCell?.field === 'disqualification_reason';
 
-                        const strongTopBorder = row.isFirstInCat ? 'border-t-2 border-t-black' : '';
+                        const strongTopBorder = row.isFirstInCat ? 'border-t-2 border-t-border' : '';
 
                         return (
                           <tr key={ri} className={isDQ ? 'bg-red-50' : ''}>
                             {/* CATEGORIE */}
                             {row.isFirstInCat && (
-                              <td className="border border-black px-2 py-1 text-center text-xs font-semibold text-gray-900 bg-gray-50 relative"
+                              <td className="border border-border px-2 py-1 text-center text-xs font-semibold text-foreground bg-muted relative"
                                 rowSpan={row.catRowSpan}
                               >
                                 {editingCategoryId === row.cat.id ? (
@@ -1034,7 +1034,7 @@ export default function LuptaPage() {
                                       type="text"
                                       value={categoryDraft.name}
                                       onChange={(event) => setCategoryDraft((prev) => ({ ...prev, name: event.target.value }))}
-                                      className="w-full rounded border border-gray-300 px-1 py-0.5 text-[10px]"
+                                      className="w-full rounded border border-input px-1 py-0.5 text-[10px]"
                                       placeholder="Nume categorie"
                                     />
                                     <div className="grid grid-cols-2 gap-1">
@@ -1043,7 +1043,7 @@ export default function LuptaPage() {
                                         step="0.1"
                                         value={categoryDraft.minKg}
                                         onChange={(event) => setCategoryDraft((prev) => ({ ...prev, minKg: event.target.value }))}
-                                        className="w-full rounded border border-gray-300 px-1 py-0.5 text-[10px]"
+                                        className="w-full rounded border border-input px-1 py-0.5 text-[10px]"
                                         placeholder="Min kg"
                                       />
                                       <input
@@ -1051,7 +1051,7 @@ export default function LuptaPage() {
                                         step="0.1"
                                         value={categoryDraft.maxKg}
                                         onChange={(event) => setCategoryDraft((prev) => ({ ...prev, maxKg: event.target.value }))}
-                                        className="w-full rounded border border-gray-300 px-1 py-0.5 text-[10px]"
+                                        className="w-full rounded border border-input px-1 py-0.5 text-[10px]"
                                         placeholder="Max kg"
                                       />
                                     </div>
@@ -1068,7 +1068,7 @@ export default function LuptaPage() {
                                       <button
                                         type="button"
                                         onClick={() => setEditingCategoryId(null)}
-                                        className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-700"
+                                        className="rounded border border-input bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
                                       >
                                         Anuleaza
                                       </button>
@@ -1080,7 +1080,7 @@ export default function LuptaPage() {
                                     <button
                                       type="button"
                                       onClick={() => startCategoryEdit(row.cat)}
-                                      className="ml-1 rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                                      className="ml-1 rounded border border-input bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground hover:bg-muted"
                                     >
                                       Edit
                                     </button>
@@ -1089,7 +1089,7 @@ export default function LuptaPage() {
                                         ({row.cat.birth_year_start}–{row.cat.birth_year_end})
                                       </span>
                                     )}
-                                    <span className={`mt-0.5 block text-[9px] ${row.enrolledCount < 3 ? 'font-semibold text-red-600' : 'text-gray-400'}`}>
+                                    <span className={`mt-0.5 block text-[9px] ${row.enrolledCount < 3 ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}>
                                       {row.enrolledCount} sportiv{row.enrolledCount !== 1 ? 'i' : ''}
                                     </span>
                                   </>
@@ -1097,18 +1097,18 @@ export default function LuptaPage() {
                               </td>
                             )}
                             {/* NUME PRACTICANT */}
-                            <td className={`border border-black px-2 py-1 text-sm ${strongTopBorder} ${isDQ ? 'line-through text-red-400' : 'text-gray-900'}`}>
+                            <td className={`border border-border px-2 py-1 text-sm ${strongTopBorder} ${isDQ ? 'line-through text-red-400' : 'text-foreground'}`}>
                               <button
                                 type="button"
                                 onClick={() => openAthleteDrawer(a)}
                                 className="block w-full truncate text-left text-blue-700 underline-offset-2 hover:underline"
                               >
                                 {name}
-                                {club && name && <span className="text-gray-500 ml-1">({club})</span>}
+                                {club && name && <span className="text-muted-foreground ml-1">({club})</span>}
                               </button>
                             </td>
                             {/* GREUTATE ÎNREGISTRATĂ */}
-                            <td className={`border border-black px-1 py-0.5 text-center text-xs text-gray-900 font-medium whitespace-nowrap ${strongTopBorder}`}
+                            <td className={`border border-border px-1 py-0.5 text-center text-xs text-foreground font-medium whitespace-nowrap ${strongTopBorder}`}
                               onDoubleClick={() => athleteId && setEditingCell({ categoryId: row.cat.id, athleteId, field: 'pre_weight_kg', value: preW.toString() })}>
                               {athleteId ? (
                                 isEditingPre ? (
@@ -1126,7 +1126,7 @@ export default function LuptaPage() {
                               ) : null}
                             </td>
                             {/* GREUTATE ZI COMPETIȚIE */}
-                            <td className={`border border-black px-1 py-0.5 text-center text-xs font-medium whitespace-nowrap ${strongTopBorder}`}
+                            <td className={`border border-border px-1 py-0.5 text-center text-xs font-medium whitespace-nowrap ${strongTopBorder}`}
                               onDoubleClick={() => athleteId && setEditingCell({ categoryId: row.cat.id, athleteId, field: 'current_weight_kg', value: dayW.toString() })}>
                               {athleteId ? (
                                 isEditingDay ? (
@@ -1144,7 +1144,7 @@ export default function LuptaPage() {
                               ) : null}
                             </td>
                             {/* DQ */}
-                            <td className={`border border-black px-0.5 py-0.5 text-center ${strongTopBorder}`}>
+                            <td className={`border border-border px-0.5 py-0.5 text-center ${strongTopBorder}`}>
                               {athleteId && (
                                 <input
                                   type="checkbox"
@@ -1156,7 +1156,7 @@ export default function LuptaPage() {
                               )}
                             </td>
                             {/* MOTIV DQ */}
-                            <td className={`border border-black px-1 py-0.5 text-xs text-gray-700 ${strongTopBorder}`}
+                            <td className={`border border-border px-1 py-0.5 text-xs text-muted-foreground ${strongTopBorder}`}
                               onDoubleClick={() => athleteId && isDQ && setEditingCell({ categoryId: row.cat.id, athleteId, field: 'disqualification_reason', value: dqReason })}>
                               {athleteId && isDQ ? (
                                 isEditingReason ? (
@@ -1168,19 +1168,19 @@ export default function LuptaPage() {
                                     wide
                                   />
                                 ) : (
-                                  <span className="cursor-pointer hover:bg-yellow-50 px-1 rounded text-red-500" title="Dublu-click pentru a edita motivul">
+                                  <span className="cursor-pointer hover:bg-muted px-1 rounded text-red-500" title="Dublu-click pentru a edita motivul">
                                     {dqReason || '(click pt motiv)'}
                                   </span>
                                 )
                               ) : null}
                             </td>
                             {/* ACȚIUNI */}
-                            <td className={`w-[44px] border border-black px-0.5 py-0.5 text-center ${strongTopBorder}`}>
+                            <td className={`w-[44px] border border-border px-0.5 py-0.5 text-center ${strongTopBorder}`}>
                               {enrollId && (
                                 <button
                                   onClick={(e) => handleUnenroll(enrollId, name, row.cat.name, e)}
                                   disabled={busy}
-                                  className="inline-flex h-11 w-11 items-center justify-center border border-red-700 bg-red-500 text-base font-black leading-none text-white transition-colors hover:bg-red-600 disabled:opacity-40"
+                                  className="inline-flex h-11 w-11 items-center justify-center border border-destructive/40 bg-destructive text-base font-black leading-none text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-40"
                                   title="Scoate sportivul din categorie"
                                 >×</button>
                               )}
@@ -1254,35 +1254,35 @@ export default function LuptaPage() {
           <div
             ref={groupPickerRef}
             onClick={(e) => e.stopPropagation()}
-            className="fixed z-[110] w-80 overflow-hidden border-2 border-black bg-white"
+            className="fixed z-[110] w-80 overflow-hidden border-2 border-border bg-card"
             style={{ top, left }}
           >
-            <div className="border-b-2 border-black bg-yellow-300 px-3 py-3">
-              <p className="truncate text-sm font-black uppercase tracking-wide text-gray-900">Etapa de pre-inscriere</p>
-              <div className="mt-1 text-xs text-gray-800">
+            <div className="border-b-2 border-border bg-secondary px-3 py-3">
+              <p className="truncate text-sm font-black uppercase tracking-wide text-foreground">Etapa de pre-inscriere</p>
+              <div className="mt-1 text-xs text-foreground">
                 {group?.name || 'Grupa'} - {GENDER_LABELS[groupPicker.gender] || groupPicker.gender}
               </div>
               {hasDateRange && (
-                <p className="mt-2 text-xs text-gray-700">
+                <p className="mt-2 text-xs text-muted-foreground">
                   Nascuti {dateStart} - {allowYounger ? 'inf (tineri acceptati)' : dateEnd}
                 </p>
               )}
             </div>
-            <div className="border-b border-black/10 px-3 py-2">
+            <div className="border-b border-border px-3 py-2">
               <input
                 type="text"
                 autoFocus
                 placeholder="Cauta sportiv sau club..."
                 value={pickerSearch}
                 onChange={(e) => setPickerSearch(e.target.value)}
-                className="frvv-input w-full text-sm"
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-ring w-full"
               />
             </div>
             <div className="max-h-64 overflow-y-auto">
               {loadingAthletes ? (
-                <div className="p-6 text-center text-sm text-gray-500 animate-pulse">Se incarca...</div>
+                <div className="p-6 text-center text-sm text-muted-foreground animate-pulse">Se incarca...</div>
               ) : filtered.length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-500 italic">Niciun sportiv disponibil.</div>
+                <div className="p-6 text-center text-sm text-muted-foreground italic">Niciun sportiv disponibil.</div>
               ) : (
                 filtered.map((ath) => {
                   const isRegistered = registeredIds.has(ath.id);
@@ -1293,25 +1293,25 @@ export default function LuptaPage() {
                         await toggleGroupEnrollment(group, ath, groupPicker.gender);
                       }}
                       disabled={busy}
-                      className={`flex w-full items-center gap-3 border-b border-black/10 px-4 py-3 text-left transition-colors disabled:opacity-50 ${
-                        isRegistered ? 'bg-green-50 hover:bg-green-100 text-gray-800' : 'hover:bg-yellow-50 text-gray-700'
+                      className={`flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors disabled:opacity-50 ${
+                        isRegistered ? 'bg-green-50 hover:bg-green-100 text-foreground' : 'hover:bg-muted text-muted-foreground'
                       }`}
                     >
                       <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center border text-sm font-bold ${
-                        isRegistered ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-transparent'
+                        isRegistered ? 'bg-green-500 border-green-500 text-white' : 'border-input text-transparent'
                       }`}>✓</span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-base font-semibold">{ath.last_name} {ath.first_name}</span>
-                        <span className="block truncate text-xs text-gray-500">{ath.club?.name || 'Fara club'}{ath.date_of_birth ? ` · ${ath.date_of_birth}` : ''}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{ath.club?.name || 'Fara club'}{ath.date_of_birth ? ` · ${ath.date_of_birth}` : ''}</span>
                       </span>
                     </button>
                   );
                 })
               )}
             </div>
-            <div className="flex items-center justify-between border-t border-black/10 bg-yellow-50 px-3 py-2">
-              <span className="text-xs text-gray-600">{filtered.length} sportivi disponibili</span>
-              <button onClick={() => setGroupPicker(null)} className="frvv-btn-secondary px-3 py-1.5 text-xs">Inchide</button>
+            <div className="flex items-center justify-between border-t border-border bg-muted px-3 py-2">
+              <span className="text-xs text-muted-foreground">{filtered.length} sportivi disponibili</span>
+              <button onClick={() => setGroupPicker(null)} className="rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent">Inchide</button>
             </div>
           </div>
         );
@@ -1361,15 +1361,15 @@ export default function LuptaPage() {
 
         return (
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onClick={() => setManualEnrollOpen(false)}>
-            <div className="w-full max-w-2xl overflow-hidden rounded border-2 border-black bg-white" onClick={(e) => e.stopPropagation()}>
-              <div className="border-b border-black bg-yellow-200 px-4 py-3 text-sm font-bold text-gray-900">Inscriere manuala sportiv in pre-inscriere</div>
+            <div className="w-full max-w-2xl overflow-hidden rounded border-2 border-border bg-card" onClick={(e) => e.stopPropagation()}>
+              <div className="border-b border-border bg-secondary px-4 py-3 text-sm font-bold text-foreground">Inscriere manuala sportiv in pre-inscriere</div>
               <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-gray-700">Grupa</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Grupa</label>
                   <select
                     value={manualEnrollDraft.groupId}
                     onChange={(e) => setManualEnrollDraft((prev) => ({ ...prev, groupId: e.target.value, categoryId: '', athleteId: '' }))}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="w-full rounded border border-input px-2 py-1.5 text-sm"
                   >
                     <option value="">Selecteaza grupa</option>
                     {groups.map((g) => (
@@ -1378,11 +1378,11 @@ export default function LuptaPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-gray-700">Categorie</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Categorie</label>
                   <select
                     value={manualEnrollDraft.categoryId}
                     onChange={(e) => setManualEnrollDraft((prev) => ({ ...prev, categoryId: e.target.value, athleteId: '' }))}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="w-full rounded border border-input px-2 py-1.5 text-sm"
                   >
                     <option value="">Selecteaza categoria</option>
                     {availableCategories.map((cat) => (
@@ -1391,21 +1391,21 @@ export default function LuptaPage() {
                   </select>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-1 block text-xs font-semibold text-gray-700">Cauta sportiv (nume/club)</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Cauta sportiv (nume/club)</label>
                   <input
                     type="text"
                     value={manualEnrollSearch}
                     onChange={(e) => setManualEnrollSearch(e.target.value)}
                     placeholder="Ex: Popescu / Club ..."
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="w-full rounded border border-input px-2 py-1.5 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-gray-700">Sportiv</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Sportiv</label>
                   <select
                     value={manualEnrollDraft.athleteId}
                     onChange={(e) => setManualEnrollDraft((prev) => ({ ...prev, athleteId: e.target.value }))}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="w-full rounded border border-input px-2 py-1.5 text-sm"
                   >
                     <option value="">Selecteaza sportiv</option>
                     {athleteOptions.map((ath) => (
@@ -1414,19 +1414,19 @@ export default function LuptaPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-gray-700">Greutate trimisa (optional)</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Greutate trimisa (optional)</label>
                   <input
                     type="number"
                     step="0.1"
                     min="0"
                     value={manualEnrollDraft.weight}
                     onChange={(e) => setManualEnrollDraft((prev) => ({ ...prev, weight: e.target.value }))}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="w-full rounded border border-input px-2 py-1.5 text-sm"
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-end gap-2 border-t border-black/20 bg-gray-50 px-4 py-3">
-                <button type="button" onClick={() => setManualEnrollOpen(false)} className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700">Renunta</button>
+              <div className="flex items-center justify-end gap-2 border-t border-border bg-muted px-4 py-3">
+                <button type="button" onClick={() => setManualEnrollOpen(false)} className="rounded border border-input bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground">Renunta</button>
                 <button
                   type="button"
                   disabled={!manualEnrollDraft.categoryId || !manualEnrollDraft.athleteId || busy}
@@ -1501,38 +1501,38 @@ export default function LuptaPage() {
         return (
           <div ref={pickerRef}
             onClick={(e) => e.stopPropagation()}
-            className="fixed z-[100] w-80 overflow-hidden border-2 border-black bg-white"
+            className="fixed z-[100] w-80 overflow-hidden border-2 border-border bg-card"
             style={{ top, left }}
           >
-            <div className="border-b-2 border-black bg-yellow-300 px-3 py-3">
-              <p className="truncate text-sm font-black uppercase tracking-wide text-gray-900">
+            <div className="border-b-2 border-border bg-secondary px-3 py-3">
+              <p className="truncate text-sm font-black uppercase tracking-wide text-foreground">
                 Adaugă sportivi
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                {groupLabel && <span className="frvv-chip">{groupLabel}</span>}
-                <span className="frvv-chip">{catName}</span>
+                {groupLabel && <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{groupLabel}</span>}
+                <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{catName}</span>
               </div>
               {hasDateRange && (
-                <p className="mt-2 text-xs text-gray-700">
+                <p className="mt-2 text-xs text-muted-foreground">
                   Născuți {dateStart} – {allowYounger ? '∞ (tineri acceptați)' : dateEnd}
                 </p>
               )}
             </div>
-            <div className="border-b border-black/10 px-3 py-2">
+            <div className="border-b border-border px-3 py-2">
               <input
                 type="text"
                 autoFocus
                 placeholder="Caută sportiv sau club…"
                 value={pickerSearch}
                 onChange={e => setPickerSearch(e.target.value)}
-                className="frvv-input w-full text-sm"
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-ring w-full"
               />
             </div>
             <div className="max-h-64 overflow-y-auto">
               {loadingAthletes ? (
-                <div className="p-6 text-center text-sm text-gray-500 animate-pulse">Se încarcă…</div>
+                <div className="p-6 text-center text-sm text-muted-foreground animate-pulse">Se încarcă…</div>
               ) : filtered.length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-500 italic">
+                <div className="p-6 text-center text-sm text-muted-foreground italic">
                   {q ? 'Niciun rezultat pentru căutare.' : 'Niciun sportiv disponibil.'}
                 </div>
               ) : (
@@ -1543,32 +1543,32 @@ export default function LuptaPage() {
                     <button key={ath.id}
                       onClick={() => handleToggleEnroll(ath.id, pickerCatId)}
                       disabled={busy}
-                      className={`flex w-full items-center gap-3 border-b border-black/10 px-4 py-3 text-left transition-colors disabled:opacity-50 ${
+                      className={`flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors disabled:opacity-50 ${
                         isEnrolled
-                          ? 'bg-green-50 hover:bg-green-100 text-gray-800'
-                          : 'hover:bg-yellow-50 text-gray-700'
+                          ? 'bg-green-50 hover:bg-green-100 text-foreground'
+                          : 'hover:bg-muted text-muted-foreground'
                       }`}
                     >
                       <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center border text-sm font-bold ${
                         isEnrolled
                           ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 text-transparent'
+                          : 'border-input text-transparent'
                       }`}>✓</span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-base font-semibold">{ath.last_name} {ath.first_name}</span>
-                        <span className="block truncate text-xs text-gray-500">{clubName || 'Fără club'}{ath.date_of_birth ? ` · ${ath.date_of_birth}` : ''}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{clubName || 'Fără club'}{ath.date_of_birth ? ` · ${ath.date_of_birth}` : ''}</span>
                       </span>
                     </button>
                   );
                 })
               )}
             </div>
-            <div className="flex items-center justify-between border-t border-black/10 bg-yellow-50 px-3 py-2">
-              <span className="text-xs text-gray-600">
+            <div className="flex items-center justify-between border-t border-border bg-muted px-3 py-2">
+              <span className="text-xs text-muted-foreground">
                 {enrolledIds.size} înscriș{enrolledIds.size !== 1 ? 'i' : ''} · {filtered.length} afișați
               </span>
               <button onClick={() => setPickerCatId(null)}
-                className="frvv-btn-secondary px-3 py-1.5 text-xs">Închide</button>
+                className="rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent">Închide</button>
             </div>
           </div>
         );
@@ -1577,25 +1577,25 @@ export default function LuptaPage() {
       {athleteDrawer && (
         <>
           <div className="fixed inset-0 z-[125] bg-black/30" onClick={closeAthleteDrawer} />
-          <aside className="fixed right-0 top-0 z-[130] h-full w-full max-w-md overflow-y-auto border-l-2 border-black bg-white shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-black bg-yellow-200 px-4 py-3">
+          <aside className="fixed right-0 top-0 z-[130] h-full w-full max-w-md overflow-y-auto border-l-2 border-border bg-card shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-secondary px-4 py-3">
               <div>
-                <h3 className="text-sm font-bold text-gray-900">Detalii sportiv</h3>
-                <p className="text-xs text-gray-700">
+                <h3 className="text-sm font-bold text-foreground">Detalii sportiv</h3>
+                <p className="text-xs text-muted-foreground">
                   {(athleteDrawer.last_name || '').trim()} {(athleteDrawer.first_name || '').trim()}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={closeAthleteDrawer}
-                className="rounded border border-gray-500 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                className="rounded border border-input bg-background px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted"
               >
                 Inchide
               </button>
             </div>
 
             <div className="space-y-4 p-4">
-              <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+              <div className="rounded border border-border bg-muted p-3 text-sm">
                 <div><span className="font-semibold">Nume:</span> {(athleteDrawer.last_name || '').trim()} {(athleteDrawer.first_name || '').trim() || '—'}</div>
                 <div><span className="font-semibold">Club:</span> {athleteDrawer.club?.name || '—'}</div>
                 <div><span className="font-semibold">Gen:</span> {GENDER_LABELS[athleteDrawer.gender] || athleteDrawer.gender || '—'}</div>
@@ -1603,13 +1603,13 @@ export default function LuptaPage() {
                 <div><span className="font-semibold">Varsta:</span> {formatAgeRo(athleteDrawer.date_of_birth)}</div>
               </div>
 
-              <div className="rounded border border-gray-200">
-                <div className="border-b border-gray-200 bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700">Informatii complete</div>
+              <div className="rounded border border-border">
+                <div className="border-b border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">Informatii complete</div>
                 <div className="max-h-[55vh] overflow-auto">
                   {athleteDrawerRows.map(([key, value]) => (
-                    <div key={`athlete-row-${key}`} className="grid grid-cols-[140px_1fr] gap-2 border-b border-gray-100 px-3 py-2 text-xs">
-                      <span className="font-semibold text-gray-700">{key}</span>
-                      <span className="break-words text-gray-900">{value}</span>
+                    <div key={`athlete-row-${key}`} className="grid grid-cols-[140px_1fr] gap-2 border-b border-border px-3 py-2 text-xs">
+                      <span className="font-semibold text-muted-foreground">{key}</span>
+                      <span className="break-words text-foreground">{value}</span>
                     </div>
                   ))}
                 </div>
@@ -1627,7 +1627,7 @@ export default function LuptaPage() {
 function TH({ children, small }) {
   return (
     <th
-      className={`bg-gray-200 border border-black px-1.5 py-1.5 text-center font-bold text-gray-900 ${
+      className={`bg-muted border border-border px-1.5 py-1.5 text-center font-bold text-foreground ${
         small ? 'text-[10px] whitespace-normal leading-tight' : 'text-xs whitespace-nowrap'
       }`}
     >
@@ -1658,7 +1658,7 @@ function InlineInput({ value, onChange, onSave, onCancel, wide }) {
 function WeightCell({ preW, dayW, onClick }) {
   if (!dayW && dayW !== 0) {
     return (
-      <span className="cursor-pointer hover:bg-blue-50 px-1 rounded text-gray-400" title="Dublu-click pentru a edita" onClick={onClick}>
+      <span className="cursor-pointer hover:bg-blue-50 px-1 rounded text-muted-foreground" title="Dublu-click pentru a edita" onClick={onClick}>
         –
       </span>
     );

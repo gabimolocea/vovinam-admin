@@ -6,7 +6,7 @@ import {
   matchFieldAssignmentAPI, matchEventAPI, fieldBreakAPI,
   matchRefereeScoreAPI,
 } from '@shared/lib/api';
-import { formatGroupBadgeLabel } from '@shared/components/ui';
+import { formatGroupBadgeLabel } from '../components/ui';
 
 /* ═══════════════════════════════════════════════════════
    LIVE PAGE — Competition Management during the event
@@ -24,9 +24,9 @@ function publicDisplayOrigin() {
 }
 
 const STATUS_CFG = {
-  not_started:  { label: 'Neînceput',      dot: 'bg-gray-500',  bg: 'bg-white',  border: 'border-black', badge: 'border border-black bg-white text-gray-700' },
-  in_progress:  { label: 'În desfășurare', dot: 'bg-emerald-500 animate-pulse', bg: 'bg-yellow-50/60', border: 'border-black', badge: 'border border-black bg-yellow-100 text-gray-800' },
-  completed:    { label: 'Finalizat',      dot: 'bg-black',  bg: 'bg-gray-100',  border: 'border-black', badge: 'border border-black bg-gray-200 text-black' },
+  not_started:  { label: 'Neînceput',      dot: 'bg-muted-foreground/40',  bg: 'bg-card',  border: 'border-border', badge: 'rounded-md border border-border bg-muted text-muted-foreground' },
+  in_progress:  { label: 'În desfășurare', dot: 'bg-emerald-500 animate-pulse', bg: 'bg-emerald-50 dark:bg-emerald-950/20', border: 'border-emerald-300 dark:border-emerald-800', badge: 'rounded-md border border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  completed:    { label: 'Finalizat',      dot: 'bg-slate-400',  bg: 'bg-muted',  border: 'border-border', badge: 'rounded-md border border-border bg-muted text-foreground' },
 };
 
 export default function LivePage() {
@@ -178,7 +178,7 @@ export default function LivePage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
+      <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground text-sm">
         Se încarcă datele live...
       </div>
     );
@@ -186,7 +186,7 @@ export default function LivePage() {
 
   if (fields.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 p-4 text-center text-sm text-gray-500">
+      <div className="flex-1 flex items-center justify-center bg-background p-4 text-center text-sm text-muted-foreground">
                 Nu exista tatami-uri configurate. Mergi la tab-ul Programare.
       </div>
     );
@@ -196,7 +196,7 @@ export default function LivePage() {
   const isSingle = false;
 
   return (
-    <div className={`flex-1 overflow-auto bg-white ${isSingle ? 'flex flex-col p-2 gap-2' : 'p-3'}`}>
+    <div className={`flex-1 overflow-auto bg-background ${isSingle ? 'flex flex-col p-2 gap-2' : 'p-3'}`}>
       {/* ═══ FIELD PANELS ═══ */}
       <div className={isSingle ? 'flex-1 min-h-0 flex flex-col' : 'grid grid-cols-1 gap-4 lg:grid-cols-2'}>
         {displayedFields.map(field => {
@@ -329,35 +329,35 @@ function FieldPanel({
   });
 
   return (
-    <div className={`overflow-hidden border-2 border-black bg-white shadow-sm ${singleView ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
+    <div className={`overflow-hidden rounded-lg border-2 border-border bg-card shadow-sm ${singleView ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
       {/* ═══ HEADER ═══ */}
-      <div className="flex items-center justify-between border-b border-black bg-white px-4 py-3 shrink-0">
+      <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-lg font-bold uppercase tracking-wide text-gray-900">{field.name}</span>
-          <span className={`h-3.5 w-3.5 ${isIdle ? 'bg-gray-500' : 'bg-emerald-500 animate-pulse'}`} />
-          <span className="text-sm font-medium uppercase tracking-wider text-gray-700">
+          <span className="text-lg font-bold uppercase tracking-wide text-foreground">{field.name}</span>
+          <span className={`h-3.5 w-3.5 rounded-full ${isIdle ? 'bg-muted-foreground/40' : 'bg-emerald-500 animate-pulse'}`} />
+          <span className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
             {isIdle ? 'Inactiv' : session?.status === 'scores_revealed' ? 'Scoruri afișate' : 'În desfășurare'}
           </span>
         </div>
         <button
           onClick={() => window.open(displayUrl, '_blank')}
-          className="flex items-center gap-2 border border-black bg-yellow-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-yellow-200"
+          className="flex items-center gap-2 rounded-md border border-input bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80"
         >
           Afisare TV
         </button>
       </div>
 
       {/* ═══ BODY: Schedule / Programa (full width) ═══ */}
-      <div className={`${singleView ? 'flex-1 min-h-0 overflow-y-auto' : ''} bg-gray-50/50`}>
-          <div className="sticky top-0 z-10 border-b-2 border-black bg-white px-4 py-3">
-            <p className="text-sm font-bold uppercase tracking-wide text-gray-900">Programa ({scheduleItems.length})</p>
-              <p className="mt-1 text-[11px] text-gray-500">
+      <div className={`${singleView ? 'flex-1 min-h-0 overflow-y-auto' : ''} bg-muted/30`}>
+          <div className="sticky top-0 z-10 border-b-2 border-border bg-card px-4 py-3">
+            <p className="text-sm font-bold uppercase tracking-wide text-foreground">Programa ({scheduleItems.length})</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
                 Statusul de aici controlează programarea pe teren. Pentru meciuri, butonul de start din ecranul live mai ține cont și de statusul logic al meciului.
               </p>
           </div>
           <div className="p-3 space-y-2">
             {scheduleItems.length === 0 && (
-              <p className="text-sm text-gray-400 italic text-center py-6">Nicio probă alocată.<br/>Mergi la Programare.</p>
+              <p className="text-sm text-muted-foreground italic text-center py-6">Nicio probă alocată.<br/>Mergi la Programare.</p>
             )}
             {scheduleItems.map((item, idx) => {
               const isActiveItem = (item.type === 'category' && session?.current_category === item.id && !session?.current_match)
@@ -368,36 +368,36 @@ function FieldPanel({
                 <React.Fragment key={`${item.type}-${item.id}`}>
                   {item.type === 'break' ? (
                     /* ─── Break item ─── */
-                    <div className="flex items-center gap-2 border-2 border-dashed border-black bg-white px-4 py-3 text-sm text-gray-800">
-                      <span className="text-base font-medium text-gray-800">&bull;</span>
+                    <div className="flex items-center gap-2 rounded-md border-2 border-dashed border-border bg-card px-4 py-3 text-sm text-foreground">
+                      <span className="text-base font-medium text-muted-foreground">&bull;</span>
                       <span className="flex-1 font-semibold">{item.data?.label || 'Pauză'}</span>
-                      <span className="text-xs text-gray-700">{item.data?.duration || 60}s</span>
+                      <span className="text-xs text-muted-foreground">{item.data?.duration || 60}s</span>
                     </div>
                   ) : (
                     /* ─── Category / Match item ─── */
-                    <div className={`flex flex-wrap items-center gap-2 border px-3 py-2.5 transition sm:gap-2.5 sm:px-4 sm:py-3 ${
+                    <div className={`flex flex-wrap items-center gap-2 rounded-md border px-3 py-2.5 transition sm:gap-2.5 sm:px-4 sm:py-3 ${
                       item.status === 'completed'
-                        ? 'border-black bg-gray-100 opacity-60 cursor-default'
+                        ? 'border-border bg-muted opacity-60 cursor-default'
                         : isActiveItem
-                          ? 'border-black bg-yellow-200 ring-2 ring-yellow-300 shadow-sm'
+                          ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-300 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/20'
                           : idx === nextItemIndex
-                            ? st.border + ' bg-white shadow-sm'
+                            ? st.border + ' bg-card shadow-sm'
                             : st.border + ' ' + st.bg + ' hover:shadow-sm'
                     }`}
                     >
 
                       {/* Status dot */}
-                      <span className={`h-3.5 w-3.5 shrink-0 ${item.status === 'completed' ? 'bg-gray-400' : st.dot}`} />
+                      <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${item.status === 'completed' ? 'bg-muted-foreground/40' : st.dot}`} />
 
                       {/* Name + info */}
                       <div className="flex-1 min-w-0">
                         {item.type === 'category' ? (
                           <>
-                            <span className="block text-sm font-bold text-gray-900 md:text-base whitespace-normal break-words">{item.data.name}</span>
+                            <span className="block text-sm font-bold text-foreground md:text-base whitespace-normal break-words">{item.data.name}</span>
                             <div className="flex flex-wrap gap-1 mt-0.5">
-                              {item.data.groupName && <span className="frvv-chip">{item.data.groupName}</span>}
-                              {item.data.gender && <span className={`border border-black px-1.5 py-0.5 text-xs text-gray-700 ${GENDER_BG[item.data.gender] || 'bg-gray-100'}`}>{String(genderLabels[item.data.gender] || item.data.gender).toUpperCase()}</span>}
-                              <span className="frvv-chip">{item.data.enrolled_athletes?.length || 0} sportiv{(item.data.enrolled_athletes?.length || 0) !== 1 ? 'i' : ''}</span>
+                              {item.data.groupName && <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{item.data.groupName}</span>}
+                              {item.data.gender && <span className={`rounded border border-border px-1.5 py-0.5 text-xs text-foreground/80 ${GENDER_BG[item.data.gender] || 'bg-muted'}`}>{String(genderLabels[item.data.gender] || item.data.gender).toUpperCase()}</span>}
+                              <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{item.data.enrolled_athletes?.length || 0} sportiv{(item.data.enrolled_athletes?.length || 0) !== 1 ? 'i' : ''}</span>
                             </div>
                           </>
                         ) : (
@@ -410,19 +410,19 @@ function FieldPanel({
                                     <div className="min-w-0 flex-1">
                                       <p className="text-sm font-bold md:text-base leading-snug whitespace-normal break-words uppercase">
                                         <span className="text-red-600">{item.data.red_corner_full_name || 'TBD'}</span>
-                                        {item.data.red_corner_club_name ? <span className="normal-case ml-1 text-gray-500">({item.data.red_corner_club_name})</span> : null}
-                                        <span className="text-gray-400 mx-1 font-bold normal-case">VS</span>
+                                        {item.data.red_corner_club_name ? <span className="normal-case ml-1 text-muted-foreground">({item.data.red_corner_club_name})</span> : null}
+                                        <span className="text-muted-foreground/60 mx-1 font-bold normal-case">VS</span>
                                         <span className="text-blue-600">{item.data.blue_corner_full_name || 'TBD'}</span>
-                                        {item.data.blue_corner_club_name ? <span className="normal-case ml-1 text-gray-500">({item.data.blue_corner_club_name})</span> : null}
-                                        <span className="normal-case text-gray-500"> [{item.data.id}]</span>
+                                        {item.data.blue_corner_club_name ? <span className="normal-case ml-1 text-muted-foreground">({item.data.blue_corner_club_name})</span> : null}
+                                        <span className="normal-case text-muted-foreground"> [{item.data.id}]</span>
                                       </p>
                                     </div>
                                   </div>
                                   <div className="flex flex-wrap gap-1 mt-1">
-                                    {matchCat?.groupName && <span className="frvv-chip">{matchCat.groupName}</span>}
-                                    {(matchCat?.name || item.data.category_name) && <span className="frvv-chip whitespace-normal break-words">{matchCat?.name || item.data.category_name}</span>}
-                                    {matchCat?.gender && <span className={`border border-black px-1.5 py-0.5 text-xs text-gray-700 ${GENDER_BG[matchCat.gender] || 'bg-gray-100'}`}>{String(genderLabels[matchCat.gender] || matchCat.gender).toUpperCase()}</span>}
-                                    {item.data.match_type && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs font-semibold text-gray-800">{matchTypeLabels[item.data.match_type] || item.data.match_type}</span>}
+                                    {matchCat?.groupName && <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{matchCat.groupName}</span>}
+                                    {(matchCat?.name || item.data.category_name) && <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground whitespace-normal break-words">{matchCat?.name || item.data.category_name}</span>}
+                                    {matchCat?.gender && <span className={`rounded border border-border px-1.5 py-0.5 text-xs text-foreground/80 ${GENDER_BG[matchCat.gender] || 'bg-muted'}`}>{String(genderLabels[matchCat.gender] || matchCat.gender).toUpperCase()}</span>}
+                                    {item.data.match_type && <span className="rounded border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">{matchTypeLabels[item.data.match_type] || item.data.match_type}</span>}
                                   </div>
                                 </>
                               );
@@ -434,10 +434,10 @@ function FieldPanel({
                       <div className="flex w-full flex-wrap items-center gap-2 pt-1">
                         {/* URMEAZĂ badge */}
                         {idx === nextItemIndex && !isActiveItem && item.status !== 'completed' && (
-                          <span className="shrink-0 border border-black bg-yellow-300 px-2.5 py-1 text-xs font-bold uppercase text-black">Urmează</span>
+                          <span className="shrink-0 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">Urmează</span>
                         )}
 
-                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500">
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
                           Programare teren
                         </span>
 
@@ -474,7 +474,7 @@ function FieldPanel({
                             else updateMatchAssignmentStatus(item.assignmentId, newStatus);
                           }}
                           disabled={busy}
-                          className={`w-full cursor-pointer px-2.5 py-1.5 text-xs font-bold uppercase sm:w-auto ${st.badge}`}
+                          className={`w-full cursor-pointer px-2.5 py-1.5 text-xs font-bold uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto ${st.badge}`}
                           onClick={e => e.stopPropagation()}
                           title="Statusul de programare pentru teren: nu schimbă singur toate datele interne ale meciului."
                           aria-label="Status programare teren"
@@ -487,10 +487,10 @@ function FieldPanel({
                         {/* VEZI DETALII — always shown */}
                         <button
                           onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match', item.id)}
-                          className={`w-full border px-4 py-2 text-sm font-bold sm:w-auto ${
+                          className={`w-full rounded-md border px-4 py-2 text-sm font-bold sm:w-auto ${
                             item.status === 'completed'
-                              ? 'border-black bg-white text-gray-400 hover:bg-gray-50'
-                              : 'border-black bg-yellow-100 text-gray-700 hover:bg-yellow-200'
+                              ? 'border-border bg-card text-muted-foreground/60 hover:bg-muted'
+                              : 'border-input bg-secondary/60 text-secondary-foreground hover:bg-secondary'
                           }`}
                         >VEZI DETALII</button>
                       </div>
@@ -504,20 +504,20 @@ function FieldPanel({
 
       {/* ── Status change from Finalizat confirmation modal ── */}
       {statusConfirmData && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setStatusConfirmData(null)}>
-          <div className="w-full max-w-sm overflow-hidden border-2 border-black bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="border-b-2 border-black bg-yellow-300 px-5 py-4 text-center">
-              <h3 className="text-lg font-black text-gray-900">Schimbi statusul?</h3>
+        <div role="dialog" aria-modal="true" aria-labelledby="status-confirm-title" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setStatusConfirmData(null)}>
+          <div className="w-full max-w-sm overflow-hidden rounded-lg border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="border-b border-border bg-primary px-5 py-4 text-center text-primary-foreground">
+              <h3 id="status-confirm-title" className="font-display text-lg font-semibold">Schimbi statusul?</h3>
             </div>
             <div className="px-5 py-4 text-center">
-              <p className="text-sm text-gray-700">
-                Status nou: <span className="font-bold text-gray-900">{statusConfirmData.newStatus === 'not_started' ? 'Neînceput' : 'Activ'}</span>
+              <p className="text-sm text-foreground/80">
+                Status nou: <span className="font-bold text-foreground">{statusConfirmData.newStatus === 'not_started' ? 'Neînceput' : 'Activ'}</span>
               </p>
             </div>
-            <div className="flex flex-col-reverse gap-2 border-t-2 border-black bg-gray-50 px-5 py-4 sm:flex-row">
+            <div className="flex flex-col-reverse gap-2 border-t border-border bg-muted px-5 py-4 sm:flex-row">
               <button
                 onClick={() => setStatusConfirmData(null)}
-                className="flex-1 border border-black bg-white px-4 py-3 text-base font-bold text-gray-700 transition hover:bg-yellow-100"
+                className="flex-1 rounded-md border border-input bg-background px-4 py-3 text-base font-bold text-foreground transition hover:bg-accent"
               >
                 Anulează
               </button>
@@ -528,7 +528,7 @@ function FieldPanel({
                   if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
                   else updateMatchAssignmentStatus(item.assignmentId, newStatus);
                 }}
-                className="flex-1 border border-black bg-yellow-300 px-4 py-3 text-base font-bold text-black transition hover:bg-yellow-200"
+                className="flex-1 rounded-md bg-primary px-4 py-3 text-base font-bold text-primary-foreground transition hover:bg-primary/90"
               >
                 Schimbă
               </button>

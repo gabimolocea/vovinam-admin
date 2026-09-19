@@ -18,7 +18,6 @@ mkdir -p "$LOG_DIR"
 # app_name port
 APPS=(
   "competition-admin 5173"
-  "athlete-enrollment 5174"
   "coach-dashboard 5175"
   "referee-scoring 5176"
   "public-display 5177"

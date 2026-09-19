@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cityAPI, competitionAPI } from '@shared/lib/api';
+import { Alert, Button, Card, Input, Label, Textarea } from '../components/ui';
 
 const INITIAL_FORM = {
   name: '',
@@ -15,7 +16,7 @@ const INITIAL_FORM = {
 const normalizeText = (value = '') =>
   String(value)
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
 
 export default function CompetitionForm() {
@@ -108,22 +109,22 @@ export default function CompetitionForm() {
   return (
     <div className="mx-auto max-w-5xl p-4 md:p-6">
       <div className="mb-6 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="frvv-btn-secondary">← Înapoi</button>
+        <Button type="button" variant="outline" onClick={() => navigate(-1)}>← Înapoi</Button>
         <div>
-          <h1 className="text-2xl font-black uppercase tracking-wide text-black">Competiție nouă</h1>
-          <p className="text-sm text-gray-500">Completează evenimentul în același stil ca în panoul de administrare.</p>
+          <h1 className="font-display text-2xl font-semibold text-foreground">Competiție nouă</h1>
+          <p className="text-sm text-muted-foreground">Completează evenimentul în același stil ca în panoul de administrare.</p>
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 border-2 border-red-300 bg-red-50 p-3 text-sm text-red-700 whitespace-pre-line">
+        <Alert variant="destructive" className="mb-4 whitespace-pre-line">
           {error}
-        </div>
+        </Alert>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Detalii eveniment</legend>
+        <Card as="fieldset" className="p-4 md:p-5">
+          <legend className="px-2 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Detalii eveniment</legend>
           <div className="mt-2 grid grid-cols-1 gap-4">
             <Field label="Titlu competiție *" name="name" value={form.name} onChange={setField('name')} required />
             <Field
@@ -135,10 +136,10 @@ export default function CompetitionForm() {
               placeholder="Descriere opțională, similar cu formularul din backend."
             />
           </div>
-        </fieldset>
+        </Card>
 
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Dată și locație</legend>
+        <Card as="fieldset" className="p-4 md:p-5">
+          <legend className="px-2 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Dată și locație</legend>
           <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Data de început *" name="start_date" type="datetime-local" value={form.start_date} onChange={setField('start_date')} required />
             <Field label="Data de sfârșit" name="end_date" type="datetime-local" value={form.end_date} onChange={setField('end_date')} />
@@ -151,20 +152,20 @@ export default function CompetitionForm() {
               placeholder="Implicit: data de început"
             />
             <div ref={cityBoxRef} className="relative sm:col-span-1">
-              <label className="mb-1 block text-xs font-medium text-gray-600">Oraș</label>
-              <input
+              <Label className="mb-1 block text-xs font-medium text-muted-foreground">Oraș</Label>
+              <Input
                 type="text"
                 value={cityQuery}
                 onChange={handleCityChange}
                 onFocus={() => setShowCitySuggestions(true)}
                 onBlur={handleCityBlur}
                 placeholder="Caută orașul din backend..."
-                className="frvv-input w-full pr-10"
+                className="pr-10"
                 autoComplete="off"
               />
-              <div className="pointer-events-none absolute right-3 top-[34px] text-xs text-gray-500">⌕</div>
+              <div className="pointer-events-none absolute right-3 top-[34px] text-xs text-muted-foreground">⌕</div>
               {showCitySuggestions && filteredCities.length > 0 && (
-                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border-2 border-black bg-white">
+                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-popover shadow-md">
                   {filteredCities.map((city) => {
                     const selected = Number(form.city) === Number(city.id);
                     return (
@@ -173,19 +174,19 @@ export default function CompetitionForm() {
                         type="button"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => selectCity(city)}
-                        className={`flex w-full items-center justify-between border-b border-black/10 px-3 py-2 text-left text-sm transition last:border-b-0 ${
-                          selected ? 'bg-yellow-100 font-semibold text-gray-900' : 'bg-white text-gray-700 hover:bg-yellow-50'
+                        className={`flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-sm transition last:border-b-0 ${
+                          selected ? 'bg-accent font-semibold text-accent-foreground' : 'text-foreground hover:bg-accent/60'
                         }`}
                       >
                         <span>{city.name}</span>
-                        {selected && <span className="text-xs font-black text-green-700">SELECTAT</span>}
+                        {selected && <span className="text-xs font-bold text-emerald-600">SELECTAT</span>}
                       </button>
                     );
                   })}
                 </div>
               )}
               {showCitySuggestions && filteredCities.length === 0 && cityQuery.trim() && (
-                <div className="absolute z-30 mt-1 w-full border-2 border-black bg-white px-3 py-3 text-sm text-gray-500">
+                <div className="absolute z-30 mt-1 w-full rounded-md border border-border bg-popover px-3 py-3 text-sm text-muted-foreground shadow-md">
                   Niciun oraș găsit.
                 </div>
               )}
@@ -198,15 +199,15 @@ export default function CompetitionForm() {
               placeholder="Sală, stradă, număr, detalii suplimentare"
             />
           </div>
-        </fieldset>
+        </Card>
 
         <div className="flex flex-col justify-end gap-3 pt-2 sm:flex-row">
-          <button type="button" onClick={() => navigate(-1)} className="frvv-btn-secondary">
+          <Button type="button" variant="outline" onClick={() => navigate(-1)}>
             Anulează
-          </button>
-          <button type="submit" disabled={busy} className="frvv-btn-primary">
+          </Button>
+          <Button type="submit" disabled={busy}>
             {busy ? 'Se creează...' : 'Creează competiția'}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -216,25 +217,24 @@ export default function CompetitionForm() {
 function Field({ label, name, value, onChange, type = 'text', required, multiline, placeholder }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
+      <Label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</Label>
       {multiline ? (
-        <textarea
+        <Textarea
           name={name}
           value={value}
           onChange={onChange}
           rows={5}
           placeholder={placeholder}
-          className="frvv-input min-h-[136px] w-full resize-none"
+          className="min-h-[136px] resize-none"
         />
       ) : (
-        <input
+        <Input
           type={type}
           name={name}
           value={value}
           onChange={onChange}
           required={required}
           placeholder={placeholder}
-          className="frvv-input w-full"
         />
       )}
     </div>

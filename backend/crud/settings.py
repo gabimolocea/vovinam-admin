@@ -231,8 +231,6 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',   # Competition Admin
     'http://127.0.0.1:5173',
     f'http://{LAN_HOST}:5173',
-    'http://localhost:5174',   # Athlete Enrollment
-    f'http://{LAN_HOST}:5174',
     'http://localhost:5175',   # Coach Dashboard
     f'http://{LAN_HOST}:5175',
     'http://localhost:5176',   # Referee Scoring
@@ -254,8 +252,6 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     f'http://{LAN_HOST}:5173',
-    'http://localhost:5174',
-    f'http://{LAN_HOST}:5174',
     'http://localhost:5175',
     f'http://{LAN_HOST}:5175',
     'http://localhost:5176',

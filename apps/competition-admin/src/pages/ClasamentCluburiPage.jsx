@@ -1,13 +1,13 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Spinner } from '@shared/components/ui';
 import { matchAPI, matchRefereeScoreAPI, scoreAPI } from '@shared/lib/api';
 import { CentralizatorContext } from './CategoriesLayout';
+import { Badge, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 
 const PODIUM_STYLES = {
-  1: 'bg-yellow-100 text-yellow-900 border-yellow-300',
-  2: 'bg-gray-100 text-gray-800 border-gray-300',
-  3: 'bg-amber-100 text-amber-900 border-amber-300',
+  1: 'border-transparent bg-yellow-100 text-yellow-900',
+  2: 'border-transparent bg-gray-100 text-gray-800',
+  3: 'border-transparent bg-amber-100 text-amber-900',
 };
 
 function normalizeListPayload(data) {
@@ -282,56 +282,53 @@ export default function ClasamentCluburiPage() {
   if (!ctx) return null;
 
   if (loading) {
-    return <div className="flex-1 flex items-center justify-center bg-white"><Spinner /></div>;
+    return <div className="flex-1 flex items-center justify-center bg-background"><Spinner /></div>;
   }
 
   if (clubMedals.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white text-gray-400 text-sm italic p-4 text-center">
+      <div className="flex-1 flex items-center justify-center bg-background text-sm italic text-muted-foreground p-4 text-center">
         <span>📋 Nu există încă medalii atribuite cluburilor.</span>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-2">
-      <div className="mx-auto max-w-6xl overflow-x-auto">
-        <table className="border-collapse text-sm w-full">
-          <thead>
-            <tr>
-              <th
-                colSpan={6}
-                className="bg-yellow-300 border border-black px-2 sm:px-3 py-1.5 text-center font-bold text-sm text-gray-900 uppercase tracking-wide"
-              >
+    <div className="flex-1 overflow-auto bg-background p-2">
+      <div className="mx-auto max-w-6xl">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead colSpan={6} className="bg-muted text-center text-sm uppercase tracking-wide text-foreground">
                 Clasament Cluburi
-              </th>
-            </tr>
-            <tr>
-              <th className="bg-gray-200 border border-black px-2 py-1.5 text-center font-bold text-[11px] text-gray-900 uppercase tracking-wide w-[88px]">Loc</th>
-              <th className="bg-gray-200 border border-black px-2 py-1.5 text-left font-bold text-[11px] text-gray-900 uppercase tracking-wide">Club</th>
-              <th className="bg-gray-200 border border-black px-2 py-1.5 text-center font-bold text-[11px] text-gray-900 uppercase tracking-wide w-[86px]">Aur</th>
-              <th className="bg-gray-200 border border-black px-2 py-1.5 text-center font-bold text-[11px] text-gray-900 uppercase tracking-wide w-[86px]">Argint</th>
-              <th className="bg-gray-200 border border-black px-2 py-1.5 text-center font-bold text-[11px] text-gray-900 uppercase tracking-wide w-[86px]">Bronz</th>
-              <th className="bg-gray-200 border border-black px-2 py-1.5 text-center font-bold text-[11px] text-gray-900 uppercase tracking-wide w-[86px]">Total</th>
-            </tr>
-          </thead>
-          <tbody>
+              </TableHead>
+            </TableRow>
+            <TableRow>
+              <TableHead className="w-[88px] text-center">Loc</TableHead>
+              <TableHead>Club</TableHead>
+              <TableHead className="w-[86px] text-center">Aur</TableHead>
+              <TableHead className="w-[86px] text-center">Argint</TableHead>
+              <TableHead className="w-[86px] text-center">Bronz</TableHead>
+              <TableHead className="w-[86px] text-center">Total</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {clubMedals.map((club, index) => (
-              <tr key={club.clubId}>
-                <td className="border border-black/30 px-2 py-1.5 text-center bg-gray-50">
-                  <span className={`inline-flex min-w-[56px] justify-center rounded-full border px-2 py-0.5 text-[11px] font-bold ${PODIUM_STYLES[index + 1] || 'bg-gray-100 text-gray-700 border-gray-300'}`}>
+              <TableRow key={club.clubId}>
+                <TableCell className="text-center">
+                  <Badge className={PODIUM_STYLES[index + 1] || 'border-transparent bg-secondary text-secondary-foreground'}>
                     Locul {index + 1}
-                  </span>
-                </td>
-                <td className="border border-black/30 px-2 py-1.5 text-sm text-gray-900 font-medium">{club.clubName}</td>
-                <td className="border border-black/30 px-2 py-1.5 text-center text-sm font-bold text-yellow-700">{club.gold}</td>
-                <td className="border border-black/30 px-2 py-1.5 text-center text-sm font-bold text-gray-700">{club.silver}</td>
-                <td className="border border-black/30 px-2 py-1.5 text-center text-sm font-bold text-amber-700">{club.bronze}</td>
-                <td className="border border-black/30 px-2 py-1.5 text-center text-sm font-bold text-gray-900">{club.total}</td>
-              </tr>
+                  </Badge>
+                </TableCell>
+                <TableCell className="font-medium text-foreground">{club.clubName}</TableCell>
+                <TableCell className="text-center font-bold text-yellow-700">{club.gold}</TableCell>
+                <TableCell className="text-center font-bold text-muted-foreground">{club.silver}</TableCell>
+                <TableCell className="text-center font-bold text-amber-700">{club.bronze}</TableCell>
+                <TableCell className="text-center font-bold text-foreground">{club.total}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

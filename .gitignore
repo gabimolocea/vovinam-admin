@@ -41,6 +41,11 @@ backend/local_backups/
 # VSCode
 .vscode/
 
+# Claude Code local session state (worktrees, session locks) - launch.json
+# (dev-server preview configs) is the only part of .claude/ worth committing.
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+
 # Node / Build
 node_modules/
 dist/

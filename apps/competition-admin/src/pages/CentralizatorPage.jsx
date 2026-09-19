@@ -1,5 +1,6 @@
 import React, { useContext } from 'react';
 import { CentralizatorContext, GENDER_BG, GENDER_LABELS, TYPE_LABELS } from './CategoriesLayout';
+import { Button } from '../components/ui';
 
 export default function CentralizatorPage() {
   const ctx = useContext(CentralizatorContext);
@@ -34,7 +35,7 @@ export default function CentralizatorPage() {
 
   const renderAddLabel = (label = 'Adaugă sportiv') => (
     <>
-      <span className="frvv-btn-add-icon">+</span>
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-sm leading-none">+</span>
       <span>{label}</span>
     </>
   );
@@ -42,40 +43,40 @@ export default function CentralizatorPage() {
   const isTeamCategory = (type) => type === 'team' || type === 'teams';
 
   return (
-    <div className="flex-1 overflow-auto bg-white">
+    <div className="flex-1 overflow-auto bg-background">
       {canUnlockEdit && showStandardStructureBanner && (
-        <div className="border-b-2 border-black bg-yellow-50 px-3 py-3 md:px-5 lg:px-7 xl:px-8 2xl:px-10">
+        <div className="border-b-2 border-border bg-accent px-3 py-3 md:px-5 lg:px-7 xl:px-8 2xl:px-10">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start justify-between gap-3 md:flex-1">
               <div>
-              <div className="text-sm font-black uppercase tracking-wide text-gray-900">Structură standard competiție</div>
-              <p className="mt-1 text-sm text-gray-700">
+              <div className="text-sm font-black uppercase tracking-wide text-foreground">Structură standard competiție</div>
+              <p className="mt-1 text-sm text-foreground/80">
                 Generează doar grupele și categoriile standard care lipsesc. Elementele existente rămân neschimbate și nu se duplică.
               </p>
               </div>
               <button
                 type="button"
                 onClick={dismissStandardStructureBanner}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center border border-black bg-white text-lg font-black text-gray-700 transition hover:bg-yellow-100"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-card text-lg font-black text-foreground/80 transition hover:bg-accent/80"
                 title="Ascunde această secțiune"
                 aria-label="Ascunde această secțiune"
               >
                 ×
               </button>
             </div>
-            <button
+            <Button
               onClick={handleGenerateStandardStructure}
               disabled={busy || generatingDefaults}
-              className="frvv-btn-primary w-full justify-center md:w-auto"
+              className="w-full justify-center md:w-auto"
             >
               {generatingDefaults ? 'Se generează...' : 'Generează categorii și grupe standard'}
-            </button>
+            </Button>
           </div>
         </div>
       )}
       <div className={`space-y-4 p-3 md:hidden ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
         {columnStructure.length === 0 ? (
-          <div className="border-2 border-black bg-white px-4 py-10 text-center text-sm text-gray-400 italic">
+          <div className="rounded-md border-2 border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground italic">
             Nu există încă grupe sau categorii.
           </div>
         ) : (
@@ -87,29 +88,29 @@ export default function CentralizatorPage() {
                 return an.localeCompare(bn);
               });
               return (
-                <div key={cat.id} className="border-2 border-black bg-white">
-                  <div className="border-b border-black bg-yellow-100 px-3 py-2">
-                    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap text-sm text-gray-900">
+                <div key={cat.id} className="rounded-md border-2 border-border bg-card">
+                  <div className="border-b border-border bg-accent px-3 py-2">
+                    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap text-sm text-foreground">
                       <span className="font-black uppercase tracking-wide">{col.group.name}</span>
-                      <span className="text-gray-400">•</span>
+                      <span className="text-muted-foreground">•</span>
                       <span className="font-bold">{cat.name.replace(/ - (Masculin|Feminin|Mixt)/i, '')}</span>
-                      <span className="text-gray-400">•</span>
-                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-900 ${GENDER_BG[cat.gender] || 'bg-gray-100'}`}>
+                      <span className="text-muted-foreground">•</span>
+                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground ${GENDER_BG[cat.gender] || 'bg-muted'}`}>
                         {GENDER_LABELS[cat.gender] || cat.gender}
                       </span>
-                      <span className="text-gray-400">•</span>
-                      <span className="text-xs font-semibold text-gray-700">{countPerCat[cat.id] || 0} participanți</span>
+                      <span className="text-muted-foreground">•</span>
+                      <span className="text-xs font-semibold text-foreground/80">{countPerCat[cat.id] || 0} participanți</span>
                     </div>
                   </div>
                   <div className="space-y-2 p-3">
-                    <button
+                    <Button
                       onClick={(e) => handleCellClick(null, cat.id, e)}
-                      className="frvv-btn-add w-full"
+                      className="w-full"
                     >
                       {renderAddLabel(isTeamCategory(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv')}
-                    </button>
+                    </Button>
                     {enrolled.length === 0 ? (
-                      <div className="text-sm text-gray-400 italic">Niciun sportiv înscris.</div>
+                      <div className="text-sm text-muted-foreground italic">Niciun sportiv înscris.</div>
                     ) : (
                       <div className="space-y-2">
                         {enrolled.map(enrollment => {
@@ -117,15 +118,15 @@ export default function CentralizatorPage() {
                           const athleteName = `${athlete?.last_name || ''} ${athlete?.first_name || ''}`.trim();
                           const clubName = athlete?.club?.name || '';
                           return (
-                            <div key={enrollment.id} className="flex items-center justify-between gap-2 border border-black/20 bg-white px-3 py-2 text-sm">
+                            <div key={enrollment.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm">
                               <div className="min-w-0">
-                                <div className="truncate font-semibold text-gray-900">{athleteName}</div>
-                                {clubName && <div className="truncate text-xs text-gray-500">{clubName}</div>}
+                                <div className="truncate font-semibold text-foreground">{athleteName}</div>
+                                {clubName && <div className="truncate text-xs text-muted-foreground">{clubName}</div>}
                               </div>
                               <button
                                 onClick={(e) => handleUnenroll(enrollment.id, athleteName, cat.name, e)}
                                 disabled={busy}
-                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center border border-red-700 bg-red-500 text-base font-black leading-none text-white transition hover:bg-red-600 disabled:opacity-40"
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-destructive bg-destructive text-base font-black leading-none text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-40"
                                 title="Scoate sportivul din categorie"
                               >
                                 ×
@@ -144,13 +145,13 @@ export default function CentralizatorPage() {
       </div>
 
       <div className="hidden p-5 md:block lg:p-7 xl:p-8 2xl:p-10">
-      <div className="overflow-auto border-2 border-black bg-white">
+      <div className="overflow-auto rounded-md border-2 border-border bg-card">
       <table className={`border-collapse text-sm w-max min-w-full ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
 
         {/* ═══ ROW 1: Group headers + "+" add-group column ═══ */}
         <thead className="sticky top-0 z-20">
           <tr>
-            <th className="sticky left-0 z-40 bg-black text-white border border-black px-4 py-4 text-left font-black text-sm uppercase tracking-wide min-w-[170px] lg:min-w-[220px]"
+            <th className="sticky left-0 z-40 bg-sidebar text-sidebar-foreground border border-border px-4 py-4 text-left font-black text-sm uppercase tracking-wide min-w-[170px] lg:min-w-[220px]"
               rowSpan={3}>
               CLUB
             </th>
@@ -161,9 +162,9 @@ export default function CentralizatorPage() {
                   <div className="absolute inset-y-0 -left-2 -right-2 z-30 flex items-center justify-center">
                     <button
                       onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: ci }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
-                      className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 border border-green-700 bg-green-600 text-white text-[10px] font-bold px-2.5 py-1 transition-all hover:bg-green-700 whitespace-nowrap"
+                      className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-md border border-primary bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-1 transition-all hover:bg-primary/90 whitespace-nowrap"
                       title="Adaugă grupă aici"
-                    ><span className="frvv-btn-add-icon !h-4 !w-4">+</span> Adaugă grupă</button>
+                    ><span className="inline-flex h-4 w-4 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-[10px] leading-none">+</span> Adaugă grupă</button>
                   </div>
                 </th>
 
@@ -174,7 +175,7 @@ export default function CentralizatorPage() {
                   onDragOver={(e) => handleGroupDragOver(e, col.group.id)}
                   onDrop={(e) => handleGroupDrop(e, col.group.id)}
                   onDragEnd={handleDragEnd}
-                  className={`bg-yellow-300 text-gray-900 border border-black px-4 py-3 text-center font-black text-sm whitespace-nowrap relative cursor-grab active:cursor-grabbing transition-all ${
+                  className={`bg-sidebar-accent text-sidebar-accent-foreground border border-border px-4 py-3 text-center font-black text-sm whitespace-nowrap relative cursor-grab active:cursor-grabbing transition-all ${
                     dragType === 'group' && dragId === col.group.id ? 'opacity-40 scale-95' : ''
                   } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-blue-400 ring-inset' : ''}`}>
                   <div className="flex items-center justify-center gap-1 sm:gap-1.5 flex-wrap">
@@ -186,7 +187,7 @@ export default function CentralizatorPage() {
                         onBlur={() => handleGroupRenameSubmit(col.group)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleGroupRenameSubmit(col.group); if (e.key === 'Escape') setEditingGroupId(null); }}
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-white border border-black/30 rounded px-1 py-0.5 text-gray-900 text-xs font-bold text-center w-28 outline-none focus:bg-yellow-50"
+                        className="bg-card border border-border rounded px-1 py-0.5 text-foreground text-xs font-bold text-center w-28 outline-none focus:bg-accent"
                         autoFocus
                       />
                     ) : (
@@ -218,7 +219,7 @@ export default function CentralizatorPage() {
                       className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[8px] font-medium transition ${
                         col.group.allow_younger
                           ? 'bg-amber-400/40 text-amber-900 hover:bg-amber-400/55'
-                          : 'bg-white/70 text-gray-500 hover:bg-white hover:text-gray-800'
+                          : 'bg-card/70 text-muted-foreground hover:bg-card hover:text-foreground'
                       }`}
                       title={col.group.allow_younger ? 'Acceptă vârste mai mici (activ) — click pentru a dezactiva' : 'Permite sportivi mai tineri să urce la categorie superioară'}
                     >
@@ -227,12 +228,12 @@ export default function CentralizatorPage() {
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setCatModal({ groupId: col.group.id }); setCatForm({ name: '', category_type: 'solo', gender: 'male' }); }}
-                      className="inline-flex items-center gap-1 border border-black/30 bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold text-gray-800 transition hover:bg-white"
+                      className="inline-flex items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[9px] font-semibold text-foreground transition hover:bg-card"
                       title="Adaugă categorie"
-                    ><span className="inline-flex h-3.5 w-3.5 items-center justify-center border border-black/20 bg-yellow-100 text-[10px] leading-none">+</span><span className="hidden sm:inline">Categorie</span></button>
+                    ><span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded border border-border bg-accent text-[10px] leading-none">+</span><span className="hidden sm:inline">Categorie</span></button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteGroup(col.group.id); }}
-                      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/80 hover:bg-red-500/80 text-gray-600 hover:text-white text-xs font-bold transition"
+                      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-card/80 hover:bg-destructive/80 text-muted-foreground hover:text-destructive-foreground text-xs font-bold transition"
                       title="Șterge grupa"
                     >×</button>
                   </div>
@@ -245,9 +246,9 @@ export default function CentralizatorPage() {
               <div className="absolute inset-y-0 -left-2 right-0 z-30 flex items-center justify-center" style={{ minWidth: '24px' }}>
                 <button
                   onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: columnStructure.length }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
-                  className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 border border-green-700 bg-green-600 text-white text-[10px] font-bold px-2.5 py-1 transition-all hover:bg-green-700 whitespace-nowrap"
+                  className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-md border border-primary bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-1 transition-all hover:bg-primary/90 whitespace-nowrap"
                   title="Adaugă grupă"
-                ><span className="frvv-btn-add-icon !h-4 !w-4">+</span> Adaugă grupă</button>
+                ><span className="inline-flex h-4 w-4 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-[10px] leading-none">+</span> Adaugă grupă</button>
               </div>
             </th>
           </tr>
@@ -256,12 +257,12 @@ export default function CentralizatorPage() {
           <tr>
             {columnStructure.map(col =>
               col.genderSections.length === 0
-                ? <th key={`g-empty-${col.group.id}`} className="bg-gray-100 border border-black/30 px-1 py-1 text-center text-xs text-gray-500 italic">
+                ? <th key={`g-empty-${col.group.id}`} className="bg-muted border border-border px-1 py-1 text-center text-xs text-muted-foreground italic">
                     Fără categorii
                   </th>
                 : col.genderSections.map(gs => (
                     <th key={`${col.group.id}-${gs.gender}`} colSpan={gs.colSpan}
-                      className={`${GENDER_BG[gs.gender] || 'bg-gray-100'} border border-black/30 px-2 py-2 text-center font-bold text-sm uppercase tracking-wide text-gray-900`}>
+                      className={`${GENDER_BG[gs.gender] || 'bg-muted'} border border-border px-2 py-2 text-center font-bold text-sm uppercase tracking-wide text-foreground`}>
                       {GENDER_LABELS[gs.gender] || gs.gender}
                     </th>
                   ))
@@ -272,7 +273,7 @@ export default function CentralizatorPage() {
           <tr>
             {allCols.length === 0 && columnStructure.length > 0 ? (
               columnStructure.map(col => (
-                <th key={`empty-${col.group.id}`} className="bg-gray-50 border border-black/30 px-1 py-1 text-center text-xs text-gray-400 italic min-w-[80px]">
+                <th key={`empty-${col.group.id}`} className="bg-muted border border-border px-1 py-1 text-center text-xs text-muted-foreground italic min-w-[80px]">
                   click + sus
                 </th>
               ))
@@ -284,7 +285,7 @@ export default function CentralizatorPage() {
                   onDragOver={(e) => handleCatDragOver(e, cat.id)}
                   onDrop={(e) => handleCatDrop(e, cat.id)}
                   onDragEnd={handleDragEnd}
-                  className={`bg-gray-50 border border-black/30 px-3 py-3 text-center font-bold text-sm text-gray-900 min-w-[150px] group/cat cursor-grab active:cursor-grabbing transition-all ${
+                  className={`bg-muted border border-border px-3 py-3 text-center font-bold text-sm text-foreground min-w-[150px] group/cat cursor-grab active:cursor-grabbing transition-all ${
                     dragType === 'category' && dragId === cat.id ? 'opacity-40 scale-95' : ''
                   } ${dragType === 'category' && dragOverId === cat.id ? 'ring-2 ring-blue-400 ring-inset bg-blue-50' : ''}`}
                   title={`${cat.name} (${TYPE_LABELS[cat.type] || cat.type}) — trage pentru a reordona`}
@@ -297,7 +298,7 @@ export default function CentralizatorPage() {
                         onBlur={() => handleCatRenameSubmit(cat)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleCatRenameSubmit(cat); if (e.key === 'Escape') setEditingCatId(null); }}
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-white border border-gray-400 rounded px-1 py-0.5 text-[10px] text-gray-800 font-medium text-center w-full outline-none focus:border-blue-400"
+                        className="bg-card border border-input rounded px-1 py-0.5 text-[10px] text-foreground font-medium text-center w-full outline-none focus:border-ring"
                         autoFocus
                       />
                     ) : (
@@ -307,7 +308,7 @@ export default function CentralizatorPage() {
                       </span>
                     )}
                     <button onClick={() => handleDeleteCat(cat.id)} disabled={busy}
-                      className="absolute -top-2 -right-2 hidden group-hover/cat:inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold leading-none hover:bg-red-600"
+                      className="absolute -top-2 -right-2 hidden group-hover/cat:inline-flex items-center justify-center w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold leading-none hover:bg-destructive/90"
                       title="Șterge categoria">×</button>
                   </div>
                 </th>
@@ -320,7 +321,7 @@ export default function CentralizatorPage() {
         <tbody>
           {clubRows.length === 0 ? (
             <tr>
-              <td colSpan={totalColSpan} className="px-4 py-12 text-center text-sm text-gray-400 italic">
+              <td colSpan={totalColSpan} className="px-4 py-12 text-center text-sm text-muted-foreground italic">
                 {groups.length === 0
                   ? <><span className="text-2xl block mb-2">📋</span>Treci cu mouse-ul între coloane pentru a adăuga prima grupă de vârstă.</>
                   : allCols.length === 0
@@ -341,9 +342,9 @@ export default function CentralizatorPage() {
               return athletes.length === 0 ? (
                 /* Club with no enrolled athletes — single empty row */
                 <tr key={`club-${clubId}`}
-                  className={`border-t-2 border-black/40 hover:bg-yellow-50/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
+                  className={`border-t-2 border-border hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
                 >
-                  <td className="sticky left-0 z-10 bg-white border border-black/30 px-4 py-3 font-bold text-sm text-gray-900 align-middle cursor-grab active:cursor-grabbing select-none"
+                  <td className="sticky left-0 z-10 bg-card border border-border px-4 py-3 font-bold text-sm text-foreground align-middle cursor-grab active:cursor-grabbing select-none"
                     draggable
                     onDragStart={(e) => handleClubDragStart(e, clubId)}
                     onDragOver={(e) => handleClubDragOver(e, clubId)}
@@ -359,18 +360,18 @@ export default function CentralizatorPage() {
                     <React.Fragment key={`grp-${col.group.id}`}>
                       <td className="p-0 w-0 border-none"></td>
                       {col.cats.length === 0 ? (
-                        <td className="border border-black/20 text-gray-200"></td>
+                        <td className="border border-border/60 text-muted-foreground/40"></td>
                       ) : col.cats.map(cat => {
                         const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
                         return (
                           <td key={cat.id}
                             onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                            className={`border border-black/20 px-2 py-2 text-center cursor-pointer transition-colors group/cell ${
+                            className={`border border-border/60 px-2 py-2 text-center cursor-pointer transition-colors group/cell ${
                               isPickerOpen ? 'bg-green-50 ring-2 ring-green-400 ring-inset' : 'hover:bg-green-50'
                             }`}
                           >
-                            <span className="frvv-btn-add mx-auto flex max-w-full items-center justify-center px-2 py-1 text-[10px] leading-tight">
-                              <span className="frvv-btn-add-icon !h-4 !w-4">+</span>
+                            <span className="mx-auto flex max-w-full items-center justify-center gap-2 rounded-md bg-primary px-2 py-1 text-[10px] font-medium leading-tight text-primary-foreground">
+                              <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-[10px] leading-none">+</span>
                               <span className="hidden lg:inline">{isTeamCategory(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv'}</span>
                               <span className="lg:hidden">Adaugă</span>
                             </span>
@@ -379,16 +380,16 @@ export default function CentralizatorPage() {
                       })}
                     </React.Fragment>
                   ))}
-                  <td className="border border-gray-100"></td>
+                  <td className="border border-border/40"></td>
                 </tr>
               ) : (
                 <React.Fragment key={`club-${clubId}`}>
                 {athletes.map((ath, athIdx) => (
                   <tr key={ath.id}
-                    className={`${athIdx === 0 ? 'border-t-2 border-black/40' : ''} hover:bg-yellow-50/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub && athIdx === 0 ? 'ring-t-2 ring-blue-400' : ''}`}
+                    className={`${athIdx === 0 ? 'border-t-2 border-border' : ''} hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub && athIdx === 0 ? 'ring-t-2 ring-blue-400' : ''}`}
                   >
                     {athIdx === 0 && (
-                      <td className="sticky left-0 z-10 bg-white border border-black/30 px-4 py-4 font-bold text-sm text-gray-900 align-top cursor-grab active:cursor-grabbing select-none"
+                      <td className="sticky left-0 z-10 bg-card border border-border px-4 py-4 font-bold text-sm text-foreground align-top cursor-grab active:cursor-grabbing select-none"
                         rowSpan={rowCount}
                         draggable
                         onDragStart={(e) => handleClubDragStart(e, clubId)}
@@ -406,7 +407,7 @@ export default function CentralizatorPage() {
                       <React.Fragment key={`grp-${col.group.id}`}>
                         <td className="p-0 w-0 border-none"></td>
                         {col.cats.length === 0 ? (
-                          <td className="border border-black/20 text-gray-200"></td>
+                          <td className="border border-border/60 text-muted-foreground/40"></td>
                         ) : col.cats.map(cat => {
                           const enrollment = ath.enrollments[cat.id];
                           const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
@@ -415,10 +416,10 @@ export default function CentralizatorPage() {
                           return (
                             <td key={cat.id}
                               onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                              className={`border border-black/20 px-2 py-2 text-center cursor-pointer transition-colors group/cell ${
+                              className={`border border-border/60 px-2 py-2 text-center cursor-pointer transition-colors group/cell ${
                                 isPickerOpen
                                   ? 'bg-green-50 ring-2 ring-green-400 ring-inset'
-                                  : enrollment ? 'bg-green-50 text-gray-800 hover:bg-green-100' : 'hover:bg-green-50'
+                                  : enrollment ? 'bg-green-50 text-foreground hover:bg-green-100' : 'hover:bg-green-50'
                               }`}
                             >
                               {enrollment ? (
@@ -428,15 +429,15 @@ export default function CentralizatorPage() {
                                       <button
                                         onClick={(e) => handleUnenroll(enrollment.id, ath.name, cat.name, e)}
                                         disabled={busy}
-                                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center border border-red-700 bg-red-500 text-base font-black leading-none text-white transition hover:bg-red-600 disabled:opacity-40"
+                                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center border border-destructive bg-destructive text-base font-black leading-none text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-40"
                                         title="Scoate sportivul din categorie"
                                       >×</button>
                                     </span>
                                 </span>
                               ) : (
                                 showAddButton ? (
-                                  <span className="frvv-btn-add mx-auto flex max-w-full items-center justify-center px-2 py-1 text-[10px] leading-tight">
-                                    <span className="frvv-btn-add-icon !h-4 !w-4">+</span>
+                                  <span className="mx-auto flex max-w-full items-center justify-center gap-2 rounded-md bg-primary px-2 py-1 text-[10px] font-medium leading-tight text-primary-foreground">
+                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-[10px] leading-none">+</span>
                                     <span className="hidden xl:inline">{isTeamCategory(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv'}</span>
                                     <span className="xl:hidden">Adaugă</span>
                                   </span>
@@ -447,7 +448,7 @@ export default function CentralizatorPage() {
                         })}
                       </React.Fragment>
                     ))}
-                    <td className="border border-gray-100"></td>
+                    <td className="border border-border/40"></td>
                   </tr>
                 ))}
                 </React.Fragment>
@@ -459,23 +460,23 @@ export default function CentralizatorPage() {
         {/* ═══ FOOTER: participant count per category ═══ */}
         {allCols.length > 0 && (
           <tfoot>
-            <tr className="bg-gray-100 border-t-2 border-black/40">
-              <td className="sticky left-0 z-10 bg-gray-100 border border-black/30 px-4 py-3 font-bold text-sm text-gray-900">
+            <tr className="bg-muted border-t-2 border-border">
+              <td className="sticky left-0 z-10 bg-muted border border-border px-4 py-3 font-bold text-sm text-foreground">
                 Număr participanți
               </td>
               {columnStructure.map(col => (
                 <React.Fragment key={`f-${col.group.id}`}>
-                  <td className="p-0 w-0 border-none bg-gray-100"></td>
+                  <td className="p-0 w-0 border-none bg-muted"></td>
                   {col.cats.length === 0 ? (
-                    <td className="border border-black/30 bg-gray-100"></td>
+                    <td className="border border-border bg-muted"></td>
                   ) : col.cats.map(cat => (
-                    <td key={cat.id} className="border border-black/30 px-2 py-3 text-center font-bold text-base text-gray-900">
+                    <td key={cat.id} className="border border-border px-2 py-3 text-center font-bold text-base text-foreground">
                       {countPerCat[cat.id] || 0}
                     </td>
                   ))}
                 </React.Fragment>
               ))}
-              <td className="border border-gray-100 bg-gray-100"></td>
+              <td className="border border-border/40 bg-muted"></td>
             </tr>
           </tfoot>
         )}

@@ -8,12 +8,34 @@ import {
   fieldBreakAPI,
   scoreAPI, refereeAPI,
 } from '@shared/lib/api';
-import { formatGroupBadgeLabel } from '@shared/components/ui';
+import {
+  formatGroupBadgeLabel,
+  Button,
+  Label,
+  Badge,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '../components/ui';
 
 const TYPE_BADGES = {
-  solo: { label: 'Solo', bg: 'border border-black bg-yellow-300 text-black' },
-  team: { label: 'Echipă', bg: 'border border-black bg-yellow-300 text-black' },
-  fight: { label: 'Luptă', bg: 'border border-black bg-yellow-300 text-black' },
+  solo: { label: 'Solo' },
+  team: { label: 'Echipă' },
+  fight: { label: 'Luptă' },
 };
 
 const ROUND_LABELS = {
@@ -680,17 +702,17 @@ export default function ProgramarePage() {
               }}
               className={`flex min-w-0 flex-1 items-center gap-2 border px-2.5 py-2 text-left text-xs font-medium transition hover:shadow-sm ${
                 conflict
-                  ? 'border-black bg-yellow-300 text-black hover:bg-yellow-200'
+                  ? 'border-amber-400 bg-amber-100 text-amber-900 hover:bg-amber-200'
                   : isEmpty
-                    ? 'border-dashed border-black bg-white text-gray-500 hover:bg-gray-50'
-                    : 'border-black bg-white text-gray-700 hover:bg-yellow-100'
+                    ? 'border-dashed border-input bg-background text-muted-foreground hover:bg-muted'
+                    : 'border-border bg-card text-muted-foreground hover:bg-accent'
               }`}
               title={conflict
                 ? `⚠ Conflict: ${refName} este și pe ${conflict.fieldName} (${conflict.itemName})`
                 : refName || `Adaugă arbitru pe poziția A${slot}`}
             >
-              <span className={`inline-block h-2.5 w-2.5 shrink-0 ${isEmpty ? 'bg-gray-200' : conflict ? 'bg-red-500' : 'bg-gray-400'}`}></span>
-              <span className="font-black text-black">A{slot}</span>
+              <span className={`inline-block h-2.5 w-2.5 shrink-0 ${isEmpty ? 'bg-muted' : conflict ? 'bg-red-500' : 'bg-muted-foreground'}`}></span>
+              <span className="font-black text-foreground">A{slot}</span>
               <span className="min-w-0 flex-1 truncate font-semibold">{refName || 'Adaugă arbitru'}</span>
             </button>
           );
@@ -720,45 +742,45 @@ export default function ProgramarePage() {
         draggable
         onDragStart={(e) => handleDragStart(e, item.type, item.id, item.assignment?.field)}
         onDragEnd={handleDragEnd}
-        className="group mb-2 cursor-grab border-2 border-black bg-white p-2.5 shadow-sm transition-all active:cursor-grabbing hover:bg-yellow-50 hover:shadow-md"
+        className="group mb-2 cursor-grab border-2 border-border bg-card p-2.5 shadow-sm transition-all active:cursor-grabbing hover:bg-accent hover:shadow-md"
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                {isCat ? <p className="min-w-0 text-sm font-semibold leading-tight text-gray-900 whitespace-normal break-words">{cardTitle}</p> : null}
+                {isCat ? <p className="min-w-0 text-sm font-semibold leading-tight text-foreground whitespace-normal break-words">{cardTitle}</p> : null}
                 {!isCat && (
                   <p className="text-sm leading-snug whitespace-normal break-words">
                     <span className="font-semibold text-red-600">
                       {data.red_corner_full_name || 'TBD'}
-                      {data.red_corner_club_name ? <span className="ml-1 font-normal text-gray-500">({data.red_corner_club_name})</span> : null}
+                      {data.red_corner_club_name ? <span className="ml-1 font-normal text-muted-foreground">({data.red_corner_club_name})</span> : null}
                     </span>
-                    <span className="mx-1 font-bold text-gray-500">VS</span>
+                    <span className="mx-1 font-bold text-muted-foreground">VS</span>
                     <span className="font-semibold text-blue-600">
                       {data.blue_corner_full_name || 'TBD'}
-                      {data.blue_corner_club_name ? <span className="ml-1 font-normal text-gray-500">({data.blue_corner_club_name})</span> : null}
+                      {data.blue_corner_club_name ? <span className="ml-1 font-normal text-muted-foreground">({data.blue_corner_club_name})</span> : null}
                     </span>
-                    <span className="font-normal text-gray-500"> [{data.id}]</span>
+                    <span className="font-normal text-muted-foreground"> [{data.id}]</span>
                   </p>
                 )}
               </div>
             </div>
             <div className="mt-1 flex flex-wrap gap-1">
               {(isCat ? data.groupName : matchGroupName) && (
-                <span className="frvv-chip whitespace-normal break-words">{isCat ? data.groupName : matchGroupName}</span>
+                <Badge variant="outline" className="whitespace-normal break-words">{isCat ? data.groupName : matchGroupName}</Badge>
               )}
               {!isCat && matchCategoryName && (
-                <span className="frvv-chip whitespace-normal break-words">{matchCategoryName}</span>
+                <Badge variant="outline" className="whitespace-normal break-words">{matchCategoryName}</Badge>
               )}
               {(isCat ? data.gender : matchCat?.gender) && (
-                <span className={`border border-black px-1.5 py-0.5 text-xs text-gray-700 ${GENDER_BG[isCat ? data.gender : matchCat?.gender] || 'bg-gray-100'}`}>
+                <span className={`border border-border px-1.5 py-0.5 text-xs text-foreground ${GENDER_BG[isCat ? data.gender : matchCat?.gender] || 'bg-muted'}`}>
                   {String(isCat ? (GENDER_LABELS[data.gender] || data.gender) : matchGenderLabel).toUpperCase()}
                 </span>
               )}
               {!isCat && matchTypeLabel && (
-                <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs font-semibold text-gray-800">{matchTypeLabel}</span>
+                <span className="border border-border bg-accent px-1.5 py-0.5 text-xs font-semibold text-accent-foreground">{matchTypeLabel}</span>
               )}
-              {isCat && <span className="frvv-chip">{enrolledCount} sportiv{enrolledCount !== 1 ? 'i' : ''}</span>}
+              {isCat && <Badge variant="outline">{enrolledCount} sportiv{enrolledCount !== 1 ? 'i' : ''}</Badge>}
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -767,7 +789,7 @@ export default function ProgramarePage() {
               isEditingThis ? (
                 <input
                   type="number" min="1" max="120" autoFocus
-                  className="w-12 border border-gray-500 bg-white px-1 py-0.5 text-center text-sm outline-none"
+                  className="w-12 border border-input bg-background px-1 py-0.5 text-center text-sm text-foreground outline-none"
                   value={editingDuration.value}
                   onChange={(e) => setEditingDuration({ ...editingDuration, value: e.target.value })}
                   onBlur={saveDuration}
@@ -776,7 +798,7 @@ export default function ProgramarePage() {
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); setEditingDuration({ type: item.type, id: item.id, value: String(duration) }); }}
-                  className="border border-black bg-yellow-100 px-1.5 py-0.5 text-sm text-gray-800 transition hover:bg-yellow-200"
+                  className="border border-border bg-accent px-1.5 py-0.5 text-sm text-accent-foreground transition hover:bg-accent/70"
                   title="Click pentru a edita durata"
                 >
                   {duration}′
@@ -787,7 +809,7 @@ export default function ProgramarePage() {
             {isCat && item.assignment && (
               <button
                 onClick={(e) => { e.stopPropagation(); openCategoryDetail(item.id); }}
-                className="hidden h-5 w-5 items-center justify-center border border-black bg-white text-xs font-bold text-gray-700 transition hover:bg-yellow-100 group-hover:inline-flex"
+                className="hidden h-5 w-5 items-center justify-center border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent group-hover:inline-flex"
                 title="Detalii categorie"
               >ℹ</button>
             )}
@@ -796,7 +818,7 @@ export default function ProgramarePage() {
               <button
                 onClick={(e) => { e.stopPropagation(); isCat ? unassignCat(item.id) : unassignMatch(item.id); }}
                 disabled={busy}
-                className="hidden h-5 w-5 items-center justify-center border border-black bg-white text-xs font-bold text-gray-700 transition hover:bg-yellow-100 disabled:opacity-40 group-hover:inline-flex"
+                className="hidden h-5 w-5 items-center justify-center border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent disabled:opacity-40 group-hover:inline-flex"
                 title="Scoate din tatami"
               >×</button>
             )}
@@ -818,29 +840,29 @@ export default function ProgramarePage() {
       const enrolled = data.enrolled_athletes || [];
       const enrolledCount = enrolled.length;
       const genderLabel = GENDER_LABELS[data.gender] || '';
-      const genderBg = GENDER_BG[data.gender] || 'bg-gray-100';
+      const genderBg = GENDER_BG[data.gender] || 'bg-muted';
       return (
         <div
           draggable={draggable}
           onDragStart={draggable ? (e) => handleDragStart(e, type, id) : undefined}
           onDragEnd={draggable ? handleDragEnd : undefined}
-          className={`mb-2 border-2 border-black bg-white p-2.5 transition hover:bg-yellow-50 hover:shadow-sm ${
+          className={`mb-2 border-2 border-border bg-card p-2.5 transition hover:bg-accent hover:shadow-sm ${
             draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-default opacity-75'
           }`}
         >
           <div className="flex items-start gap-1.5">
-            <span className="flex-1 text-sm font-bold leading-snug text-gray-800 whitespace-normal break-words">{data.name}</span>
+            <span className="flex-1 text-sm font-bold leading-snug text-foreground whitespace-normal break-words">{data.name}</span>
           </div>
           <div className="mt-1 flex flex-wrap gap-1">
             {data.groupName && (
-              <span className="frvv-chip whitespace-normal break-words">{data.groupName}</span>
+              <Badge variant="outline" className="whitespace-normal break-words">{data.groupName}</Badge>
             )}
             {genderLabel && (
-              <span className={`inline-block rounded border border-black px-1.5 py-0.5 text-xs font-medium ${genderBg} text-gray-700`}>
+              <span className={`inline-block rounded border border-border px-1.5 py-0.5 text-xs font-medium ${genderBg} text-foreground`}>
                 {String(genderLabel).toUpperCase()}
               </span>
             )}
-            <span className="frvv-chip">{enrolledCount} sportiv{enrolledCount !== 1 ? 'i' : ''}</span>
+            <Badge variant="outline">{enrolledCount} sportiv{enrolledCount !== 1 ? 'i' : ''}</Badge>
           </div>
         </div>
       );
@@ -857,7 +879,7 @@ export default function ProgramarePage() {
         draggable={draggable}
         onDragStart={draggable ? (e) => handleDragStart(e, type, id) : undefined}
         onDragEnd={draggable ? handleDragEnd : undefined}
-        className={`mb-2 border-2 border-black bg-white p-2.5 transition hover:bg-yellow-50 hover:shadow-sm ${
+        className={`mb-2 border-2 border-border bg-card p-2.5 transition hover:bg-accent hover:shadow-sm ${
           draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-default opacity-75'
         }`}
       >
@@ -866,22 +888,22 @@ export default function ProgramarePage() {
             <p className="text-sm leading-snug whitespace-normal break-words">
               <span className="font-semibold text-red-600">
                 {data.red_corner_full_name || 'TBD'}
-                {data.red_corner_club_name ? <span className="ml-1 font-normal text-gray-500">({data.red_corner_club_name})</span> : null}
+                {data.red_corner_club_name ? <span className="ml-1 font-normal text-muted-foreground">({data.red_corner_club_name})</span> : null}
               </span>
-              <span className="mx-1 font-bold text-gray-500">VS</span>
+              <span className="mx-1 font-bold text-muted-foreground">VS</span>
               <span className="font-semibold text-blue-600">
                 {data.blue_corner_full_name || 'TBD'}
-                {data.blue_corner_club_name ? <span className="ml-1 font-normal text-gray-500">({data.blue_corner_club_name})</span> : null}
+                {data.blue_corner_club_name ? <span className="ml-1 font-normal text-muted-foreground">({data.blue_corner_club_name})</span> : null}
               </span>
-              <span className="font-normal text-gray-500"> [{data.id}]</span>
+              <span className="font-normal text-muted-foreground"> [{data.id}]</span>
             </p>
           </div>
         </div>
         <div className="mt-1 flex flex-wrap gap-1">
-          {matchGroupName && <span className="frvv-chip">{matchGroupName}</span>}
-          {matchCategoryName && <span className="frvv-chip whitespace-normal break-words">{matchCategoryName}</span>}
-          {matchGenderLabel && <span className={`border border-black px-1.5 py-0.5 text-xs text-gray-700 ${GENDER_BG[matchCat?.gender] || 'bg-gray-100'}`}>{String(matchGenderLabel).toUpperCase()}</span>}
-          {roundLabel && <span className="border border-black bg-yellow-100 px-1.5 py-0.5 text-xs font-medium text-gray-800">{roundLabel}</span>}
+          {matchGroupName && <Badge variant="outline">{matchGroupName}</Badge>}
+          {matchCategoryName && <Badge variant="outline" className="whitespace-normal break-words">{matchCategoryName}</Badge>}
+          {matchGenderLabel && <span className={`border border-border px-1.5 py-0.5 text-xs text-foreground ${GENDER_BG[matchCat?.gender] || 'bg-muted'}`}>{String(matchGenderLabel).toUpperCase()}</span>}
+          {roundLabel && <span className="border border-border bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">{roundLabel}</span>}
         </div>
       </div>
     );
@@ -899,7 +921,7 @@ export default function ProgramarePage() {
         draggable
         onDragStart={(e) => handleDragStart(e, 'break', brk.id, brk.field)}
         onDragEnd={handleDragEnd}
-        className="group mb-2 cursor-grab border-2 border-dashed border-black bg-white p-2.5 transition-all active:cursor-grabbing hover:bg-yellow-50"
+        className="group mb-2 cursor-grab border-2 border-dashed border-border bg-card p-2.5 transition-all active:cursor-grabbing hover:bg-accent"
       >
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -907,7 +929,7 @@ export default function ProgramarePage() {
             {isEditing ? (
               <input
                 type="text"
-                className="flex-1 min-w-0 border border-gray-500 bg-white px-2 py-1 text-sm font-semibold text-gray-900 outline-none"
+                className="flex-1 min-w-0 border border-input bg-background px-2 py-1 text-sm font-semibold text-foreground outline-none"
                 autoFocus={focusTarget === 'label'}
                 value={editingBreak.label}
                 onChange={(e) => setEditingBreak({ ...editingBreak, label: e.target.value })}
@@ -916,7 +938,7 @@ export default function ProgramarePage() {
               />
             ) : (
               <span
-                className="truncate cursor-pointer text-sm font-semibold text-gray-900 hover:underline"
+                className="truncate cursor-pointer text-sm font-semibold text-foreground hover:underline"
                 onClick={(e) => { e.stopPropagation(); setEditingBreak({ id: brk.id, label: brk.label, duration: brk.duration, focus: 'label' }); }}
                 title="Click pentru a edita"
               >
@@ -928,7 +950,7 @@ export default function ProgramarePage() {
             {isEditing ? (
               <input
                 type="number" min="5" max="180"
-                className="w-14 border border-gray-500 bg-white px-1 py-0.5 text-center text-sm outline-none"
+                className="w-14 border border-input bg-background px-1 py-0.5 text-center text-sm text-foreground outline-none"
                 autoFocus={focusTarget === 'duration'}
                 value={editingBreak.duration}
                 onChange={(e) => setEditingBreak({ ...editingBreak, duration: e.target.value })}
@@ -938,7 +960,7 @@ export default function ProgramarePage() {
             ) : (
               <button
                 onClick={(e) => { e.stopPropagation(); setEditingBreak({ id: brk.id, label: brk.label, duration: brk.duration, focus: 'duration' }); }}
-                className="border border-black bg-yellow-100 px-1.5 py-0.5 text-sm font-medium text-gray-800 transition hover:bg-yellow-200"
+                className="border border-border bg-accent px-1.5 py-0.5 text-sm font-medium text-accent-foreground transition hover:bg-accent/70"
                 title="Click pentru a edita durata"
               >
                 {brk.duration}′
@@ -947,7 +969,7 @@ export default function ProgramarePage() {
             <button
               onClick={() => removeBreak(brk.id)}
               disabled={busy}
-              className="hidden h-5 w-5 items-center justify-center border border-black bg-white text-xs font-bold text-gray-700 transition hover:bg-yellow-100 disabled:opacity-40 group-hover:inline-flex"
+              className="hidden h-5 w-5 items-center justify-center border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent disabled:opacity-40 group-hover:inline-flex"
               title="Șterge pauza"
             >×</button>
           </div>
@@ -978,7 +1000,7 @@ export default function ProgramarePage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
+      <div className="flex-1 flex items-center justify-center bg-muted text-muted-foreground text-sm">
         Se încarcă programarea...
       </div>
     );
@@ -986,73 +1008,80 @@ export default function ProgramarePage() {
 
   if (fields.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 p-4 text-center">
+      <div className="flex-1 flex items-center justify-center bg-muted p-4 text-center">
         <div>
           <p className="text-2xl mb-2">🏟️</p>
-          <p className="text-sm font-semibold text-gray-700 mb-3">Câte terenuri sunt?</p>
+          <p className="text-sm font-semibold text-foreground mb-3">Câte terenuri sunt?</p>
           <div className="flex items-center justify-center gap-3 mb-3">
-            <button
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
               onClick={() => handleSetFieldCount(fieldCount - 1)}
               disabled={fieldCount <= 0 || savingFields}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-black bg-white text-lg font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-30"
-            >−</button>
-            <span className="min-w-[3rem] text-center text-2xl font-bold text-gray-900">
+              className="h-10 w-10 rounded-lg text-lg font-bold"
+            >−</Button>
+            <span className="min-w-[3rem] text-center text-2xl font-bold text-foreground">
               {savingFields ? '…' : fieldCount}
             </span>
-            <button
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
               onClick={() => handleSetFieldCount(fieldCount + 1)}
               disabled={fieldCount >= 20 || savingFields}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-black bg-white text-lg font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-30"
-            >+</button>
+              className="h-10 w-10 rounded-lg text-lg font-bold"
+            >+</Button>
           </div>
           {fieldCount > 0 && (
-            <button
+            <Button
+              type="button"
+              variant="secondary"
               onClick={() => { setTatamiLocked(true); handleSetFieldCount(fieldCount); }}
-              className="border border-black bg-yellow-300 px-4 py-2 text-sm font-semibold text-black transition hover:bg-yellow-200"
-            >🔒 Blochează {fieldCount} terenuri</button>
+            >🔒 Blochează {fieldCount} terenuri</Button>
           )}
-          <p className="text-sm text-gray-500 mt-2">Max 20 terenuri · Selectează și blochează</p>
+          <p className="text-sm text-muted-foreground mt-2">Max 20 terenuri · Selectează și blochează</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-white p-2 gap-2">
+    <div className="flex-1 flex overflow-hidden bg-background p-2 gap-2">
 
       {/* ═══ LEFT PANEL — Unassigned items ═══ */}
-      <div className="w-80 sm:w-96 shrink-0 flex flex-col overflow-hidden border-2 border-black bg-white shadow-sm">
+      <div className="w-80 sm:w-96 shrink-0 flex flex-col overflow-hidden border-2 border-border bg-card shadow-sm">
         {/* Field count stepper with lock/unlock */}
-        <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-yellow-300 px-3 py-2">
-          <span className="text-sm font-bold uppercase tracking-wide text-gray-900">Terenuri</span>
+        <div className="flex items-center justify-between gap-2 border-b-2 border-border bg-secondary px-3 py-2">
+          <span className="text-sm font-bold uppercase tracking-wide text-secondary-foreground">Terenuri</span>
           {tatamiLocked ? (
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-gray-900">{fields.length}</span>
+              <span className="text-xs font-bold text-secondary-foreground">{fields.length}</span>
               <button onClick={() => setTatamiLocked(false)}
-                className="text-sm text-gray-700 transition hover:text-black" title="Deblochează numărul de terenuri">🔓</button>
+                className="text-sm text-secondary-foreground/80 transition hover:text-secondary-foreground" title="Deblochează numărul de terenuri">🔓</button>
             </div>
           ) : (
             <div className="flex items-center gap-1">
               <button onClick={() => handleSetFieldCount(fields.length - 1)} disabled={fields.length <= 1 || savingFields}
-                className="flex h-6 w-6 items-center justify-center rounded border border-black bg-white text-sm font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-30">−</button>
-              <span className="min-w-[1.75rem] text-center text-sm font-bold text-gray-900">{savingFields ? '…' : fields.length}</span>
+                className="flex h-6 w-6 items-center justify-center rounded border border-border bg-card text-sm font-bold text-muted-foreground hover:bg-secondary/70 disabled:opacity-30">−</button>
+              <span className="min-w-[1.75rem] text-center text-sm font-bold text-secondary-foreground">{savingFields ? '…' : fields.length}</span>
               <button onClick={() => handleSetFieldCount(fields.length + 1)} disabled={fields.length >= 20 || savingFields}
-                className="flex h-6 w-6 items-center justify-center rounded border border-black bg-white text-sm font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-30">+</button>
+                className="flex h-6 w-6 items-center justify-center rounded border border-border bg-card text-sm font-bold text-muted-foreground hover:bg-secondary/70 disabled:opacity-30">+</button>
               <button onClick={() => setTatamiLocked(true)}
-                className="flex h-6 w-6 items-center justify-center rounded text-sm text-gray-700 transition hover:text-black" title="Blochează numărul de terenuri">🔒</button>
+                className="flex h-6 w-6 items-center justify-center rounded text-sm text-secondary-foreground/80 transition hover:text-secondary-foreground" title="Blochează numărul de terenuri">🔒</button>
             </div>
           )}
         </div>
-        <div className="border-b-2 border-black bg-yellow-100 px-3 py-2">
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Nealocate</h3>
-          <p className="mt-0.5 text-sm text-gray-600">Trage categorii sau meciuri pe un teren</p>
+        <div className="border-b-2 border-border bg-accent px-3 py-2">
+          <h3 className="text-sm font-bold text-accent-foreground uppercase tracking-wide">Nealocate</h3>
+          <p className="mt-0.5 text-sm text-accent-foreground/80">Trage categorii sau meciuri pe un teren</p>
         </div>
-          <div className="flex-1 overflow-y-auto bg-yellow-50/40 p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto bg-accent/30 p-3 space-y-3">
 
           {/* Solo/Team categories */}
           {unassignedCats.length > 0 && (
             <div>
-              <p className="mb-2 text-sm font-bold text-gray-700 uppercase tracking-wide">Tehnica ({unassignedCats.length})</p>
+              <p className="mb-2 text-sm font-bold text-muted-foreground uppercase tracking-wide">Tehnica ({unassignedCats.length})</p>
               {unassignedCats.map(cat => (
                 <UnassignedCard key={cat.id} type="category" id={cat.id} data={cat} />
               ))}
@@ -1062,7 +1091,7 @@ export default function ProgramarePage() {
           {/* Fight matches */}
           {unassignedMatches.length > 0 && (
             <div>
-              <p className="mb-2 text-sm font-bold text-gray-700 uppercase tracking-wide">Luptă ({unassignedMatches.length})</p>
+              <p className="mb-2 text-sm font-bold text-muted-foreground uppercase tracking-wide">Luptă ({unassignedMatches.length})</p>
               {unassignedMatches.map((match) => (
                 <UnassignedCard
                   key={match.id}
@@ -1075,7 +1104,7 @@ export default function ProgramarePage() {
           )}
 
           {unassignedCats.length === 0 && unassignedMatches.length === 0 && (
-            <p className="py-4 text-center text-sm italic text-gray-700">✓ Totul este alocat!</p>
+            <p className="py-4 text-center text-sm italic text-muted-foreground">✓ Totul este alocat!</p>
           )}
         </div>
       </div>
@@ -1095,27 +1124,27 @@ export default function ProgramarePage() {
               key={field.id}
               className={`flex-1 min-w-[300px] flex flex-col border-2 transition-all shadow-sm ${
                 isDragOver
-                  ? 'border-black bg-yellow-50 shadow-lg'
-                  : 'border-black bg-white'
+                  ? 'border-border bg-accent shadow-lg'
+                  : 'border-border bg-card'
               }`}
               onDragOver={(e) => handleDragOver(e, field.id)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, field.id)}
             >
               {/* Field header */}
-              <div className={`border-b-2 border-black ${isDragOver ? 'bg-yellow-200' : 'bg-yellow-300'}`}>
+              <div className={`border-b-2 border-border ${isDragOver ? 'bg-secondary/70' : 'bg-secondary'}`}>
                 <div className="flex items-center justify-between">
-                  <h3 className="px-3 py-2 text-sm font-bold uppercase tracking-wide text-gray-900">{formatFieldLabel(field.name)}</h3>
-                  <span className="px-3 py-2 text-xs font-semibold text-gray-700">{items.length} probe</span>
+                  <h3 className="px-3 py-2 text-sm font-bold uppercase tracking-wide text-secondary-foreground">{formatFieldLabel(field.name)}</h3>
+                  <span className="px-3 py-2 text-xs font-semibold text-secondary-foreground/80">{items.length} probe</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1 border-b-2 border-black bg-yellow-100 px-3 py-2">
+              <div className="flex items-center gap-1 border-b-2 border-border bg-accent px-3 py-2">
                 {/* Start time editor */}
-                  <span className="text-sm text-gray-600">🕐</span>
+                  <span className="text-sm text-accent-foreground/80">🕐</span>
                   {isEditingTime ? (
                     <input
                       type="time" autoFocus
-                      className="w-24 border border-black bg-white px-1.5 py-0.5 text-sm outline-none"
+                      className="w-24 border border-input bg-background px-1.5 py-0.5 text-sm text-foreground outline-none"
                       value={editingStartTime.value}
                       onChange={(e) => setEditingStartTime({ ...editingStartTime, value: e.target.value })}
                       onBlur={() => saveStartTime(field.id, editingStartTime.value)}
@@ -1127,23 +1156,23 @@ export default function ProgramarePage() {
                   ) : (
                     <button
                       onClick={() => setEditingStartTime({ fieldId: field.id, value: field.start_time || '09:00' })}
-                      className="border border-transparent px-1.5 py-0.5 text-sm text-gray-700 transition hover:border-black hover:bg-yellow-200"
+                      className="border border-transparent px-1.5 py-0.5 text-sm text-accent-foreground transition hover:border-border hover:bg-accent/70"
                       title="Click pentru a seta ora de start"
                     >
                       {field.start_time ? formatTime(...field.start_time.split(':').map(Number)) : 'Setează ora'}
                     </button>
                   )}
                   {totalMin > 0 && (
-                    <span className="ml-auto text-xs font-medium text-gray-600">
+                    <span className="ml-auto text-xs font-medium text-accent-foreground/80">
                       {endTime ? `→ ${formatTime(endTime.h, endTime.m)}` : `${Math.floor(totalMin / 60) > 0 ? `${Math.floor(totalMin / 60)}h ` : ''}${totalMin % 60}min`}
                     </span>
                   )}
               </div>
 
               {/* Items */}
-              <div className="flex-1 overflow-y-auto min-h-[120px] bg-yellow-50/30 p-3">
+              <div className="flex-1 overflow-y-auto min-h-[120px] bg-accent/20 p-3">
                 {items.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-sm text-gray-400 italic">
+                  <div className="flex items-center justify-center h-full text-sm text-muted-foreground italic">
                     Trage aici o categorie sau un meci
                   </div>
                 ) : (
@@ -1154,19 +1183,19 @@ export default function ProgramarePage() {
                     >
                       {/* Drop indicator — blue line before this item */}
                       {dropIndicator?.fieldId === field.id && dropIndicator?.index === idx && (
-                        <div className="mx-1 my-1 h-0.5 bg-gray-800 transition-all" />
+                        <div className="mx-1 my-1 h-0.5 bg-primary transition-all" />
                       )}
                       {/* Time indicator */}
                       <div className="flex items-center gap-1 mb-0.5">
-                        <span className="text-xs text-gray-500 font-mono shrink-0">
+                        <span className="text-xs text-muted-foreground font-mono shrink-0">
                           {item.clockStart
-                            ? <span className="font-semibold text-gray-800">{formatTime(item.clockStart.h, item.clockStart.m)}</span>
+                            ? <span className="font-semibold text-foreground">{formatTime(item.clockStart.h, item.clockStart.m)}</span>
                             : `+${item.startMin}′`
                           }
                         </span>
-                        <div className="flex-1 border-t border-dashed border-gray-200" />
+                        <div className="flex-1 border-t border-dashed border-border" />
                         {item.clockEnd && (
-                          <span className="text-xs text-gray-400 font-mono shrink-0">
+                          <span className="text-xs text-muted-foreground font-mono shrink-0">
                             {formatTime(item.clockEnd.h, item.clockEnd.m)}
                           </span>
                         )}
@@ -1177,16 +1206,18 @@ export default function ProgramarePage() {
                 )}
                 {/* Drop indicator at end of list */}
                 {dropIndicator?.fieldId === field.id && dropIndicator?.index === items.length && items.length > 0 && (
-                  <div className="mx-1 my-1 h-0.5 bg-gray-800 transition-all" />
+                  <div className="mx-1 my-1 h-0.5 bg-primary transition-all" />
                 )}
                 {/* Add break button */}
-                <button
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => addBreak(field.id)}
                   disabled={busy}
-                  className="mt-1 w-full border-2 border-dashed border-black py-2 text-sm font-medium text-gray-800 transition hover:bg-yellow-100 disabled:opacity-40"
+                  className="mt-1 w-full border-2 border-dashed border-border text-sm font-medium hover:bg-accent"
                 >
                   ☕ + Pauză
-                </button>
+                </Button>
               </div>
             </div>
           );
@@ -1194,150 +1225,141 @@ export default function ProgramarePage() {
       </div>
 
       {/* ═══ CATEGORY DETAIL MODAL ═══ */}
-      {detailModal && (() => {
-        const cat = categoryMap.get(detailModal.catId);
-        if (!cat) return null;
-        const enrolled = cat.enrolled_athletes || [];
-        const refAss = catRefMap[cat.id];
-        const refSlots = [1,2,3,4,5].map(i => ({
-          slot: i,
-          id: refAss?.[`referee_${i}`],
-          name: refAss?.[`referee_${i}_name`] || null,
-        }));
-        const activeRefs = refSlots.filter(r => r.id);
+      <Dialog open={!!detailModal} onOpenChange={(open) => { if (!open) { setDetailModal(null); setDetailScores([]); setDetailRefScores([]); } }}>
+        <DialogContent className="flex max-h-[85vh] w-[90vw] max-w-4xl flex-col p-0">
+          {detailModal && (() => {
+            const cat = categoryMap.get(detailModal.catId);
+            if (!cat) return null;
+            const enrolled = cat.enrolled_athletes || [];
+            const refAss = catRefMap[cat.id];
+            const refSlots = [1,2,3,4,5].map(i => ({
+              slot: i,
+              id: refAss?.[`referee_${i}`],
+              name: refAss?.[`referee_${i}_name`] || null,
+            }));
+            const activeRefs = refSlots.filter(r => r.id);
 
-        // Build score matrix: athlete → { refId → score }
-        const scoreMatrix = {};
-        const athleteScoreMap = {}; // athleteId → CategoryAthleteScore
-        for (const as of detailScores) {
-          const athId = as.athlete?.id || as.athlete;
-          if (athId) {
-            athleteScoreMap[athId] = as;
-            scoreMatrix[athId] = {};
-          }
-        }
-        for (const rs of detailRefScores) {
-          const athScoreId = rs.athlete_score;
-          const as = detailScores.find(s => s.id === athScoreId);
-          if (as) {
-            const athId = as.athlete?.id || as.athlete;
-            if (athId) {
-              if (!scoreMatrix[athId]) scoreMatrix[athId] = {};
-              scoreMatrix[athId][rs.referee] = rs.score;
+            // Build score matrix: athlete → { refId → score }
+            const scoreMatrix = {};
+            const athleteScoreMap = {}; // athleteId → CategoryAthleteScore
+            for (const as of detailScores) {
+              const athId = as.athlete?.id || as.athlete;
+              if (athId) {
+                athleteScoreMap[athId] = as;
+                scoreMatrix[athId] = {};
+              }
             }
-          }
-        }
+            for (const rs of detailRefScores) {
+              const athScoreId = rs.athlete_score;
+              const as = detailScores.find(s => s.id === athScoreId);
+              if (as) {
+                const athId = as.athlete?.id || as.athlete;
+                if (athId) {
+                  if (!scoreMatrix[athId]) scoreMatrix[athId] = {};
+                  scoreMatrix[athId][rs.referee] = rs.score;
+                }
+              }
+            }
 
-        // Determine status
-        const totalAthletes = enrolled.length;
-        const athletesWithAllScores = Object.keys(scoreMatrix).filter(aid => {
-          const scores = Object.values(scoreMatrix[aid] || {});
-          return scores.length >= activeRefs.length && activeRefs.length > 0;
-        }).length;
-        let catStatus = 'not_started';
-        if (totalAthletes > 0 && activeRefs.length > 0) {
-          if (athletesWithAllScores >= totalAthletes) catStatus = 'finished';
-          else if (detailRefScores.length > 0) catStatus = 'in_progress';
-        }
-        const STATUS_DISPLAY = {
-          not_started: { label: 'Neînceput', bg: 'border border-black bg-white text-gray-700', icon: '⏳' },
-          in_progress: { label: 'În desfășurare', bg: 'border border-black bg-yellow-100 text-gray-800', icon: '▶️' },
-          finished: { label: 'Finalizat', bg: 'border border-black bg-yellow-300 text-black', icon: '✅' },
-        };
-        const sd = STATUS_DISPLAY[catStatus];
+            // Determine status
+            const totalAthletes = enrolled.length;
+            const athletesWithAllScores = Object.keys(scoreMatrix).filter(aid => {
+              const scores = Object.values(scoreMatrix[aid] || {});
+              return scores.length >= activeRefs.length && activeRefs.length > 0;
+            }).length;
+            let catStatus = 'not_started';
+            if (totalAthletes > 0 && activeRefs.length > 0) {
+              if (athletesWithAllScores >= totalAthletes) catStatus = 'finished';
+              else if (detailRefScores.length > 0) catStatus = 'in_progress';
+            }
+            const STATUS_DISPLAY = {
+              not_started: { label: 'Neînceput', bg: 'border border-border bg-muted text-muted-foreground', icon: '⏳' },
+              in_progress: { label: 'În desfășurare', bg: 'border border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300', icon: '▶️' },
+              finished: { label: 'Finalizat', bg: 'border border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300', icon: '✅' },
+            };
+            const sd = STATUS_DISPLAY[catStatus];
 
-        return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-            onClick={() => { setDetailModal(null); setDetailScores([]); setDetailRefScores([]); }}>
-            <div className="flex max-h-[85vh] w-[90vw] max-w-4xl flex-col overflow-hidden border-2 border-black bg-white shadow-2xl"
-              onClick={e => e.stopPropagation()}>
-
-              {/* Header */}
-              <div className="flex items-center justify-between border-b-2 border-black bg-yellow-300 px-5 py-4">
-                <div>
-                  <h2 className="text-base font-black text-gray-900">{cat.name}</h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`inline-block rounded px-1.5 py-0.5 text-sm font-bold ${
-                      TYPE_BADGES[cat.type]?.bg || 'bg-gray-100'
-                    }`}>{TYPE_BADGES[cat.type]?.label}</span>
+            return (
+              <>
+                {/* Header */}
+                <DialogHeader className="border-b border-border px-5 py-4 text-left">
+                  <DialogTitle>{cat.name}</DialogTitle>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <Badge variant="secondary">{TYPE_BADGES[cat.type]?.label}</Badge>
                     {cat.gender && (
-                      <span className={`inline-block rounded px-1.5 py-0.5 text-sm font-medium ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-700`}>
+                      <span className={`inline-block rounded px-1.5 py-0.5 text-sm font-medium ${GENDER_BG[cat.gender] || 'bg-muted'} text-foreground`}>
                         {GENDER_LABELS[cat.gender]}
                       </span>
                     )}
-                    {cat.groupName && <span className="frvv-chip">{cat.groupName}</span>}
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-sm font-semibold ${sd.bg}`}>
+                    {cat.groupName && <Badge variant="outline">{cat.groupName}</Badge>}
+                    <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-sm font-semibold ${sd.bg}`}>
                       {sd.icon} {sd.label}
                     </span>
                   </div>
-                </div>
-                <button onClick={() => { setDetailModal(null); setDetailScores([]); setDetailRefScores([]); }}
-                  className="flex h-9 w-9 items-center justify-center border-2 border-black bg-white text-lg font-black text-gray-700 transition hover:bg-yellow-100">×</button>
-              </div>
+                </DialogHeader>
 
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
-                {/* Referees assigned */}
-                <div>
-                  <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">Arbitri asignați</h3>
-                  <div className="flex gap-2 flex-wrap">
-                    {refSlots.map(r => (
-                      <div key={r.slot} className={`border px-3 py-2 text-sm ${
-                        r.id ? 'border-black bg-yellow-100 font-medium text-gray-800' : 'border-black bg-white italic text-gray-400'
-                      }`}>
-                        R{r.slot}: {r.name || 'Neasignat'}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Athletes list */}
-                <div>
-                  <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">
-                    Sportivi înscriși ({enrolled.length})
-                  </h3>
-                  {enrolled.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Niciun sportiv înscris</p>
-                  ) : (
-                    <div className="text-sm text-gray-600 space-y-1">
-                      {enrolled.map((ea, idx) => {
-                        const ath = ea.athlete_details || ea;
-                        return (
-                          <div key={ath.id || idx} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50">
-                            <span className="text-gray-400 w-5 text-right font-mono text-sm">{idx + 1}.</span>
-                            <span className="font-medium">{ath.last_name || ath.name || ''} {ath.first_name || ''}</span>
-                            {ath.club_name && <span className="text-gray-400">({ath.club_name})</span>}
-                          </div>
-                        );
-                      })}
+                  {/* Referees assigned */}
+                  <div>
+                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">Arbitri asignați</h3>
+                    <div className="flex gap-2 flex-wrap">
+                      {refSlots.map(r => (
+                        <div key={r.slot} className={`border px-3 py-2 text-sm ${
+                          r.id ? 'border-border bg-accent font-medium text-accent-foreground' : 'border-border bg-card italic text-muted-foreground'
+                        }`}>
+                          R{r.slot}: {r.name || 'Neasignat'}
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Score matrix */}
-                <div>
-                  <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">Punctaje arbitri</h3>
-                  {detailLoading ? (
-                    <p className="text-sm text-gray-400 italic">Se încarcă...</p>
-                  ) : detailScores.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Nu există punctaje încă</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm border-collapse">
-                        <thead>
-                          <tr className="bg-yellow-100">
-                            <th className="border-b border-black px-2 py-1.5 text-left font-semibold text-gray-700">#</th>
-                            <th className="border-b border-black px-2 py-1.5 text-left font-semibold text-gray-700">Sportiv</th>
+                  {/* Athletes list */}
+                  <div>
+                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">
+                      Sportivi înscriși ({enrolled.length})
+                    </h3>
+                    {enrolled.length === 0 ? (
+                      <p className="text-sm text-muted-foreground italic">Niciun sportiv înscris</p>
+                    ) : (
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        {enrolled.map((ea, idx) => {
+                          const ath = ea.athlete_details || ea;
+                          return (
+                            <div key={ath.id || idx} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted">
+                              <span className="text-muted-foreground w-5 text-right font-mono text-sm">{idx + 1}.</span>
+                              <span className="font-medium">{ath.last_name || ath.name || ''} {ath.first_name || ''}</span>
+                              {ath.club_name && <span className="text-muted-foreground">({ath.club_name})</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Score matrix */}
+                  <div>
+                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">Punctaje arbitri</h3>
+                    {detailLoading ? (
+                      <p className="text-sm text-muted-foreground italic">Se încarcă...</p>
+                    ) : detailScores.length === 0 ? (
+                      <p className="text-sm text-muted-foreground italic">Nu există punctaje încă</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-accent hover:bg-accent">
+                            <TableHead className="text-accent-foreground">#</TableHead>
+                            <TableHead className="text-accent-foreground">Sportiv</TableHead>
                             {activeRefs.map(r => (
-                                <th key={r.slot} className="min-w-[50px] border-b border-black px-2 py-1.5 text-center font-semibold text-gray-700">
+                              <TableHead key={r.slot} className="min-w-[50px] text-center text-accent-foreground">
                                 R{r.slot}
-                              </th>
+                              </TableHead>
                             ))}
-                            <th className="border-b border-black px-2 py-1.5 text-center font-semibold text-gray-800">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                            <TableHead className="text-center text-accent-foreground">Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {detailScores.map((as, idx) => {
                             const athId = as.athlete?.id || as.athlete;
                             const athName = as.athlete?.name || as.athlete_name || `Sportiv #${athId}`;
@@ -1352,173 +1374,172 @@ export default function ProgramarePage() {
                               total = middle.reduce((s, v) => s + Number(v), 0);
                             }
                             return (
-                              <tr key={as.id} className="hover:bg-yellow-50">
-                                <td className="border-b border-gray-200 px-2 py-1.5 font-mono text-gray-400">{idx + 1}</td>
-                                <td className="border-b border-gray-200 px-2 py-1.5 font-medium text-gray-800">{athName}</td>
+                              <TableRow key={as.id}>
+                                <TableCell className="font-mono text-muted-foreground">{idx + 1}</TableCell>
+                                <TableCell className="font-medium text-foreground">{athName}</TableCell>
                                 {activeRefs.map(r => {
                                   const val = scores[r.id];
                                   const isMin = sortedVals.length >= 5 && val != null && Number(val) === sortedVals[0];
                                   const isMax = sortedVals.length >= 5 && val != null && Number(val) === sortedVals[sortedVals.length - 1];
                                   return (
-                                    <td key={r.slot} className={`border-b border-gray-200 px-2 py-1.5 text-center font-mono ${
-                                      val == null ? 'text-gray-300' :
-                                      isMin || isMax ? 'text-gray-400 line-through' : 'text-gray-800 font-semibold'
+                                    <TableCell key={r.slot} className={`text-center font-mono ${
+                                      val == null ? 'text-muted-foreground/50' :
+                                      isMin || isMax ? 'text-muted-foreground line-through' : 'text-foreground font-semibold'
                                     }`}>
                                       {val != null ? Number(val).toFixed(1) : '—'}
-                                    </td>
+                                    </TableCell>
                                   );
                                 })}
-                                <td className="border-b border-gray-200 px-2 py-1.5 text-center font-bold text-gray-900">
+                                <TableCell className="text-center font-bold text-foreground">
                                   {total != null ? total.toFixed(1) : '—'}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             );
                           })}
-                        </tbody>
-                      </table>
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!refPickerOpen} onOpenChange={(open) => { if (!open) { setRefPickerOpen(null); setReplacementRefId(''); } }}>
+        <DialogContent className="max-w-md">
+          {refPickerOpen && (() => {
+            const currentRefId = refPickerOpen.refId || null;
+            const availableReplacementRefs = (referees || []).filter((ref) => {
+              if (!ref.id) return false;
+              if (currentRefId && ref.id === currentRefId) return true;
+              return ![1, 2, 3, 4, 5].some((slot) => {
+                const ass = refPickerOpen.type === 'category' ? catRefMap[refPickerOpen.id] : matchRefMap[refPickerOpen.id];
+                return ass?.[`referee_${slot}`] === ref.id;
+              });
+            });
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>
+                    {currentRefId ? `Înlocuiește arbitrul A${refPickerOpen.slot}` : `Adaugă arbitru pe poziția A${refPickerOpen.slot}`}
+                  </DialogTitle>
+                  <DialogDescription>Arbitrul curent: {refPickerOpen.refName || 'niciun arbitru'}</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <Label>Alege alt arbitru</Label>
+                  <Select
+                    value={replacementRefId ? String(replacementRefId) : 'none'}
+                    onValueChange={(value) => setReplacementRefId(value === 'none' ? '' : value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Fără arbitru</SelectItem>
+                      {availableReplacementRefs.map((ref) => {
+                        const refConflict = refPickerOpen.fieldId != null && refPickerOpen.startMin != null && refPickerOpen.endMin != null
+                          ? getRefereeConflict(ref.id, refPickerOpen.fieldId, refPickerOpen.startMin, refPickerOpen.endMin)
+                          : null;
+                        return (
+                          <SelectItem key={ref.id} value={String(ref.id)}>
+                            {ref.athlete_name}{refConflict ? ` — conflict ${refConflict.fieldName}` : ''}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => { setRefPickerOpen(null); setReplacementRefId(''); }}
+                  >Anulează</Button>
+                  <Button
+                    type="button"
+                    onClick={() => assignReferee(refPickerOpen.type, refPickerOpen.id, refPickerOpen.slot, replacementRefId ? Number(replacementRefId) : null)}
+                    disabled={busy || (replacementRefId && Number(replacementRefId) === currentRefId)}
+                  >
+                    {replacementRefId ? (currentRefId ? 'Înlocuiește' : 'Adaugă') : 'Elimină arbitrul'}
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!bracketPreviewCatId} onOpenChange={(open) => { if (!open) setBracketPreviewCatId(null); }}>
+        <DialogContent className="flex max-h-[85vh] w-[90vw] max-w-5xl flex-col p-0">
+          {bracketPreviewCatId && (() => {
+            const cat = categoryMap.get(bracketPreviewCatId);
+            const catMatches = (matchesByCat[bracketPreviewCatId] || [])
+              .slice()
+              .sort((a, b) => (a.round_number || 0) - (b.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0) || (a.match_number || 0) - (b.match_number || 0));
+            const byRound = catMatches.reduce((acc, match) => {
+              const roundKey = match.round_number || 1;
+              if (!acc[roundKey]) acc[roundKey] = [];
+              acc[roundKey].push(match);
+              return acc;
+            }, {});
+            const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+            if (!cat) return null;
+
+            return (
+              <>
+                <DialogHeader className="border-b border-border px-5 py-4 text-left">
+                  <DialogTitle>Piramidă · {cat.name}</DialogTitle>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {cat.groupName && <Badge variant="outline">{cat.groupName}</Badge>}
+                    {cat.gender && <span className={`inline-block rounded px-1.5 py-0.5 text-sm font-medium ${GENDER_BG[cat.gender] || 'bg-muted'} text-foreground`}>{GENDER_LABELS[cat.gender] || cat.gender}</span>}
+                    <Badge variant="outline">{catMatches.length} meciuri</Badge>
+                  </div>
+                </DialogHeader>
+
+                <div className="flex-1 overflow-auto p-5">
+                  {catMatches.length === 0 ? (
+                    <p className="text-sm italic text-muted-foreground">Nu există meciuri generate pentru această categorie.</p>
+                  ) : (
+                    <div className="flex min-w-max gap-4">
+                      {rounds.map((round) => (
+                        <div key={round} className="w-72 shrink-0">
+                          <div className="mb-3 border-2 border-border bg-accent px-3 py-2 text-sm font-bold text-accent-foreground">
+                            {ROUND_LABELS[byRound[round]?.[0]?.match_type] || `Runda ${round}`}
+                          </div>
+                          <div className="space-y-3">
+                            {byRound[round].map((match) => (
+                              <div key={match.id} className="border-2 border-border bg-card p-3 shadow-sm">
+                                <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                  <span className="font-mono">ID {match.id}</span>
+                                  {match.bracket_position != null ? <span>Poziția {match.bracket_position}</span> : null}
+                                </div>
+                                <div className="space-y-1.5 text-sm leading-snug">
+                                  <div className="font-semibold text-red-600 whitespace-normal break-words">
+                                    {match.red_corner_full_name || 'TBD'}
+                                    {match.red_corner_club_name ? <span className="ml-1 font-normal text-muted-foreground">({match.red_corner_club_name})</span> : null}
+                                  </div>
+                                  <div className="font-semibold text-blue-600 whitespace-normal break-words">
+                                    {match.blue_corner_full_name || 'TBD'}
+                                    {match.blue_corner_club_name ? <span className="ml-1 font-normal text-muted-foreground">({match.blue_corner_club_name})</span> : null}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
-
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {refPickerOpen && (() => {
-        const currentRefId = refPickerOpen.refId || null;
-        const availableReplacementRefs = (referees || []).filter((ref) => {
-          if (!ref.id) return false;
-          if (currentRefId && ref.id === currentRefId) return true;
-          return ![1, 2, 3, 4, 5].some((slot) => {
-            const ass = refPickerOpen.type === 'category' ? catRefMap[refPickerOpen.id] : matchRefMap[refPickerOpen.id];
-            return ass?.[`referee_${slot}`] === ref.id;
-          });
-        });
-
-        return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4" onClick={() => { setRefPickerOpen(null); setReplacementRefId(''); }}>
-            <div className="w-full max-w-md overflow-hidden border-2 border-black bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="border-b-2 border-black bg-yellow-300 px-5 py-4">
-                <div>
-                  <h3 className="text-xl font-black text-gray-900">
-                    {currentRefId ? `Înlocuiește arbitrul A${refPickerOpen.slot}` : `Adaugă arbitru pe poziția A${refPickerOpen.slot}`}
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-700">Arbitrul curent: {refPickerOpen.refName || 'niciun arbitru'}</p>
-                </div>
-              </div>
-              <div className="space-y-4 px-5 py-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700">Alege alt arbitru</label>
-                  <select
-                    value={replacementRefId}
-                    onChange={(e) => setReplacementRefId(e.target.value)}
-                    className="w-full border-2 border-black bg-white px-4 py-3 text-base font-medium outline-none focus:border-yellow-400"
-                  >
-                    <option value="">Fără arbitru</option>
-                    {availableReplacementRefs.map((ref) => {
-                      const refConflict = refPickerOpen.fieldId != null && refPickerOpen.startMin != null && refPickerOpen.endMin != null
-                        ? getRefereeConflict(ref.id, refPickerOpen.fieldId, refPickerOpen.startMin, refPickerOpen.endMin)
-                        : null;
-                      return (
-                        <option key={ref.id} value={ref.id}>
-                          {ref.athlete_name}{refConflict ? ` — conflict ${refConflict.fieldName}` : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-              <div className="flex flex-col-reverse gap-2 border-t-2 border-black bg-gray-50 px-5 py-4 sm:flex-row sm:justify-end">
-                <button
-                  onClick={() => { setRefPickerOpen(null); setReplacementRefId(''); }}
-                  className="border border-black bg-white px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40"
-                >Anulează</button>
-                <button
-                  onClick={() => assignReferee(refPickerOpen.type, refPickerOpen.id, refPickerOpen.slot, replacementRefId ? Number(replacementRefId) : null)}
-                  disabled={busy || (replacementRefId && Number(replacementRefId) === currentRefId)}
-                  className="border border-black bg-green-600 px-4 py-2.5 font-bold text-white transition hover:bg-green-700 disabled:opacity-40"
-                >
-                  {replacementRefId ? (currentRefId ? 'Înlocuiește' : 'Adaugă') : 'Elimină arbitrul'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {bracketPreviewCatId && (() => {
-        const cat = categoryMap.get(bracketPreviewCatId);
-        const catMatches = (matchesByCat[bracketPreviewCatId] || [])
-          .slice()
-          .sort((a, b) => (a.round_number || 0) - (b.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0) || (a.match_number || 0) - (b.match_number || 0));
-        const byRound = catMatches.reduce((acc, match) => {
-          const roundKey = match.round_number || 1;
-          if (!acc[roundKey]) acc[roundKey] = [];
-          acc[roundKey].push(match);
-          return acc;
-        }, {});
-        const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b);
-        if (!cat) return null;
-
-        return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-            onClick={() => setBracketPreviewCatId(null)}>
-            <div className="flex max-h-[85vh] w-[90vw] max-w-5xl flex-col overflow-hidden border-2 border-black bg-white shadow-2xl"
-              onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between border-b-2 border-black bg-yellow-300 px-5 py-4">
-                <div>
-                  <h2 className="text-base font-black text-gray-900">Piramidă · {cat.name}</h2>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    {cat.groupName && <span className="frvv-chip">{cat.groupName}</span>}
-                    {cat.gender && <span className={`inline-block rounded px-1.5 py-0.5 text-sm font-medium ${GENDER_BG[cat.gender] || 'bg-gray-100'} text-gray-700`}>{GENDER_LABELS[cat.gender] || cat.gender}</span>}
-                    <span className="frvv-chip">{catMatches.length} meciuri</span>
-                  </div>
-                </div>
-                <button onClick={() => setBracketPreviewCatId(null)}
-                  className="flex h-9 w-9 items-center justify-center border-2 border-black bg-white text-lg font-black text-gray-700 transition hover:bg-yellow-100">×</button>
-              </div>
-
-              <div className="flex-1 overflow-auto p-5">
-                {catMatches.length === 0 ? (
-                  <p className="text-sm italic text-gray-500">Nu există meciuri generate pentru această categorie.</p>
-                ) : (
-                  <div className="flex min-w-max gap-4">
-                    {rounds.map((round) => (
-                      <div key={round} className="w-72 shrink-0">
-                        <div className="mb-3 border-2 border-black bg-yellow-100 px-3 py-2 text-sm font-bold text-gray-800">
-                          {ROUND_LABELS[byRound[round]?.[0]?.match_type] || `Runda ${round}`}
-                        </div>
-                        <div className="space-y-3">
-                          {byRound[round].map((match) => (
-                            <div key={match.id} className="border-2 border-black bg-white p-3 shadow-sm">
-                              <div className="mb-2 flex items-center justify-between gap-2 text-xs text-gray-500">
-                                <span className="font-mono">ID {match.id}</span>
-                                {match.bracket_position != null ? <span>Poziția {match.bracket_position}</span> : null}
-                              </div>
-                              <div className="space-y-1.5 text-sm leading-snug">
-                                <div className="font-semibold text-red-600 whitespace-normal break-words">
-                                  {match.red_corner_full_name || 'TBD'}
-                                  {match.red_corner_club_name ? <span className="ml-1 font-normal text-gray-500">({match.red_corner_club_name})</span> : null}
-                                </div>
-                                <div className="font-semibold text-blue-600 whitespace-normal break-words">
-                                  {match.blue_corner_full_name || 'TBD'}
-                                  {match.blue_corner_club_name ? <span className="ml-1 font-normal text-gray-500">({match.blue_corner_club_name})</span> : null}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

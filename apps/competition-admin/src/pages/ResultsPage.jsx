@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { scoreAPI } from '@shared/lib/api';
-import { PageHeader, Spinner, EmptyState, DataTable, StatusBadge } from '@shared/components/ui';
+import { DataTable, EmptyState, PageHeader, Spinner, StatusBadge } from '../components/ui';
 
 export default function ResultsPage() {
   const { id: eventId } = useParams();
@@ -30,7 +30,7 @@ export default function ResultsPage() {
       <PageHeader title="Results" subtitle={`Event #${eventId}`} />
 
       {scores.length === 0 ? (
-        <EmptyState icon="📊" title="No results yet" message="Scores will appear here once referees submit them." />
+        <EmptyState title="No results yet" message="Scores will appear here once referees submit them." />
       ) : (
         <DataTable columns={columns} rows={scores} />
       )}

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { competitionAPI, offlineAPI, systemAPI } from '@shared/lib/api';
-import { PageHeader, Card, Spinner } from '@shared/components/ui';
 import { getSyncLockMeta, getSyncModeMeta, getSyncStatusMeta } from '@shared/lib/syncStatus';
+import { PageHeader, Card, Spinner, Button, Badge } from '../components/ui';
+import { cn } from '../lib/utils';
 import LocalBackupPanel from '../components/LocalBackupPanel';
 
 function downloadJson(filename, payload) {
@@ -26,14 +27,20 @@ function formatDateTime(value) {
 
 function SyncStep({ title, description, done, active }) {
   return (
-    <div className={`rounded-lg border px-4 py-3 ${active ? 'border-blue-500 bg-blue-50' : done ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white'}`}>
+    <div className={cn(
+      'rounded-lg border px-4 py-3',
+      active ? 'border-blue-500 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20' : done ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20' : 'border-border bg-card',
+    )}>
       <div className="flex items-start gap-3">
-        <div className={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${done ? 'bg-green-600 text-white' : active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
+        <div className={cn(
+          'mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold',
+          done ? 'bg-emerald-600 text-white' : active ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground',
+        )}>
           {done ? '✓' : '•'}
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-          <p className="mt-1 text-sm text-gray-600">{description}</p>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
       </div>
     </div>
@@ -42,13 +49,9 @@ function SyncStep({ title, description, done, active }) {
 
 function ActionButton({ children, className = '', ...props }) {
   return (
-    <button
-      type="button"
-      className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
-      {...props}
-    >
+    <Button type="button" className={cn('w-full py-3 text-sm', className)} {...props}>
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -376,41 +379,41 @@ export default function SyncCenterPage() {
   }, [currentStage]);
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
-  if (!comp) return <p className="py-20 text-center text-gray-500">Competition not found.</p>;
+  if (!comp) return <p className="py-20 text-center text-muted-foreground">Competition not found.</p>;
 
   return (
-    <div className="flex-1 overflow-auto bg-gray-50 p-3 sm:p-4 md:p-6">
+    <div className="flex-1 overflow-auto bg-background p-3 sm:p-4 md:p-6">
       <div className="space-y-6">
       <PageHeader title={`Sync Center · ${comp.name}`} subtitle="Ghid simplificat pentru mutarea competiției din cloud în local și înapoi" />
 
-      <Card className="border-blue-200 bg-blue-50">
+      <Card className="border-blue-200 bg-blue-50 p-5 dark:border-blue-900/40 dark:bg-blue-950/10">
         <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
           <div>
-            <h2 className="text-lg font-semibold text-blue-950">Cum procedezi, pe scurt</h2>
+            <h2 className="text-lg font-semibold text-blue-950 dark:text-blue-200">Cum procedezi, pe scurt</h2>
             <div className="mt-3 space-y-2">
               {quickGuide.map((item) => (
-                <div key={item} className="rounded-lg bg-white/80 px-3 py-2 text-sm text-blue-950 ring-1 ring-blue-100">
+                <div key={item} className="rounded-lg bg-white/80 px-3 py-2 text-sm text-blue-950 ring-1 ring-blue-100 dark:bg-white/5 dark:text-blue-100 dark:ring-blue-900/40">
                   {item}
                 </div>
               ))}
             </div>
           </div>
           <div className="space-y-3">
-            <div className="rounded-xl bg-white px-4 py-3 ring-1 ring-blue-100">
-              <div className="text-xs font-bold uppercase tracking-wide text-blue-700">Stare curentă</div>
-              <div className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${syncStatusMeta.className}`}>
+            <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
+              <div className="text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">Stare curentă</div>
+              <Badge className={cn('mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide', syncStatusMeta.className)}>
                 {syncStatusMeta.label}
-              </div>
-              <p className="mt-3 text-sm text-gray-700">{syncStatusMeta.description}</p>
+              </Badge>
+              <p className="mt-3 text-sm text-muted-foreground">{syncStatusMeta.description}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-white px-4 py-3 ring-1 ring-blue-100">
-                <div className="text-xs font-bold uppercase tracking-wide text-gray-500">Mod</div>
-                <div className="mt-2 text-sm font-semibold text-gray-900">{syncModeMeta.label}</div>
+              <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
+                <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Mod</div>
+                <div className="mt-2 text-sm font-semibold text-foreground">{syncModeMeta.label}</div>
               </div>
-              <div className="rounded-xl bg-white px-4 py-3 ring-1 ring-blue-100">
-                <div className="text-xs font-bold uppercase tracking-wide text-gray-500">Blocare</div>
-                <div className="mt-2 text-sm font-semibold text-gray-900">{syncLockMeta.label}</div>
+              <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
+                <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Blocare</div>
+                <div className="mt-2 text-sm font-semibold text-foreground">{syncLockMeta.label}</div>
               </div>
             </div>
           </div>
@@ -418,27 +421,27 @@ export default function SyncCenterPage() {
       </Card>
 
       {message && (
-        <div className="rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+        <div className="rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
           {typeof message === 'string' ? message : JSON.stringify(message)}
         </div>
       )}
 
       <div className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
-        <Card>
+        <Card className="p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Ce faci acum</h2>
-              <p className="mt-1 text-sm text-gray-600">Urmează doar pasul recomandat mai jos. Restul acțiunilor rămân în secțiunea „Acțiuni utile”.</p>
+              <h2 className="text-lg font-semibold text-foreground">Ce faci acum</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Urmează doar pasul recomandat mai jos. Restul acțiunilor rămân în secțiunea „Acțiuni utile”.</p>
             </div>
-            <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${syncStatusMeta.className}`}>
+            <Badge className={cn('rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide', syncStatusMeta.className)}>
               {syncStatusMeta.label}
-            </div>
+            </Badge>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 p-5">
-            <h3 className="text-base font-semibold text-gray-900">{primaryAction.title}</h3>
-            <p className="mt-2 text-sm leading-6 text-gray-700">{primaryAction.description}</p>
-            <p className="mt-3 text-sm text-gray-500">{primaryAction.note}</p>
+          <div className="mt-5 rounded-2xl border border-border bg-muted p-5">
+            <h3 className="text-base font-semibold text-foreground">{primaryAction.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{primaryAction.description}</p>
+            <p className="mt-3 text-sm text-muted-foreground">{primaryAction.note}</p>
 
             {primaryAction.actionLabel ? (
               <div className="mt-5 max-w-md">
@@ -454,7 +457,7 @@ export default function SyncCenterPage() {
           </div>
 
           <div className="mt-6">
-            <h3 className="mb-3 text-base font-semibold text-gray-900">Checklist vizual</h3>
+            <h3 className="mb-3 text-base font-semibold text-foreground">Checklist vizual</h3>
             <div className="space-y-3">
               {steps.map((step) => (
                 <SyncStep key={step.key} {...step} />
@@ -464,9 +467,9 @@ export default function SyncCenterPage() {
         </Card>
 
         <div className="space-y-6">
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900">Acțiuni utile</h2>
-            <p className="mt-1 text-sm text-gray-600">{visibleActions.helperText}</p>
+          <Card className="p-5">
+            <h2 className="text-lg font-semibold text-foreground">Acțiuni utile</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{visibleActions.helperText}</p>
 
             <div className="mt-4 space-y-3">
               {visibleActions.showExportPack ? (
@@ -476,7 +479,7 @@ export default function SyncCenterPage() {
               ) : null}
 
               {currentStage === 'completed' && visibleActions.showExportPack ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/10 dark:text-amber-300">
                   Un export nou pornește un ciclu nou de sync. Recomandat este să folosești doar fișierul nou exportat și să nu continui pe un pachet local mai vechi.
                 </div>
               ) : null}
@@ -492,21 +495,21 @@ export default function SyncCenterPage() {
               ) : null}
 
               {visibleActions.showExportResults ? (
-                <ActionButton onClick={handleDownloadEventResults} disabled={busy} className="bg-gray-900 text-white hover:bg-black">
+                <ActionButton onClick={handleDownloadEventResults} disabled={busy} variant="secondary">
                   Exportă rezultate locale
                 </ActionButton>
               ) : null}
 
               {visibleActions.showImportResults ? (
-                <label className="block rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-4">
-                  <span className="block text-sm font-semibold text-gray-900">Încarcă rezultatele din local</span>
-                  <span className="mt-1 block text-xs text-gray-500">Selectează fișierul JSON exportat din aplicația locală.</span>
+                <label className="block rounded-xl border border-dashed border-border bg-muted px-4 py-4">
+                  <span className="block text-sm font-semibold text-foreground">Încarcă rezultatele din local</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Selectează fișierul JSON exportat din aplicația locală.</span>
                   <input
                     type="file"
                     accept="application/json"
                     onChange={handleImportResults}
                     disabled={busy}
-                    className="mt-3 block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-200 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-gray-700 hover:file:bg-gray-300"
+                    className="mt-3 block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-semibold file:text-secondary-foreground hover:file:bg-secondary/80"
                   />
                 </label>
               ) : null}
@@ -515,14 +518,14 @@ export default function SyncCenterPage() {
                 <ActionButton
                   onClick={handleCompleteLocalSync}
                   disabled={busy || !['results_uploaded', 'completed'].includes(comp.local_sync_status)}
-                  className="bg-green-600 text-white hover:bg-green-700"
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
                 >
                   Finalizează sincronizarea și deblochează
                 </ActionButton>
               ) : null}
 
               {!visibleActions.showExportPack && !visibleActions.showMarkLocal && !visibleActions.showExportResults && !visibleActions.showImportResults && !visibleActions.showComplete ? (
-                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-500">
+                <div className="rounded-xl border border-border bg-muted px-4 py-4 text-sm text-muted-foreground">
                   Nu există alte acțiuni necesare în acest moment.
                 </div>
               ) : null}
@@ -530,18 +533,18 @@ export default function SyncCenterPage() {
           </Card>
 
           {isLocalServer ? (
-            <Card>
-              <h2 className="text-lg font-semibold text-gray-900">Acest server local (import event pack)</h2>
-              <p className="mt-1 text-sm text-gray-600">
+            <Card className="p-5">
+              <h2 className="text-lg font-semibold text-foreground">Acest server local (import event pack)</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Folosește aceste acțiuni direct pe laptopul din sală, atunci când
                 importi evenimentul pentru prima dată sau vrei să aduci sportivi/
                 categorii noi adăugate între timp în cloud.
               </p>
 
               <div className="mt-4 space-y-3">
-                <label className="block rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-4">
-                  <span className="block text-sm font-semibold text-gray-900">Importă event pack (fișier)</span>
-                  <span className="mt-1 block text-xs text-gray-500">
+                <label className="block rounded-xl border border-dashed border-border bg-muted px-4 py-4">
+                  <span className="block text-sm font-semibold text-foreground">Importă event pack (fișier)</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
                     Selectează fișierul JSON descărcat din aplicația cloud. Sigur de repetat oricând.
                   </span>
                   <input
@@ -549,64 +552,59 @@ export default function SyncCenterPage() {
                     accept="application/json"
                     onChange={handleImportEventPack}
                     disabled={busy}
-                    className="mt-3 block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-200 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-gray-700 hover:file:bg-gray-300"
+                    className="mt-3 block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-semibold file:text-secondary-foreground hover:file:bg-secondary/80"
                   />
                 </label>
 
-                <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50 px-4 py-4">
-                  <span className="block text-sm font-semibold text-blue-950">Resincronizează din cloud (fără fișier)</span>
-                  <span className="mt-1 block text-xs text-blue-900">
+                <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50 px-4 py-4 dark:border-blue-900/40 dark:bg-blue-950/10">
+                  <span className="block text-sm font-semibold text-blue-950 dark:text-blue-200">Resincronizează din cloud (fără fișier)</span>
+                  <span className="mt-1 block text-xs text-blue-900 dark:text-blue-300">
                     Dacă ai internet chiar acum (ex. ai adăugat un sportiv nou sau o
                     categorie nouă direct în cloud), acest buton preia automat un
                     event pack proaspăt și îl importă aici, fără să mai descarci/
                     încarci manual un fișier. Necesită ca serverul local să aibă
                     configurate datele de conectare la cloud (vezi `.env.local`).
                   </span>
-                  <button
-                    type="button"
-                    onClick={handlePullEventPackFromCloud}
-                    disabled={busy}
-                    className="mt-3 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
+                  <Button onClick={handlePullEventPackFromCloud} disabled={busy} className="mt-3 bg-blue-600 text-white hover:bg-blue-700">
                     Resincronizează din cloud
-                  </button>
+                  </Button>
                 </div>
               </div>
             </Card>
           ) : null}
 
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900">Repere rapide</h2>
-            <div className="mt-4 space-y-3 text-sm text-gray-700">
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Exportat</span><span className="font-semibold text-right">{formatDateTime(comp.exported_to_local_at)}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Rezultate importate</span><span className="font-semibold text-right">{formatDateTime(comp.results_uploaded_at)}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-500">Finalizat</span><span className="font-semibold text-right">{formatDateTime(comp.sync_completed_at)}</span></div>
+          <Card className="p-5">
+            <h2 className="text-lg font-semibold text-foreground">Repere rapide</h2>
+            <div className="mt-4 space-y-3 text-sm text-foreground">
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Exportat</span><span className="font-semibold text-right">{formatDateTime(comp.exported_to_local_at)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Rezultate importate</span><span className="font-semibold text-right">{formatDateTime(comp.results_uploaded_at)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Finalizat</span><span className="font-semibold text-right">{formatDateTime(comp.sync_completed_at)}</span></div>
             </div>
           </Card>
 
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900">După sync</h2>
+          <Card className="p-5">
+            <h2 className="text-lg font-semibold text-foreground">După sync</h2>
             <div className="mt-4 flex flex-wrap gap-3">
-              <Link to={`/competitions/${id}/categories`} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300">Înapoi la categorii</Link>
-              <Link to={`/competitions/${id}/results`} className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300">Vezi rezultate</Link>
+              <Button as={Link} to={`/competitions/${id}/categories`} variant="secondary">Înapoi la categorii</Button>
+              <Button as={Link} to={`/competitions/${id}/results`} variant="secondary">Vezi rezultate</Button>
             </div>
           </Card>
         </div>
       </div>
 
-      <Card>
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Istoric sincronizare</h2>
+      <Card className="p-5">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">Istoric sincronizare</h2>
         {history.length ? (
           <div className="grid gap-3 md:grid-cols-3">
             {history.map((item) => (
-              <div key={item.label} className="rounded-lg border border-gray-200 px-4 py-3">
-                <div className="text-sm font-semibold text-gray-900">{item.label}</div>
-                <div className="mt-1 text-sm text-gray-600">{formatDateTime(item.value)}</div>
+              <div key={item.label} className="rounded-lg border border-border px-4 py-3">
+                <div className="text-sm font-semibold text-foreground">{item.label}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{formatDateTime(item.value)}</div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-500">Nu există încă evenimente în istoricul de sincronizare.</p>
+          <p className="text-sm text-muted-foreground">Nu există încă evenimente în istoricul de sincronizare.</p>
         )}
       </Card>
 

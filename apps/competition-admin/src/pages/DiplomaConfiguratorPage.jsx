@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import apiClient, { competitionAPI, diplomaTemplateAPI } from '@shared/lib/api';
-import { Card, Spinner } from '@shared/components/ui';
+import {
+  Button, Card, Checkbox, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner,
+} from '../components/ui';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {
@@ -459,60 +461,65 @@ export default function DiplomaConfiguratorPage() {
   if (loading) return <div className="flex h-full items-center justify-center"><Spinner /></div>;
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-hidden bg-gray-50 p-3 sm:p-4">
+    <div className="flex h-full flex-col gap-4 overflow-hidden bg-muted p-3 sm:p-4">
       {message && (
-        <div className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700">{message}</div>
+        <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-foreground">{message}</div>
       )}
 
       <div className={`grid min-h-0 flex-1 gap-4 ${showTemplateSelector ? 'grid-cols-1' : 'xl:grid-cols-[minmax(280px,320px)_minmax(0,1.35fr)]'}`}>
         {showTemplateSelector ? (
           <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-2">
-            <Card className="flex min-h-0 flex-col">
-              <h2 className="mb-3 text-sm font-black uppercase tracking-wide text-gray-900">Crează sablon nou</h2>
+            <Card className="flex min-h-0 flex-col p-4">
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Crează sablon nou</h2>
               <form onSubmit={handleUpload} className="space-y-3">
-                <select
+                <Select
                   value={uploadForm.template_kind}
-                  onChange={(event) => setUploadForm((current) => ({ ...current, template_kind: event.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  onValueChange={(value) => setUploadForm((current) => ({ ...current, template_kind: value }))}
                 >
-                  {DIPLOMA_TEMPLATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-                <select
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {DIPLOMA_TEMPLATE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select
                   value={uploadForm.category_scope}
-                  onChange={(event) => setUploadForm((current) => ({ ...current, category_scope: event.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  onValueChange={(value) => setUploadForm((current) => ({ ...current, category_scope: value }))}
                 >
-                  {DIPLOMA_CATEGORY_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-                <input
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {DIPLOMA_CATEGORY_SCOPE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Input
                   value={uploadForm.title}
                   onChange={(event) => setUploadForm((current) => ({ ...current, title: event.target.value }))}
                   placeholder="Titlu șablon"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
-                <select
+                <Select
                   value={uploadForm.preview_orientation}
-                  onChange={(event) => setUploadForm((current) => ({ ...current, preview_orientation: event.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  onValueChange={(value) => setUploadForm((current) => ({ ...current, preview_orientation: value }))}
                 >
-                  <option value="landscape">Landscape</option>
-                  <option value="portrait">Portrait</option>
-                </select>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="landscape">Landscape</SelectItem>
+                    <SelectItem value="portrait">Portrait</SelectItem>
+                  </SelectContent>
+                </Select>
                 <input
                   type="file"
                   accept="application/pdf"
                   onChange={(event) => setUploadForm((current) => ({ ...current, pdf_file: event.target.files?.[0] || null }))}
-                  className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-200 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-gray-700"
+                  className="block w-full text-sm text-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-semibold file:text-secondary-foreground"
                 />
-                <button type="submit" disabled={saving} className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">Încarcă PDF</button>
+                <Button type="submit" disabled={saving} className="w-full">Încarcă PDF</Button>
               </form>
             </Card>
 
-            <Card className="flex min-h-0 flex-col">
-              <h2 className="mb-3 text-sm font-black uppercase tracking-wide text-gray-900">Sabloane existente</h2>
+            <Card className="flex min-h-0 flex-col p-4">
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Sabloane existente</h2>
               <div className="min-h-0 flex-1 overflow-y-auto space-y-2">
                 {templates.map((template) => (
-                  <div key={template.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                  <div key={template.id} className="rounded-lg border border-border bg-card p-3">
                     <button
                       type="button"
                       onClick={() => {
@@ -522,109 +529,118 @@ export default function DiplomaConfiguratorPage() {
                       }}
                       className="w-full text-left"
                     >
-                      <div className="text-sm font-semibold text-gray-900">{template.title}</div>
-                      <div className="mt-1 text-xs uppercase tracking-wide text-gray-500">{getDiplomaTemplateLabel(template.template_kind)}</div>
-                      <div className="mt-1 text-[11px] font-semibold text-gray-500">{getDiplomaCategoryScopeLabel(template.category_scope || 'all')}</div>
+                      <div className="text-sm font-semibold text-foreground">{template.title}</div>
+                      <div className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">{getDiplomaTemplateLabel(template.template_kind)}</div>
+                      <div className="mt-1 text-[11px] font-semibold text-muted-foreground">{getDiplomaCategoryScopeLabel(template.category_scope || 'all')}</div>
                     </button>
                     <div className="mt-3 flex justify-end gap-2">
-                      <button
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="secondary"
                         onClick={() => {
                           setSelectedId(template.id);
                           setSelectedPlacementId(template.placements?.[0]?.id || null);
                           setShowTemplatePicker(false);
                         }}
-                        className="rounded-md border border-gray-300 bg-gray-50 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-100"
                       >
                         Editează
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="outline"
                         onClick={() => handleDuplicateTemplateForId(template.id)}
-                        className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                        className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
                       >
                         Duplică
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="outline"
                         onClick={() => handleDeleteTemplateForId(template.id)}
-                        className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                        className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
                       >
                         Șterge
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
-                {!templates.length && <p className="text-sm text-gray-500">Nu există încă șabloane de diplomă pentru acest eveniment.</p>}
+                {!templates.length && <p className="text-sm text-muted-foreground">Nu există încă șabloane de diplomă pentru acest eveniment.</p>}
               </div>
             </Card>
           </div>
         ) : (
           <>
-            <Card className="flex min-h-0 flex-col overflow-hidden">
-              <h2 className="mb-3 text-sm font-black uppercase tracking-wide text-gray-900">Câmpuri și proprietăți</h2>
+            <Card className="flex min-h-0 flex-col overflow-hidden p-4">
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Câmpuri și proprietăți</h2>
               <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                <div className="space-y-3 border-b border-gray-200 pb-4">
+                <div className="space-y-3 border-b border-border pb-4">
                   {selectedTemplate && (
                     <>
                       <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Titlu șablon</label>
-                        <input
+                        <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Titlu șablon</Label>
+                        <Input
                           value={selectedTemplate.title || ''}
                           onChange={(event) => updateSelectedTemplate((template) => ({ ...template, title: event.target.value }))}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                           placeholder="Titlu șablon"
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tip diplomă</label>
-                        <select
+                        <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tip diplomă</Label>
+                        <Select
                           value={selectedTemplate.template_kind || 'first_place'}
-                          onChange={(event) => updateSelectedTemplate((template) => ({ ...template, template_kind: event.target.value }))}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          onValueChange={(value) => updateSelectedTemplate((template) => ({ ...template, template_kind: value }))}
                         >
-                          {DIPLOMA_TEMPLATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {DIPLOMA_TEMPLATE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Tip categorie pentru șablon</label>
-                        <select
+                        <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tip categorie pentru șablon</Label>
+                        <Select
                           value={selectedTemplate.category_scope || 'all'}
-                          onChange={(event) => updateSelectedTemplate((template) => ({ ...template, category_scope: event.target.value, placements: template.placements || [] }))}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          onValueChange={(value) => updateSelectedTemplate((template) => ({ ...template, category_scope: value, placements: template.placements || [] }))}
                         >
-                          {DIPLOMA_CATEGORY_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {DIPLOMA_CATEGORY_SCOPE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
                       </div>
                       {(selectedTemplate.category_scope || 'all') === 'all' ? (
-                        <p className="text-xs text-blue-700">Else / fallback este template-ul implicit. Se folosește automat când `solo`, `echipă` sau `luptă` nu au un template dedicat. Poți porni de aici și apoi folosi `Duplică` pentru o variantă specifică.</p>
+                        <p className="text-xs text-primary">Else / fallback este template-ul implicit. Se folosește automat când `solo`, `echipă` sau `luptă` nu au un template dedicat. Poți porni de aici și apoi folosi `Duplică` pentru o variantă specifică.</p>
                       ) : (
-                        <p className="text-xs text-gray-500">Tipul selectat suprascrie template-ul Else / fallback doar pentru categoria curentă.</p>
+                        <p className="text-xs text-muted-foreground">Tipul selectat suprascrie template-ul Else / fallback doar pentru categoria curentă.</p>
                       )}
                       <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Orientare preview</label>
-                        <select
+                        <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Orientare preview</Label>
+                        <Select
                           value={selectedTemplate.preview_orientation || 'landscape'}
-                          onChange={(event) => updateSelectedTemplate((template) => ({ ...template, preview_orientation: event.target.value }))}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          onValueChange={(value) => updateSelectedTemplate((template) => ({ ...template, preview_orientation: value }))}
                         >
-                          <option value="landscape">Landscape</option>
-                          <option value="portrait">Portrait</option>
-                        </select>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="landscape">Landscape</SelectItem>
+                            <SelectItem value="portrait">Portrait</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
+                      <label className="flex items-center gap-2 text-sm text-foreground">
+                        <Checkbox
                           checked={Boolean(selectedTemplate.is_active)}
-                          onChange={(event) => updateSelectedTemplate((template) => ({ ...template, is_active: event.target.checked }))}
+                          onCheckedChange={(checked) => updateSelectedTemplate((template) => ({ ...template, is_active: Boolean(checked) }))}
                         />
                         Activ pentru generare
                       </label>
-                      <p className="text-xs text-gray-500">Pentru solo și luptă folosește câmpul Nume sportiv (club). Pentru echipă folosește Nume echipă (club).</p>
+                      <p className="text-xs text-muted-foreground">Pentru solo și luptă folosește câmpul Nume sportiv (club). Pentru echipă folosește Nume echipă (club).</p>
                     </>
                   )}
 
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Adaugă câmp pe diploma</label>
+                  <Label className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Adaugă câmp pe diploma</Label>
                   <div className="grid grid-cols-1 gap-2">
                     {availableFields.map((field) => (
                       <button
@@ -637,43 +653,45 @@ export default function DiplomaConfiguratorPage() {
                           event.dataTransfer.effectAllowed = 'copy';
                           event.dataTransfer.setData('application/x-diploma-field', field.key);
                         }}
-                        className={`rounded-lg border px-3 py-2 text-left ${selectedPaletteField === field.key ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                        className={`rounded-lg border px-3 py-2 text-left ${selectedPaletteField === field.key ? 'border-primary bg-accent' : 'border-border bg-card hover:bg-accent/60'}`}
                       >
-                        <div className="text-sm font-semibold text-gray-900">{field.label}</div>
-                        <div className="text-xs text-gray-500">{`{{${getDiplomaFieldBinding(field.key)}}}`}</div>
+                        <div className="text-sm font-semibold text-foreground">{field.label}</div>
+                        <div className="text-xs text-muted-foreground">{`{{${getDiplomaFieldBinding(field.key)}}}`}</div>
                       </button>
                     ))}
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Payload dinamic pentru {getDiplomaCategoryScopeLabel(selectedTemplate?.category_scope || 'all')}</div>
-                    <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-gray-700">{JSON.stringify(payloadExample, null, 2)}</pre>
+                  <div className="rounded-lg border border-border bg-muted p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payload dinamic pentru {getDiplomaCategoryScopeLabel(selectedTemplate?.category_scope || 'all')}</div>
+                    <pre className="overflow-x-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-foreground">{JSON.stringify(payloadExample, null, 2)}</pre>
                   </div>
-                  <p className="text-xs text-gray-500">Poți trage un câmp direct pe diploma PDF sau îl poți selecta și apoi face click pe poziția dorită.</p>
+                  <p className="text-xs text-muted-foreground">Poți trage un câmp direct pe diploma PDF sau îl poți selecta și apoi face click pe poziția dorită.</p>
                 </div>
 
                 <div className="mt-4 space-y-3 pb-2">
                   {selectedTemplate && selectedTemplate.placements.length > 0 && (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Câmpuri aplicate</div>
+                    <div className="rounded-lg border border-border bg-muted p-3">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Câmpuri aplicate</div>
                       <div className="space-y-2">
                         {selectedTemplate.placements.map((placement) => (
-                          <div key={placement.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                          <div key={placement.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
                             <button
                               type="button"
                               onClick={() => setSelectedPlacementId(placement.id)}
                               className="min-w-0 flex-1 text-left"
                             >
-                              <div className="truncate text-sm font-medium text-gray-900">{placement.label}</div>
-                              <div className="truncate text-[11px] text-gray-500">{getPlacementPreviewLabel(placement)}</div>
-                              <div className="text-[11px] text-gray-500">X {placement.x}% · Y {placement.y}%</div>
+                              <div className="truncate text-sm font-medium text-foreground">{placement.label}</div>
+                              <div className="truncate text-[11px] text-muted-foreground">{getPlacementPreviewLabel(placement)}</div>
+                              <div className="text-[11px] text-muted-foreground">X {placement.x}% · Y {placement.y}%</div>
                             </button>
-                            <button
+                            <Button
                               type="button"
+                              size="sm"
+                              variant="outline"
                               onClick={() => handleRemovePlacementById(placement.id)}
-                              className="rounded-md bg-red-100 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-200"
+                              className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
                             >
                               Șterge
-                            </button>
+                            </Button>
                           </div>
                         ))}
                       </div>
@@ -683,112 +701,115 @@ export default function DiplomaConfiguratorPage() {
                   {selectedPlacement ? (
                     <>
                       <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Etichetă afișată</label>
-                        <input value={selectedPlacement.label || ''} onChange={(event) => handlePlacementChange('label', event.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                        <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Etichetă afișată</Label>
+                        <Input value={selectedPlacement.label || ''} onChange={(event) => handlePlacementChange('label', event.target.value)} />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">X (%)</label>
-                          <input type="number" min="0" max="100" step="0.1" value={selectedPlacement.x} onChange={(event) => handlePlacementChange('x', Number(event.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                          <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">X (%)</Label>
+                          <Input type="number" min="0" max="100" step="0.1" value={selectedPlacement.x} onChange={(event) => handlePlacementChange('x', Number(event.target.value))} />
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Y (%)</label>
-                          <input type="number" min="0" max="100" step="0.1" value={selectedPlacement.y} onChange={(event) => handlePlacementChange('y', Number(event.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                          <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Y (%)</Label>
+                          <Input type="number" min="0" max="100" step="0.1" value={selectedPlacement.y} onChange={(event) => handlePlacementChange('y', Number(event.target.value))} />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Font size</label>
-                          <input type="number" min="8" max="96" value={selectedPlacement.font_size || 26} onChange={(event) => handlePlacementChange('font_size', Number(event.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                          <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Font size</Label>
+                          <Input type="number" min="8" max="96" value={selectedPlacement.font_size || 26} onChange={(event) => handlePlacementChange('font_size', Number(event.target.value))} />
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Lățime (%)</label>
-                          <input type="number" min="5" max="100" value={selectedPlacement.width || 40} onChange={(event) => handlePlacementChange('width', Number(event.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                          <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lățime (%)</Label>
+                          <Input type="number" min="5" max="100" value={selectedPlacement.width || 40} onChange={(event) => handlePlacementChange('width', Number(event.target.value))} />
                         </div>
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Lungime maximă caractere</label>
-                        <input
+                        <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lungime maximă caractere</Label>
+                        <Input
                           type="number"
                           min="0"
                           max="500"
                           value={selectedPlacement.max_length || 0}
                           onChange={(event) => handlePlacementChange('max_length', Number(event.target.value))}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                         />
-                        <p className="mt-1 text-[11px] text-gray-500">0 înseamnă fără limită. Textul va fi tăiat automat la generare.</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">0 înseamnă fără limită. Textul va fi tăiat automat la generare.</p>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Aliniere</label>
-                          <select value={selectedPlacement.align || 'center'} onChange={(event) => handlePlacementChange('align', event.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                            <option value="left">Left</option>
-                            <option value="center">Center</option>
-                            <option value="right">Right</option>
-                          </select>
+                          <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Aliniere</Label>
+                          <Select value={selectedPlacement.align || 'center'} onValueChange={(value) => handlePlacementChange('align', value)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="left">Left</SelectItem>
+                              <SelectItem value="center">Center</SelectItem>
+                              <SelectItem value="right">Right</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Culoare</label>
-                          <input type="color" value={selectedPlacement.color || '#111827'} onChange={(event) => handlePlacementChange('color', event.target.value)} className="h-10 w-full rounded-lg border border-gray-300 px-1 py-1" />
+                          <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Culoare</Label>
+                          <input type="color" value={selectedPlacement.color || '#111827'} onChange={(event) => handlePlacementChange('color', event.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-1 py-1" />
                         </div>
                       </div>
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input type="checkbox" checked={Boolean(selectedPlacement.bold)} onChange={(event) => handlePlacementChange('bold', event.target.checked)} />
+                      <label className="flex items-center gap-2 text-sm text-foreground">
+                        <Checkbox checked={Boolean(selectedPlacement.bold)} onCheckedChange={(checked) => handlePlacementChange('bold', Boolean(checked))} />
                         Bold
                       </label>
-                      <button type="button" onClick={handleRemovePlacement} className="w-full rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200">Elimină câmpul selectat</button>
+                      <Button type="button" variant="outline" onClick={handleRemovePlacement} className="w-full border-red-200 bg-red-50 text-red-700 hover:bg-red-100">Elimină câmpul selectat</Button>
                     </>
                   ) : (
-                    <p className="text-sm text-gray-500">Selectează un câmp de pe diploma din preview ca să îi editezi proprietățile.</p>
+                    <p className="text-sm text-muted-foreground">Selectează un câmp de pe diploma din preview ca să îi editezi proprietățile.</p>
                   )}
                 </div>
               </div>
             </Card>
 
             <div className="flex min-h-0 flex-col overflow-hidden gap-2">
-              <div className="rounded-lg border border-gray-200 bg-white p-2">
+              <Card className="p-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setShowTemplatePicker(true)}
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[11px] font-semibold text-gray-700 hover:bg-gray-100"
                 >
                   Înapoi la șabloane
-                </button>
+                </Button>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700">
-                    <input type="checkbox" checked={showBleed} onChange={(event) => setShowBleed(event.target.checked)} />
+                  <label className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-foreground">
+                    <Checkbox checked={showBleed} onCheckedChange={(checked) => setShowBleed(Boolean(checked))} />
                     Bleed
                   </label>
-                  <label className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700">
-                    <input type="checkbox" checked={showTrim} onChange={(event) => setShowTrim(event.target.checked)} />
+                  <label className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-foreground">
+                    <Checkbox checked={showTrim} onCheckedChange={(checked) => setShowTrim(Boolean(checked))} />
                     Trim
                   </label>
-                  <label className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700">
-                    <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
+                  <label className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-foreground">
+                    <Checkbox checked={showGrid} onCheckedChange={(checked) => setShowGrid(Boolean(checked))} />
                     Grid
                   </label>
-                  <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700">
-                    <button type="button" onClick={() => setPreviewZoom((current) => Number(Math.max(0.5, current - 0.1).toFixed(2)))} className="h-6 w-6 rounded hover:bg-gray-100">−</button>
+                  <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-foreground">
+                    <button type="button" onClick={() => setPreviewZoom((current) => Number(Math.max(0.5, current - 0.1).toFixed(2)))} className="h-6 w-6 rounded hover:bg-accent">−</button>
                     <span className="min-w-[42px] text-center">{Math.round(previewZoom * 100)}%</span>
-                    <button type="button" onClick={() => setPreviewZoom((current) => Number(Math.min(2, current + 0.1).toFixed(2)))} className="h-6 w-6 rounded hover:bg-gray-100">+</button>
-                    <button type="button" onClick={() => setPreviewZoom(1)} className="ml-1 rounded px-1.5 py-0.5 hover:bg-gray-100">Reset</button>
+                    <button type="button" onClick={() => setPreviewZoom((current) => Number(Math.min(2, current + 0.1).toFixed(2)))} className="h-6 w-6 rounded hover:bg-accent">+</button>
+                    <button type="button" onClick={() => setPreviewZoom(1)} className="ml-1 rounded px-1.5 py-0.5 hover:bg-accent">Reset</button>
                   </div>
                 </div>
                 </div>
-              </div>
+              </Card>
 
-              <Card className="flex min-h-0 flex-col overflow-hidden">
+              <Card className="flex min-h-0 flex-col overflow-hidden p-4">
 
               {selectedTemplate ? (
-                <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-gray-100 p-0">
+                <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted p-0">
                   <div
                     ref={previewRef}
                     onClick={handleCanvasClick}
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={handleCanvasDrop}
-                    className="relative h-full w-full overflow-auto bg-white"
+                    className="relative h-full w-full overflow-auto bg-card"
                     style={{
                       width: '100%',
                       maxWidth: '100%',
@@ -796,7 +817,7 @@ export default function DiplomaConfiguratorPage() {
                     }}
                   >
                     <div
-                      className="relative mx-auto overflow-hidden bg-white"
+                      className="relative mx-auto overflow-hidden bg-card"
                       style={{
                         width: '100%',
                         maxWidth: '100%',
@@ -805,9 +826,9 @@ export default function DiplomaConfiguratorPage() {
                         transformOrigin: 'top left',
                       }}
                     >
-                      <div className="absolute inset-0 z-0 flex items-center justify-center bg-white">
+                      <div className="absolute inset-0 z-0 flex items-center justify-center bg-card">
                         {pdfRenderError ? (
-                          <div className="p-4 text-sm text-red-600">{pdfRenderError}</div>
+                          <div className="p-4 text-sm text-destructive">{pdfRenderError}</div>
                         ) : (
                           <canvas ref={pdfCanvasRef} className="block h-full w-full object-contain" />
                         )}
@@ -849,7 +870,7 @@ export default function DiplomaConfiguratorPage() {
                               event.stopPropagation();
                               setSelectedPlacementId(placement.id);
                             }}
-                            className={`pointer-events-auto absolute z-40 cursor-move rounded px-2 py-1 pr-7 shadow ${selectedPlacementId === placement.id ? 'ring-2 ring-blue-500' : 'ring-1 ring-black/10'}`}
+                            className={`pointer-events-auto absolute z-40 cursor-move rounded px-2 py-1 pr-7 shadow ${selectedPlacementId === placement.id ? 'ring-2 ring-ring' : 'ring-1 ring-border'}`}
                             style={{
                               left: `${placement.x}%`,
                               top: `${placement.y}%`,
@@ -880,7 +901,7 @@ export default function DiplomaConfiguratorPage() {
                                   handleRemovePlacementById(placement.id);
                                 }
                               }}
-                              className="absolute right-1 top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/90 text-[10px] font-bold text-red-600 ring-1 ring-red-200"
+                              className="absolute right-1 top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-background/90 text-[10px] font-bold text-red-600 ring-1 ring-red-200"
                             >
                               ×
                             </span>
@@ -891,7 +912,7 @@ export default function DiplomaConfiguratorPage() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white text-sm text-gray-500">Alege sau încarcă un șablon PDF ca să începi configurarea.</div>
+                <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border bg-card text-sm text-muted-foreground">Alege sau încarcă un șablon PDF ca să începi configurarea.</div>
               )}
               </Card>
             </div>

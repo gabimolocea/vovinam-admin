@@ -1,7 +1,24 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { categoryAPI, groupAPI, clubAPI, enrollmentAPI, athleteAPI, competitionAPI } from '@shared/lib/api';
-import { Spinner } from '@shared/components/ui';
+import {
+  Spinner,
+  Button,
+  Input,
+  Label,
+  Req,
+  Checkbox,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../components/ui';
 
 
 
@@ -496,35 +513,35 @@ export default function CategoriesPage() {
   /* ════════════════════════════════════════════════════
      RENDER — full-screen, no sidebar, no padding
      ════════════════════════════════════════════════════ */
-  if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><Spinner /></div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-background"><Spinner /></div>;
 
   /* total columns = CLUB + all categories (or 1 per empty group) + insert zones (1 per group + 1 trailing) */
   const totalColSpan = 1 + (allCols.length || columnStructure.length) + columnStructure.length + 1;
 
   return (
-    <div className="flex h-screen flex-col bg-white">
+    <div className="flex h-screen flex-col bg-background">
       {/* ═══ TOP BAR ═══ */}
-      <div className="flex items-center justify-between border-b-2 border-yellow-400 bg-black px-3 py-2 shrink-0 text-white">
+      <div className="flex items-center justify-between border-b-2 border-sidebar-accent bg-sidebar px-3 py-2 shrink-0 text-sidebar-foreground">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(`/competitions/${eventId}`)}
-            className="border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold text-gray-700 transition hover:bg-yellow-300 hover:text-black">
+            className="border border-sidebar-border bg-transparent px-2 py-1 text-xs font-semibold text-sidebar-foreground transition hover:bg-white/10 hover:text-sidebar-foreground">
             ← Înapoi
           </button>
-          <div className="h-4 w-px bg-yellow-400/30" />
-          <h1 className="text-sm font-black uppercase tracking-wide text-yellow-200">
+          <div className="h-4 w-px bg-sidebar-accent/30" />
+          <h1 className="text-sm font-black uppercase tracking-wide text-sidebar-accent">
             {activeSheet === 'centralizator' ? 'Centralizator' : activeSheet === 'tehnica' ? 'Tehnică' : 'Luptă'}
           </h1>
-          <span className="text-xs text-yellow-100/75">{eventData?.name || `Competiția #${eventId}`}</span>
-          {eventDateStr && <span className="border border-yellow-400 bg-yellow-300 px-1.5 py-0.5 text-[10px] font-bold text-black">📅 {eventDateStr}</span>}
+          <span className="text-xs text-sidebar-foreground/75">{eventData?.name || `Competiția #${eventId}`}</span>
+          {eventDateStr && <span className="border border-sidebar-accent bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-bold text-sidebar-accent-foreground">📅 {eventDateStr}</span>}
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          <span className="text-yellow-100/75">{groups.length} grupe</span>
-          <span className="text-yellow-400/40">·</span>
-          <span className="text-yellow-100/75">{categories.length} categorii</span>
-          <span className="text-yellow-400/40">·</span>
-          <span className="text-yellow-100/75">{clubs.length} cluburi</span>
-          <span className="text-yellow-400/40">·</span>
-          <span className="font-semibold text-yellow-300">{totalAthletes} sportivi</span>
+          <span className="text-sidebar-foreground/75">{groups.length} grupe</span>
+          <span className="text-sidebar-accent/40">·</span>
+          <span className="text-sidebar-foreground/75">{categories.length} categorii</span>
+          <span className="text-sidebar-accent/40">·</span>
+          <span className="text-sidebar-foreground/75">{clubs.length} cluburi</span>
+          <span className="text-sidebar-accent/40">·</span>
+          <span className="font-semibold text-sidebar-accent">{totalAthletes} sportivi</span>
         </div>
       </div>
 
@@ -536,7 +553,7 @@ export default function CategoriesPage() {
           {/* ═══ ROW 1: Group headers + "+" add-group column ═══ */}
           <thead className="sticky top-0 z-20">
             <tr>
-              <th className="sticky left-0 z-40 bg-gray-800 text-white border border-gray-600 px-3 py-2 text-left font-bold text-xs min-w-[140px]"
+              <th className="sticky left-0 z-40 bg-sidebar text-sidebar-foreground border border-border px-3 py-2 text-left font-bold text-xs min-w-[140px]"
                 rowSpan={3}>
                 CLUB
               </th>
@@ -548,7 +565,7 @@ export default function CategoriesPage() {
                       <div className="absolute inset-y-0 -left-2 -right-2 z-30 flex items-center justify-center">
                         <button
                           onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: ci }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
-                          className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 border border-black bg-yellow-300 text-[9px] font-bold text-black shadow-lg px-2.5 py-1 transition-all hover:scale-105 hover:bg-yellow-400 whitespace-nowrap"
+                          className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 border border-primary bg-primary text-[9px] font-bold text-primary-foreground shadow-lg px-2.5 py-1 transition-all hover:scale-105 hover:bg-primary/90 whitespace-nowrap"
                           title="Adaugă grupă aici"
                         >+ Adaugă grupă</button>
                       </div>
@@ -561,9 +578,9 @@ export default function CategoriesPage() {
                       onDragOver={(e) => handleGroupDragOver(e, col.group.id)}
                       onDrop={(e) => handleGroupDrop(e, col.group.id)}
                       onDragEnd={handleDragEnd}
-                      className={`bg-gray-700 text-white border border-gray-500 px-2 py-1.5 text-center font-bold text-xs whitespace-nowrap relative cursor-grab active:cursor-grabbing transition-all ${
+                      className={`bg-sidebar-accent text-sidebar-accent-foreground border border-border px-2 py-1.5 text-center font-bold text-xs whitespace-nowrap relative cursor-grab active:cursor-grabbing transition-all ${
                         dragType === 'group' && dragId === col.group.id ? 'opacity-40 scale-95' : ''
-                      } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-yellow-300 ring-inset' : ''}`}>
+                      } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-blue-400 ring-inset' : ''}`}>
                       <div className="flex items-center justify-center gap-1.5">
                         <span className="opacity-40 text-[10px] select-none">⠿</span>
                         {editingGroupId === col.group.id ? (
@@ -573,7 +590,7 @@ export default function CategoriesPage() {
                             onBlur={() => handleGroupRenameSubmit(col.group)}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleGroupRenameSubmit(col.group); if (e.key === 'Escape') setEditingGroupId(null); }}
                             onClick={(e) => e.stopPropagation()}
-                            className="bg-white/20 border border-white/40 rounded px-1 py-0.5 text-white text-xs font-bold text-center w-28 outline-none focus:bg-white/30"
+                            className="bg-card border border-border rounded px-1 py-0.5 text-foreground text-xs font-bold text-center w-28 outline-none focus:bg-accent"
                             autoFocus
                           />
                         ) : (
@@ -594,8 +611,8 @@ export default function CategoriesPage() {
                           onClick={(e) => { e.stopPropagation(); handleToggleAllowYounger(col.group); }}
                           className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[8px] font-medium transition ${
                             col.group.allow_younger
-                              ? 'bg-amber-400/30 text-amber-200 hover:bg-amber-400/50'
-                              : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white/70'
+                              ? 'bg-amber-400/40 text-amber-900 hover:bg-amber-400/55'
+                              : 'bg-card/70 text-muted-foreground hover:bg-card hover:text-foreground'
                           }`}
                           title={col.group.allow_younger ? 'Acceptă vârste mai mici (activ) — click pentru a dezactiva' : 'Permite sportivi mai tineri să urce la categorie superioară'}
                         >
@@ -604,12 +621,12 @@ export default function CategoriesPage() {
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setCatModal({ groupId: col.group.id }); setCatForm({ name: '', category_type: 'solo', gender: 'male' }); }}
-                          className="inline-flex items-center gap-0.5 rounded-full bg-white/20 hover:bg-white/40 text-white text-[8px] font-semibold px-1.5 py-0.5 transition"
+                          className="inline-flex items-center gap-0.5 rounded-full bg-card/80 hover:bg-card text-foreground text-[8px] font-semibold px-1.5 py-0.5 transition"
                           title="Adaugă categorie"
                         >+ Categorie</button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeleteGroup(col.group.id); }}
-                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/15 hover:bg-red-500/80 text-white/60 hover:text-white text-xs font-bold transition"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-card/80 hover:bg-destructive/80 text-muted-foreground hover:text-destructive-foreground text-xs font-bold transition"
                           title="Șterge grupa"
                         >×</button>
                       </div>
@@ -623,7 +640,7 @@ export default function CategoriesPage() {
                 <div className="absolute inset-y-0 -left-2 right-0 z-30 flex items-center justify-center" style={{ minWidth: '24px' }}>
                   <button
                     onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: columnStructure.length }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
-                    className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-full bg-blue-500 text-white text-[9px] font-semibold shadow-lg px-2.5 py-1 transition-all hover:scale-105 hover:bg-blue-600 whitespace-nowrap"
+                    className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground text-[9px] font-semibold shadow-lg px-2.5 py-1 transition-all hover:scale-105 hover:bg-primary/90 whitespace-nowrap"
                     title="Adaugă grupă"
                   >+ Adaugă grupă</button>
                 </div>
@@ -634,12 +651,12 @@ export default function CategoriesPage() {
             <tr>
               {columnStructure.map(col =>
                 col.genderSections.length === 0
-                  ? <th key={`g-empty-${col.group.id}`} className="bg-gray-100 border border-gray-300 px-1 py-1 text-center text-[9px] text-gray-400 italic">
+                  ? <th key={`g-empty-${col.group.id}`} className="bg-muted border border-border px-1 py-1 text-center text-[9px] text-muted-foreground italic">
                       Fără categorii
                     </th>
                   : col.genderSections.map(gs => (
                       <th key={`${col.group.id}-${gs.gender}`} colSpan={gs.colSpan}
-                        className={`${GENDER_BG[gs.gender] || 'bg-gray-100'} border border-gray-300 px-1 py-1 text-center font-bold text-[10px] uppercase tracking-wide text-gray-700`}>
+                        className={`${GENDER_BG[gs.gender] || 'bg-muted'} border border-border px-1 py-1 text-center font-bold text-[10px] uppercase tracking-wide text-foreground`}>
                         {GENDER_LABELS[gs.gender] || gs.gender}
                       </th>
                     ))
@@ -650,7 +667,7 @@ export default function CategoriesPage() {
             <tr>
               {allCols.length === 0 && columnStructure.length > 0 ? (
                 columnStructure.map(col => (
-                  <th key={`empty-${col.group.id}`} className="bg-gray-50 border border-gray-300 px-1 py-1 text-center text-[9px] text-gray-300 italic min-w-[80px]">
+                  <th key={`empty-${col.group.id}`} className="bg-muted border border-border px-1 py-1 text-center text-[9px] text-muted-foreground italic min-w-[80px]">
                     click + sus
                   </th>
                 ))
@@ -662,7 +679,7 @@ export default function CategoriesPage() {
                     onDragOver={(e) => handleCatDragOver(e, cat.id)}
                     onDrop={(e) => handleCatDrop(e, cat.id)}
                     onDragEnd={handleDragEnd}
-                    className={`bg-gray-50 border border-gray-300 px-1 py-1 text-center font-medium text-[10px] text-gray-700 min-w-[80px] group/cat cursor-grab active:cursor-grabbing transition-all ${
+                    className={`bg-muted border border-border px-1 py-1 text-center font-medium text-[10px] text-foreground min-w-[80px] group/cat cursor-grab active:cursor-grabbing transition-all ${
                       dragType === 'category' && dragId === cat.id ? 'opacity-40 scale-95' : ''
                     } ${dragType === 'category' && dragOverId === cat.id ? 'ring-2 ring-blue-400 ring-inset bg-blue-50' : ''}`}
                     title={`${cat.name} (${TYPE_LABELS[cat.type] || cat.type}) — trage pentru a reordona`}
@@ -675,7 +692,7 @@ export default function CategoriesPage() {
                           onBlur={() => handleCatRenameSubmit(cat)}
                           onKeyDown={(e) => { if (e.key === 'Enter') handleCatRenameSubmit(cat); if (e.key === 'Escape') setEditingCatId(null); }}
                           onClick={(e) => e.stopPropagation()}
-                          className="bg-white border border-gray-400 rounded px-1 py-0.5 text-[10px] text-gray-800 font-medium text-center w-full outline-none focus:border-blue-400"
+                          className="bg-card border border-input rounded px-1 py-0.5 text-[10px] text-foreground font-medium text-center w-full outline-none focus:border-ring"
                           autoFocus
                         />
                       ) : (
@@ -685,7 +702,7 @@ export default function CategoriesPage() {
                         </span>
                       )}
                       <button onClick={() => handleDeleteCat(cat.id)} disabled={busy}
-                        className="absolute -top-2 -right-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-red-200 bg-red-100 text-xs font-bold leading-none text-red-600 transition-colors hover:bg-red-500 hover:text-white disabled:opacity-40 sm:hidden sm:group-hover/cat:inline-flex sm:border-0 sm:bg-red-500 sm:text-white"
+                        className="absolute -top-2 -right-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/20 bg-destructive/10 text-xs font-bold leading-none text-destructive transition-colors hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40 sm:hidden sm:group-hover/cat:inline-flex sm:border-0 sm:bg-destructive sm:text-destructive-foreground"
                         title="Șterge categoria">×</button>
                     </div>
                   </th>
@@ -698,7 +715,7 @@ export default function CategoriesPage() {
           <tbody>
             {clubRows.length === 0 ? (
               <tr>
-                <td colSpan={totalColSpan} className="px-4 py-12 text-center text-sm text-gray-400 italic">
+                <td colSpan={totalColSpan} className="px-4 py-12 text-center text-sm text-muted-foreground italic">
                   {groups.length === 0
                     ? <><span className="text-2xl block mb-2">📋</span>Treci cu mouse-ul între coloane pentru a adăuga prima grupă de vârstă.</>
                     : allCols.length === 0
@@ -714,9 +731,9 @@ export default function CategoriesPage() {
                 return athletes.length === 0 ? (
                   /* Club with no enrolled athletes — single empty row */
                   <tr key={`club-${clubId}`}
-                    className={`border-t-2 border-gray-400 hover:bg-yellow-50/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
+                    className={`border-t-2 border-border hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
                   >
-                    <td className="sticky left-0 z-10 bg-white border border-gray-300 px-3 py-1.5 font-bold text-xs text-gray-900 align-middle cursor-grab active:cursor-grabbing select-none"
+                    <td className="sticky left-0 z-10 bg-card border border-border px-3 py-1.5 font-bold text-xs text-foreground align-middle cursor-grab active:cursor-grabbing select-none"
                       draggable
                       onDragStart={(e) => handleClubDragStart(e, clubId)}
                       onDragOver={(e) => handleClubDragOver(e, clubId)}
@@ -733,13 +750,13 @@ export default function CategoriesPage() {
                       <React.Fragment key={`grp-${col.group.id}`}>
                         <td className="p-0 w-0 border-none"></td>
                         {col.cats.length === 0 ? (
-                          <td className="border border-gray-200 text-gray-200"></td>
+                          <td className="border border-border text-muted-foreground/40"></td>
                         ) : col.cats.map(cat => {
                           const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
                           return (
                             <td key={cat.id}
                               onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                              className={`border border-gray-200 px-1 py-1 text-center text-[10px] cursor-pointer transition-colors ${
+                              className={`border border-border px-1 py-1 text-center text-[10px] cursor-pointer transition-colors ${
                                 isPickerOpen ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset' : 'hover:bg-blue-50'
                               }`}
                             ></td>
@@ -747,15 +764,15 @@ export default function CategoriesPage() {
                         })}
                       </React.Fragment>
                     ))}
-                    <td className="border border-gray-100"></td>
+                    <td className="border border-border/40"></td>
                   </tr>
                 ) : (
                   athletes.map((ath, athIdx) => (
                     <tr key={ath.id}
-                      className={`${athIdx === 0 ? 'border-t-2 border-gray-400' : ''} hover:bg-yellow-50/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub && athIdx === 0 ? 'ring-t-2 ring-blue-400' : ''}`}
+                      className={`${athIdx === 0 ? 'border-t-2 border-border' : ''} hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub && athIdx === 0 ? 'ring-t-2 ring-blue-400' : ''}`}
                     >
                       {athIdx === 0 && (
-                        <td className="sticky left-0 z-10 bg-white border border-gray-300 px-3 py-1.5 font-bold text-xs text-gray-900 align-top cursor-grab active:cursor-grabbing select-none"
+                        <td className="sticky left-0 z-10 bg-card border border-border px-3 py-1.5 font-bold text-xs text-foreground align-top cursor-grab active:cursor-grabbing select-none"
                           rowSpan={rowCount}
                           draggable
                           onDragStart={(e) => handleClubDragStart(e, clubId)}
@@ -774,17 +791,17 @@ export default function CategoriesPage() {
                         <React.Fragment key={`grp-${col.group.id}`}>
                           <td className="p-0 w-0 border-none"></td>
                           {col.cats.length === 0 ? (
-                            <td className="border border-gray-200 text-gray-200"></td>
+                            <td className="border border-border text-muted-foreground/40"></td>
                           ) : col.cats.map(cat => {
                             const enrollment = ath.enrollments[cat.id];
                             const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
                             return (
                               <td key={cat.id}
                                 onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                                className={`border border-gray-200 px-1 py-1 text-center text-[10px] cursor-pointer transition-colors ${
+                                className={`border border-border px-1 py-1 text-center text-[10px] cursor-pointer transition-colors ${
                                   isPickerOpen
                                     ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset'
-                                    : enrollment ? 'bg-green-50 text-gray-800 hover:bg-green-100' : 'hover:bg-blue-50'
+                                    : enrollment ? 'bg-green-50 text-foreground hover:bg-green-100' : 'hover:bg-blue-50'
                                 }`}
                               >
                                 {enrollment ? (
@@ -793,7 +810,7 @@ export default function CategoriesPage() {
                                       <button
                                         onClick={(e) => handleUnenroll(enrollment.id, ath.name, cat.name, e)}
                                         disabled={busy}
-                                        className="absolute -top-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-red-200 bg-red-100 text-[8px] font-bold leading-none text-red-600 transition-colors hover:bg-red-500 hover:text-white disabled:opacity-40 sm:hidden sm:group-hover/athlete:inline-flex sm:border-0 sm:bg-red-500 sm:text-white"
+                                        className="absolute -top-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-destructive/20 bg-destructive/10 text-[8px] font-bold leading-none text-destructive transition-colors hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40 sm:hidden sm:group-hover/athlete:inline-flex sm:border-0 sm:bg-destructive sm:text-destructive-foreground"
                                         title="Scoate sportivul din categorie"
                                       >×</button>
                                   </span>
@@ -803,7 +820,7 @@ export default function CategoriesPage() {
                           })}
                         </React.Fragment>
                       ))}
-                      <td className="border border-gray-100"></td>
+                      <td className="border border-border/40"></td>
                     </tr>
                   ))
                 );
@@ -814,23 +831,23 @@ export default function CategoriesPage() {
           {/* ═══ FOOTER: participant count per category ═══ */}
           {allCols.length > 0 && (
             <tfoot>
-              <tr className="bg-gray-100 border-t-2 border-gray-400">
-                <td className="sticky left-0 z-10 bg-gray-100 border border-gray-300 px-3 py-2 font-bold text-xs text-gray-700">
+              <tr className="bg-muted border-t-2 border-border">
+                <td className="sticky left-0 z-10 bg-muted border border-border px-3 py-2 font-bold text-xs text-foreground">
                   Număr participanți
                 </td>
                 {columnStructure.map(col => (
                   <React.Fragment key={`f-${col.group.id}`}>
-                    <td className="p-0 w-0 border-none bg-gray-100"></td>
+                    <td className="p-0 w-0 border-none bg-muted"></td>
                     {col.cats.length === 0 ? (
-                      <td className="border border-gray-300 bg-gray-100"></td>
+                      <td className="border border-border bg-muted"></td>
                     ) : col.cats.map(cat => (
-                      <td key={cat.id} className={`border px-1 py-2 text-center font-bold text-xs ${((countPerCat[cat.id] || 0) < 3) ? 'border-red-300 bg-red-100 text-red-700' : 'border-gray-300 text-gray-700'}`}>
+                      <td key={cat.id} className={`border px-1 py-2 text-center font-bold text-xs ${((countPerCat[cat.id] || 0) < 3) ? 'border-red-300 bg-red-100 text-red-700' : 'border-border text-foreground'}`}>
                         {countPerCat[cat.id] || 0}
                       </td>
                     ))}
                   </React.Fragment>
                 ))}
-                <td className="border border-gray-100 bg-gray-100"></td>
+                <td className="border border-border/40 bg-muted"></td>
               </tr>
             </tfoot>
           )}
@@ -840,7 +857,7 @@ export default function CategoriesPage() {
 
       {/* ═══ TEHNICA SHEET — Solo + Team categories detailed view ═══ */}
       {activeSheet === 'tehnica' && (
-      <div className="flex-1 overflow-auto bg-white p-2">
+      <div className="flex-1 overflow-auto bg-card p-2">
         {(() => {
           // Collect solo/team categories that have enrolled athletes, deduplicated
           const seenCatIds = new Set();
@@ -859,7 +876,7 @@ export default function CategoriesPage() {
 
           if (techGroups.length === 0) {
             return (
-              <div className="flex items-center justify-center h-full text-gray-400 text-sm italic">
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm italic">
                 <span>📋 Nu există sportivi înscriși în categorii de tip Solo sau Echipă. Înscrie-i din tab-ul Centralizator.</span>
               </div>
             );
@@ -888,7 +905,7 @@ export default function CategoriesPage() {
                           <tr>
                             {chunk.map(cat => (
                               <th key={cat.id} colSpan={2}
-                                className="bg-yellow-300 border border-gray-500 px-3 py-1.5 text-center font-bold text-xs text-gray-900">
+                                className="bg-sidebar-accent border border-border px-3 py-1.5 text-center font-bold text-xs text-sidebar-accent-foreground">
                                 {group.name}
                                 {(group.birth_date_start || group.birth_year_start) && (
                                   <span className="font-normal ml-1">
@@ -904,10 +921,10 @@ export default function CategoriesPage() {
                           <tr>
                             {chunk.map(cat => (
                               <React.Fragment key={cat.id}>
-                                <th className="bg-gray-200 border border-gray-500 px-2 py-1.5 text-left font-bold text-[10px] text-gray-700 uppercase tracking-wide w-[60px]">
+                                <th className="bg-muted border border-border px-2 py-1.5 text-left font-bold text-[10px] text-foreground uppercase tracking-wide w-[60px]">
                                   PROBA
                                 </th>
-                                <th className={`border border-gray-500 px-2 py-1.5 text-left font-bold text-[10px] uppercase tracking-wide min-w-[200px] ${
+                                <th className={`border border-border px-2 py-1.5 text-left font-bold text-[10px] uppercase tracking-wide min-w-[200px] ${
                                   cat.gender === 'male' ? 'bg-blue-100 text-blue-900' : cat.gender === 'female' ? 'bg-pink-100 text-pink-900' : 'bg-amber-100 text-amber-900'
                                 }`}>
                                   {cat.name} - {GENDER_LABELS[cat.gender] || cat.gender}
@@ -934,20 +951,20 @@ export default function CategoriesPage() {
                                 const clubName = athleteDetails?.club?.name || '';
                                 return (
                                   <React.Fragment key={cat.id}>
-                                    <td className="border border-gray-300 px-1 py-0.5 text-[10px] w-[30px] text-center text-gray-400 bg-gray-50">
+                                    <td className="border border-border px-1 py-0.5 text-[10px] w-[30px] text-center text-muted-foreground bg-muted">
                                       {ath ? rowIdx + 1 : ''}
                                     </td>
-                                    <td className={`border border-gray-300 px-1 py-0.5 text-[11px] min-w-[200px] ${ath ? 'text-gray-800' : ''}`}>
+                                    <td className={`border border-border px-1 py-0.5 text-[11px] min-w-[200px] ${ath ? 'text-foreground' : ''}`}>
                                       {ath ? (
                                         <span className="flex items-center justify-between group/ath">
                                           <span>
                                             {athleteName}
-                                            {clubName && <span className="text-gray-400 ml-1">({clubName})</span>}
+                                            {clubName && <span className="text-muted-foreground ml-1">({clubName})</span>}
                                           </span>
                                           <button
                                             onClick={(e) => handleUnenroll(ath.id, athleteName, cat.name, e)}
                                             disabled={busy}
-                                            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-500 text-[9px] font-bold leading-none hover:bg-red-500 hover:text-white disabled:opacity-40 shrink-0 ml-1 transition-colors"
+                                            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-destructive/10 text-destructive text-[9px] font-bold leading-none hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40 shrink-0 ml-1 transition-colors"
                                             title="Scoate sportivul din categorie"
                                           >×</button>
                                         </span>
@@ -962,9 +979,9 @@ export default function CategoriesPage() {
                           <tr>
                             {chunk.map(cat => (
                               <React.Fragment key={cat.id}>
-                                <td className="border border-gray-200 px-1 py-0.5 w-[30px] bg-gray-50"></td>
+                                <td className="border border-border px-1 py-0.5 w-[30px] bg-muted"></td>
                                 <td
-                                  className="border border-gray-200 px-1 py-1 min-w-[200px] cursor-pointer group/add hover:bg-blue-50 transition-colors"
+                                  className="border border-border px-1 py-1 min-w-[200px] cursor-pointer group/add hover:bg-blue-50 transition-colors"
                                   onClick={(e) => handleCellClick(null, cat.id, e)}
                                 >
                                   <span className="hidden group-hover/add:inline-flex items-center gap-1 text-[10px] text-blue-500 font-medium">
@@ -975,13 +992,13 @@ export default function CategoriesPage() {
                             ))}
                           </tr>
                           {/* Total row */}
-                          <tr className="border-t-2 border-gray-500">
+                          <tr className="border-t-2 border-border">
                             {chunk.map(cat => (
                               <React.Fragment key={cat.id}>
-                                <td className="border border-gray-500 px-2 py-1.5 font-bold text-[10px] text-gray-700 bg-gray-100 text-center">
+                                <td className="border border-border px-2 py-1.5 font-bold text-[10px] text-foreground bg-muted text-center">
                                   TOTAL
                                 </td>
-                                <td className={`border border-gray-500 px-2 py-1.5 font-bold text-xs ${((cat.enrolled_athletes?.length || 0) < 3) ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-900'}`}>
+                                <td className={`border border-border px-2 py-1.5 font-bold text-xs ${((cat.enrolled_athletes?.length || 0) < 3) ? 'bg-red-100 text-red-700' : 'bg-muted text-foreground'}`}>
                                   {cat.enrolled_athletes?.length || 0}
                                 </td>
                               </React.Fragment>
@@ -1001,7 +1018,7 @@ export default function CategoriesPage() {
 
       {/* ═══ LUPTA SHEET — Fight categories detailed view ═══ */}
       {activeSheet === 'lupta' && (
-      <div className="flex-1 overflow-auto bg-white p-2">
+      <div className="flex-1 overflow-auto bg-card p-2">
         {(() => {
           // Collect fight categories that have enrolled athletes, deduplicated
           const seenFightIds = new Set();
@@ -1020,7 +1037,7 @@ export default function CategoriesPage() {
 
           if (fightGroups.length === 0) {
             return (
-              <div className="flex items-center justify-center h-full text-gray-400 text-sm italic">
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm italic">
                 <span>📋 Nu există sportivi înscriși în categorii de tip Luptă. Înscrie-i din tab-ul Centralizator.</span>
               </div>
             );
@@ -1067,26 +1084,26 @@ export default function CategoriesPage() {
                       <thead>
                         <tr>
                           <th colSpan={5}
-                            className={`border border-gray-500 px-3 py-1 text-center font-bold text-xs uppercase tracking-wide ${
+                            className={`border border-border px-3 py-1 text-center font-bold text-xs uppercase tracking-wide ${
                               gender === 'male' ? 'bg-blue-200 text-blue-900' : gender === 'female' ? 'bg-pink-200 text-pink-900' : 'bg-amber-200 text-amber-900'
                             }`}>
                             {GENDER_LABELS[gender]}
                           </th>
                         </tr>
                         <tr>
-                          <th className="bg-gray-200 border border-gray-500 px-3 py-1.5 text-center font-bold text-xs text-gray-800 min-w-[130px]">
+                          <th className="bg-muted border border-border px-3 py-1.5 text-center font-bold text-xs text-foreground min-w-[130px]">
                             GRUPA
                           </th>
-                          <th className="bg-gray-200 border border-gray-500 px-3 py-1.5 text-center font-bold text-[10px] text-gray-800 min-w-[120px]">
+                          <th className="bg-muted border border-border px-3 py-1.5 text-center font-bold text-[10px] text-foreground min-w-[120px]">
                             ÎNSCRIS LA<br/>CATEGORIA (KG)
                           </th>
-                          <th className="bg-gray-200 border border-gray-500 px-3 py-1.5 text-center font-bold text-[10px] text-gray-800 min-w-[220px]">
+                          <th className="bg-muted border border-border px-3 py-1.5 text-center font-bold text-[10px] text-foreground min-w-[220px]">
                             NUME PRACTICANT
                           </th>
-                          <th className="bg-gray-200 border border-gray-500 px-3 py-1.5 text-center font-bold text-[10px] text-gray-800 min-w-[70px]">
+                          <th className="bg-muted border border-border px-3 py-1.5 text-center font-bold text-[10px] text-foreground min-w-[70px]">
                             KG
                           </th>
-                          <th className="bg-gray-200 border border-gray-500 px-1 py-1.5 text-center font-bold text-[10px] text-gray-800 w-[30px]">
+                          <th className="bg-muted border border-border px-1 py-1.5 text-center font-bold text-[10px] text-foreground w-[30px]">
                           </th>
                         </tr>
                       </thead>
@@ -1101,11 +1118,11 @@ export default function CategoriesPage() {
                           return (
                             <tr key={ri}>
                               {row.isFirstRow && (
-                                <td className="border border-gray-400 px-2 py-1 text-xs font-bold text-gray-800 align-top bg-white"
+                                <td className="border border-border px-2 py-1 text-xs font-bold text-foreground align-top bg-card"
                                   rowSpan={row.totalGroupRows}>
                                   {group.name}
                                   {(group.birth_date_start || group.birth_year_start) && (
-                                    <span className="font-normal text-[10px] block text-gray-500 mt-0.5">
+                                    <span className="font-normal text-[10px] block text-muted-foreground mt-0.5">
                                       ({group.birth_date_start
                                         ? `${new Date(group.birth_date_start).getFullYear()}–${new Date(group.birth_date_end).getFullYear()}`
                                         : `${group.birth_year_start}–${group.birth_year_end}`})
@@ -1114,16 +1131,16 @@ export default function CategoriesPage() {
                                 </td>
                               )}
                               {row.isFirstInCat && (
-                                  <td className={`border border-gray-400 px-2 py-1 text-center text-[10px] font-semibold ${((row.enrolledCount || 0) < 3) ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-700'}`}
+                                  <td className={`border border-border px-2 py-1 text-center text-[10px] font-semibold ${((row.enrolledCount || 0) < 3) ? 'bg-red-50 text-red-700' : 'bg-muted text-foreground'}`}
                                   rowSpan={row.enrolledCount || 1}>
                                   {row.catLabel}
                                 </td>
                               )}
-                              <td className="border border-gray-300 px-2 py-1 text-[11px] text-gray-800">
+                              <td className="border border-border px-2 py-1 text-[11px] text-foreground">
                                 {name}
-                                {club && name && <span className="text-gray-400 ml-1">({club})</span>}
+                                {club && name && <span className="text-muted-foreground ml-1">({club})</span>}
                               </td>
-                              <td className="border border-gray-300 px-1 py-0.5 text-center text-[11px] text-gray-700 font-medium min-w-[70px]"
+                              <td className="border border-border px-1 py-0.5 text-center text-[11px] text-foreground font-medium min-w-[70px]"
                                 onDoubleClick={() => enrollId && setEditingWeight({ enrollmentId: enrollId, value: weight.toString() })}>
                                 {enrollId ? (
                                   isEditing ? (
@@ -1146,12 +1163,12 @@ export default function CategoriesPage() {
                                   )
                                 ) : null}
                               </td>
-                              <td className="border border-gray-300 px-0.5 py-0.5 text-center w-[30px]">
+                              <td className="border border-border px-0.5 py-0.5 text-center w-[30px]">
                                 {enrollId && (
                                   <button
                                     onClick={(e) => handleUnenroll(enrollId, name, row.cat.name, e)}
                                     disabled={busy}
-                                    className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-500 text-[9px] font-bold leading-none hover:bg-red-500 hover:text-white disabled:opacity-40 transition-colors"
+                                    className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-destructive/10 text-destructive text-[9px] font-bold leading-none hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40 transition-colors"
                                     title="Scoate sportivul din categorie"
                                   >×</button>
                                 )}
@@ -1171,7 +1188,7 @@ export default function CategoriesPage() {
       )}
 
       {/* ═══ BOTTOM TAB BAR (Google Sheets style) ═══ */}
-      <div className="shrink-0 flex items-center border-t-2 border-yellow-400 bg-black px-1 h-10 gap-0.5 select-none">
+      <div className="shrink-0 flex items-center border-t-2 border-sidebar-accent bg-sidebar px-1 h-10 gap-0.5 select-none">
         {[
           { key: 'centralizator', label: 'CENTRALIZATOR', icon: '📊' },
           { key: 'tehnica',       label: 'Tehnica',       icon: '🥋' },
@@ -1182,8 +1199,8 @@ export default function CategoriesPage() {
             onClick={() => setActiveSheet(tab.key)}
             className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all border border-b-0 ${
               activeSheet === tab.key
-                ? 'bg-yellow-300 text-black border-yellow-400 shadow-sm -mb-px z-10'
-                : 'bg-white text-gray-700 border-yellow-400/60 hover:bg-yellow-200 hover:text-black'
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground border-sidebar-accent shadow-sm -mb-px z-10'
+                : 'bg-transparent text-sidebar-foreground/80 border-sidebar-border hover:bg-white/10 hover:text-sidebar-foreground'
             }`}
           >
             <span className="text-sm">{tab.icon}</span>
@@ -1191,142 +1208,133 @@ export default function CategoriesPage() {
           </button>
         ))}
         <div className="flex-1" />
-        <span className="text-[10px] text-yellow-100/75 pr-2">
+        <span className="text-[10px] text-sidebar-foreground/75 pr-2">
           {groups.length} grupe · {categories.length} categorii · {totalAthletes} sportivi
         </span>
       </div>
 
       {/* ═══ GROUP CREATION MODAL ═══ */}
-      {groupModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => setGroupModal(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-              <h2 className="text-sm font-bold text-gray-900">Grupă personalizată</h2>
-              <button onClick={() => setGroupModal(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+      <Dialog open={!!groupModal} onOpenChange={(open) => { if (!open) setGroupModal(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Grupă personalizată</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCustomGroup} className="space-y-4">
+            <div>
+              <Label className="mb-1 block">Nume grupă<Req /></Label>
+              <Input required value={groupForm.name}
+                onChange={e => setGroupForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="ex: U16 Special, Masters 40+"
+                autoFocus />
             </div>
-            <form onSubmit={handleCustomGroup} className="p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Nume grupă *</label>
-                <input required value={groupForm.name}
-                  onChange={e => setGroupForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="ex: U16 Special, Masters 40+"
-                  className="frvv-input w-full" autoFocus />
+                <Label className="mb-1 block">Data nașterii — de la</Label>
+                <Input type="date" value={groupForm.birth_date_start}
+                  onChange={e => setGroupForm(f => ({ ...f, birth_date_start: e.target.value }))} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Data nașterii — de la</label>
-                  <input type="date" value={groupForm.birth_date_start}
-                    onChange={e => setGroupForm(f => ({ ...f, birth_date_start: e.target.value }))}
-                    className="frvv-input w-full" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Data nașterii — până la</label>
-                  <input type="date" value={groupForm.birth_date_end}
-                    onChange={e => setGroupForm(f => ({ ...f, birth_date_end: e.target.value }))}
-                    className="frvv-input w-full" />
-                </div>
+              <div>
+                <Label className="mb-1 block">Data nașterii — până la</Label>
+                <Input type="date" value={groupForm.birth_date_end}
+                  onChange={e => setGroupForm(f => ({ ...f, birth_date_end: e.target.value }))} />
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={groupForm.allow_younger}
-                  onChange={e => setGroupForm(f => ({ ...f, allow_younger: e.target.checked }))}
-                  className="border border-black text-yellow-500 focus:ring-0" />
-                <span className="text-xs text-gray-700">Permite sportivi mai tineri să urce la categorie superioară</span>
-              </label>
-              {eventDateStr && (
-                <p className="text-[10px] text-gray-400">📅 Data evenimentului: {eventDateStr} (anul de referință: {eventYear})</p>
-              )}
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setGroupModal(null)}
-                  className="frvv-btn-secondary text-xs">Anulează</button>
-                <button type="submit" disabled={busy}
-                  className="frvv-btn-primary text-xs">Creează grupă</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="group-allow-younger" checked={groupForm.allow_younger}
+                onCheckedChange={(checked) => setGroupForm(f => ({ ...f, allow_younger: checked === true }))} />
+              <Label htmlFor="group-allow-younger" className="cursor-pointer font-normal">Permite sportivi mai tineri să urce la categorie superioară</Label>
+            </div>
+            {eventDateStr && (
+              <p className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">📅 Data evenimentului: {eventDateStr} (anul de referință: {eventYear})</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setGroupModal(null)}>Anulează</Button>
+              <Button type="submit" disabled={busy}>Creează grupă</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ═══ CATEGORY CREATION MODAL ═══ */}
-      {catModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => setCatModal(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-              <h2 className="text-sm font-bold text-gray-900">Categorie personalizată</h2>
-              <button onClick={() => setCatModal(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+      <Dialog open={!!catModal} onOpenChange={(open) => { if (!open) setCatModal(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Categorie personalizată</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddCustomCat} className="space-y-4">
+            <div>
+              <Label className="mb-1 block">Nume categorie<Req /></Label>
+              <Input required value={catForm.name}
+                onChange={e => setCatForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="ex: Quyền Duo Mixt"
+                autoFocus />
             </div>
-            <form onSubmit={handleAddCustomCat} className="p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Nume categorie *</label>
-                <input required value={catForm.name}
-                  onChange={e => setCatForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="ex: Quyền Duo Mixt"
-                  className="frvv-input w-full" autoFocus />
+                <Label className="mb-1 block">Tip</Label>
+                <Select value={catForm.category_type} onValueChange={(value) => setCatForm(f => ({ ...f, category_type: value }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="solo">Solo (Quyền)</SelectItem>
+                    <SelectItem value="team">Echipă (Song Luyện / Đa Luyện)</SelectItem>
+                    <SelectItem value="fight">Luptă (Đối Kháng)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tip</label>
-                  <select value={catForm.category_type}
-                    onChange={e => setCatForm(f => ({ ...f, category_type: e.target.value }))}
-                    className="frvv-input w-full">
-                    <option value="solo">Solo (Quyền)</option>
-                    <option value="team">Echipă (Song Luyện / Đa Luyện)</option>
-                    <option value="fight">Luptă (Đối Kháng)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Gen</label>
-                  <select value={catForm.gender}
-                    onChange={e => setCatForm(f => ({ ...f, gender: e.target.value }))}
-                    className="frvv-input w-full">
-                    <option value="male">Masculin</option>
-                    <option value="female">Feminin</option>
-                    <option value="mixt">Mixt</option>
-                  </select>
-                </div>
+              <div>
+                <Label className="mb-1 block">Gen</Label>
+                <Select value={catForm.gender} onValueChange={(value) => setCatForm(f => ({ ...f, gender: value }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">Masculin</SelectItem>
+                    <SelectItem value="female">Feminin</SelectItem>
+                    <SelectItem value="mixt">Mixt</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setCatModal(null)}
-                  className="frvv-btn-secondary text-xs">Anulează</button>
-                <button type="submit" disabled={busy}
-                  className="frvv-btn-primary text-xs">Creează categorie</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCatModal(null)}>Anulează</Button>
+              <Button type="submit" disabled={busy}>Creează categorie</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ═══ CONFIRMATION MODAL (delete / unenroll) ═══ */}
-      {confirmModal && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setConfirmModal(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-6 text-center">
-              <div className="text-4xl mb-3">{confirmModal.icon || '⚠️'}</div>
-              <h3 className="text-base font-bold text-gray-900 mb-2">{confirmModal.title}</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">{confirmModal.message}</p>
-              {confirmModal.detail && (
-                <p className="mt-2 text-[11px] text-gray-400 bg-gray-50 rounded-lg px-3 py-2 max-h-20 overflow-y-auto">
-                  {confirmModal.detail}
-                </p>
-              )}
-            </div>
-            <div className="flex border-t border-gray-200">
-              <button
-                onClick={() => setConfirmModal(null)}
-                className="flex-1 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 transition border-r border-gray-200"
-              >Anulează</button>
-              <button
-                onClick={confirmModal.onConfirm}
-                disabled={busy}
-                className={`flex-1 px-4 py-3 text-sm font-bold transition disabled:opacity-50 ${
-                  confirmModal.color === 'orange'
-                    ? 'text-orange-600 hover:bg-orange-50'
-                    : 'text-red-600 hover:bg-red-50'
-                }`}
-              >{confirmModal.confirmLabel || 'Confirmă'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog open={!!confirmModal} onOpenChange={(open) => { if (!open) setConfirmModal(null); }}>
+        <DialogContent className="max-w-sm">
+          {confirmModal && (
+            <>
+              <DialogHeader className="items-center text-center sm:text-center">
+                <div className="text-4xl">{confirmModal.icon || '⚠️'}</div>
+                <DialogTitle>{confirmModal.title}</DialogTitle>
+              </DialogHeader>
+              <div className="text-center">
+                <p className="text-sm leading-relaxed text-muted-foreground">{confirmModal.message}</p>
+                {confirmModal.detail && (
+                  <p className="mt-2 max-h-20 overflow-y-auto rounded-lg bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+                    {confirmModal.detail}
+                  </p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setConfirmModal(null)}>Anulează</Button>
+                <Button
+                  onClick={confirmModal.onConfirm}
+                  disabled={busy}
+                  variant={confirmModal.color === 'orange' ? 'outline' : 'destructive'}
+                  className={confirmModal.color === 'orange' ? 'border-transparent text-orange-600 hover:bg-orange-50 hover:text-orange-600' : ''}
+                >{confirmModal.confirmLabel || 'Confirmă'}</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ═══ ENROLLMENT PICKER POPOVER ═══ */}
       {enrollPickerCell && (() => {
@@ -1378,24 +1386,24 @@ export default function CategoriesPage() {
         return (
           <div ref={enrollPickerRef}
             onClick={(e) => e.stopPropagation()}
-            className="fixed z-[100] w-72 rounded-lg border border-gray-200 bg-white shadow-2xl"
+            className="fixed z-[100] w-72 rounded-lg border border-border bg-popover shadow-2xl"
             style={{ top, left }}
           >
-            <div className="p-2 border-b border-gray-100">
-              <p className="text-[10px] font-bold text-gray-700 uppercase tracking-wide truncate">{isAllMode ? '👥' : '🏛'} {clubName}</p>
-              <p className="text-[9px] text-gray-400 truncate">{catName}</p>
+            <div className="p-2 border-b border-border">
+              <p className="text-[10px] font-bold text-foreground uppercase tracking-wide truncate">{isAllMode ? '👥' : '🏛'} {clubName}</p>
+              <p className="text-[9px] text-muted-foreground truncate">{catName}</p>
               {hasDateRange && (
                 <p className="text-[8px] text-blue-500 mt-0.5">
                   📅 Născuți {dateStart} – {allowYounger ? '∞ (tineri acceptați)' : dateEnd}
-                  {eventDateStr && <span className="text-gray-400 ml-1">· Eveniment: {eventDateStr}</span>}
+                  {eventDateStr && <span className="text-muted-foreground ml-1">· Eveniment: {eventDateStr}</span>}
                 </p>
               )}
             </div>
             <div className="max-h-56 overflow-y-auto">
               {isLoading ? (
-                <div className="p-4 text-center text-[10px] text-gray-400">Se încarcă…</div>
+                <div className="p-4 text-center text-[10px] text-muted-foreground">Se încarcă…</div>
               ) : athleteList.length === 0 ? (
-                <div className="p-4 text-center text-[10px] text-gray-400 italic">
+                <div className="p-4 text-center text-[10px] text-muted-foreground italic">
                   {hasDateRange
                     ? `Niciun sportiv din acest club nu se încadrează în intervalul de vârstă (${outOfRangeCount} exclu${outOfRangeCount === 1 ? 's' : 'și'}).`
                     : 'Niciun sportiv în acest club.'}
@@ -1410,30 +1418,30 @@ export default function CategoriesPage() {
                       disabled={busy}
                       className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors disabled:opacity-50 ${
                         isEnrolled
-                          ? 'bg-green-50 hover:bg-green-100 text-gray-800'
-                          : 'hover:bg-gray-50 text-gray-600'
+                          ? 'bg-green-50 hover:bg-green-100 text-foreground'
+                          : 'hover:bg-muted text-muted-foreground'
                       }`}
                     >
                       <span className={`inline-flex items-center justify-center w-4 h-4 rounded border text-[9px] font-bold ${
                         isEnrolled
                           ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 text-transparent'
+                          : 'border-border text-transparent'
                       }`}>✓</span>
                       <span className="truncate flex-1">{ath.last_name} {ath.first_name}</span>
-                      {dob && <span className="text-[8px] text-gray-400 shrink-0">{dob}</span>}
+                      {dob && <span className="text-[8px] text-muted-foreground shrink-0">{dob}</span>}
                     </button>
                   );
                 })
               )}
             </div>
             {outOfRangeCount > 0 && (
-              <div className="px-2 py-1 border-t border-gray-100 text-[8px] text-gray-400">
+              <div className="px-2 py-1 border-t border-border text-[8px] text-muted-foreground">
                 {outOfRangeCount} sportiv{outOfRangeCount === 1 ? '' : 'i'} din club nu se încadrează în vârstă
               </div>
             )}
-            <div className="p-1.5 border-t border-gray-100 text-center">
+            <div className="p-1.5 border-t border-border text-center">
               <button onClick={() => setEnrollPickerCell(null)}
-                className="text-[9px] text-gray-400 hover:text-gray-600 transition">Închide</button>
+                className="text-[9px] text-muted-foreground hover:text-foreground transition">Închide</button>
             </div>
           </div>
         );

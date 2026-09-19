@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, ProtectedRoute } from '@shared';
 import LoginPage from '@shared/components/LoginPage';
-import { Spinner } from '@shared/components/ui';
+import { Spinner } from './components/ui';
 import Layout from './components/Layout';
 
 const PortalPage = lazy(() => import('./pages/PortalPage'));

@@ -7,9 +7,8 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n admin,enroll,app,referee,display,registry,site -c blue,green,magenta,yellow,cyan,white,gray \"npm:dev:admin\" \"npm:dev:enroll\" \"npm:dev:app\" \"npm:dev:referee\" \"npm:dev:display\" \"npm:dev:registry\" \"npm:dev:site\"",
+    "dev": "concurrently -k -n admin,app,referee,display,registry,site -c blue,magenta,yellow,cyan,white,gray \"npm:dev:admin\" \"npm:dev:app\" \"npm:dev:referee\" \"npm:dev:display\" \"npm:dev:registry\" \"npm:dev:site\"",
     "dev:admin": "npm run dev --workspace @vovinam/competition-admin",
-    "dev:enroll": "npm run dev --workspace @vovinam/athlete-enrollment",
     "dev:app": "npm run dev --workspace @vovinam/app",
     "dev:referee": "npm run dev --workspace @vovinam/referee-scoring",
     "dev:display": "npm run dev --workspace @vovinam/public-display",
@@ -17,7 +16,6 @@
     "dev:site": "npm run dev --workspace @vovinam/public-site",
     "build": "npm run build --workspaces --if-present",
     "build:admin": "npm run build --workspace @vovinam/competition-admin",
-    "build:enroll": "npm run build --workspace @vovinam/athlete-enrollment",
     "build:app": "npm run build --workspace @vovinam/app",
     "build:referee": "npm run build --workspace @vovinam/referee-scoring",
     "build:display": "npm run build --workspace @vovinam/public-display",

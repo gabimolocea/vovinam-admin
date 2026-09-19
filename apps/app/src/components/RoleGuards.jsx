@@ -8,8 +8,8 @@ import { useAuth } from '@shared';
  * `/login` (a route this app doesn't have) and checks `user.role` directly,
  * but "coach" isn't a role value here - it's `athlete.is_coach` - so a
  * small local guard keyed off useAuth()'s derived isAdmin/isCoach booleans
- * is simpler than adapting the shared one (which competition-admin and
- * athlete-enrollment still rely on as-is). */
+ * is simpler than adapting the shared one (which competition-admin still
+ * relies on as-is). */
 export function RequireAdmin({ children }) {
   const { isAdmin } = useAuth();
   return isAdmin ? children : <Navigate to="/" replace />;

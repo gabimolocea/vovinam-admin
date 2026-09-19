@@ -1,6 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Spinner } from '@shared/components/ui';
 import { diplomaTemplateAPI, matchAPI, matchRefereeScoreAPI } from '@shared/lib/api';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import {
@@ -11,11 +10,12 @@ import {
   getPlaceLabel,
   resolveDiplomaTemplate,
 } from '../lib/diplomas';
+import { Badge, Button, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 
 const PODIUM_STYLES = {
-  1: 'bg-yellow-100 text-yellow-900 border-yellow-300',
-  2: 'bg-gray-100 text-gray-800 border-gray-300',
-  3: 'bg-amber-100 text-amber-900 border-amber-300',
+  1: 'border-transparent bg-yellow-100 text-yellow-900',
+  2: 'border-transparent bg-gray-100 text-gray-800',
+  3: 'border-transparent bg-amber-100 text-amber-900',
 };
 
 function normalizeListPayload(data) {
@@ -165,14 +165,14 @@ function GroupHeader({ group }) {
         </span>
       )}
       {group.allowed_grade_type === 'inferior' && (
-        <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/20 text-amber-800 text-[8px] font-medium px-1.5 py-0.5">
+        <Badge className="ml-1.5 border-transparent bg-amber-500/20 text-[8px] text-amber-800">
           Grade inferioare
-        </span>
+        </Badge>
       )}
       {group.allowed_grade_type === 'superior' && (
-        <span className="ml-1.5 inline-flex items-center rounded-full bg-emerald-500/20 text-emerald-800 text-[8px] font-medium px-1.5 py-0.5">
+        <Badge className="ml-1.5 border-transparent bg-emerald-500/20 text-[8px] text-emerald-800">
           Grade superioare
-        </span>
+        </Badge>
       )}
     </>
   );
@@ -320,7 +320,7 @@ export default function ClasamenteLuptaPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white">
+      <div className="flex-1 flex items-center justify-center bg-background">
         <Spinner />
       </div>
     );
@@ -328,99 +328,90 @@ export default function ClasamenteLuptaPage() {
 
   if (fightGroups.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white text-gray-400 text-sm italic p-4 text-center">
+      <div className="flex-1 flex items-center justify-center bg-background text-sm italic text-muted-foreground p-4 text-center">
         <span>📋 Nu există categorii de tip Luptă pentru clasamente.</span>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-2">
+    <div className="flex-1 overflow-auto bg-background p-2">
       {fightGroups.map(({ group, cats }) => (
         <div key={`clas-fight-${group.id}`} className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {cats.map(cat => {
             const podium = podiumByCategory.get(cat.id) || { 1: [], 2: [], 3: [] };
 
             return (
-              <div key={cat.id} className="overflow-x-auto">
-                <table className="border-collapse text-sm w-full">
-                  <thead>
-                    <tr>
-                      <th
-                        colSpan={3}
-                        className="bg-yellow-300 border border-black px-2 sm:px-3 py-1.5 text-center font-bold text-sm text-gray-900"
-                      >
-                        <GroupHeader group={group} />
-                      </th>
-                    </tr>
-                    <tr>
-                      <th
-                        colSpan={3}
-                        className={`border border-black px-2 py-1.5 text-left font-bold text-xs uppercase tracking-wide ${
-                          cat.gender === 'male'
-                            ? 'bg-blue-100 text-blue-900'
-                            : cat.gender === 'female'
-                              ? 'bg-pink-100 text-pink-900'
-                              : 'bg-amber-100 text-amber-900'
-                        }`}
-                      >
-                        Clasament · {cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}
-                      </th>
-                    </tr>
-                    <tr>
-                      <th className="bg-gray-200 border border-black px-2 py-1.5 text-center font-bold text-[11px] text-gray-900 uppercase tracking-wide w-[72px]">
-                        Loc
-                      </th>
-                      <th className="bg-gray-200 border border-black px-2 py-1.5 text-left font-bold text-[11px] text-gray-900 uppercase tracking-wide">
-                        Sportiv
-                      </th>
-                      <th className="bg-gray-200 border border-black px-2 py-1.5 text-left font-bold text-[11px] text-gray-900 uppercase tracking-wide w-[96px]">
-                        Club
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[1, 2, 3].map(place => {
-                      const athletes = podium[place] || [];
-                      const label = athletes.length ? athletes.map(item => item.label).join(place === 3 && athletes.length > 1 ? ' / ' : ', ') : '—';
-                      const club = athletes.length ? athletes.map(item => item.club).filter(Boolean).join(place === 3 && athletes.length > 1 ? ' / ' : ', ') : '—';
+              <Table key={cat.id}>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead colSpan={3} className="bg-muted text-center text-sm text-foreground">
+                      <GroupHeader group={group} />
+                    </TableHead>
+                  </TableRow>
+                  <TableRow>
+                    <TableHead
+                      colSpan={3}
+                      className={
+                        cat.gender === 'male'
+                          ? 'bg-blue-100 text-blue-900'
+                          : cat.gender === 'female'
+                            ? 'bg-pink-100 text-pink-900'
+                            : 'bg-amber-100 text-amber-900'
+                      }
+                    >
+                      Clasament · {cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}
+                    </TableHead>
+                  </TableRow>
+                  <TableRow>
+                    <TableHead className="w-[72px] text-center">Loc</TableHead>
+                    <TableHead>Sportiv</TableHead>
+                    <TableHead className="w-[96px]">Club</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[1, 2, 3].map(place => {
+                    const athletes = podium[place] || [];
+                    const label = athletes.length ? athletes.map(item => item.label).join(place === 3 && athletes.length > 1 ? ' / ' : ', ') : '—';
+                    const club = athletes.length ? athletes.map(item => item.club).filter(Boolean).join(place === 3 && athletes.length > 1 ? ' / ' : ', ') : '—';
 
-                      return (
-                        <tr key={`${cat.id}-${place}`}>
-                          <td className="border border-black/30 px-2 py-1.5 text-center bg-gray-50 align-top">
-                            <span className={`inline-flex min-w-[56px] justify-center rounded-full border px-2 py-0.5 text-[11px] font-bold ${PODIUM_STYLES[place]}`}>
-                              Locul {place}
-                            </span>
-                          </td>
-                          <td className="border border-black/30 px-2 py-1.5 text-sm text-gray-900">
-                            <div className="font-medium">{label}</div>
-                            {place === 3 && athletes.length > 1 && (
-                              <div className="text-[11px] text-gray-500 mt-0.5">Loc împărțit între semifinaliști</div>
-                            )}
-                            {athletes.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => handleGenerateDiploma({ category: cat, group, place, athletes })}
-                                className="mt-2 inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                              >
-                                {athletes.length > 1 ? `Generează ${athletes.length} diplome` : 'Generează diploma'}
-                              </button>
-                            )}
-                          </td>
-                          <td className="border border-black/30 px-2 py-1.5 text-sm text-gray-600">{club}</td>
-                        </tr>
-                      );
-                    })}
-                    {!podium[1]?.length && !podium[2]?.length && !podium[3]?.length && (
-                      <tr>
-                        <td colSpan={3} className="border border-black/30 px-3 py-4 text-center text-sm text-gray-400 italic">
-                          Podiumul nu este încă stabilit pentru această categorie.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    return (
+                      <TableRow key={`${cat.id}-${place}`}>
+                        <TableCell className="text-center align-top">
+                          <Badge className={PODIUM_STYLES[place]}>
+                            Locul {place}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          <div className="font-medium">{label}</div>
+                          {place === 3 && athletes.length > 1 && (
+                            <div className="text-[11px] text-muted-foreground mt-0.5">Loc împărțit între semifinaliști</div>
+                          )}
+                          {athletes.length > 0 && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleGenerateDiploma({ category: cat, group, place, athletes })}
+                              className="mt-2 border-emerald-200 bg-emerald-50 text-[11px] text-emerald-700 hover:bg-emerald-100"
+                            >
+                              {athletes.length > 1 ? `Generează ${athletes.length} diplome` : 'Generează diploma'}
+                            </Button>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{club}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {!podium[1]?.length && !podium[2]?.length && !podium[3]?.length && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="py-4 text-center text-sm italic text-muted-foreground">
+                        Podiumul nu este încă stabilit pentru această categorie.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             );
           })}
         </div>

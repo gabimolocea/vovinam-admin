@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Spinner } from '@shared/components/ui';
 import { diplomaTemplateAPI } from '@shared/lib/api';
+import { Button, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import {
   formatDiplomaGroupLabel,
@@ -212,60 +212,61 @@ export default function ClasamentSportiviInscrisiPage() {
 
   if (!ctx) return null;
   if (ctx.loading || loadingTemplates) {
-    return <div className="flex flex-1 items-center justify-center bg-white"><Spinner /></div>;
+    return <div className="flex flex-1 items-center justify-center bg-background"><Spinner /></div>;
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-3 md:p-4">
+    <div className="flex-1 overflow-auto bg-background p-3 md:p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-black uppercase tracking-wide text-gray-900">Sportivi înscriși</h2>
-          <p className="text-xs text-gray-500">Apar o singură dată sportivii înscriși la cel puțin o probă, ordonați după club.</p>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">Sportivi înscriși</h2>
+          <p className="text-xs text-muted-foreground">Apar o singură dată sportivii înscriși la cel puțin o probă, ordonați după club.</p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={handleGenerateAll}
           disabled={generatingAll || enrolledAthletes.length === 0}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+          className="bg-emerald-600 hover:bg-emerald-700"
         >
           {generatingAll ? 'Se generează...' : 'Generează toate diplomele de participare'}
-        </button>
+        </Button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200">
-        <table className="min-w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-gray-100 text-left text-xs font-bold uppercase tracking-wide text-gray-700">
-              <th className="border-b border-gray-200 px-3 py-2">Nume</th>
-              <th className="border-b border-gray-200 px-3 py-2">Club</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-right">Acțiune</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="overflow-hidden rounded-xl border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nume</TableHead>
+              <TableHead>Club</TableHead>
+              <TableHead className="text-right">Acțiune</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {enrolledAthletes.map((athlete) => (
-              <tr key={athlete.id} className="odd:bg-white even:bg-gray-50">
-                <td className="border-b border-gray-100 px-3 py-2 text-gray-900">{athlete.athleteName}</td>
-                <td className="border-b border-gray-100 px-3 py-2 font-medium text-gray-900">{athlete.clubName || '—'}</td>
-                <td className="border-b border-gray-100 px-3 py-2 text-right">
-                  <button
+              <TableRow key={athlete.id}>
+                <TableCell className="text-foreground">{athlete.athleteName}</TableCell>
+                <TableCell className="font-medium text-foreground">{athlete.clubName || '—'}</TableCell>
+                <TableCell className="text-right">
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={() => generateParticipationDiploma(athlete)}
-                    className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                    className="bg-blue-600 hover:bg-blue-700"
                   >
                     Generează diploma participare
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
             {enrolledAthletes.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-3 py-8 text-center text-sm italic text-gray-400">
+              <TableRow>
+                <TableCell colSpan={3} className="py-8 text-center text-sm italic text-muted-foreground">
                   Nu există sportivi înscriși la probe pentru acest eveniment.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

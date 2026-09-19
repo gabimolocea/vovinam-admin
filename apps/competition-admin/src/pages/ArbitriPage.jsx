@@ -5,6 +5,11 @@ import {
   categoryRefereeAssignmentAPI, matchRefereeAssignmentAPI,
   fieldAPI,
 } from '@shared/lib/api';
+import {
+  Badge, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  Input, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '../components/ui';
+import { Plus, X } from 'lucide-react';
 
 export default function ArbitriPage() {
   const ctx = useContext(CentralizatorContext);
@@ -235,162 +240,138 @@ export default function ArbitriPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
+      <div className="flex-1 flex items-center justify-center gap-2 bg-muted text-sm text-muted-foreground">
+        <Spinner className="h-4 w-4" />
         Se încarcă arbitrii...
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-2">
+    <div className="flex-1 overflow-auto bg-background p-2">
       <div className="mx-auto max-w-6xl">
         <div className="mb-3">
-          <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Arbitri</h2>
-          <p className="mt-1 text-xs text-gray-500">{rosterRows.length} arbitri participanți</p>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">Arbitri</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{rosterRows.length} arbitri participanți</p>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
-            <thead>
-              <tr>
-                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-gray-900 w-[56px]">Nr</th>
-                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-gray-900">Arbitru</th>
-                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-gray-900">Club</th>
-                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-gray-900">Grad</th>
-                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-gray-900 w-[110px]">Conflicte</th>
-                <th className="border border-black bg-yellow-300 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-gray-900 w-[120px]">Acțiuni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rosterRows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="border border-black/20 px-3 py-6 text-center text-sm text-gray-400">
-                    Nu există arbitri adăugați pentru această competiție.
-                  </td>
-                </tr>
+        <Table className="min-w-[640px]">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[56px] text-center">Nr</TableHead>
+              <TableHead>Arbitru</TableHead>
+              <TableHead>Club</TableHead>
+              <TableHead>Grad</TableHead>
+              <TableHead className="w-[110px] text-center">Conflicte</TableHead>
+              <TableHead className="w-[120px] text-center">Acțiuni</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rosterRows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
+                  Nu există arbitri adăugați pentru această competiție.
+                </TableCell>
+              </TableRow>
+            ) : (
+              rosterRows.map((entry, index) => (
+                <TableRow key={entry.id}>
+                  <TableCell className="text-center text-xs text-muted-foreground">{index + 1}</TableCell>
+                  <TableCell className="text-sm font-medium text-foreground">{entry.athlete_name || `Arbitru #${entry.athlete}`}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{entry.club_name || '—'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatGradeLabel(entry.grade || entry.current_grade)}</TableCell>
+                  <TableCell className="text-center">
+                    {entry.conflicts.length > 0 ? (
+                      <Badge variant="destructive">{entry.conflicts.length}</Badge>
+                    ) : (
+                      <Badge variant="secondary">0</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      onClick={() => removeFromRoster(entry.id)}
+                      disabled={busy}
+                      title="Scoate arbitrul din competiție"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+            <TableRow>
+              <TableCell colSpan={6} className="text-center">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddPicker(true)}>
+                  <Plus className="h-4 w-4" />
+                  Adaugă arbitru
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+
+      <Dialog open={showAddPicker} onOpenChange={(open) => (open ? setShowAddPicker(true) : closeAddPicker())}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Adaugă arbitru</DialogTitle>
+            <DialogDescription>Selectează unul dintre arbitrii disponibili</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <Input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Caută arbitru..."
+            />
+
+            <div className="max-h-80 overflow-y-auto rounded-lg border border-border bg-card">
+              {availableRefs.length === 0 ? (
+                <div className="px-3 py-5 text-center text-sm text-muted-foreground">
+                  {search ? 'Niciun arbitru găsit.' : 'Nu există arbitri disponibili.'}
+                </div>
               ) : (
-                rosterRows.map((entry, index) => {
+                availableRefs.map(ref => {
+                  const isSelected = rosterAthleteIds.has(ref.id);
                   return (
-                    <tr key={entry.id}>
-                      <td className="border border-black/20 bg-gray-50 px-2 py-1.5 text-center text-xs text-gray-500">{index + 1}</td>
-                      <td className="border border-black/20 px-2 py-1.5 text-sm font-medium text-gray-900">{entry.athlete_name || `Arbitru #${entry.athlete}`}</td>
-                      <td className="border border-black/20 px-2 py-1.5 text-sm text-gray-600">{entry.club_name || '—'}</td>
-                      <td className="border border-black/20 px-2 py-1.5 text-sm text-gray-600">{formatGradeLabel(entry.grade || entry.current_grade)}</td>
-                      <td className="border border-black/20 px-2 py-1.5 text-center text-sm">
-                        {entry.conflicts.length > 0 ? (
-                          <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
-                            {entry.conflicts.length}
-                          </span>
-                        ) : (
-                          <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">0</span>
-                        )}
-                      </td>
-                      <td className="border border-black/20 px-2 py-1.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeFromRoster(entry.id)}
-                          disabled={busy}
-                          className="inline-flex h-11 w-11 items-center justify-center border border-red-700 bg-red-500 text-base font-black leading-none text-white transition-colors hover:bg-red-600 disabled:opacity-40"
-                          title="Scoate arbitrul din competiție"
-                        >
-                          ×
-                        </button>
-                      </td>
-                    </tr>
+                    <button
+                      key={ref.id}
+                      type="button"
+                      onClick={() => toggleRefPresence(ref.id)}
+                      disabled={busy}
+                      className={`flex w-full items-center justify-between gap-3 border-b border-border px-3 py-2.5 text-left transition disabled:opacity-50 last:border-b-0 ${
+                        isSelected ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20' : 'hover:bg-accent'
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-sm font-bold ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                            : 'border-input bg-background text-transparent'
+                        }`}>
+                          ✓
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {`${ref.last_name || ''} ${ref.first_name || ''}`.trim() || ref.athlete_name || `Arbitru #${ref.id}`}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {(ref.club_name || 'fără club')} · {formatGradeLabel(ref.current_grade || ref.grade)}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
                   );
                 })
               )}
-              <tr>
-                <td className="border border-black/20 bg-gray-50 px-2 py-1.5 text-center text-xs text-gray-500"></td>
-                <td
-                  colSpan={4}
-                  onClick={() => setShowAddPicker(true)}
-                  className="border border-black/20 px-2 py-1.5 text-sm text-gray-600 cursor-pointer hover:bg-green-50 transition-colors"
-                >
-                  <span className="frvv-btn-add !px-3 !py-1 text-xs">
-                    <span className="frvv-btn-add-icon">+</span>
-                    <span>Adaugă arbitru</span>
-                  </span>
-                </td>
-                <td className="border border-black/20 px-2 py-1.5 text-center"></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showAddPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={closeAddPicker}>
-          <div className="w-full max-w-lg overflow-hidden border-2 border-black bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="relative border-b-2 border-black bg-yellow-300 px-5 py-4">
-              <div className="pr-10">
-                <h3 className="text-xl font-black text-gray-900">Adaugă arbitru</h3>
-                <p className="mt-1 text-sm text-gray-700">Selectează unul dintre arbitrii disponibili</p>
-              </div>
-              <button
-                type="button"
-                onClick={closeAddPicker}
-                className="absolute right-3 top-3 border border-black bg-white px-2 py-1 text-sm font-bold text-gray-800 hover:bg-yellow-100"
-                aria-label="Închide popup arbitri"
-              >
-                ✕
-              </button>
             </div>
-
-            <div className="space-y-4 bg-white p-5">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Caută arbitru..."
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-
-              <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-white">
-                {availableRefs.length === 0 ? (
-                  <div className="px-3 py-5 text-center text-sm text-gray-400">
-                    {search ? 'Niciun arbitru găsit.' : 'Nu există arbitri disponibili.'}
-                  </div>
-                ) : (
-                  availableRefs.map(ref => {
-                    const isSelected = rosterAthleteIds.has(ref.id);
-                    return (
-                      <button
-                        key={ref.id}
-                        type="button"
-                        onClick={() => toggleRefPresence(ref.id)}
-                        disabled={busy}
-                        className={`flex w-full items-center justify-between gap-3 border-b border-gray-100 px-3 py-2.5 text-left transition disabled:opacity-50 last:border-b-0 ${
-                          isSelected ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-yellow-50'
-                        }`}
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className={`inline-flex h-6 w-6 items-center justify-center border text-sm font-bold ${
-                            isSelected
-                              ? 'border-green-500 bg-green-500 text-white'
-                              : 'border-gray-300 bg-white text-transparent'
-                          }`}>
-                            ✓
-                          </span>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-gray-900">
-                              {`${ref.last_name || ''} ${ref.first_name || ''}`.trim() || ref.athlete_name || `Arbitru #${ref.id}`}
-                            </p>
-                            <p className="truncate text-[11px] text-gray-500">
-                              {(ref.club_name || 'fără club')} · {formatGradeLabel(ref.current_grade || ref.grade)}
-                            </p>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

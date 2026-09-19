@@ -1,13 +1,27 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { cityAPI, gradeAPI } from '@shared/lib/api';
+import {
+  Button,
+  Input,
+  Textarea,
+  Label,
+  Checkbox,
+  Card,
+  Alert,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '../components/ui';
 
 const MAJOR_CITIES = ['București', 'Cluj-Napoca', 'Timișoara', 'Iași', 'Constanța', 'Brașov'];
 
 const normalizeText = (value = '') =>
   String(value)
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
 
 const INITIAL = {
@@ -164,22 +178,22 @@ export default function CreateAthlete() {
   return (
     <div className="mx-auto max-w-5xl p-4 md:p-6">
       <div className="mb-6 flex items-center gap-3">
-        <button onClick={() => navigate('/')} className="frvv-btn-secondary">← Înapoi</button>
+        <Button type="button" variant="outline" onClick={() => navigate('/')}>← Înapoi</Button>
         <div>
-          <h1 className="text-2xl font-black uppercase tracking-wide text-black">Adaugă sportiv</h1>
-          <p className="text-sm text-gray-500">Completează profilul și documentele sportivului.</p>
+          <h1 className="text-2xl font-black uppercase tracking-wide text-foreground">Adaugă sportiv</h1>
+          <p className="text-sm text-muted-foreground">Completează profilul și documentele sportivului.</p>
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 whitespace-pre-line border-2 border-red-300 bg-red-50 p-3 text-sm text-red-700">
+        <Alert variant="destructive" className="mb-4 whitespace-pre-line">
           {error}
-        </div>
+        </Alert>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Date personale</legend>
+        <Card as="fieldset" className="p-4 md:p-5">
+          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">Date personale</legend>
           <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Prenume *" name="first_name" value={form.first_name} onChange={handleChange} required />
             <Field label="Nume *" name="last_name" value={form.last_name} onChange={handleChange} required />
@@ -192,34 +206,34 @@ export default function CreateAthlete() {
               <Field label="Adresă" name="address" value={form.address} onChange={handleChange} multiline />
             </div>
           </div>
-        </fieldset>
+        </Card>
 
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Contact de urgență</legend>
+        <Card as="fieldset" className="p-4 md:p-5">
+          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">Contact de urgență</legend>
           <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Nume contact" name="emergency_contact_name" value={form.emergency_contact_name} onChange={handleChange} />
             <Field label="Telefon contact" name="emergency_contact_phone" value={form.emergency_contact_phone} onChange={handleChange} />
           </div>
-        </fieldset>
+        </Card>
 
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Date sportive</legend>
+        <Card as="fieldset" className="p-4 md:p-5">
+          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">Date sportive</legend>
           <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div ref={cityBoxRef} className="relative">
-              <label className="mb-1 block text-xs font-medium text-gray-600">Oraș</label>
-              <input
+              <Label className="mb-1 block text-xs font-medium text-muted-foreground">Oraș</Label>
+              <Input
                 type="text"
                 value={cityQuery}
                 onChange={handleCityChange}
                 onFocus={() => setShowCitySuggestions(true)}
                 onBlur={handleCityBlur}
                 placeholder="Caută orașul..."
-                className="frvv-input w-full pr-10"
+                className="pr-10"
                 autoComplete="off"
               />
-              <div className="pointer-events-none absolute right-3 top-[34px] text-xs text-gray-500">⌕</div>
+              <div className="pointer-events-none absolute right-3 top-[34px] text-xs text-muted-foreground">⌕</div>
               {showCitySuggestions && filteredCities.length > 0 && (
-                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border-2 border-black bg-white">
+                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-popover shadow-md">
                   {filteredCities.map((city, index) => {
                     const selected = Number(form.city) === Number(city.id);
                     const isMajor = MAJOR_CITIES.includes(city.name);
@@ -229,12 +243,12 @@ export default function CreateAthlete() {
                         type="button"
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => selectCity(city)}
-                        className={`flex w-full items-center justify-between border-b border-black/10 px-3 py-2 text-left text-sm transition last:border-b-0 ${
-                          selected ? 'bg-yellow-100 font-semibold text-gray-900' : 'bg-white text-gray-700 hover:bg-yellow-50'
+                        className={`flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-sm transition last:border-b-0 ${
+                          selected ? 'bg-accent font-semibold text-accent-foreground' : 'text-foreground hover:bg-accent'
                         }`}
                       >
                         <span className="truncate">{city.name}</span>
-                        <span className="ml-3 shrink-0 text-[10px] font-black uppercase tracking-wide text-gray-400">
+                        <span className="ml-3 shrink-0 text-[10px] font-black uppercase tracking-wide text-muted-foreground">
                           {selected ? 'SELECTAT' : (!cityQuery.trim() && isMajor && index < MAJOR_CITIES.length ? 'SUGERAT' : '')}
                         </span>
                       </button>
@@ -243,7 +257,7 @@ export default function CreateAthlete() {
                 </div>
               )}
               {showCitySuggestions && filteredCities.length === 0 && cityQuery.trim() && (
-                <div className="absolute z-30 mt-1 w-full border-2 border-black bg-white px-3 py-3 text-sm text-gray-500">
+                <div className="absolute z-30 mt-1 w-full rounded-md border border-border bg-popover px-3 py-3 text-sm text-muted-foreground shadow-md">
                   Niciun oraș găsit.
                 </div>
               )}
@@ -252,45 +266,53 @@ export default function CreateAthlete() {
             <Field label="Data înregistrării" name="registered_date" type="date" value={form.registered_date} onChange={handleChange} />
             <Field label="Data expirării" name="expiration_date" type="date" value={form.expiration_date} onChange={handleChange} />
             <div className="flex items-center gap-6 sm:col-span-2">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" name="is_coach" checked={form.is_coach} onChange={handleChange} className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                Antrenor
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" name="is_referee" checked={form.is_referee} onChange={handleChange} className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                Arbitru
-              </label>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="is_coach"
+                  checked={form.is_coach}
+                  onCheckedChange={(checked) => handleChange({ target: { name: 'is_coach', type: 'checkbox', checked: checked === true } })}
+                />
+                <Label htmlFor="is_coach" className="cursor-pointer font-normal">Antrenor</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="is_referee"
+                  checked={form.is_referee}
+                  onCheckedChange={(checked) => handleChange({ target: { name: 'is_referee', type: 'checkbox', checked: checked === true } })}
+                />
+                <Label htmlFor="is_referee" className="cursor-pointer font-normal">Arbitru</Label>
+              </div>
             </div>
             <div className="sm:col-span-2">
               <Field label="Experiență anterioară" name="previous_experience" value={form.previous_experience} onChange={handleChange} multiline />
             </div>
           </div>
-        </fieldset>
+        </Card>
 
-        <fieldset className="frvv-surface p-4 md:p-5">
-          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-gray-500">Documente</legend>
+        <Card as="fieldset" className="p-4 md:p-5">
+          <legend className="px-2 text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">Documente</legend>
           <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Fotografie sportiv</label>
+              <Label className="mb-1 block text-xs font-medium text-muted-foreground">Fotografie sportiv</Label>
               <div className="flex items-center gap-4">
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex h-24 w-24 cursor-pointer items-center justify-center overflow-hidden border-2 border-dashed border-black bg-gray-50 transition hover:bg-yellow-50"
+                  className="flex h-24 w-24 cursor-pointer items-center justify-center overflow-hidden rounded-md border-2 border-dashed border-input bg-muted transition hover:bg-accent"
                 >
                   {profilePreview ? (
                     <img src={profilePreview} alt="Preview" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="px-1 text-center text-xs text-gray-400">Click pentru a alege</span>
+                    <span className="px-1 text-center text-xs text-muted-foreground">Click pentru a alege</span>
                   )}
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 {profileImage && (
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted-foreground">
                     <p className="max-w-[140px] truncate font-medium">{profileImage.name}</p>
                     <button
                       type="button"
                       onClick={() => { setProfileImage(null); setProfilePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                      className="mt-1 text-red-500 hover:text-red-700"
+                      className="mt-1 text-destructive hover:text-destructive/80"
                     >
                       Șterge
                     </button>
@@ -299,24 +321,23 @@ export default function CreateAthlete() {
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Certificat medical</label>
+              <Label className="mb-1 block text-xs font-medium text-muted-foreground">Certificat medical</Label>
               <input
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png"
                 onChange={(e) => setMedicalCert(e.target.files?.[0] || null)}
-                className="block w-full cursor-pointer text-xs text-gray-500 file:mr-2 file:border file:border-black file:bg-yellow-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-black hover:file:bg-yellow-200"
+                className="block w-full cursor-pointer text-xs text-muted-foreground file:mr-2 file:rounded-md file:border file:border-input file:bg-accent file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-accent-foreground hover:file:bg-accent/80"
               />
-              {medicalCert && <p className="mt-1 truncate text-[10px] text-gray-400">{medicalCert.name}</p>}
+              {medicalCert && <p className="mt-1 truncate text-[10px] text-muted-foreground">{medicalCert.name}</p>}
             </div>
           </div>
-        </fieldset>
+        </Card>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <button type="button" onClick={() => navigate('/')} className="frvv-btn-secondary">Anulează</button>
-          <button type="submit" disabled={saving} className="frvv-btn-add">
-            <span className="frvv-btn-add-icon">+</span>
-            {saving ? 'Se salvează…' : 'Salvează sportivul'}
-          </button>
+          <Button type="button" variant="outline" onClick={() => navigate('/')}>Anulează</Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Se salvează…' : '+ Salvează sportivul'}
+          </Button>
         </div>
       </form>
     </div>
@@ -324,14 +345,13 @@ export default function CreateAthlete() {
 }
 
 function Field({ label, name, value, onChange, type = 'text', required, multiline, maxLength }) {
-  const cls = 'frvv-input w-full';
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
+      <Label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</Label>
       {multiline ? (
-        <textarea name={name} value={value} onChange={onChange} rows={3} className={`${cls} resize-none min-h-[96px]`} />
+        <Textarea name={name} value={value} onChange={onChange} rows={3} className="min-h-[96px] resize-none" />
       ) : (
-        <input type={type} name={name} value={value} onChange={onChange} required={required} maxLength={maxLength} className={cls} />
+        <Input type={type} name={name} value={value} onChange={onChange} required={required} maxLength={maxLength} />
       )}
     </div>
   );
@@ -340,13 +360,21 @@ function Field({ label, name, value, onChange, type = 'text', required, multilin
 function SelectField({ label, name, value, onChange, options, labelKey = 'name', required = false }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
-      <select name={name} value={value} onChange={onChange} required={required} className="frvv-input w-full bg-white">
-        <option value="">— Alege —</option>
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>{option[labelKey]}</option>
-        ))}
-      </select>
+      <Label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</Label>
+      <Select
+        value={value ? String(value) : ''}
+        onValueChange={(val) => onChange({ target: { name, value: val, type: 'select-one' } })}
+        required={required}
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="— Alege —" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.id} value={String(option.id)}>{option[labelKey]}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

@@ -82,7 +82,6 @@ Backend currently contains:
 Frontend apps currently include:
 - competition-admin
 - coach-dashboard
-- athlete-enrollment
 - referee-scoring
 - public-display
 

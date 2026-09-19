@@ -2,26 +2,36 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { categoryAPI, refereeAPI, enrollmentAPI, monitorAPI, refereePresenceAPI, API_BASE_URL } from '@shared/lib/api';
 import { useAuth } from '@shared';
-import { Spinner, formatGroupBadgeLabel } from '@shared/components/ui';
+import { Spinner, formatGroupBadgeLabel } from '../components/ui';
 
 const POLL_INTERVAL = 2000;
 const MAX_SCORE = 100;
-const MODAL_SECONDARY_BUTTON = 'border border-black bg-white px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
-const MODAL_SUCCESS_BUTTON = 'border border-black bg-green-600 px-4 py-2.5 font-bold text-white transition hover:bg-green-700 disabled:opacity-40';
+const MODAL_SECONDARY_BUTTON = 'rounded-md border border-input bg-background px-4 py-2.5 font-medium text-foreground transition hover:bg-accent disabled:opacity-40';
+const MODAL_SUCCESS_BUTTON = 'rounded-md bg-emerald-600 px-4 py-2.5 font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40';
 
+// Hand-rolled overlay kept deliberately (not swapped for the Dialog
+// primitive) - this screen drives live scoring during a real match, and
+// the dvh-based fixed layout below is already carefully tuned; only the
+// colors/radius are updated to the new tokens, not the interaction model.
 function FullscreenStyleModal({ onClose, title, description, maxWidth = 'max-w-md', actions, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
-      <div className={`w-full ${maxWidth} overflow-hidden border-2 border-black bg-white shadow-2xl`} onClick={e => e.stopPropagation()}>
-        <div className="border-b-2 border-black bg-yellow-300 px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="scoring-modal-title"
+        className={`w-full ${maxWidth} overflow-hidden rounded-lg border border-border bg-card shadow-2xl`}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="border-b border-border bg-primary px-5 py-4 text-primary-foreground">
           <div>
-            <h3 className="text-xl font-black text-gray-900">{title}</h3>
-            {description ? <p className="mt-1 text-sm text-gray-700">{description}</p> : null}
+            <h3 id="scoring-modal-title" className="font-display text-xl font-semibold">{title}</h3>
+            {description ? <p className="mt-1 text-sm text-primary-foreground/80">{description}</p> : null}
           </div>
         </div>
         {children ? <div className="space-y-4 px-5 py-4">{children}</div> : null}
         {actions ? (
-          <div className="flex flex-col-reverse gap-2 border-t-2 border-black bg-gray-50 px-5 py-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-2 border-t border-border bg-muted px-5 py-4 sm:flex-row sm:justify-end">
             {actions}
           </div>
         ) : null}
@@ -261,14 +271,14 @@ export default function ScoringPanel() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <Spinner className="h-8 w-8" />
       </div>
     );
   }
 
   if (!category) {
-    return <p className="py-20 text-center text-gray-600 bg-white min-h-screen">Categoria nu a fost găsită.</p>;
+    return <p className="min-h-screen bg-background py-20 text-center text-muted-foreground">Categoria nu a fost găsită.</p>;
   }
 
   const handleBack = async () => {
@@ -277,19 +287,19 @@ export default function ScoringPanel() {
   };
 
   return (
-    <div className="flex flex-col bg-white text-gray-900" style={{ height: '100dvh' }}>
+    <div className="flex flex-col bg-background text-foreground" style={{ height: '100dvh' }}>
       {/* ── Header — similar to MatchScoring ── */}
-      <header className="flex items-center justify-between border-b-2 border-yellow-400 bg-black px-3 py-2 text-white shrink-0">
-        <button onClick={handleBack} className="text-yellow-100 hover:text-yellow-300 text-sm font-bold flex items-center gap-1">&larr; ÎNAPOI</button>
-        <h1 className="font-black text-sm uppercase tracking-wide text-yellow-200 truncate">{category.name}</h1>
-        <div className={`flex items-center gap-1.5 px-2 py-1 border text-[11px] font-bold whitespace-nowrap ${isOnline ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-          <span className={`inline-block w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
+      <header className="flex items-center justify-between border-b border-sidebar-border bg-sidebar px-3 py-2 text-sidebar-foreground shrink-0">
+        <button onClick={handleBack} className="text-sidebar-foreground/80 hover:text-sidebar-foreground text-sm font-semibold flex items-center gap-1">&larr; ÎNAPOI</button>
+        <h1 className="font-display font-semibold text-sm uppercase tracking-wide truncate">{category.name}</h1>
+        <div className={`flex items-center gap-1.5 rounded-full px-2 py-1 border text-[11px] font-semibold whitespace-nowrap ${isOnline ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <span className={`inline-block w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
           {isOnline ? 'Conectat' : 'Fără conexiune'}
         </div>
       </header>
 
       {/* Category info tags */}
-      <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-yellow-100 border-b-2 border-black shrink-0 flex-wrap">
+      <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-muted border-b border-border shrink-0 flex-wrap">
         {category.group_name && <span className="frvv-chip">{formatGroupBadgeLabel(category.group_name, category)}</span>}
         {category.gender && <span className="frvv-chip">{genderLabels[category.gender] || category.gender}</span>}
         <span className="frvv-chip uppercase">{isTeamCategory ? 'Echipe' : 'Solo'}</span>
@@ -298,18 +308,18 @@ export default function ScoringPanel() {
       {/* ── Athletes table ── */}
       <div className="flex-1 overflow-y-auto" style={{ paddingBottom: '52dvh' }}>
         <div className="w-full overflow-x-auto">
-          <table className="w-full border-collapse border border-gray-300">
+          <table className="w-full border-collapse border border-border">
             <thead className="sticky top-0 z-10">
-              <tr className="bg-gray-100">
-                <th className="text-center px-1.5 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-8">#</th>
-                <th className="text-left px-3 py-2 text-xs font-bold text-gray-600 border border-gray-300">{isTeamCategory ? 'Echipă' : 'Sportiv'}</th>
-                <th className="text-center px-2 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-16">Scor</th>
-                <th className="text-center px-1.5 py-2 text-xs font-bold text-gray-600 border border-gray-300 w-10">✓</th>
+              <tr className="bg-muted">
+                <th className="text-center px-1.5 py-2 text-xs font-semibold text-muted-foreground border border-border w-8">#</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground border border-border">{isTeamCategory ? 'Echipă' : 'Sportiv'}</th>
+                <th className="text-center px-2 py-2 text-xs font-semibold text-muted-foreground border border-border w-16">Scor</th>
+                <th className="text-center px-1.5 py-2 text-xs font-semibold text-muted-foreground border border-border w-10">✓</th>
               </tr>
             </thead>
             <tbody>
               {athletes.length === 0 && (
-                <tr><td colSpan={4} className="text-center py-8 text-gray-400 italic">{isTeamCategory ? 'Nicio echipă înscrisă.' : 'Niciun sportiv înscris.'}</td></tr>
+                <tr><td colSpan={4} className="text-center py-8 text-muted-foreground italic">{isTeamCategory ? 'Nicio echipă înscrisă.' : 'Niciun sportiv înscris.'}</td></tr>
               )}
               {athletes.map((entry, idx) => {
                 const athleteId = getEntryAthleteId(entry);
@@ -321,31 +331,31 @@ export default function ScoringPanel() {
 
                 return (
                   <tr key={athleteId} className={`${
-                    isActive ? 'bg-green-50' : 'bg-white'
+                    isActive ? 'bg-emerald-50 dark:bg-emerald-950/20' : 'bg-card'
                   } transition`}>
-                    <td className="px-1.5 py-2.5 border border-gray-300 text-center text-gray-400 text-xs tabular-nums">{idx + 1}</td>
-                    <td className="px-3 py-2.5 border border-gray-300">
+                    <td className="px-1.5 py-2.5 border border-border text-center text-muted-foreground text-xs tabular-nums">{idx + 1}</td>
+                    <td className="px-3 py-2.5 border border-border">
                       <div className="flex items-center gap-2">
                         <div>
-                          <p className={`font-semibold ${isActive ? 'text-green-800' : 'text-gray-900'} text-sm`}>{name}</p>
-                          {clubName && <p className="text-[10px] text-gray-400">{clubName}</p>}
+                          <p className={`font-semibold ${isActive ? 'text-emerald-800 dark:text-emerald-300' : 'text-foreground'} text-sm`}>{name}</p>
+                          {clubName && <p className="text-[10px] text-muted-foreground">{clubName}</p>}
                         </div>
                       </div>
                     </td>
-                    <td className="px-2 py-2.5 border border-gray-300 text-center">
+                    <td className="px-2 py-2.5 border border-border text-center">
                       {existingScore ? (
-                        <span className="text-lg font-black text-gray-900 tabular-nums">{Math.round(Number(existingScore.score))}</span>
+                        <span className="text-lg font-bold text-foreground tabular-nums">{Math.round(Number(existingScore.score))}</span>
                       ) : (
-                        <span className="text-gray-300 text-sm">—</span>
+                        <span className="text-muted-foreground/50 text-sm">—</span>
                       )}
                     </td>
-                    <td className="px-1.5 py-2.5 border border-gray-300 text-center">
+                    <td className="px-1.5 py-2.5 border border-border text-center">
                       {existingScore || justSubmitted ? (
-                        <span className="text-green-600 text-sm font-bold">✓</span>
+                        <span className="text-emerald-600 text-sm font-bold">✓</span>
                       ) : isActive ? (
-                        <span className="text-xs text-green-600 font-bold animate-pulse">LIVE</span>
+                        <span className="text-xs text-emerald-600 font-bold animate-pulse">LIVE</span>
                       ) : (
-                        <span className="text-gray-300 text-xs">—</span>
+                        <span className="text-muted-foreground/50 text-xs">—</span>
                       )}
                     </td>
                   </tr>
@@ -357,36 +367,36 @@ export default function ScoringPanel() {
       </div>
 
       {/* ── Bottom: Scoring panel (always visible, disabled when no active athlete) ── */}
-      <div className={`fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col ${!hasActiveScoring ? 'opacity-60' : ''}`} style={{ height: '50dvh' }}>
+      <div className={`fixed bottom-0 left-0 right-0 bg-card shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-40 flex flex-col ${!hasActiveScoring ? 'opacity-60' : ''}`} style={{ height: '50dvh' }}>
         {/* Status bar — like match UI */}
         <div className={`flex items-center justify-center gap-2 py-1.5 shrink-0 border-b ${
-          hasActiveScoring ? 'bg-green-50 border-green-200' :
-          allScored ? 'bg-green-50 border-green-200' :
-          'bg-blue-50 border-blue-200'
+          hasActiveScoring ? 'bg-emerald-50 border-emerald-200' :
+          allScored ? 'bg-emerald-50 border-emerald-200' :
+          'bg-sky-50 border-sky-200'
         }`}>
           {hasActiveScoring ? (
             <>
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="text-sm font-bold text-green-700">LIVE — Punctează acum</span>
+              <span className="text-sm font-semibold text-emerald-700">LIVE — Punctează acum</span>
             </>
           ) : allScored ? (
-            <span className="text-sm font-bold text-green-600">✓ Toți sportivii au fost evaluați</span>
+            <span className="text-sm font-semibold text-emerald-600">✓ Toți sportivii au fost evaluați</span>
           ) : activeAthleteId && getMyScore(activeAthleteId) ? (
-            <span className="text-sm font-bold text-blue-600 animate-pulse">Ai evaluat acest sportiv — se așteaptă următorul...</span>
+            <span className="text-sm font-semibold text-sky-600 animate-pulse">Ai evaluat acest sportiv — se așteaptă următorul...</span>
           ) : (
-            <span className="text-sm font-bold text-blue-600 animate-pulse">Se așteaptă următorul sportiv...</span>
+            <span className="text-sm font-semibold text-sky-600 animate-pulse">Se așteaptă următorul sportiv...</span>
           )}
         </div>
         {/* Score display — centered large score + small reset button */}
-        <div className="relative flex items-center justify-center px-4 py-2 border-b-2 border-black bg-white shrink-0">
+        <div className="relative flex items-center justify-center px-4 py-2 border-b border-border bg-card shrink-0">
           <div className="text-center">
-            <p className={`text-5xl font-black tabular-nums leading-none ${hasActiveScoring ? 'text-gray-900' : 'text-gray-400'}`}>{draftScore}</p>
+            <p className={`text-5xl font-bold tabular-nums leading-none ${hasActiveScoring ? 'text-foreground' : 'text-muted-foreground'}`}>{draftScore}</p>
           </div>
           <button onClick={() => setShowResetConfirm(true)} disabled={busy || !hasActiveScoring}
-            className="absolute right-3 text-[10px] font-bold text-gray-500 bg-gray-200 hover:bg-gray-300 active:bg-gray-400 px-2 py-1 disabled:opacity-40 transition-all">
+            className="absolute right-3 rounded-md text-[10px] font-semibold text-muted-foreground bg-muted hover:bg-accent active:bg-accent px-2 py-1 disabled:opacity-40 transition-all">
             Resetează Scor
           </button>
         </div>
@@ -396,11 +406,11 @@ export default function ScoringPanel() {
           {/* -1 / -2 buttons (top, larger) */}
           <div className="grid grid-cols-2 gap-2 flex-[3] min-h-0">
             <button onClick={() => adjustScore(-1)} disabled={!hasActiveScoring || busy || draftScore <= 0}
-              className="bg-red-600 hover:bg-red-700 active:bg-red-800 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              className="rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 active:scale-[0.98] text-white text-5xl font-bold disabled:opacity-40 transition-all flex items-center justify-center">
               -1
             </button>
             <button onClick={() => adjustScore(-2)} disabled={!hasActiveScoring || busy || draftScore <= 0}
-              className="bg-red-600 hover:bg-red-700 active:bg-red-800 active:scale-[0.98] text-white text-5xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              className="rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 active:scale-[0.98] text-white text-5xl font-bold disabled:opacity-40 transition-all flex items-center justify-center">
               -2
             </button>
           </div>
@@ -408,11 +418,11 @@ export default function ScoringPanel() {
           {/* +1 / +2 buttons (bottom, smaller) */}
           <div className="grid grid-cols-2 gap-2 flex-[1] min-h-0">
             <button onClick={() => adjustScore(1)} disabled={!hasActiveScoring || busy || draftScore >= MAX_SCORE}
-              className="bg-green-600 hover:bg-green-700 active:bg-green-800 active:scale-[0.98] text-white text-2xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              className="rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] text-white text-2xl font-bold disabled:opacity-40 transition-all flex items-center justify-center">
               +1
             </button>
             <button onClick={() => adjustScore(2)} disabled={!hasActiveScoring || busy || draftScore >= MAX_SCORE}
-              className="bg-green-600 hover:bg-green-700 active:bg-green-800 active:scale-[0.98] text-white text-2xl font-black disabled:opacity-40 transition-all flex items-center justify-center">
+              className="rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] text-white text-2xl font-bold disabled:opacity-40 transition-all flex items-center justify-center">
               +2
             </button>
           </div>
@@ -420,7 +430,7 @@ export default function ScoringPanel() {
           {/* Submit row */}
           <div className="shrink-0">
             <button onClick={() => setShowSubmitConfirm(true)} disabled={!hasActiveScoring || busy}
-              className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white py-3 text-lg font-black disabled:opacity-40 transition-all active:scale-[0.98]">
+              className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white py-3 text-lg font-bold disabled:opacity-40 transition-all active:scale-[0.98]">
               TRIMITE SCOR
             </button>
           </div>
@@ -433,10 +443,9 @@ export default function ScoringPanel() {
           onClose={() => setShowResetConfirm(false)}
           title="Resetezi scorul?"
           description={`Revine la ${MAX_SCORE}.`}
-          icon="!"
           actions={[
             <button key="cancel" onClick={() => setShowResetConfirm(false)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
-            <button key="confirm" onClick={() => { setShowResetConfirm(false); resetScore(); }} className="border border-black bg-yellow-300 px-4 py-2.5 font-bold text-black transition hover:bg-yellow-200 disabled:opacity-40">Resetează</button>,
+            <button key="confirm" onClick={() => { setShowResetConfirm(false); resetScore(); }} className="rounded-md bg-secondary px-4 py-2.5 font-semibold text-secondary-foreground transition hover:bg-secondary/80 disabled:opacity-40">Resetează</button>,
           ]}
         />
       )}
@@ -447,22 +456,21 @@ export default function ScoringPanel() {
           onClose={() => setShowSubmitConfirm(false)}
           title="Trimite scorul?"
           description="Verifică înainte de confirmare."
-          icon="✓"
           actions={[
             <button key="cancel" onClick={() => setShowSubmitConfirm(false)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
             <button key="confirm" onClick={() => { setShowSubmitConfirm(false); submitScore(activeEntry); }} className={MODAL_SUCCESS_BUTTON}>Trimite</button>,
           ]}
         >
-          <div className="bg-gray-50 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">{isTeamCategory ? 'Echipă' : 'Sportiv'}</p>
-            <p className="mt-2 text-lg font-black text-gray-900">{activeEntry ? getEntryName(activeEntry) : 'Participant necunoscut'}</p>
+          <div className="rounded-md bg-muted p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{isTeamCategory ? 'Echipă' : 'Sportiv'}</p>
+            <p className="mt-2 text-lg font-bold text-foreground">{activeEntry ? getEntryName(activeEntry) : 'Participant necunoscut'}</p>
             {activeEntry && getEntryClubName(activeEntry) ? (
-              <p className="mt-1 text-sm text-gray-600">{getEntryClubName(activeEntry)}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{getEntryClubName(activeEntry)}</p>
             ) : null}
           </div>
-          <div className="bg-green-50 px-4 py-5 text-center">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-green-700">Scor</p>
-            <p className="mt-2 text-5xl font-black leading-none text-gray-900 tabular-nums">{draftScore}</p>
+          <div className="rounded-md bg-emerald-50 px-4 py-5 text-center dark:bg-emerald-950/20">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-400">Scor</p>
+            <p className="mt-2 text-5xl font-bold leading-none text-foreground tabular-nums">{draftScore}</p>
           </div>
         </FullscreenStyleModal>
       )}
@@ -473,14 +481,13 @@ export default function ScoringPanel() {
           onClose={() => setShowFinishedPopup(false)}
           title="Mulțumim!"
           description="Ai terminat evaluarea."
-          icon="✓"
           actions={[
             <button key="stay" onClick={() => setShowFinishedPopup(false)} className={MODAL_SECONDARY_BUTTON}>Rămâi pe această pagină</button>,
             <button key="home" onClick={() => { setShowFinishedPopup(false); navigate('/'); }} className={MODAL_SUCCESS_BUTTON}>Pagina principală</button>,
           ]}
         >
-          <div className="bg-gray-50 p-4 text-center">
-            <p className="text-lg font-black text-gray-900">Toți participanții au fost evaluați.</p>
+          <div className="rounded-md bg-muted p-4 text-center">
+            <p className="text-lg font-bold text-foreground">Toți participanții au fost evaluați.</p>
           </div>
         </FullscreenStyleModal>
       )}

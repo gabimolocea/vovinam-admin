@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { competitionAPI, offlineAPI } from '@shared/lib/api';
-import { PageHeader, Card, StatusBadge, Spinner } from '@shared/components/ui';
 import { getSyncLockMeta, getSyncModeMeta, getSyncStatusMeta } from '@shared/lib/syncStatus';
+import { PageHeader, Card, StatusBadge, Spinner, Badge, Button } from '../components/ui';
+import { cn } from '../lib/utils';
 
 function downloadJson(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -105,7 +106,9 @@ export default function CompetitionDetail() {
   };
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
-  if (!comp) return <p className="py-20 text-center text-gray-500">Competition not found.</p>;
+  if (!comp) return <p className="py-20 text-center text-muted-foreground">Competition not found.</p>;
+
+  const syncBadgeClass = 'rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide';
 
   return (
     <>
@@ -114,150 +117,121 @@ export default function CompetitionDetail() {
       </PageHeader>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${syncStatusMeta.className}`}>
-          {syncStatusMeta.label}
-        </span>
-        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${syncModeMeta.className}`}>
-          {syncModeMeta.label}
-        </span>
-        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${syncLockMeta.className}`}>
-          {syncLockMeta.label}
-        </span>
+        <Badge className={cn(syncBadgeClass, syncStatusMeta.className)}>{syncStatusMeta.label}</Badge>
+        <Badge className={cn(syncBadgeClass, syncModeMeta.className)}>{syncModeMeta.label}</Badge>
+        <Badge className={cn(syncBadgeClass, syncLockMeta.className)}>{syncLockMeta.label}</Badge>
       </div>
 
       {message && (
-        <div className="mb-6 rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+        <div className="mb-6 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
           {typeof message === 'string' ? message : JSON.stringify(message)}
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Details card */}
-        <Card className="lg:col-span-2">
-          <h2 className="mb-4 text-lg font-semibold">Details</h2>
+        <Card className="p-5 lg:col-span-2">
+          <h2 className="mb-4 text-lg font-semibold text-foreground">Details</h2>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <div>
-              <dt className="text-gray-500">Start Date</dt>
-              <dd className="font-medium">{comp.start_date}</dd>
+              <dt className="text-muted-foreground">Start Date</dt>
+              <dd className="font-medium text-foreground">{comp.start_date}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">End Date</dt>
-              <dd className="font-medium">{comp.end_date || '—'}</dd>
+              <dt className="text-muted-foreground">End Date</dt>
+              <dd className="font-medium text-foreground">{comp.end_date || '—'}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Location</dt>
-              <dd className="font-medium">{comp.location || '—'}</dd>
+              <dt className="text-muted-foreground">Location</dt>
+              <dd className="font-medium text-foreground">{comp.location || '—'}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Organizer</dt>
-              <dd className="font-medium">{comp.organizer_name || '—'}</dd>
+              <dt className="text-muted-foreground">Organizer</dt>
+              <dd className="font-medium text-foreground">{comp.organizer_name || '—'}</dd>
             </div>
           </dl>
           {comp.description && (
-            <p className="mt-4 text-sm text-gray-600">{comp.description}</p>
+            <p className="mt-4 text-sm text-muted-foreground">{comp.description}</p>
           )}
         </Card>
 
         {/* Stats card */}
-        <Card>
-          <h2 className="mb-4 text-lg font-semibold">Statistics</h2>
+        <Card className="p-5">
+          <h2 className="mb-4 text-lg font-semibold text-foreground">Statistics</h2>
           {stats ? (
             <div className="space-y-3 text-sm">
               {Object.entries(stats).map(([key, value]) => (
                 <div key={key} className="flex justify-between">
-                  <span className="capitalize text-gray-500">{key.replace(/_/g, ' ')}</span>
-                  <span className="font-semibold">{value}</span>
+                  <span className="capitalize text-muted-foreground">{key.replace(/_/g, ' ')}</span>
+                  <span className="font-semibold text-foreground">{value}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400">No statistics available.</p>
+            <p className="text-sm text-muted-foreground">No statistics available.</p>
           )}
         </Card>
 
-        <Card>
-          <h2 className="mb-4 text-lg font-semibold">Local Sync</h2>
-          <div className="space-y-2 text-sm text-gray-700">
+        <Card className="p-5">
+          <h2 className="mb-4 text-lg font-semibold text-foreground">Local Sync</h2>
+          <div className="space-y-2 text-sm text-foreground">
             <div className="flex justify-between gap-3">
-              <span className="text-gray-500">Mode</span>
-              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${syncModeMeta.className}`}>{syncModeMeta.label}</span>
+              <span className="text-muted-foreground">Mode</span>
+              <Badge className={cn('rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide', syncModeMeta.className)}>{syncModeMeta.label}</Badge>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-gray-500">Locked</span>
-              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${syncLockMeta.className}`}>{syncLockMeta.label}</span>
+              <span className="text-muted-foreground">Locked</span>
+              <Badge className={cn('rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide', syncLockMeta.className)}>{syncLockMeta.label}</Badge>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-gray-500">Sync status</span>
-              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${syncStatusMeta.className}`}>{syncStatusMeta.label}</span>
+              <span className="text-muted-foreground">Sync status</span>
+              <Badge className={cn('rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide', syncStatusMeta.className)}>{syncStatusMeta.label}</Badge>
             </div>
           </div>
-          <p className="mt-4 text-sm text-gray-600">{syncStatusMeta.description}</p>
+          <p className="mt-4 text-sm text-muted-foreground">{syncStatusMeta.description}</p>
 
           <div className="mt-5 space-y-3">
-            <button
-              type="button"
-              onClick={handleDownloadEventPack}
-              disabled={busy}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <Button onClick={handleDownloadEventPack} disabled={busy} className="w-full bg-blue-600 text-white hover:bg-blue-700">
               Export Event Pack
-            </button>
-            <button
-              type="button"
-              onClick={handleDownloadEventResults}
-              disabled={busy}
-              className="w-full rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            </Button>
+            <Button onClick={handleDownloadEventResults} disabled={busy} variant="secondary" className="w-full">
               Export Local Results
-            </button>
+            </Button>
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Import Results JSON</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Import Results JSON</span>
               <input
                 type="file"
                 accept="application/json"
                 onChange={handleImportResults}
                 disabled={busy}
-                className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-200 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-gray-700 hover:file:bg-gray-300"
+                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-semibold file:text-secondary-foreground hover:file:bg-secondary/80"
               />
             </label>
-            <button
-              type="button"
+            <Button
               onClick={handleCompleteLocalSync}
               disabled={busy || !['results_uploaded', 'completed'].includes(comp.local_sync_status)}
-              className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
             >
-              Complete Sync & Unlock
-            </button>
+              Complete Sync &amp; Unlock
+            </Button>
           </div>
         </Card>
       </div>
 
       {/* Quick links */}
       <div className="mt-6 flex gap-3">
-        <Link
-          to={`/competitions/${id}/categories`}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
+        <Button as={Link} to={`/competitions/${id}/categories`} className="bg-blue-600 text-white hover:bg-blue-700">
           Manage Categories
-        </Link>
-        <Link
-          to={`/competitions/${id}/fields`}
-          className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
-        >
+        </Button>
+        <Button as={Link} to={`/competitions/${id}/fields`} variant="secondary">
           Manage Fields
-        </Link>
-        <Link
-          to={`/competitions/${id}/categories/sync`}
-          className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
-        >
+        </Button>
+        <Button as={Link} to={`/competitions/${id}/categories/sync`} variant="secondary">
           Sync Center
-        </Link>
-        <Link
-          to={`/competitions/${id}/results`}
-          className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
-        >
+        </Button>
+        <Button as={Link} to={`/competitions/${id}/results`} variant="secondary">
           View Results
-        </Link>
+        </Button>
       </div>
     </>
   );

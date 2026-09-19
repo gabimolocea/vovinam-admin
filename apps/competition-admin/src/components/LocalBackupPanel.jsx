@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { localBackupAPI, systemAPI } from '@shared/lib/api';
-import { Card } from '@shared/components/ui';
+import { Card, Button, Badge, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './ui';
 
 const TRIGGER_LABELS = {
-  manual: { label: 'Manual', className: 'bg-blue-100 text-blue-800' },
-  scheduled: { label: 'Automat', className: 'bg-gray-100 text-gray-700' },
-  pre_import: { label: 'Înainte de import', className: 'bg-amber-100 text-amber-900' },
-  pre_restore_safety: { label: 'Siguranță (înainte de restaurare)', className: 'bg-purple-100 text-purple-900' },
+  manual: { label: 'Manual', className: 'border-transparent bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300' },
+  scheduled: { label: 'Automat', className: 'border-transparent bg-muted text-muted-foreground' },
+  pre_import: { label: 'Înainte de import', className: 'border-transparent bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-300' },
+  pre_restore_safety: { label: 'Siguranță (înainte de restaurare)', className: 'border-transparent bg-purple-100 text-purple-900 dark:bg-purple-950/40 dark:text-purple-300' },
 };
 
 function relativeTime(isoString) {
@@ -121,78 +121,66 @@ export default function LocalBackupPanel() {
   if (loading || !isLocalServer) return null;
 
   return (
-    <Card>
+    <Card className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Backup &amp; restaurare (mașina timpului)</h2>
-          <p className="mt-1 text-sm text-gray-600">
+          <h2 className="text-lg font-semibold text-foreground">Backup &amp; restaurare (mașina timpului)</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             {intervalMinutes
               ? `Un backup automat se salvează la fiecare ${intervalMinutes} minute. `
               : ''}
             Poți oricând reveni la o versiune anterioară a bazei de date, dacă apare o greșeală.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleBackupNow}
-          disabled={busy}
-          className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <Button onClick={handleBackupNow} disabled={busy}>
           Backup acum
-        </button>
+        </Button>
       </div>
 
       {message && (
-        <div className="mt-4 rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+        <div className="mt-4 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
           {message}
         </div>
       )}
 
       <div className="mt-4 overflow-x-auto">
         {backups.length ? (
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="text-left text-xs font-bold uppercase tracking-wide text-gray-500">
-                <th className="pb-2 pr-3">Moment</th>
-                <th className="pb-2 pr-3">Tip</th>
-                <th className="pb-2 pr-3">Mărime</th>
-                <th className="pb-2 pr-3">Notă</th>
-                <th className="pb-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
+          <Table className="min-w-[560px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Moment</TableHead>
+                <TableHead>Tip</TableHead>
+                <TableHead>Mărime</TableHead>
+                <TableHead>Notă</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {backups.map((backup) => {
-                const trigger = TRIGGER_LABELS[backup.trigger] || { label: backup.trigger, className: 'bg-gray-100 text-gray-700' };
+                const trigger = TRIGGER_LABELS[backup.trigger] || { label: backup.trigger, className: 'border-transparent bg-muted text-muted-foreground' };
                 return (
-                  <tr key={backup.filename}>
-                    <td className="py-2 pr-3">
-                      <div className="font-semibold text-gray-900">{relativeTime(backup.created_at)}</div>
-                      <div className="text-xs text-gray-500">{new Date(backup.created_at).toLocaleString('ro-RO')}</div>
-                    </td>
-                    <td className="py-2 pr-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${trigger.className}`}>
-                        {trigger.label}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 text-gray-700">{formatSize(backup.size_bytes)}</td>
-                    <td className="py-2 pr-3 text-gray-500">{backup.label || '—'}</td>
-                    <td className="py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleRestore(backup)}
-                        disabled={busy}
-                        className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
+                  <TableRow key={backup.filename}>
+                    <TableCell>
+                      <div className="font-semibold text-foreground">{relativeTime(backup.created_at)}</div>
+                      <div className="text-xs text-muted-foreground">{new Date(backup.created_at).toLocaleString('ro-RO')}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={trigger.className}>{trigger.label}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{formatSize(backup.size_bytes)}</TableCell>
+                    <TableCell className="text-muted-foreground">{backup.label || '—'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="destructive" size="sm" onClick={() => handleRestore(backup)} disabled={busy}>
                         Restaurează
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         ) : (
-          <p className="text-sm text-gray-500">Nu există încă niciun backup. Apasă „Backup acum” pentru primul.</p>
+          <p className="text-sm text-muted-foreground">Nu există încă niciun backup. Apasă „Backup acum” pentru primul.</p>
         )}
       </div>
     </Card>

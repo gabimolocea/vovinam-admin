@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { competitionAPI } from '@shared/lib/api';
-import { Spinner } from '@shared/components/ui';
 import { getSyncStatusMeta } from '@shared/lib/syncStatus';
+import { Badge, Button, Card, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
+import { Plus } from 'lucide-react';
 
 function formatDate(value) {
   if (!value) return '—';
@@ -15,9 +16,9 @@ function formatDate(value) {
 function getCompetitionStatus(ev, today) {
   const endDate = ev.end_date || ev.start_date || '';
   if (endDate && endDate < today) {
-    return { label: 'Încheiată', className: 'bg-gray-100 text-gray-700 border border-gray-300' };
+    return { label: 'Încheiată', className: 'border-transparent bg-secondary/60 text-secondary-foreground' };
   }
-  return { label: 'Activă / viitoare', className: 'bg-yellow-200 text-black border border-black' };
+  return { label: 'Activă / viitoare', className: 'border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' };
 }
 
 export default function CompetitionList() {
@@ -39,23 +40,17 @@ export default function CompetitionList() {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="text-center">
           <div className="text-4xl mb-3">🏆</div>
-          <h2 className="text-base font-bold text-gray-700 mb-1">Fără competiții</h2>
-          <p className="text-sm text-gray-500">Nu există competiții disponibile momentan.</p>
+          <h2 className="text-base font-semibold text-foreground mb-1">Fără competiții</h2>
+          <p className="text-sm text-muted-foreground">Nu există competiții disponibile momentan.</p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-            <button
-              onClick={() => navigate('/competitions/new')}
-              className="frvv-btn-add"
-            >
-              <span className="frvv-btn-add-icon">+</span>
+            <Button onClick={() => navigate('/competitions/new')}>
+              <Plus className="h-4 w-4" />
               Competiție nouă
-            </button>
-            <button
-              onClick={() => navigate('/athletes/new')}
-              className="frvv-btn-add"
-            >
-              <span className="frvv-btn-add-icon">+</span>
+            </Button>
+            <Button onClick={() => navigate('/athletes/new')}>
+              <Plus className="h-4 w-4" />
               Adaugă sportiv
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -86,20 +81,14 @@ export default function CompetitionList() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-end gap-3">
-        <button
-          onClick={() => navigate('/athletes/new')}
-          className="frvv-btn-add"
-        >
-          <span className="frvv-btn-add-icon">+</span>
+        <Button variant="outline" onClick={() => navigate('/athletes/new')}>
+          <Plus className="h-4 w-4" />
           Adaugă sportiv
-        </button>
-        <button
-          onClick={() => navigate('/competitions/new')}
-          className="frvv-btn-add"
-        >
-          <span className="frvv-btn-add-icon">+</span>
+        </Button>
+        <Button onClick={() => navigate('/competitions/new')}>
+          <Plus className="h-4 w-4" />
           Competiție nouă
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-3 md:hidden">
@@ -107,115 +96,116 @@ export default function CompetitionList() {
           const status = getCompetitionStatus(ev, today);
           const syncBadge = getSyncStatusMeta(ev);
           return (
-            <button
+            <Card
               key={ev.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => navigate(`/competitions/${ev.id}/categories`)}
-              className="w-full border-2 border-black bg-white p-4 text-left shadow-sm transition hover:bg-yellow-50"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  navigate(`/competitions/${ev.id}/categories`);
+                }
+              }}
+              className="w-full p-4 text-left transition hover:bg-accent"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-sm font-black uppercase tracking-wide text-gray-900">{ev.name}</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">{ev.name}</h2>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${status.className}`}>
-                    {status.label}
-                  </span>
-                  <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${syncBadge.className}`}>
-                    {syncBadge.label}
-                  </span>
+                  <Badge className={status.className}>{status.label}</Badge>
+                  <Badge className={syncBadge.className}>{syncBadge.label}</Badge>
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-gray-700">
+              <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-foreground">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Perioadă</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Perioadă</p>
                   <p className="mt-1 font-medium">{renderPeriod(ev)}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Oraș</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Oraș</p>
                   <p className="mt-1 font-medium">{renderLocation(ev)}</p>
                 </div>
               </div>
 
               <div className="mt-4 flex justify-end">
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={(event) => {
                       event.stopPropagation();
                       navigate(`/competitions/${ev.id}/categories/sync`);
                     }}
-                    className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700"
                   >
                     Sync
-                  </button>
-                  <span className="frvv-btn-primary px-3 py-1.5 text-xs">Deschide</span>
+                  </Button>
+                  <Button size="sm" as="span">Deschide</Button>
                 </div>
               </div>
-            </button>
+            </Card>
           );
         })}
       </div>
 
-      <div className="hidden overflow-x-auto border-2 border-black bg-white md:block">
-        <table className="min-w-full border-collapse text-sm">
-          <thead className="bg-black text-white">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-yellow-200">Competiție</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-yellow-200">Perioadă</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-yellow-200">Oraș</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-yellow-200">Status</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-yellow-200">Acțiune</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((ev, index) => {
+      <Card className="hidden md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Competiție</TableHead>
+              <TableHead>Perioadă</TableHead>
+              <TableHead>Oraș</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Acțiune</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sorted.map((ev) => {
               const status = getCompetitionStatus(ev, today);
               const syncBadge = getSyncStatusMeta(ev);
               return (
-                <tr key={ev.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="border-t border-gray-200 px-4 py-3 align-top md:min-w-[320px]">
-                    <div className="font-bold text-gray-900">{ev.name}</div>
+                <TableRow key={ev.id}>
+                  <TableCell className="align-top md:min-w-[320px]">
+                    <div className="font-semibold text-foreground">{ev.name}</div>
                     <div className="mt-2">
-                      <span className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${syncBadge.className}`}>
-                        {syncBadge.label}
-                      </span>
+                      <Badge className={syncBadge.className}>{syncBadge.label}</Badge>
                     </div>
-                  </td>
-                  <td className="border-t border-gray-200 px-4 py-3 align-top text-gray-700">
+                  </TableCell>
+                  <TableCell className="align-top text-muted-foreground">
                     {renderPeriod(ev)}
-                  </td>
-                  <td className="border-t border-gray-200 px-4 py-3 align-top text-gray-700">
+                  </TableCell>
+                  <TableCell className="align-top text-muted-foreground">
                     {renderLocation(ev)}
-                  </td>
-                  <td className="border-t border-gray-200 px-4 py-3 align-top">
-                    <span className={`inline-flex items-center px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${status.className}`}>
-                      {status.label}
-                    </span>
-                  </td>
-                  <td className="border-t border-gray-200 px-4 py-3 text-right align-top">
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Badge className={status.className}>{status.label}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right align-top">
                     <div className="flex justify-end gap-2">
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => navigate(`/competitions/${ev.id}/categories/sync`)}
-                        className="rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-300"
                       >
                         Sync
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        size="sm"
                         onClick={() => navigate(`/competitions/${ev.id}/categories`)}
-                        className="frvv-btn-primary px-3 py-1.5 text-xs"
                       >
                         Deschide
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               );
             })}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+      </Card>
 
     </div>
   );

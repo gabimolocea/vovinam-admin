@@ -1,6 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Spinner, formatGroupBadgeLabel } from '@shared/components/ui';
+import {
+  Spinner,
+  formatGroupBadgeLabel,
+  Button,
+  Input,
+  Label,
+  Req,
+  Checkbox,
+  Badge,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../components/ui';
 import Logo from '@shared/components/Logo';
 import { enrollmentAPI, teamAPI } from '@shared/lib/api';
 import useCentralizator from '../hooks/useCentralizator';
@@ -43,7 +63,7 @@ export default function CategoriesLayout() {
     setTeamSelection([]);
   }, [ctx.enrollPickerCell?.catId, ctx.enrollPickerCell?.clubId]);
 
-  if (ctx.loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><Spinner /></div>;
+  if (ctx.loading) return <div className="flex h-screen items-center justify-center bg-background"><Spinner /></div>;
 
   const createTeamEnrollment = async (catId, athleteIds) => {
     if (!catId || athleteIds.length < 2) return;
@@ -82,19 +102,24 @@ export default function CategoriesLayout() {
 
   return (
     <CentralizatorContext.Provider value={ctx}>
-      <div className="flex h-screen flex-col bg-white">
+      <div className="flex h-screen flex-col bg-background">
 
         {/* ═══ TOP BAR — responsive ═══ */}
         {!isDiplomeRoute && (
-          <div className="flex min-h-[52px] shrink-0 items-center justify-between gap-2 border-b-2 border-yellow-400 bg-black px-2 py-2 text-white sm:px-3">
+          <div className="flex min-h-[52px] shrink-0 items-center justify-between gap-2 border-b-2 border-sidebar-accent bg-sidebar px-2 py-2 text-sidebar-foreground sm:px-3">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <button onClick={() => navigate('/')}
-                className="shrink-0 border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold text-gray-700 transition hover:bg-yellow-300 hover:text-black">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/')}
+                className="shrink-0 border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-white/10 hover:text-sidebar-foreground"
+              >
                 ← <span className="hidden sm:inline">Înapoi</span>
-              </button>
-              <div className="hidden h-5 w-px bg-yellow-400/30 sm:block" />
+              </Button>
+              <div className="hidden h-5 w-px bg-sidebar-accent/30 sm:block" />
               <Logo size={28} className="shrink-0 hidden sm:block" />
-              <h1 className="truncate text-sm font-black uppercase tracking-wide text-yellow-200 sm:text-base">
+              <h1 className="truncate text-sm font-black uppercase tracking-wide text-sidebar-accent sm:text-base">
                 {ctx.eventData?.name || `Competiția #${eventId}`}
               </h1>
             </div>
@@ -106,10 +131,10 @@ export default function CategoriesLayout() {
                     <button
                       key={f.id}
                       onClick={() => preview.togglePreview(f.id)}
-                      className={`border border-yellow-400 bg-white px-2 py-1 text-xs font-semibold transition ${
+                      className={`border border-sidebar-border px-2 py-1 text-xs font-semibold transition ${
                         preview.isOpen(f.id)
-                          ? 'bg-yellow-300 text-black'
-                          : 'text-gray-700 hover:bg-yellow-100 hover:text-black'
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                          : 'bg-transparent text-sidebar-foreground/80 hover:bg-white/10 hover:text-sidebar-foreground'
                       }`}
                       title={`${preview.isOpen(f.id) ? 'Ascunde' : 'Afișează'} ecranul ${formatFieldLabel(f.name)}`}
                     >
@@ -128,7 +153,7 @@ export default function CategoriesLayout() {
         </div>
 
         {/* ═══ BOTTOM TAB BAR — responsive ═══ */}
-        <div className="shrink-0 flex h-12 items-center gap-1 overflow-x-auto border-t-2 border-yellow-400 bg-black px-1.5 select-none">
+        <div className="shrink-0 flex h-12 items-center gap-1 overflow-x-auto border-t-2 border-sidebar-accent bg-sidebar px-1.5 select-none">
           {tabs.map(tab => (
             <NavLink
               key={tab.to}
@@ -137,8 +162,8 @@ export default function CategoriesLayout() {
               className={({ isActive }) =>
                 `inline-flex items-center whitespace-nowrap border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition-all sm:px-4 sm:text-xs ${
                   isActive
-                    ? 'z-10 border-yellow-400 bg-yellow-300 text-black shadow-sm'
-                    : 'border-yellow-400/60 bg-white text-gray-700 hover:bg-yellow-200 hover:text-black'
+                    ? 'z-10 border-sidebar-accent bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                    : 'border-sidebar-border bg-transparent text-sidebar-foreground/80 hover:bg-white/10 hover:text-sidebar-foreground'
                 }`
               }
             >
@@ -156,138 +181,131 @@ export default function CategoriesLayout() {
         </div>
 
         {/* ═══ GROUP CREATION MODAL ═══ */}
-        {ctx.groupModal && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4" onClick={() => ctx.setGroupModal(null)}>
-            <div className="w-full max-w-lg border-2 border-black bg-white" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between border-b-2 border-black bg-yellow-300 px-5 py-3">
-                <h2 className="text-base font-black uppercase tracking-wide text-gray-900">Grupă personalizată</h2>
-                <button onClick={() => ctx.setGroupModal(null)} className="border border-black bg-white px-2 py-1 text-sm font-bold text-gray-700 hover:bg-yellow-100">✕</button>
+        <Dialog open={!!ctx.groupModal} onOpenChange={(open) => { if (!open) ctx.setGroupModal(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Grupă personalizată</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={ctx.handleCustomGroup} className="space-y-4">
+              <div>
+                <Label className="mb-1 block">Nume grupă<Req /></Label>
+                <Input required value={ctx.groupForm.name}
+                  onChange={e => ctx.setGroupForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="ex: U16 Special, Masters 40+"
+                  autoFocus />
               </div>
-              <form onSubmit={ctx.handleCustomGroup} className="p-4 sm:p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-sm font-bold text-gray-800">Nume grupă *</label>
-                  <input required value={ctx.groupForm.name}
-                    onChange={e => ctx.setGroupForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="ex: U16 Special, Masters 40+"
-                    className="frvv-input w-full text-base" autoFocus />
+                  <Label className="mb-1 block">Data nașterii — de la</Label>
+                  <Input type="date" value={ctx.groupForm.birth_date_start}
+                    onChange={e => ctx.setGroupForm(f => ({ ...f, birth_date_start: e.target.value }))} />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-sm font-bold text-gray-800">Data nașterii — de la</label>
-                    <input type="date" value={ctx.groupForm.birth_date_start}
-                      onChange={e => ctx.setGroupForm(f => ({ ...f, birth_date_start: e.target.value }))}
-                      className="frvv-input w-full text-base" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-bold text-gray-800">Data nașterii — până la</label>
-                    <input type="date" value={ctx.groupForm.birth_date_end}
-                      onChange={e => ctx.setGroupForm(f => ({ ...f, birth_date_end: e.target.value }))}
-                      className="frvv-input w-full text-base" />
-                  </div>
+                <div>
+                  <Label className="mb-1 block">Data nașterii — până la</Label>
+                  <Input type="date" value={ctx.groupForm.birth_date_end}
+                    onChange={e => ctx.setGroupForm(f => ({ ...f, birth_date_end: e.target.value }))} />
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={ctx.groupForm.allow_younger}
-                    onChange={e => ctx.setGroupForm(f => ({ ...f, allow_younger: e.target.checked }))}
-                    className="border border-black text-yellow-500 focus:ring-0" />
-                  <span className="text-sm text-gray-700">Permite sportivi mai tineri să urce la categorie superioară</span>
-                </label>
-                {ctx.eventDateStr && (
-                  <p className="border border-black/20 bg-yellow-50 px-3 py-2 text-xs text-gray-600">Data evenimentului: {ctx.eventDateStr} · anul de referință: {ctx.eventYear}</p>
-                )}
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => ctx.setGroupModal(null)} className="frvv-btn-secondary">Anulează</button>
-                  <button type="submit" disabled={ctx.busy}
-                    className="frvv-btn-primary">Creează grupă</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox id="group-allow-younger" checked={ctx.groupForm.allow_younger}
+                  onCheckedChange={(checked) => ctx.setGroupForm(f => ({ ...f, allow_younger: checked === true }))} />
+                <Label htmlFor="group-allow-younger" className="cursor-pointer font-normal">Permite sportivi mai tineri să urce la categorie superioară</Label>
+              </div>
+              {ctx.eventDateStr && (
+                <p className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">Data evenimentului: {ctx.eventDateStr} · anul de referință: {ctx.eventYear}</p>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => ctx.setGroupModal(null)}>Anulează</Button>
+                <Button type="submit" disabled={ctx.busy}>Creează grupă</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* ═══ CATEGORY CREATION MODAL ═══ */}
-        {ctx.catModal && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4" onClick={() => ctx.setCatModal(null)}>
-            <div className="w-full max-w-md border-2 border-black bg-white" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between border-b-2 border-black bg-yellow-300 px-5 py-3">
-                <h2 className="text-base font-black uppercase tracking-wide text-gray-900">Categorie personalizată</h2>
-                <button onClick={() => ctx.setCatModal(null)} className="border border-black bg-white px-2 py-1 text-sm font-bold text-gray-700 hover:bg-yellow-100">✕</button>
+        <Dialog open={!!ctx.catModal} onOpenChange={(open) => { if (!open) ctx.setCatModal(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Categorie personalizată</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={ctx.handleAddCustomCat} className="space-y-4">
+              <div>
+                <Label className="mb-1 block">Nume categorie<Req /></Label>
+                <Input required value={ctx.catForm.name}
+                  onChange={e => ctx.setCatForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="ex: Quyền Duo Mixt"
+                  autoFocus />
               </div>
-              <form onSubmit={ctx.handleAddCustomCat} className="p-4 sm:p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-sm font-bold text-gray-800">Nume categorie *</label>
-                  <input required value={ctx.catForm.name}
-                    onChange={e => ctx.setCatForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="ex: Quyền Duo Mixt"
-                    className="frvv-input w-full text-base" autoFocus />
+                  <Label className="mb-1 block">Tip</Label>
+                  <Select value={ctx.catForm.category_type} onValueChange={(value) => ctx.setCatForm(f => ({ ...f, category_type: value }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="solo">Solo (Quyền)</SelectItem>
+                      <SelectItem value="team">Echipă (Song Luyện / Đa Luyện)</SelectItem>
+                      <SelectItem value="fight">Luptă (Đối Kháng)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-sm font-bold text-gray-800">Tip</label>
-                    <select value={ctx.catForm.category_type}
-                      onChange={e => ctx.setCatForm(f => ({ ...f, category_type: e.target.value }))}
-                      className="frvv-input w-full text-base">
-                      <option value="solo">Solo (Quyền)</option>
-                      <option value="team">Echipă (Song Luyện / Đa Luyện)</option>
-                      <option value="fight">Luptă (Đối Kháng)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-bold text-gray-800">Gen</label>
-                    <select value={ctx.catForm.gender}
-                      onChange={e => ctx.setCatForm(f => ({ ...f, gender: e.target.value }))}
-                      className="frvv-input w-full text-base">
-                      <option value="male">Masculin</option>
-                      <option value="female">Feminin</option>
-                      <option value="mixt">Mixt</option>
-                    </select>
-                  </div>
+                <div>
+                  <Label className="mb-1 block">Gen</Label>
+                  <Select value={ctx.catForm.gender} onValueChange={(value) => ctx.setCatForm(f => ({ ...f, gender: value }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Masculin</SelectItem>
+                      <SelectItem value="female">Feminin</SelectItem>
+                      <SelectItem value="mixt">Mixt</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => ctx.setCatModal(null)} className="frvv-btn-secondary">Anulează</button>
-                  <button type="submit" disabled={ctx.busy}
-                    className="frvv-btn-primary">Creează categorie</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => ctx.setCatModal(null)}>Anulează</Button>
+                <Button type="submit" disabled={ctx.busy}>Creează categorie</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* ═══ CONFIRMATION MODAL ═══ */}
-        {ctx.confirmModal && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => ctx.setConfirmModal(null)}>
-            <div className="w-full max-w-md overflow-hidden border-2 border-black bg-white" onClick={e => e.stopPropagation()}>
-              <div className="border-b-2 border-black bg-yellow-300 px-6 py-4 text-center">
-                <h3 className="text-lg font-black uppercase tracking-wide text-gray-900">{ctx.confirmModal.title}</h3>
-              </div>
-              <div className="p-6 text-center">
-                <p className="text-base leading-relaxed text-gray-700">{ctx.confirmModal.message}</p>
-                {ctx.confirmModal.detail && (
-                  <p className="mt-3 max-h-24 overflow-y-auto bg-yellow-50 px-3 py-2 text-sm text-gray-600">
-                    {ctx.confirmModal.detail}
-                  </p>
-                )}
-              </div>
-              <div className="flex border-t-2 border-black">
-                <button
-                  onClick={() => ctx.setConfirmModal(null)}
-                  className="frvv-btn-secondary flex-1 border-y-0 border-l-0"
-                >Anulează</button>
-                <button
-                  onClick={ctx.confirmModal.onConfirm}
-                  disabled={ctx.busy}
-                  className={`flex-1 border-l-2 border-black px-4 py-3 text-sm font-bold transition disabled:opacity-50 ${
-                    ctx.confirmModal.color === 'orange'
-                      ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                      : 'bg-red-100 text-red-700 hover:bg-red-200'
-                  }`}
-                >{ctx.confirmModal.confirmLabel || 'Confirmă'}</button>
-              </div>
-            </div>
-          </div>
-        )}
+        <Dialog open={!!ctx.confirmModal} onOpenChange={(open) => { if (!open) ctx.setConfirmModal(null); }}>
+          <DialogContent className="max-w-md">
+            {ctx.confirmModal && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>{ctx.confirmModal.title}</DialogTitle>
+                </DialogHeader>
+                <div>
+                  <p className="text-sm leading-relaxed text-foreground">{ctx.confirmModal.message}</p>
+                  {ctx.confirmModal.detail && (
+                    <p className="mt-3 max-h-24 overflow-y-auto rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                      {ctx.confirmModal.detail}
+                    </p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => ctx.setConfirmModal(null)}>Anulează</Button>
+                  <Button
+                    onClick={ctx.confirmModal.onConfirm}
+                    disabled={ctx.busy}
+                    variant="destructive"
+                    className={ctx.confirmModal.color === 'orange' ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : ''}
+                  >{ctx.confirmModal.confirmLabel || 'Confirmă'}</Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* ═══ ENROLLMENT PICKER MODAL ═══ */}
-        {ctx.enrollPickerCell && (() => {
+        <Dialog open={!!ctx.enrollPickerCell} onOpenChange={(open) => { if (!open) ctx.setEnrollPickerCell(null); }}>
+          <DialogContent className="flex max-h-[85vh] w-full max-w-2xl flex-col p-0" ref={ctx.enrollPickerRef}>
+            {ctx.enrollPickerCell && (() => {
           const { clubId, catId } = ctx.enrollPickerCell;
           const isAllMode = clubId === null;
           const cacheKey = clubId ?? '__all__';
@@ -333,111 +351,103 @@ export default function CategoriesLayout() {
           const canSaveTeam = isTeamCategory && teamSelection.length >= 2 && !duplicateTeam && !ctx.busy && !teamBuilderBusy;
 
           return (
-            <div className="fixed inset-0 z-[320] flex items-center justify-center bg-black/50 p-4" onClick={() => ctx.setEnrollPickerCell(null)}>
-              <div
-                ref={ctx.enrollPickerRef}
-                onClick={(e) => e.stopPropagation()}
-                className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden border-2 border-black bg-white"
-              >
-                <div className="flex items-start justify-between gap-3 border-b-2 border-black bg-yellow-300 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-black uppercase tracking-wide text-gray-900">{isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}</p>
-                    <p className="mt-1 text-xs text-gray-700">{clubName}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                      <span className="frvv-chip">{formatGroupBadgeLabel(group) || 'Grupă'}</span>
-                      <span className="frvv-chip">{catName}</span>
-                    </div>
-                  </div>
-                  <button onClick={() => ctx.setEnrollPickerCell(null)} className="border border-black bg-white px-3 py-1 text-sm font-bold text-gray-700 hover:bg-yellow-100">✕</button>
+            <>
+              <DialogHeader className="border-b border-border px-6 py-4">
+                <DialogTitle>{isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}</DialogTitle>
+                <DialogDescription>{clubName}</DialogDescription>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                  <Badge variant="outline">{formatGroupBadgeLabel(group) || 'Grupă'}</Badge>
+                  <Badge variant="outline">{catName}</Badge>
                 </div>
-                <div className="flex-1 overflow-y-auto">
-                  {isLoading ? (
-                    <div className="p-6 text-center text-sm text-gray-500">Se încarcă…</div>
-                  ) : athleteList.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-gray-500 italic">
-                      {hasDateRange
-                        ? `Niciun sportiv ${isAllMode ? 'din toate cluburile' : 'din acest club'} nu se încadrează în intervalul de vârstă (${outOfRangeCount} exclu${outOfRangeCount === 1 ? 's' : 'și'}).`
-                        : `Niciun sportiv ${isAllMode ? 'disponibil în cluburi' : 'în acest club'}.`}
-                    </div>
-                  ) : (
-                    athleteList.map(ath => {
-                      const isEnrolled = enrolledIds.has(ath.id);
-                      const isSelected = teamSelection.includes(ath.id);
-                      const dob = ath.date_of_birth;
-                      return (
-                        <button key={ath.id}
-                          onClick={() => {
-                            if (isTeamCategory) {
-                              setTeamSelection(prev => prev.includes(ath.id) ? prev.filter(id => id !== ath.id) : [...prev, ath.id]);
-                              return;
-                            }
-                            ctx.handleToggleEnroll(ath.id, catId);
-                          }}
-                          disabled={ctx.busy || teamBuilderBusy}
-                          className={`w-full flex items-center gap-3 border-b border-black/10 px-4 py-3 text-left transition-colors disabled:opacity-50 ${
-                            isTeamCategory
-                              ? isSelected
-                                ? 'bg-blue-50 hover:bg-blue-100 text-gray-800'
-                                : 'hover:bg-yellow-50 text-gray-700'
-                              : isEnrolled
-                                ? 'bg-green-50 hover:bg-green-100 text-gray-800'
-                                : 'hover:bg-yellow-50 text-gray-700'
-                          }`}
-                        >
-                          <span className={`inline-flex h-6 w-6 items-center justify-center border text-sm font-bold ${
-                            isTeamCategory
-                              ? isSelected
-                                ? 'bg-blue-500 border-blue-500 text-white'
-                                : 'border-gray-300 text-transparent'
-                              : isEnrolled
-                                ? 'bg-green-500 border-green-500 text-white'
-                                : 'border-gray-300 text-transparent'
-                          }`}>✓</span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-base font-semibold">{ath.last_name} {ath.first_name}</span>
-                            <span className="block truncate text-xs text-gray-500">{ath.club?.name || 'Fără club'}{dob ? ` · ${dob}` : ''}</span>
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-                {outOfRangeCount > 0 && (
-                  <div className="border-t border-black/10 bg-yellow-50 px-3 py-2 text-xs text-gray-600">
-                    {outOfRangeCount} sportiv{outOfRangeCount === 1 ? '' : 'i'} {isAllMode ? 'din toate cluburile' : 'din club'} nu se încadrează în vârstă
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto">
+                {isLoading ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">Se încarcă…</div>
+                ) : athleteList.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground italic">
+                    {hasDateRange
+                      ? `Niciun sportiv ${isAllMode ? 'din toate cluburile' : 'din acest club'} nu se încadrează în intervalul de vârstă (${outOfRangeCount} exclu${outOfRangeCount === 1 ? 's' : 'și'}).`
+                      : `Niciun sportiv ${isAllMode ? 'disponibil în cluburi' : 'în acest club'}.`}
                   </div>
+                ) : (
+                  athleteList.map(ath => {
+                    const isEnrolled = enrolledIds.has(ath.id);
+                    const isSelected = teamSelection.includes(ath.id);
+                    const dob = ath.date_of_birth;
+                    return (
+                      <button key={ath.id}
+                        onClick={() => {
+                          if (isTeamCategory) {
+                            setTeamSelection(prev => prev.includes(ath.id) ? prev.filter(id => id !== ath.id) : [...prev, ath.id]);
+                            return;
+                          }
+                          ctx.handleToggleEnroll(ath.id, catId);
+                        }}
+                        disabled={ctx.busy || teamBuilderBusy}
+                        className={`w-full flex items-center gap-3 border-b border-border px-6 py-3 text-left transition-colors disabled:opacity-50 ${
+                          isTeamCategory
+                            ? isSelected
+                              ? 'bg-blue-50 hover:bg-blue-100 text-foreground'
+                              : 'hover:bg-accent text-foreground'
+                            : isEnrolled
+                              ? 'bg-green-50 hover:bg-green-100 text-foreground'
+                              : 'hover:bg-accent text-foreground'
+                        }`}
+                      >
+                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-sm font-bold ${
+                          isTeamCategory
+                            ? isSelected
+                              ? 'bg-blue-500 border-blue-500 text-white'
+                              : 'border-input text-transparent'
+                            : isEnrolled
+                              ? 'bg-green-500 border-green-500 text-white'
+                              : 'border-input text-transparent'
+                        }`}>✓</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-base font-semibold">{ath.last_name} {ath.first_name}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{ath.club?.name || 'Fără club'}{dob ? ` · ${dob}` : ''}</span>
+                        </span>
+                      </button>
+                    );
+                  })
                 )}
-                {isTeamCategory && (
-                  <div className="border-t border-black/10 bg-blue-50 px-4 py-3">
-                    <div className="text-xs font-bold uppercase tracking-wide text-gray-700">Echipă selectată</div>
-                    <div className="mt-1 text-sm text-gray-700">
-                      {selectedAthletes.length > 0
-                        ? selectedAthletes.map(ath => `${ath.first_name} ${ath.last_name}`).join(' & ')
-                        : 'Selectează minimum 2 sportivi.'}
-                    </div>
-                    {duplicateTeam && (
-                      <div className="mt-2 text-xs font-semibold text-red-600">
-                        Echipa este deja înrolată în această categorie.
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => createTeamEnrollment(catId, teamSelection)}
-                      disabled={!canSaveTeam}
-                      className="mt-3 w-full border border-black bg-blue-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                    >
-                      {teamBuilderBusy ? 'Se înrolează...' : 'Înrolează echipa'}
-                    </button>
-                  </div>
-                )}
-                <div className="border-t-2 border-black p-3 text-center">
-                  <button onClick={() => ctx.setEnrollPickerCell(null)}
-                    className="frvv-btn-secondary px-3 py-1.5 text-xs">Închide</button>
-                </div>
               </div>
-            </div>
+              {outOfRangeCount > 0 && (
+                <div className="border-t border-border bg-amber-50 px-6 py-2 text-xs text-amber-800">
+                  {outOfRangeCount} sportiv{outOfRangeCount === 1 ? '' : 'i'} {isAllMode ? 'din toate cluburile' : 'din club'} nu se încadrează în vârstă
+                </div>
+              )}
+              {isTeamCategory && (
+                <div className="border-t border-border bg-blue-50 px-6 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Echipă selectată</div>
+                  <div className="mt-1 text-sm text-foreground">
+                    {selectedAthletes.length > 0
+                      ? selectedAthletes.map(ath => `${ath.first_name} ${ath.last_name}`).join(' & ')
+                      : 'Selectează minimum 2 sportivi.'}
+                  </div>
+                  {duplicateTeam && (
+                    <div className="mt-2 text-xs font-semibold text-red-600">
+                      Echipa este deja înrolată în această categorie.
+                    </div>
+                  )}
+                  <Button
+                    type="button"
+                    onClick={() => createTeamEnrollment(catId, teamSelection)}
+                    disabled={!canSaveTeam}
+                    className="mt-3 w-full"
+                  >
+                    {teamBuilderBusy ? 'Se înrolează...' : 'Înrolează echipa'}
+                  </Button>
+                </div>
+              )}
+              <DialogFooter className="border-t border-border px-6 py-3">
+                <Button variant="outline" size="sm" onClick={() => ctx.setEnrollPickerCell(null)}>Închide</Button>
+              </DialogFooter>
+            </>
           );
-        })()}
+            })()}
+          </DialogContent>
+        </Dialog>
       </div>
     </CentralizatorContext.Provider>
   );

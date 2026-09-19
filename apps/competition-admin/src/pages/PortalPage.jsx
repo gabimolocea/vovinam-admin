@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Badge, Card } from '../components/ui';
 
 const APPS = [
   {
@@ -8,15 +9,6 @@ const APPS = [
     description: 'Administrare competiții, categorii, arbitri și rezultate.',
     mode: 'internal',
     to: '/competitions',
-    accent: 'bg-yellow-300',
-  },
-  {
-    id: 'athlete-enrollment',
-    name: 'Athlete Enrollment',
-    description: 'Înscriere sportivi în competiții.',
-    mode: 'external',
-    port: 5174,
-    accent: 'bg-blue-200',
   },
   {
     id: 'coach-dashboard',
@@ -24,7 +16,6 @@ const APPS = [
     description: 'Panou antrenori pentru gestionare lot și înscrieri.',
     mode: 'external',
     port: 5175,
-    accent: 'bg-emerald-200',
   },
   {
     id: 'referee-scoring',
@@ -32,7 +23,6 @@ const APPS = [
     description: 'Introducere punctaje și validare arbitraj.',
     mode: 'external',
     port: 5176,
-    accent: 'bg-orange-200',
   },
   {
     id: 'public-display',
@@ -40,7 +30,6 @@ const APPS = [
     description: 'Afișaj public pentru meciuri, rezultate și program.',
     mode: 'external',
     port: 5177,
-    accent: 'bg-pink-200',
   },
   {
     id: 'public-registry',
@@ -48,7 +37,6 @@ const APPS = [
     description: 'Registru public sportivi, profiluri și rezultate validate.',
     mode: 'external',
     port: 5178,
-    accent: 'bg-cyan-200',
   },
 ];
 
@@ -67,51 +55,53 @@ export default function PortalPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-        <h1 className="text-lg font-black uppercase tracking-wide text-gray-900 sm:text-2xl">Portal FRVV</h1>
-        <p className="mt-2 text-sm text-gray-600 sm:text-base">
+      <Card className="p-5 sm:p-6">
+        <h1 className="font-display text-lg font-bold uppercase tracking-wide text-foreground sm:text-2xl">Portal FRVV</h1>
+        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           Alege aplicația dorită pentru a continua fluxul de lucru.
         </p>
-      </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {apps.map((app) => {
           const content = (
             <>
-              <div className={`inline-flex items-center rounded border border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-800 ${app.accent}`}>
+              <Badge variant="secondary">
                 {app.mode === 'internal' ? 'Aplicație internă' : `Port ${app.port}`}
-              </div>
-              <h2 className="mt-3 text-base font-black uppercase tracking-wide text-gray-900">{app.name}</h2>
-              <p className="mt-2 text-sm text-gray-600">{app.description}</p>
+              </Badge>
+              <h2 className="mt-3 text-sm font-semibold text-foreground">{app.name}</h2>
+              <p className="mt-2 text-xs text-muted-foreground">{app.description}</p>
               {app.mode === 'external' && (
-                <p className="mt-4 text-xs font-semibold text-blue-700">{app.href}</p>
+                <p className="mt-4 text-[11px] font-medium text-primary">{app.href}</p>
               )}
             </>
           );
 
           if (app.mode === 'internal') {
             return (
-              <button
+              <Card
                 key={app.id}
+                as="button"
                 type="button"
                 onClick={() => navigate(app.to)}
-                className="w-full rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:bg-yellow-50/40 hover:shadow-md"
+                className="w-full p-4 text-left transition hover:bg-accent"
               >
                 {content}
-              </button>
+              </Card>
             );
           }
 
           return (
-            <a
+            <Card
               key={app.id}
+              as="a"
               href={app.href}
               target="_blank"
               rel="noreferrer"
-              className="block rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:bg-yellow-50/40 hover:shadow-md"
+              className="block p-4 transition hover:bg-accent"
             >
               {content}
-            </a>
+            </Card>
           );
         })}
       </div>

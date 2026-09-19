@@ -9,7 +9,7 @@ import {
   matchRefereeAssignmentAPI, groupAPI, categoryAPI, enrollmentAPI,
   competitionRefereeAPI, refereePresenceAPI, recordingAPI, scoreTimelineAPI,
 } from '@shared/lib/api';
-import { formatGroupBadgeLabel } from '@shared/components/ui';
+import { formatGroupBadgeLabel } from '../components/ui';
 import { GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 
@@ -31,26 +31,26 @@ function publicDisplayOrigin() {
 
 const formatFieldLabel = (name = '') => String(name).replace(/\bfield\b/gi, 'TEREN').replace(/\btatami\b/gi, 'TEREN').toUpperCase();
 const CATEGORY_TYPE_BADGES = {
-  solo: { label: 'Solo', bg: 'border border-black bg-yellow-300 text-black' },
-  team: { label: 'Echipă', bg: 'border border-black bg-yellow-300 text-black' },
-  teams: { label: 'Echipă', bg: 'border border-black bg-yellow-300 text-black' },
-  fight: { label: 'Luptă', bg: 'border border-black bg-yellow-300 text-black' },
+  solo: { label: 'Solo', bg: 'rounded-full border border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
+  team: { label: 'Echipă', bg: 'rounded-full border border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
+  teams: { label: 'Echipă', bg: 'rounded-full border border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
+  fight: { label: 'Luptă', bg: 'rounded-full border border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
 };
-const TOPNAV_SECONDARY_BUTTON = 'text-xs border border-black bg-white px-2.5 py-1 font-medium text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
-const TOPNAV_GREEN_BUTTON = 'text-xs border border-green-700 bg-green-600 hover:bg-green-700 px-2.5 py-1 font-bold text-white transition disabled:opacity-40';
-const MODAL_SECONDARY_BUTTON = 'border border-black bg-white px-4 py-2.5 font-semibold text-gray-700 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
-const MODAL_DANGER_BUTTON = 'border border-black bg-red-600 px-4 py-2.5 font-bold text-white transition hover:bg-red-700 disabled:opacity-40';
-const MODAL_SUCCESS_BUTTON = 'border border-black bg-green-600 px-4 py-2.5 font-bold text-white transition hover:bg-green-700 disabled:opacity-40';
-const MODAL_WARNING_BUTTON = 'border border-black bg-yellow-300 px-4 py-2.5 font-bold text-black transition hover:bg-yellow-200 disabled:opacity-40';
-const PANEL_BUTTON_BASE = 'border border-black px-3 py-2 font-bold transition disabled:opacity-40';
-const PANEL_BUTTON_NEUTRAL = `${PANEL_BUTTON_BASE} bg-white text-gray-700 hover:bg-yellow-100 hover:text-black`;
-const PANEL_BUTTON_DANGER = `${PANEL_BUTTON_BASE} bg-white text-red-700 hover:bg-red-100`;
-const PANEL_BUTTON_SUCCESS = `${PANEL_BUTTON_BASE} bg-white text-green-700 hover:bg-green-100`;
-const PANEL_BUTTON_WARNING = `${PANEL_BUTTON_BASE} bg-yellow-300 text-black hover:bg-yellow-200`;
-const TOPNAV_REC_BUTTON = 'flex items-center gap-1.5 border bg-white px-2.5 py-1 text-xs font-bold uppercase tracking-[0.14em] transition disabled:opacity-40';
-const ROUND_CARD_SHELL = 'flex flex-col gap-4 border-2 border-black bg-white px-4 py-4';
-const ROUND_BODY_PANEL = 'bg-white px-4 py-4';
-const ROUND_SECONDARY_BUTTON = 'border border-black px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-yellow-100 hover:text-black disabled:opacity-40';
+const TOPNAV_SECONDARY_BUTTON = 'text-xs rounded-md border border-white/30 bg-white/10 px-2.5 py-1 font-medium text-white transition hover:bg-white/20 disabled:opacity-40';
+const TOPNAV_GREEN_BUTTON = 'text-xs rounded-md border border-emerald-500 bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1 font-bold text-white transition disabled:opacity-40';
+const MODAL_SECONDARY_BUTTON = 'rounded-md border border-input bg-background px-4 py-2.5 font-semibold text-foreground transition hover:bg-accent disabled:opacity-40';
+const MODAL_DANGER_BUTTON = 'rounded-md bg-destructive px-4 py-2.5 font-bold text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-40';
+const MODAL_SUCCESS_BUTTON = 'rounded-md bg-emerald-600 px-4 py-2.5 font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40';
+const MODAL_WARNING_BUTTON = 'rounded-md bg-amber-400 px-4 py-2.5 font-bold text-amber-950 transition hover:bg-amber-300 disabled:opacity-40';
+const PANEL_BUTTON_BASE = 'rounded-md border border-input px-3 py-2 font-bold transition disabled:opacity-40';
+const PANEL_BUTTON_NEUTRAL = `${PANEL_BUTTON_BASE} bg-background text-foreground hover:bg-accent`;
+const PANEL_BUTTON_DANGER = `${PANEL_BUTTON_BASE} bg-background text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30`;
+const PANEL_BUTTON_SUCCESS = `${PANEL_BUTTON_BASE} bg-background text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30`;
+const PANEL_BUTTON_WARNING = `${PANEL_BUTTON_BASE} bg-amber-400 text-amber-950 hover:bg-amber-300`;
+const TOPNAV_REC_BUTTON = 'flex items-center gap-1.5 rounded-md border bg-white/10 px-2.5 py-1 text-xs font-bold uppercase tracking-[0.14em] text-white transition disabled:opacity-40';
+const ROUND_CARD_SHELL = 'flex flex-col gap-4 rounded-lg border-2 border-border bg-card px-4 py-4';
+const ROUND_BODY_PANEL = 'bg-card px-4 py-4';
+const ROUND_SECONDARY_BUTTON = 'rounded-md border border-input px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-accent disabled:opacity-40';
 
 const readCachedCategoryData = (eventId) => {
   if (!eventId || typeof window === 'undefined') return { groups: [], categories: [] };
@@ -567,14 +567,14 @@ export default function LiveFullscreenPage() {
   });
 
   if (loading) {
-    return <div className="h-screen flex items-center justify-center bg-gray-100 text-gray-400 text-lg">Se încarcă...</div>;
+    return <div className="h-screen flex items-center justify-center bg-muted text-muted-foreground text-lg">Se încarcă...</div>;
   }
 
   if (!field) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-gray-100 text-gray-500 gap-4">
+      <div className="h-screen flex flex-col items-center justify-center bg-muted text-muted-foreground gap-4">
         <p>Tatami negăsit.</p>
-        <button onClick={() => navigate(-1)} className="text-sm bg-indigo-600 text-white px-4 py-2 ">← Înapoi</button>
+        <button onClick={() => navigate(-1)} className="text-sm rounded-md bg-primary text-primary-foreground px-4 py-2">← Înapoi</button>
       </div>
     );
   }
@@ -608,21 +608,21 @@ export default function LiveFullscreenPage() {
   };
 
   return (
-    <div className="frvv-live-fullscreen h-screen w-screen flex flex-col overflow-hidden bg-white">
+    <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
       {/* ── Top bar ── */}
-      <div className="shrink-0 border-b-2 border-yellow-400 bg-black px-3 py-1.5 text-white sm:px-4 lg:px-5">
+      <div className="shrink-0 border-b-2 border-sidebar-accent bg-sidebar px-3 py-1.5 text-sidebar-foreground sm:px-4 lg:px-5">
         <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={goBack} className={TOPNAV_SECONDARY_BUTTON} title="Înapoi">&#8592;</button>
-          <span className="text-base font-black uppercase tracking-wide text-yellow-200">{formatFieldLabel(field.name)}</span>
+          <span className="text-base font-black uppercase tracking-wide text-sidebar-accent">{formatFieldLabel(field.name)}</span>
           {/* Live indicator in top nav */}
           {isSessionActive && (
             <span className="flex items-center gap-2">
               <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full  bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex  h-3 w-3 bg-green-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
               </span>
-              <span className="text-xs font-semibold text-green-400 uppercase">Live</span>
+              <span className="text-xs font-semibold text-emerald-400 uppercase">Live</span>
             </span>
           )}
         </div>
@@ -649,14 +649,14 @@ export default function LiveFullscreenPage() {
                 }
               }}
               disabled={busy || isCurrentMatchFinalized}
-              className={`${TOPNAV_GREEN_BUTTON} ${isCurrentMatchFinalized ? '' : 'ring-2 ring-green-400 animate-pulse'}`}
+              className={`${TOPNAV_GREEN_BUTTON} ${isCurrentMatchFinalized ? '' : 'ring-2 ring-emerald-400 animate-pulse'}`}
             >AFIȘEAZĂ PE TV</button>
           )}
           {panelType === 'match' && currentMatch && isSessionActive && (
             <button
               onClick={() => setShowFinishConfirm(true)}
               disabled={busy}
-              className={`${TOPNAV_GREEN_BUTTON} ${session?.current_match === currentMatch.id && session?.status === 'winner_revealed' ? 'ring-2 ring-green-400 animate-pulse' : ''}`}
+              className={`${TOPNAV_GREEN_BUTTON} ${session?.current_match === currentMatch.id && session?.status === 'winner_revealed' ? 'ring-2 ring-emerald-400 animate-pulse' : ''}`}
             >ÎNCHEIE PROBA</button>
           )}
           {/* Category control buttons in top nav */}
@@ -683,7 +683,7 @@ export default function LiveFullscreenPage() {
             <button
               onClick={() => setShowFinishConfirm(true)}
               disabled={busy}
-              className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted ? 'ring-2 ring-green-400 animate-pulse' : ''}`}
+              className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted ? 'ring-2 ring-emerald-400 animate-pulse' : ''}`}
             >ÎNCHEIE PROBA</button>
           )}
           <a href={`${publicDisplayOrigin()}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
@@ -692,7 +692,7 @@ export default function LiveFullscreenPage() {
           </a>
           <button
             onClick={() => preview.togglePreview(fieldId)}
-            className={`${TOPNAV_SECONDARY_BUTTON} ${preview.isOpen(fieldId) ? 'bg-yellow-300 hover:bg-yellow-200 text-black border-yellow-500' : ''}`}
+            className={`${TOPNAV_SECONDARY_BUTTON} ${preview.isOpen(fieldId) ? 'bg-sidebar-accent hover:bg-sidebar-accent/80 text-sidebar-accent-foreground border-sidebar-accent' : ''}`}
           >
             {preview.isOpen(fieldId) ? 'Ascunde Preview TV' : 'Preview TV'}
           </button>
@@ -822,7 +822,7 @@ export default function LiveFullscreenPage() {
       {/* ── Content ── */}
       <div className="flex-1 min-h-0 overflow-auto px-3 py-3 sm:px-4 lg:px-6">
         {operationalLockActive && (
-          <div className="mb-4 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
             {operationalLockMessage}
           </div>
         )}
@@ -886,7 +886,7 @@ export default function LiveFullscreenPage() {
             ensureOperationalWrite={ensureOperationalWrite}
           />
         ) : (
-          <div className="h-full flex items-center justify-center text-gray-400 text-lg italic">
+          <div className="h-full flex items-center justify-center text-muted-foreground text-lg italic">
             <div className="text-center">
               <span className="text-6xl block mb-3">&mdash;</span>
               Nicio proba in desfasurare pe acest tatami.
@@ -1316,17 +1316,17 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       <div className={`flex items-center ${compact ? 'justify-stretch' : 'justify-center'} gap-1.5 flex-wrap`}>
         {row.isActive ? (
           <button onClick={() => { switchDisplay(cat.id, null, null); setFinishedAthletes(prev => new Set(prev).add(row.athleteId)); }} disabled={busy}
-            className={`${buttonBase} border border-black font-bold disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600 whitespace-nowrap ${
+            className={`${buttonBase} border border-border font-bold disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600 whitespace-nowrap ${
               highlightAthleteId === row.athleteId && highlightAction === 'active' ? 'ring-2 ring-orange-400 ring-offset-1' : ''
             }`}>
             Oprește
           </button>
         ) : (
           <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
-            className={`${buttonBase} border border-black font-bold disabled:opacity-40 whitespace-nowrap ${
+            className={`${buttonBase} border border-border font-bold disabled:opacity-40 whitespace-nowrap ${
               highlightAthleteId === row.athleteId && highlightAction === 'present'
-                ? 'bg-green-600 text-white hover:bg-green-700 ring-2 ring-green-400 ring-offset-1 animate-pulse'
-                : 'bg-green-600 text-white hover:bg-green-700'
+                ? 'bg-emerald-600 text-white hover:bg-emerald-700 ring-2 ring-emerald-400 ring-offset-1 animate-pulse'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
             }`}>
             Prezintă
           </button>
@@ -1338,12 +1338,12 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               setRevealConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row });
             }}
             disabled={busy || row.isRevealed}
-            className={`${buttonBase} border border-black font-bold disabled:opacity-40 whitespace-nowrap ${
+            className={`${buttonBase} border border-border font-bold disabled:opacity-40 whitespace-nowrap ${
               row.isRevealed
-                ? 'bg-yellow-400 text-black cursor-default'
+                ? 'bg-amber-400 text-amber-950 cursor-default'
                 : highlightAthleteId === row.athleteId && highlightAction === 'reveal'
-                  ? 'bg-yellow-400 text-black hover:bg-yellow-500 ring-2 ring-yellow-500 ring-offset-1 animate-pulse'
-                  : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                  ? 'bg-amber-400 text-amber-950 hover:bg-amber-500 ring-2 ring-amber-500 ring-offset-1 animate-pulse'
+                  : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
             }`}
           >
             {row.isRevealed ? '✓ Scor afișat' : 'Afișează scorul'}
@@ -1353,7 +1353,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           <button
             onClick={() => setResetConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row })}
             disabled={busy}
-            className={`${buttonBase} border border-black font-bold bg-white text-red-700 hover:bg-red-100 disabled:opacity-40 whitespace-nowrap`}
+            className={`${buttonBase} border border-border font-bold bg-card text-red-700 hover:bg-red-100 disabled:opacity-40 whitespace-nowrap`}
           >
             Resetează
           </button>
@@ -1361,7 +1361,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         <button
           onClick={() => setDqConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row, isDisqualified: row.isDisqualified })}
           disabled={busy}
-          className={`${buttonBase} border border-black font-bold disabled:opacity-40 whitespace-nowrap ${row.isDisqualified ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
+          className={`${buttonBase} border border-border font-bold disabled:opacity-40 whitespace-nowrap ${row.isDisqualified ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
         >
           {row.isDisqualified ? 'Recalifică' : 'DQ'}
         </button>
@@ -1397,17 +1397,17 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   return (
     <div className="flex w-full flex-col gap-4">
       {/* ── Category info header (like match info tags) ── */}
-      <div className="bg-white">
+      <div className="bg-card">
         <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
           <div className="hidden xl:block" aria-hidden="true" />
           <div className="min-w-0 xl:col-start-2">
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="w-full max-w-3xl px-4 py-5">
-                <h1 className="mt-2 break-words text-3xl font-black leading-tight text-gray-900 sm:text-4xl">{cat.name}</h1>
+                <h1 className="mt-2 break-words text-3xl font-black leading-tight text-foreground sm:text-4xl">{cat.name}</h1>
                 <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                   <span className={`inline-flex px-2 py-1 text-xs font-bold uppercase ${typeBadge.bg}`}>{typeBadge.label}</span>
-                  {cat.gender && <span className={`inline-flex border border-black px-2 py-1 text-xs font-bold text-gray-800 ${GENDER_BG[cat.gender] || 'bg-gray-100'}`}>{GENDER_LABELS[cat.gender] || cat.gender}</span>}
-                  {cat.groupName && <span className="inline-flex border border-black bg-white px-2 py-1 text-xs font-medium text-gray-700">{cat.groupName}</span>}
+                  {cat.gender && <span className={`inline-flex border border-border px-2 py-1 text-xs font-bold text-foreground ${GENDER_BG[cat.gender] || 'bg-muted'}`}>{GENDER_LABELS[cat.gender] || cat.gender}</span>}
+                  {cat.groupName && <span className="inline-flex border border-border bg-card px-2 py-1 text-xs font-medium text-foreground/80">{cat.groupName}</span>}
                 </div>
               </div>
             </div>
@@ -1415,7 +1415,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
           <div className="w-full xl:col-start-3 xl:justify-self-end xl:max-w-md">
             <>
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Arbitri</span>
+              <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</span>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
                 {refSlots.map(r => {
                   const isConnected = r.id ? connectedRefIds.has(r.id) : false;
@@ -1428,11 +1428,11 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         setReplaceRefData(r);
                         setReplacementRefId(r.id ? String(r.id) : '');
                       }}
-                      className={`flex w-full items-center gap-2 border px-3 py-2 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-black bg-white text-gray-500 hover:bg-gray-50' : isConnected ? 'border-black bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-black bg-white text-gray-700 hover:bg-yellow-100'}`}
+                      className={`flex w-full items-center gap-2 border px-3 py-2 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : isConnected ? 'border-border bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
                       title={isEmpty ? 'Adaugă arbitru' : 'Înlocuiește arbitrul'}
                     >
-                      <span className={`inline-block h-2.5 w-2.5 shrink-0 ${isEmpty ? 'bg-gray-200' : isConnected ? 'bg-emerald-500' : 'bg-gray-400'}`}></span>
-                      <span className="font-black text-black">A{r.pos}</span>
+                      <span className={`inline-block h-2.5 w-2.5 shrink-0 ${isEmpty ? 'bg-muted' : isConnected ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`}></span>
+                      <span className="font-black text-foreground">A{r.pos}</span>
                       <span className="min-w-0 flex-1 truncate font-semibold">{r.name || 'Adaugă arbitru'}</span>
                     </button>
                   );
@@ -1455,11 +1455,11 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           ]}
         >
           <div className="space-y-2">
-            <label className="text-sm font-bold text-gray-700">Alege alt arbitru</label>
+            <label className="text-sm font-bold text-foreground/80">Alege alt arbitru</label>
             <select
               value={replacementRefId}
               onChange={e => setReplacementRefId(e.target.value)}
-              className="w-full border-2 border-black bg-white px-4 py-3 text-base font-medium outline-none focus:border-yellow-400"
+              className="w-full border-2 border-border bg-card px-4 py-3 text-base font-medium outline-none focus:border-ring"
             >
               <option value="">Fără arbitru</option>
               {availableReplacementRefs.map(ref => (
@@ -1486,7 +1486,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           ].filter(Boolean)}
         >
           <div className="space-y-2">
-            <label className="text-sm font-bold text-gray-700">Scor (0 – 100)</label>
+            <label className="text-sm font-bold text-foreground/80">Scor (0 – 100)</label>
             <input
               type="number"
               min="0"
@@ -1496,7 +1496,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               onChange={e => setCatScoreInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') submitCatRefScore(); }}
               autoFocus
-              className="w-full border-2 border-black px-4 py-3 text-center text-2xl font-black tabular-nums outline-none focus:border-yellow-400"
+              className="w-full border-2 border-border px-4 py-3 text-center text-2xl font-black tabular-nums outline-none focus:border-ring"
               placeholder="ex: 85"
             />
           </div>
@@ -1546,12 +1546,12 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       )}
 
       {/* ── Athletes table — all participants ── */}
-      <div className="overflow-hidden border-2 border-black bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b-2 border-black bg-gray-100 px-4 py-3">
-          <p className="text-sm font-bold uppercase tracking-wide text-gray-700">{isTeamCategory ? `Toate echipele (${enrolled.length})` : `Toți sportivii (${enrolled.length})`}</p>
+      <div className="overflow-hidden border-2 border-border bg-card shadow-sm">
+        <div className="flex items-center justify-between border-b-2 border-border bg-muted px-4 py-3">
+          <p className="text-sm font-bold uppercase tracking-wide text-foreground/80">{isTeamCategory ? `Toate echipele (${enrolled.length})` : `Toți sportivii (${enrolled.length})`}</p>
           <button
             onClick={() => exportToExcel()}
-            className="flex items-center gap-1.5 border border-black bg-white px-3 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-yellow-100"
+            className="flex items-center gap-1.5 border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground/80 transition hover:bg-amber-100"
             title="Exportă în Excel"
           >
             ⬇ Excel
@@ -1567,35 +1567,35 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                   row.isDisqualified
                     ? 'border-red-300 bg-red-50/70 opacity-70'
                     : row.isRevealed
-                      ? 'border-yellow-400 bg-yellow-50'
+                      ? 'border-amber-400 bg-amber-50'
                       : row.isActive
-                        ? 'border-green-500 bg-green-50'
+                        ? 'border-emerald-500 bg-emerald-50'
                         : highlightAthleteId === row.athleteId && highlightAction === 'present'
-                          ? 'border-green-300 bg-green-50/60'
-                          : 'border-black bg-white'
+                          ? 'border-emerald-300 bg-emerald-50/60'
+                          : 'border-border bg-card'
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex rounded border border-black bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">#{idx + 1}</span>
+                      <span className="inline-flex rounded border border-border bg-muted px-2 py-0.5 text-[11px] font-bold text-foreground/80">#{idx + 1}</span>
                       {rank && (
-                        <span className={`inline-flex rounded border border-black px-2 py-0.5 text-[11px] font-bold ${rank === 1 ? 'bg-yellow-200 text-yellow-900' : rank === 2 ? 'bg-gray-200 text-gray-700' : rank === 3 ? 'bg-orange-100 text-orange-700' : 'bg-white text-gray-600'}`}>
+                        <span className={`inline-flex rounded border border-border px-2 py-0.5 text-[11px] font-bold ${rank === 1 ? 'bg-amber-200 text-amber-900' : rank === 2 ? 'bg-muted text-foreground/80' : rank === 3 ? 'bg-orange-100 text-orange-700' : 'bg-card text-muted-foreground'}`}>
                           Loc {rank}
                         </span>
                       )}
                       {row.isDisqualified && <span className="inline-flex rounded border border-red-700 bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Descalificat</span>}
-                      {!row.isDisqualified && finishedAthletes.has(row.athleteId) && !row.isActive && <span className="inline-flex rounded border border-black bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-700">Terminat</span>}
-                      {row.isActive && <span className="inline-flex rounded border border-green-700 bg-green-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Prezintă acum</span>}
-                      {row.isRevealed && <span className="inline-flex rounded border border-yellow-500 bg-yellow-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black">Scor afișat</span>}
+                      {!row.isDisqualified && finishedAthletes.has(row.athleteId) && !row.isActive && <span className="inline-flex rounded border border-border bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground/80">Terminat</span>}
+                      {row.isActive && <span className="inline-flex rounded border border-emerald-700 bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Prezintă acum</span>}
+                      {row.isRevealed && <span className="inline-flex rounded border border-amber-500 bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">Scor afișat</span>}
                     </div>
-                    <p className={`mt-2 break-words text-base font-black ${row.isDisqualified ? 'text-red-500 line-through' : 'text-gray-900'}`}>{row.athleteName}</p>
-                    {row.clubName && <p className="mt-0.5 text-sm text-gray-500">{row.clubName}</p>}
-                    {row.detailText && row.detailText !== row.athleteName && <p className="mt-0.5 text-xs text-gray-400">{row.detailText}</p>}
+                    <p className={`mt-2 break-words text-base font-black ${row.isDisqualified ? 'text-red-500 line-through' : 'text-foreground'}`}>{row.athleteName}</p>
+                    {row.clubName && <p className="mt-0.5 text-sm text-muted-foreground">{row.clubName}</p>}
+                    {row.detailText && row.detailText !== row.athleteName && <p className="mt-0.5 text-xs text-muted-foreground/60">{row.detailText}</p>}
                   </div>
-                  <div className="rounded border-2 border-black bg-yellow-50 px-3 py-2 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Total</p>
-                    <p className="text-lg font-black text-gray-900 tabular-nums">{row.total != null ? Math.round(row.total) : '—'}</p>
+                  <div className="rounded border-2 border-border bg-amber-50 px-3 py-2 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Total</p>
+                    <p className="text-lg font-black text-foreground tabular-nums">{row.total != null ? Math.round(row.total) : '—'}</p>
                   </div>
                 </div>
 
@@ -1621,10 +1621,10 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                           setCatScoreInput(value != null ? Number(value).toString() : '');
                         }}
                         disabled={!r.id}
-                        className={`rounded border px-3 py-2 text-left transition ${!r.id ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300' : 'border-black bg-white hover:bg-yellow-50'} ${isCancelled ? 'line-through' : ''}`}
+                        className={`rounded border px-3 py-2 text-left transition ${!r.id ? 'cursor-not-allowed border-border bg-muted/40 text-muted-foreground/40' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''}`}
                       >
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">A{r.pos}</p>
-                        <p className={`mt-1 text-lg font-black tabular-nums ${value != null ? (isCancelled ? 'text-red-400' : 'text-gray-900') : 'text-gray-300'}`}>{value != null ? Math.round(Number(value)) : '—'}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">A{r.pos}</p>
+                        <p className={`mt-1 text-lg font-black tabular-nums ${value != null ? (isCancelled ? 'text-red-400' : 'text-foreground') : 'text-muted-foreground/40'}`}>{value != null ? Math.round(Number(value)) : '—'}</p>
                       </button>
                     );
                   })}
@@ -1641,13 +1641,13 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
-                <th className="w-10 border border-black bg-gray-200 px-3 py-2.5 text-left font-bold uppercase tracking-wide text-gray-700">#</th>
-                <th className="border border-black bg-gray-200 px-3 py-2.5 text-left font-bold uppercase tracking-wide text-gray-700">{isTeamCategory ? 'Echipă' : 'Sportiv'}</th>
-                <th className="w-48 border border-black bg-gray-200 px-3 py-2.5 text-left font-bold uppercase tracking-wide text-gray-700">Club</th>
-                {refCols.map(r => (<th key={r.pos} className="w-16 border border-black bg-gray-200 px-2 py-2.5 text-center font-bold uppercase tracking-wide text-gray-700">A{r.pos}</th>))}
-                <th className="w-20 border border-black bg-gray-200 px-3 py-2.5 text-center font-bold uppercase tracking-wide text-gray-700">Total</th>
-                <th className="w-16 border border-black bg-gray-200 px-2 py-2.5 text-center font-bold uppercase tracking-wide text-gray-700">Loc</th>
-                <th className="min-w-[360px] border border-black bg-gray-200 px-2 py-2.5 text-center font-bold uppercase tracking-wide text-gray-700">Acțiuni</th>
+                <th className="w-10 border border-border bg-muted px-3 py-2.5 text-left font-bold uppercase tracking-wide text-foreground/80">#</th>
+                <th className="border border-border bg-muted px-3 py-2.5 text-left font-bold uppercase tracking-wide text-foreground/80">{isTeamCategory ? 'Echipă' : 'Sportiv'}</th>
+                <th className="w-48 border border-border bg-muted px-3 py-2.5 text-left font-bold uppercase tracking-wide text-foreground/80">Club</th>
+                {refCols.map(r => (<th key={r.pos} className="w-16 border border-border bg-muted px-2 py-2.5 text-center font-bold uppercase tracking-wide text-foreground/80">A{r.pos}</th>))}
+                <th className="w-20 border border-border bg-muted px-3 py-2.5 text-center font-bold uppercase tracking-wide text-foreground/80">Total</th>
+                <th className="w-16 border border-border bg-muted px-2 py-2.5 text-center font-bold uppercase tracking-wide text-foreground/80">Loc</th>
+                <th className="min-w-[360px] border border-border bg-muted px-2 py-2.5 text-center font-bold uppercase tracking-wide text-foreground/80">Acțiuni</th>
               </tr>
             </thead>
             <tbody>
@@ -1655,20 +1655,20 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                 const rank = getRank(row.athleteId);
                 return (
                   <tr key={row.athleteId} className={`${
-                    row.isDisqualified ? 'bg-red-50 opacity-60' : row.isRevealed ? 'bg-yellow-50 ring-2 ring-yellow-300 ring-inset' : row.isActive ? 'bg-green-50 ring-2 ring-green-500 ring-inset border-l-4 border-l-green-600' : highlightAthleteId === row.athleteId && highlightAction === 'present' ? 'bg-green-50/50 ring-1 ring-green-200 ring-inset' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                  } hover:bg-yellow-50/50 transition`}>
-                    <td className="border border-black/20 px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
-                    <td className="border border-black/20 px-3 py-2.5">
+                    row.isDisqualified ? 'bg-red-50 opacity-60' : row.isRevealed ? 'bg-amber-50 ring-2 ring-amber-300 ring-inset' : row.isActive ? 'bg-emerald-50 ring-2 ring-emerald-500 ring-inset border-l-4 border-l-emerald-600' : highlightAthleteId === row.athleteId && highlightAction === 'present' ? 'bg-emerald-50/50 ring-1 ring-emerald-200 ring-inset' : idx % 2 === 0 ? 'bg-card' : 'bg-muted/40'
+                  } hover:bg-amber-50/50 transition`}>
+                    <td className="border border-border/20 px-3 py-2.5 text-muted-foreground/60 text-xs">{idx + 1}</td>
+                    <td className="border border-border/20 px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`font-semibold ${row.isDisqualified ? 'text-red-400 line-through' : 'text-gray-900'}`}>{row.athleteName}</span>
+                        <span className={`font-semibold ${row.isDisqualified ? 'text-red-400 line-through' : 'text-foreground'}`}>{row.athleteName}</span>
                         {row.isDisqualified && <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider bg-red-600 text-white px-2 py-0.5">DESCALIFICAT</span>}
-                        {!row.isDisqualified && finishedAthletes.has(row.athleteId) && !row.isActive && <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider bg-gray-200 text-gray-600 px-2 py-0.5">✓ Terminat</span>}
-                        {row.isActive && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-green-500 text-white px-2 py-0.5 animate-pulse">● Prezintă acum</span>}
-                        {row.isRevealed && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-yellow-400 text-black px-2 py-0.5">✓ Scor afișat</span>}
+                        {!row.isDisqualified && finishedAthletes.has(row.athleteId) && !row.isActive && <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider bg-muted text-muted-foreground px-2 py-0.5">✓ Terminat</span>}
+                        {row.isActive && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500 text-white px-2 py-0.5 animate-pulse">● Prezintă acum</span>}
+                        {row.isRevealed && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-amber-950 px-2 py-0.5">✓ Scor afișat</span>}
                       </div>
-                      {row.detailText && row.detailText !== row.athleteName && <div className="mt-1 text-xs text-gray-400">{row.detailText}</div>}
+                      {row.detailText && row.detailText !== row.athleteName && <div className="mt-1 text-xs text-muted-foreground/60">{row.detailText}</div>}
                     </td>
-                    <td className="border border-black/20 px-3 py-2.5 text-sm text-gray-700">
+                    <td className="border border-border/20 px-3 py-2.5 text-sm text-foreground/80">
                       {row.clubName || '—'}
                     </td>
                     {row.vals.map((v, ri) => {
@@ -1688,19 +1688,19 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                             });
                             setCatScoreInput(v != null ? Number(v).toString() : '');
                           }}
-                          className={`border border-black/20 text-center px-2 py-2.5 tabular-nums text-sm cursor-pointer hover:bg-indigo-50 ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-gray-900 font-medium' : 'text-gray-300'}`}
+                          className={`border border-border/20 text-center px-2 py-2.5 tabular-nums text-sm cursor-pointer hover:bg-indigo-50 ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-foreground font-medium' : 'text-muted-foreground/40'}`}
                         >
                           {v != null ? Math.round(Number(v)) : '—'}
                         </td>
                       );
                     })}
-                    <td className="border border-black/20 text-center px-3 py-2.5 font-bold text-gray-900 tabular-nums">{row.total != null ? Math.round(row.total) : '—'}</td>
-                    <td className="border border-black/20 text-center px-2 py-2.5">
+                    <td className="border border-border/20 text-center px-3 py-2.5 font-bold text-foreground tabular-nums">{row.total != null ? Math.round(row.total) : '—'}</td>
+                    <td className="border border-border/20 text-center px-2 py-2.5">
                       {rank && rank <= 3 ? (
-                        <span className={`text-xs font-black px-2 py-0.5 ${rank === 1 ? 'bg-yellow-100 text-yellow-700' : rank === 2 ? 'bg-gray-200 text-gray-600' : 'bg-orange-100 text-orange-600'}`}>{rank}</span>
-                      ) : rank ? <span className="text-xs text-gray-400">{rank}</span> : '—'}
+                        <span className={`text-xs font-black px-2 py-0.5 ${rank === 1 ? 'bg-amber-100 text-amber-700' : rank === 2 ? 'bg-muted text-muted-foreground' : 'bg-orange-100 text-orange-600'}`}>{rank}</span>
+                      ) : rank ? <span className="text-xs text-muted-foreground/60">{rank}</span> : '—'}
                     </td>
-                    <td className="border border-black/20 px-2 py-2.5">
+                    <td className="border border-border/20 px-2 py-2.5">
                       {renderActionButtons(row)}
                     </td>
                   </tr>
@@ -2220,10 +2220,10 @@ function FullscreenMatchPanel({
         time: ev.created_at ? new Date(ev.created_at).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
         label: typeLabels[ev.event_type] || ev.event_type_display || ev.event_type,
         sublabel: null,
-        dotClass: isRedEvent ? 'bg-red-500' : isBlueEvent ? 'bg-blue-500' : 'bg-gray-400',
-        labelClass: isBonus ? 'text-green-600' : isRedEvent ? 'text-red-600' : isBlueEvent ? 'text-blue-600' : 'text-gray-600',
+        dotClass: isRedEvent ? 'bg-red-500' : isBlueEvent ? 'bg-blue-500' : 'bg-muted-foreground/40',
+        labelClass: isBonus ? 'text-emerald-600' : isRedEvent ? 'text-red-600' : isBlueEvent ? 'text-blue-600' : 'text-muted-foreground',
         value: valueStr,
-        valueClass: isBonus ? 'text-green-600' : ev.value < 0 ? 'text-red-600' : 'text-gray-500',
+        valueClass: isBonus ? 'text-emerald-600' : ev.value < 0 ? 'text-red-600' : 'text-muted-foreground',
         roundLabel: roundNum ? `R${roundNum}` : '—',
       };
     });
@@ -2244,7 +2244,7 @@ function FullscreenMatchPanel({
         dotClass: event.side === 'red' ? 'bg-red-500' : 'bg-blue-500',
         labelClass: event.side === 'red' ? 'text-red-600' : 'text-blue-600',
         value: `${event.points > 0 ? '+' : ''}${event.points}p`,
-        valueClass: isValidated ? 'text-green-600' : isRejected ? 'text-red-600' : isPending ? 'text-yellow-600' : 'text-gray-500',
+        valueClass: isValidated ? 'text-emerald-600' : isRejected ? 'text-red-600' : isPending ? 'text-amber-600' : 'text-muted-foreground',
         roundLabel: roundNum ? `R${roundNum}` : '—',
       };
     });
@@ -2280,7 +2280,7 @@ function FullscreenMatchPanel({
           ]}
         >
           <div className="space-y-3">
-            <label className="block text-sm font-bold text-gray-700">Durată repriză extra (secunde)</label>
+            <label className="block text-sm font-bold text-foreground/80">Durată repriză extra (secunde)</label>
             <div className="flex items-center gap-3">
               <input
                 type="number"
@@ -2288,14 +2288,14 @@ function FullscreenMatchPanel({
                 max={600}
                 value={extraRoundDuration}
                 onChange={e => setExtraRoundDuration(Math.max(10, Math.min(600, Number(e.target.value))))}
-                className="w-28 border-2 border-black bg-white px-3 py-2 text-lg font-bold outline-none focus:border-yellow-400 tabular-nums"
+                className="w-28 border-2 border-border bg-card px-3 py-2 text-lg font-bold outline-none focus:border-ring tabular-nums"
               />
-              <span className="text-sm text-gray-500">sec ({Math.floor(extraRoundDuration / 60)}:{String(extraRoundDuration % 60).padStart(2, '0')} min)</span>
+              <span className="text-sm text-muted-foreground">sec ({Math.floor(extraRoundDuration / 60)}:{String(extraRoundDuration % 60).padStart(2, '0')} min)</span>
             </div>
             <div className="flex flex-wrap gap-2">
               {[30, 60, 90, 120].map(s => (
                 <button key={s} onClick={() => setExtraRoundDuration(s)}
-                  className={`border px-3 py-1 text-sm font-bold transition ${extraRoundDuration === s ? 'border-black bg-yellow-300 text-black' : 'border-black bg-white text-gray-600 hover:bg-gray-50'}`}>
+                  className={`border px-3 py-1 text-sm font-bold transition ${extraRoundDuration === s ? 'border-border bg-amber-300 text-amber-950' : 'border-border bg-card text-muted-foreground hover:bg-muted/40'}`}>
                   {s}s
                 </button>
               ))}
@@ -2361,42 +2361,42 @@ function FullscreenMatchPanel({
             ]}
           >
               {/* Scores table */}
-              <table className="w-full border-collapse border-2 border-black text-sm">
+              <table className="w-full border-collapse border-2 border-border text-sm">
                 <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-black px-3 py-2 text-left">Repriza</th>
-                    <th className="border border-black px-3 py-2 text-center text-red-600">Roșu</th>
-                    <th className="border border-black px-3 py-2 text-center text-blue-600">Albastru</th>
+                  <tr className="bg-muted">
+                    <th className="border border-border px-3 py-2 text-left">Repriza</th>
+                    <th className="border border-border px-3 py-2 text-center text-red-600">Roșu</th>
+                    <th className="border border-border px-3 py-2 text-center text-blue-600">Albastru</th>
                   </tr>
                 </thead>
                 <tbody>
                   {matchRounds.map(r => {
                     const rs = roundScores.find(s => s.round === r.id);
                     return (
-                      <tr key={r.id} className="hover:bg-gray-50">
-                        <td className="border border-black/20 px-3 py-2 font-medium">R{r.round_number}</td>
-                        <td className="border border-black/20 px-3 py-2 text-center font-bold text-red-600 tabular-nums">{rs?.red_corner_score != null ? Number(rs.red_corner_score) : '—'}</td>
-                        <td className="border border-black/20 px-3 py-2 text-center font-bold text-blue-600 tabular-nums">{rs?.blue_corner_score != null ? Number(rs.blue_corner_score) : '—'}</td>
+                      <tr key={r.id} className="hover:bg-muted/40">
+                        <td className="border border-border/20 px-3 py-2 font-medium">R{r.round_number}</td>
+                        <td className="border border-border/20 px-3 py-2 text-center font-bold text-red-600 tabular-nums">{rs?.red_corner_score != null ? Number(rs.red_corner_score) : '—'}</td>
+                        <td className="border border-border/20 px-3 py-2 text-center font-bold text-blue-600 tabular-nums">{rs?.blue_corner_score != null ? Number(rs.blue_corner_score) : '—'}</td>
                       </tr>
                     );
                   })}
                   {adjustRed !== 0 || adjustBlue !== 0 ? (
-                    <tr className="bg-gray-100 font-bold">
-                      <td className="border border-black px-3 py-2">Total</td>
-                      <td className="border border-black px-3 py-2 text-center text-red-700 tabular-nums">{grandTotalRedRef} <span className={`text-xs font-medium ${adjustRed > 0 ? 'text-green-600' : 'text-red-500'}`}>({adjustRed > 0 ? '+' : ''}{adjustRed})</span></td>
-                      <td className="border border-black px-3 py-2 text-center text-blue-700 tabular-nums">{grandTotalBlueRef} <span className={`text-xs font-medium ${adjustBlue > 0 ? 'text-green-600' : 'text-red-500'}`}>({adjustBlue > 0 ? '+' : ''}{adjustBlue})</span></td>
+                    <tr className="bg-muted font-bold">
+                      <td className="border border-border px-3 py-2">Total</td>
+                      <td className="border border-border px-3 py-2 text-center text-red-700 tabular-nums">{grandTotalRedRef} <span className={`text-xs font-medium ${adjustRed > 0 ? 'text-emerald-600' : 'text-red-500'}`}>({adjustRed > 0 ? '+' : ''}{adjustRed})</span></td>
+                      <td className="border border-border px-3 py-2 text-center text-blue-700 tabular-nums">{grandTotalBlueRef} <span className={`text-xs font-medium ${adjustBlue > 0 ? 'text-emerald-600' : 'text-red-500'}`}>({adjustBlue > 0 ? '+' : ''}{adjustBlue})</span></td>
                     </tr>
                   ) : (
-                    <tr className="bg-gray-100 font-bold">
-                      <td className="border border-black px-3 py-2">Total</td>
-                      <td className="border border-black px-3 py-2 text-center text-red-700 tabular-nums">{grandTotalRedRef}</td>
-                      <td className="border border-black px-3 py-2 text-center text-blue-700 tabular-nums">{grandTotalBlueRef}</td>
+                    <tr className="bg-muted font-bold">
+                      <td className="border border-border px-3 py-2">Total</td>
+                      <td className="border border-border px-3 py-2 text-center text-red-700 tabular-nums">{grandTotalRedRef}</td>
+                      <td className="border border-border px-3 py-2 text-center text-blue-700 tabular-nums">{grandTotalBlueRef}</td>
                     </tr>
                   )}
                 </tbody>
               </table>
               {/* Choose winner buttons */}
-              <p className="text-sm text-gray-500 text-center">Alege câștigătorul pentru {ref.name}:</p>
+              <p className="text-sm text-muted-foreground text-center">Alege câștigătorul pentru {ref.name}:</p>
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
                 <button onClick={async () => {
                   const existing = matchRefScores.find(s => s.match === refModalData.matchId && s.referee === ref.id && s.round == null);
@@ -2405,7 +2405,7 @@ function FullscreenMatchPanel({
                   setRefModalData(null);
                   onRefresh();
                 }} disabled={busy}
-                  className="flex-1 border border-black bg-red-600 px-4 py-3 font-bold text-base text-white transition hover:bg-red-700 disabled:opacity-40">
+                  className="flex-1 border border-border bg-red-600 px-4 py-3 font-bold text-base text-white transition hover:bg-red-700 disabled:opacity-40">
                   {match.red_corner_full_name || 'Roșu'}
                 </button>
                 <button onClick={async () => {
@@ -2415,7 +2415,7 @@ function FullscreenMatchPanel({
                   setRefModalData(null);
                   onRefresh();
                 }} disabled={busy}
-                  className="flex-1 border border-black bg-blue-600 px-4 py-3 font-bold text-base text-white transition hover:bg-blue-700 disabled:opacity-40">
+                  className="flex-1 border border-border bg-blue-600 px-4 py-3 font-bold text-base text-white transition hover:bg-blue-700 disabled:opacity-40">
                   {match.blue_corner_full_name || 'Albastru'}
                 </button>
               </div>
@@ -2430,7 +2430,7 @@ function FullscreenMatchPanel({
         const totalValidatedRed = Object.values(pointStatsByRef).reduce((sum, ref) => sum + (ref.totals?.validated?.red || 0), 0) + totalBonusRed + warningPenaltyRed;
         const totalValidatedBlue = Object.values(pointStatsByRef).reduce((sum, ref) => sum + (ref.totals?.validated?.blue || 0), 0) + totalBonusBlue + warningPenaltyBlue;
         return matchCat ? (
-          <div className="w-full overflow-hidden bg-white shadow-sm">
+          <div className="w-full overflow-hidden bg-card shadow-sm">
             <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
               <div className="flex flex-wrap items-start gap-2 xl:self-start">
                 <button
@@ -2439,7 +2439,7 @@ function FullscreenMatchPanel({
                   aria-checked={matchDisplayMode === 'real_time'}
                   onClick={() => updateMatchDisplayMode(matchDisplayMode === 'real_time' ? 'reveal_final' : 'real_time')}
                   disabled={busy || operationalSettingsLocked}
-                  className={`relative inline-flex h-9 min-w-[236px] items-center overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 disabled:cursor-not-allowed disabled:opacity-50 ${matchDisplayMode === 'real_time' ? 'border-emerald-700 bg-emerald-500/95 text-white' : 'border-amber-700 bg-amber-300 text-black'}`}
+                  className={`relative inline-flex h-9 min-w-[236px] items-center overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50 ${matchDisplayMode === 'real_time' ? 'border-emerald-700 bg-emerald-500/95 text-white' : 'border-amber-700 bg-amber-300 text-amber-950'}`}
                   title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Modul nu mai poate fi schimbat după ce meciul a început.' : 'Schimbă modul de afișare'}
                 >
                   <span
@@ -2447,8 +2447,8 @@ function FullscreenMatchPanel({
                     aria-hidden="true"
                   />
                   <span className="relative z-10 grid w-full grid-cols-2 items-center gap-2 px-3 whitespace-nowrap">
-                    <span className={`text-center transition-colors ${matchDisplayMode === 'real_time' ? 'text-white/75' : 'text-black'}`}>Decizia la final</span>
-                    <span className={`text-center transition-colors ${matchDisplayMode === 'real_time' ? 'text-black' : 'text-black/70'}`}>Scor timp real</span>
+                    <span className={`text-center transition-colors ${matchDisplayMode === 'real_time' ? 'text-white/75' : 'text-foreground'}`}>Decizia la final</span>
+                    <span className={`text-center transition-colors ${matchDisplayMode === 'real_time' ? 'text-foreground' : 'text-amber-950/70'}`}>Scor timp real</span>
                   </span>
                 </button>
 
@@ -2458,7 +2458,7 @@ function FullscreenMatchPanel({
                   aria-checked={isThreeRoundPreset}
                   onClick={() => applyRoundPreset(isThreeRoundPreset ? 2 : 3)}
                   disabled={busy || operationalSettingsLocked}
-                  className={`relative inline-flex h-9 min-w-[168px] items-center overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 disabled:cursor-not-allowed disabled:opacity-50 ${isThreeRoundPreset ? 'border-emerald-700 bg-emerald-500/95 text-white' : 'border-sky-700 bg-sky-500 text-white'}`}
+                  className={`relative inline-flex h-9 min-w-[168px] items-center overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50 ${isThreeRoundPreset ? 'border-emerald-700 bg-emerald-500/95 text-white' : 'border-sky-700 bg-sky-500 text-white'}`}
                   title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Presetul nu mai poate fi schimbat după ce meciul a început.' : 'Comută între 3 x 2 și 2 x 2'}
                 >
                   <span
@@ -2466,8 +2466,8 @@ function FullscreenMatchPanel({
                     aria-hidden="true"
                   />
                   <span className="relative z-10 grid w-full grid-cols-2 items-center gap-2 px-3 whitespace-nowrap">
-                    <span className={`text-center transition-colors ${isThreeRoundPreset ? 'text-black' : 'text-white/75'}`}>3x2min</span>
-                    <span className={`text-center transition-colors ${isThreeRoundPreset ? 'text-white/75' : 'text-black'}`}>2x2min</span>
+                    <span className={`text-center transition-colors ${isThreeRoundPreset ? 'text-foreground' : 'text-white/75'}`}>3x2min</span>
+                    <span className={`text-center transition-colors ${isThreeRoundPreset ? 'text-white/75' : 'text-foreground'}`}>2x2min</span>
                   </span>
                 </button>
 
@@ -2478,7 +2478,7 @@ function FullscreenMatchPanel({
                 ) : null}
               </div>
               <div className="w-full xl:hidden">
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">Arbitri</p>
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</p>
                 <div className="flex flex-wrap gap-1">
                   {matchRefSlots.map(r => {
                     const isEmpty = !r.id;
@@ -2490,11 +2490,11 @@ function FullscreenMatchPanel({
                           setReplaceMatchRefData(r);
                           setReplacementMatchRefId(r.id ? String(r.id) : '');
                         }}
-                        className={`flex items-center gap-1.5 border px-2 py-1 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-black bg-white text-gray-400 hover:bg-gray-50' : 'border-black bg-white text-gray-700 hover:bg-yellow-100'}`}
+                        className={`flex items-center gap-1.5 border px-2 py-1 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground/60 hover:bg-muted/40' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
                         title={isEmpty ? 'Adaugă arbitru' : 'Înlocuiește arbitrul'}
                       >
-                        <span className={`inline-block h-2 w-2 shrink-0 ${isEmpty ? 'bg-gray-200' : 'bg-gray-400'}`}></span>
-                        <span className="font-black text-black">A{r.pos}</span>
+                        <span className={`inline-block h-2 w-2 shrink-0 ${isEmpty ? 'bg-muted' : 'bg-muted-foreground/40'}`}></span>
+                        <span className="font-black text-foreground">A{r.pos}</span>
                         {r.name && <span className="min-w-0 truncate">{r.name}</span>}
                       </button>
                     );
@@ -2503,44 +2503,44 @@ function FullscreenMatchPanel({
               </div>
               <div className="min-w-0 xl:col-start-2">
                 <div className="flex flex-col items-center gap-4 text-center">
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 mb-1 text-xs font-medium text-gray-600">
-                    <span className="border border-black bg-white px-2 py-0.5">{matchCat.name}</span>
-                    {matchCat.groupName && <span className="border border-black bg-white px-2 py-0.5">{matchCat.groupName}</span>}
-                    <span className={`border border-black px-2 py-0.5 ${GENDER_BG[matchCat.gender] || 'bg-gray-100'}`}>{GENDER_LABELS[matchCat.gender] || matchCat.gender}</span>
-                    <span className="border border-black bg-yellow-300 px-2 py-0.5 font-bold text-black">{matchTypeLabels[match.match_type] || match.match_type}</span>
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 mb-1 text-xs font-medium text-muted-foreground">
+                    <span className="border border-border bg-card px-2 py-0.5">{matchCat.name}</span>
+                    {matchCat.groupName && <span className="border border-border bg-card px-2 py-0.5">{matchCat.groupName}</span>}
+                    <span className={`border border-border px-2 py-0.5 ${GENDER_BG[matchCat.gender] || 'bg-muted'}`}>{GENDER_LABELS[matchCat.gender] || matchCat.gender}</span>
+                    <span className="rounded border border-amber-300 bg-amber-100 px-2 py-0.5 font-bold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">{matchTypeLabels[match.match_type] || match.match_type}</span>
                   </div>
                   <div className="grid w-full grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-5">
-                    <div className={`min-w-0 text-center px-3 py-1.5 sm:justify-self-end ${isMatchFinalized && matchWinner === 'red' ? 'border-4 border-green-500 bg-green-50 shadow-lg' : ''}`}>
-                      {isMatchFinalized && matchWinner === 'red' && <span className="mb-1 block text-xs font-bold text-green-600">CÂȘTIGĂTOR</span>}
+                    <div className={`min-w-0 text-center px-3 py-1.5 sm:justify-self-end ${isMatchFinalized && matchWinner === 'red' ? 'border-4 border-emerald-500 bg-emerald-50 shadow-lg' : ''}`}>
+                      {isMatchFinalized && matchWinner === 'red' && <span className="mb-1 block text-xs font-bold text-emerald-600">CÂȘTIGĂTOR</span>}
                       {matchDisplayMode === 'real_time'
-                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedRed > 0 ? 'text-green-600' : totalValidatedRed < 0 ? 'text-red-700' : 'text-gray-400'}`}>{totalValidatedRed > 0 ? '+' : ''}{totalValidatedRed}</span>
-                        : <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${isMatchFinalized && matchWinner === 'red' ? 'text-green-600' : 'text-gray-300'}`}>–</span>
+                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedRed > 0 ? 'text-emerald-600' : totalValidatedRed < 0 ? 'text-red-700' : 'text-muted-foreground/60'}`}>{totalValidatedRed > 0 ? '+' : ''}{totalValidatedRed}</span>
+                        : <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${isMatchFinalized && matchWinner === 'red' ? 'text-emerald-600' : 'text-muted-foreground/40'}`}>–</span>
                       }
                       <span className="break-words text-2xl font-black text-red-600 sm:text-3xl">{match.red_corner_full_name || 'TBD'}</span>
-                      {match.red_corner_club_name && <p className="text-sm font-medium text-gray-500">({match.red_corner_club_name})</p>}
+                      {match.red_corner_club_name && <p className="text-sm font-medium text-muted-foreground">({match.red_corner_club_name})</p>}
                     </div>
                     <div className="flex flex-col items-center gap-1 sm:justify-self-center">
-                      <span className="text-2xl font-black text-gray-300">vs</span>
+                      <span className="text-2xl font-black text-muted-foreground/40">vs</span>
                       <button onClick={() => swapCorners(match.id)} disabled={busy || matchStarted}
-                        className="border border-black bg-white px-2 py-1 text-xs font-medium text-gray-700 transition hover:bg-yellow-100 disabled:opacity-40" title={matchStarted ? 'Nu se poate schimba după începerea meciului' : 'Inversează colțurile'}>
+                        className="border border-border bg-card px-2 py-1 text-xs font-medium text-foreground/80 transition hover:bg-amber-100 disabled:opacity-40" title={matchStarted ? 'Nu se poate schimba după începerea meciului' : 'Inversează colțurile'}>
                         ⇄ Swap
                       </button>
                     </div>
-                    <div className={`min-w-0 text-center px-3 py-1.5 sm:justify-self-start ${isMatchFinalized && matchWinner === 'blue' ? 'border-4 border-green-500 bg-green-50 shadow-lg' : ''}`}>
-                      {isMatchFinalized && matchWinner === 'blue' && <span className="mb-1 block text-xs font-bold text-green-600">CÂȘTIGĂTOR</span>}
+                    <div className={`min-w-0 text-center px-3 py-1.5 sm:justify-self-start ${isMatchFinalized && matchWinner === 'blue' ? 'border-4 border-emerald-500 bg-emerald-50 shadow-lg' : ''}`}>
+                      {isMatchFinalized && matchWinner === 'blue' && <span className="mb-1 block text-xs font-bold text-emerald-600">CÂȘTIGĂTOR</span>}
                       {matchDisplayMode === 'real_time'
-                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedBlue > 0 ? 'text-green-600' : totalValidatedBlue < 0 ? 'text-blue-700' : 'text-gray-400'}`}>{totalValidatedBlue > 0 ? '+' : ''}{totalValidatedBlue}</span>
-                        : <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${isMatchFinalized && matchWinner === 'blue' ? 'text-green-600' : 'text-gray-300'}`}>–</span>
+                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedBlue > 0 ? 'text-emerald-600' : totalValidatedBlue < 0 ? 'text-blue-700' : 'text-muted-foreground/60'}`}>{totalValidatedBlue > 0 ? '+' : ''}{totalValidatedBlue}</span>
+                        : <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${isMatchFinalized && matchWinner === 'blue' ? 'text-emerald-600' : 'text-muted-foreground/40'}`}>–</span>
                       }
                       <span className="break-words text-2xl font-black text-blue-600 sm:text-3xl">{match.blue_corner_full_name || 'TBD'}</span>
-                      {match.blue_corner_club_name && <p className="text-sm font-medium text-gray-500">({match.blue_corner_club_name})</p>}
+                      {match.blue_corner_club_name && <p className="text-sm font-medium text-muted-foreground">({match.blue_corner_club_name})</p>}
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="hidden w-full xl:block xl:col-start-3 xl:justify-self-end xl:max-w-[240px]">
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">Arbitri</p>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
                   {matchRefSlots.map(r => {
                     const isEmpty = !r.id;
@@ -2552,11 +2552,11 @@ function FullscreenMatchPanel({
                           setReplaceMatchRefData(r);
                           setReplacementMatchRefId(r.id ? String(r.id) : '');
                         }}
-                        className={`flex w-full items-center gap-2 border px-3 py-2 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-black bg-white text-gray-500 hover:bg-gray-50' : 'border-black bg-white text-gray-700 hover:bg-yellow-100'}`}
+                        className={`flex w-full items-center gap-2 border px-3 py-2 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
                         title={isEmpty ? 'Adaugă arbitru' : 'Înlocuiește arbitrul'}
                       >
-                        <span className={`inline-block h-2.5 w-2.5 shrink-0 ${isEmpty ? 'bg-gray-200' : 'bg-gray-400'}`}></span>
-                        <span className="font-black text-black">A{r.pos}</span>
+                        <span className={`inline-block h-2.5 w-2.5 shrink-0 ${isEmpty ? 'bg-muted' : 'bg-muted-foreground/40'}`}></span>
+                        <span className="font-black text-foreground">A{r.pos}</span>
                         <span className="min-w-0 flex-1 truncate font-semibold">{r.name || 'Adaugă arbitru'}</span>
                       </button>
                     );
@@ -2579,11 +2579,11 @@ function FullscreenMatchPanel({
           ]}
         >
           <div className="space-y-2">
-            <label className="text-sm font-bold text-gray-700">Alege alt arbitru</label>
+            <label className="text-sm font-bold text-foreground/80">Alege alt arbitru</label>
             <select
               value={replacementMatchRefId}
               onChange={e => setReplacementMatchRefId(e.target.value)}
-              className="w-full border-2 border-black bg-white px-4 py-3 text-base font-medium outline-none focus:border-yellow-400"
+              className="w-full border-2 border-border bg-card px-4 py-3 text-base font-medium outline-none focus:border-ring"
             >
               <option value="">Fără arbitru</option>
               {availableMatchReplacementRefs.map(ref => (
@@ -2604,43 +2604,43 @@ function FullscreenMatchPanel({
         const typeLabels = { disqualify_red: 'Descalif. Roșu', disqualify_blue: 'Descalif. Albastru', penalty_red: '-pt Roșu', penalty_blue: '-pt Albastru', bonus_red: '+pt Roșu', bonus_blue: '+pt Albastru', warning_red: 'Avertism. Roșu', warning_blue: 'Avertism. Albastru', infraction_red: 'Abatere Roșu', infraction_blue: 'Abatere Albastru' };
         return lastEvent ? (
           <div className="flex items-center gap-2 justify-end">
-            <span className="text-[10px] text-gray-400">Ultima acțiune: <span className="font-semibold text-gray-600">{typeLabels[lastEvent.event_type] || lastEvent.event_type}{lastEvent.value != null ? ` (${lastEvent.value > 0 ? '+' : ''}${lastEvent.value})` : ''}</span></span>
-            <button onClick={() => removeLastEvent(match.id, lastEvent.event_type)} disabled={busy} className="border border-black bg-yellow-100 px-2 py-0.5 text-xs font-bold text-gray-700 transition hover:bg-yellow-200 disabled:opacity-40">↩ Undo</button>
+            <span className="text-[10px] text-muted-foreground/60">Ultima acțiune: <span className="font-semibold text-muted-foreground">{typeLabels[lastEvent.event_type] || lastEvent.event_type}{lastEvent.value != null ? ` (${lastEvent.value > 0 ? '+' : ''}${lastEvent.value})` : ''}</span></span>
+            <button onClick={() => removeLastEvent(match.id, lastEvent.event_type)} disabled={busy} className="border border-border bg-amber-100 px-2 py-0.5 text-xs font-bold text-foreground/80 transition hover:bg-amber-200 disabled:opacity-40">↩ Undo</button>
           </div>
         ) : null;
       })()}
       <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         {/* RED corner */}
-        <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${disqualifiedRed ? 'border-gray-400 bg-gray-100 opacity-60' : 'border-red-500 bg-red-200/80'}`}>
+        <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${disqualifiedRed ? 'border-border bg-muted opacity-60' : 'border-red-500 bg-red-200/80'}`}>
           {disqualifiedRed && <span className="inline-flex border border-red-700 bg-red-600 px-2 py-0.5 text-xs font-bold text-white">DESCALIFICAT</span>}
           {/* Indicators: Abateri, Avertismente, Puncte */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-600">Abateri:</span>
+              <span className="text-xs text-muted-foreground">Abateri:</span>
               <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <button key={i} disabled={busy || i >= currentInfractionsRed} onClick={() => removeLastEvent(match.id, 'infraction_red')}
                     className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
-                      i < currentInfractionsRed ? 'border-yellow-600 bg-yellow-400 text-yellow-950 hover:bg-yellow-300' : 'border-gray-300 bg-white text-gray-300'
+                      i < currentInfractionsRed ? 'border-amber-600 bg-amber-400 text-amber-950 hover:bg-amber-300' : 'border-border bg-card text-muted-foreground/40'
                     }`}>{i + 1}</button>
                 ))}
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-600">Avertismente:</span>
+              <span className="text-xs text-muted-foreground">Avertismente:</span>
               <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <button key={i} disabled={busy || i >= warningsRed} onClick={() => removeLastEvent(match.id, 'warning_red')}
                     className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
-                      i < warningsRed ? 'border-orange-600 bg-orange-500 text-white hover:bg-orange-400' : 'border-gray-300 bg-white text-gray-300'
+                      i < warningsRed ? 'border-orange-600 bg-orange-500 text-white hover:bg-orange-400' : 'border-border bg-card text-muted-foreground/40'
                     }`}>{i + 1}</button>
                 ))}
               </div>
               {warningsRed > 0 && <span className="text-[10px] text-red-500 font-medium">({warningPenaltyRed})</span>}
             </div>
             <div className="flex items-center gap-1 ml-auto">
-              <span className="text-xs text-gray-600">Puncte:</span>
-              <span className={`border border-black px-1.5 py-0 text-sm font-black tabular-nums ${adjustRed > 0 ? 'bg-green-200 text-green-700' : adjustRed < 0 ? 'bg-red-200 text-red-700' : 'bg-white text-gray-500'}`}>{adjustRed > 0 ? '+' : ''}{adjustRed}</span>
+              <span className="text-xs text-muted-foreground">Puncte:</span>
+              <span className={`border border-border px-1.5 py-0 text-sm font-black tabular-nums ${adjustRed > 0 ? 'bg-emerald-200 text-emerald-700' : adjustRed < 0 ? 'bg-red-200 text-red-700' : 'bg-card text-muted-foreground'}`}>{adjustRed > 0 ? '+' : ''}{adjustRed}</span>
             </div>
           </div>
           {/* Point buttons + action buttons in one row */}
@@ -2654,36 +2654,36 @@ function FullscreenMatchPanel({
           </div>
         </div>
         {/* BLUE corner */}
-        <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${disqualifiedBlue ? 'border-gray-400 bg-gray-100 opacity-60' : 'border-blue-500 bg-blue-200/80'}`}>
+        <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${disqualifiedBlue ? 'border-border bg-muted opacity-60' : 'border-blue-500 bg-blue-200/80'}`}>
           {disqualifiedBlue && <span className="inline-flex border border-red-700 bg-red-600 px-2 py-0.5 text-xs font-bold text-white">DESCALIFICAT</span>}
           {/* Indicators: Abateri, Avertismente, Puncte */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-600">Abateri:</span>
+              <span className="text-xs text-muted-foreground">Abateri:</span>
               <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <button key={i} disabled={busy || i >= currentInfractionsBlue} onClick={() => removeLastEvent(match.id, 'infraction_blue')}
                     className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
-                      i < currentInfractionsBlue ? 'border-yellow-600 bg-yellow-400 text-yellow-950 hover:bg-yellow-300' : 'border-gray-300 bg-white text-gray-300'
+                      i < currentInfractionsBlue ? 'border-amber-600 bg-amber-400 text-amber-950 hover:bg-amber-300' : 'border-border bg-card text-muted-foreground/40'
                     }`}>{i + 1}</button>
                 ))}
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-600">Avertismente:</span>
+              <span className="text-xs text-muted-foreground">Avertismente:</span>
               <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <button key={i} disabled={busy || i >= warningsBlue} onClick={() => removeLastEvent(match.id, 'warning_blue')}
                     className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
-                      i < warningsBlue ? 'border-orange-600 bg-orange-500 text-white hover:bg-orange-400' : 'border-gray-300 bg-white text-gray-300'
+                      i < warningsBlue ? 'border-orange-600 bg-orange-500 text-white hover:bg-orange-400' : 'border-border bg-card text-muted-foreground/40'
                     }`}>{i + 1}</button>
                 ))}
               </div>
               {warningsBlue > 0 && <span className="text-[10px] text-red-500 font-medium">({warningPenaltyBlue})</span>}
             </div>
             <div className="flex items-center gap-1 ml-auto">
-              <span className="text-xs text-gray-600">Puncte:</span>
-              <span className={`border border-black px-1.5 py-0 text-sm font-black tabular-nums ${adjustBlue > 0 ? 'bg-green-200 text-green-700' : adjustBlue < 0 ? 'bg-red-200 text-red-700' : 'bg-white text-gray-500'}`}>{adjustBlue > 0 ? '+' : ''}{adjustBlue}</span>
+              <span className="text-xs text-muted-foreground">Puncte:</span>
+              <span className={`border border-border px-1.5 py-0 text-sm font-black tabular-nums ${adjustBlue > 0 ? 'bg-emerald-200 text-emerald-700' : adjustBlue < 0 ? 'bg-red-200 text-red-700' : 'bg-card text-muted-foreground'}`}>{adjustBlue > 0 ? '+' : ''}{adjustBlue}</span>
             </div>
           </div>
           {/* Point buttons + action buttons in one row */}
@@ -2702,17 +2702,17 @@ function FullscreenMatchPanel({
       <div className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-bold text-gray-600 uppercase tracking-[0.2em]">Reprize</p>
+            <p className="text-sm font-bold text-muted-foreground uppercase tracking-[0.2em]">Reprize</p>
           </div>
           {matchRounds.length > 0 && (
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground/60">
               {matchRounds.filter(r => r.status === 'completed').length}/{matchRounds.length} finalizate
             </span>
           )}
         </div>
         {matchRounds.length === 0 ? (
-          <div className="flex flex-wrap items-center gap-3 border-2 border-black bg-white px-4 py-4">
-            <span className="text-sm text-gray-500">Nu există reprize. Alege presetul din panoul „Preset reprize” de mai sus.</span>
+          <div className="flex flex-wrap items-center gap-3 border-2 border-border bg-card px-4 py-4">
+            <span className="text-sm text-muted-foreground">Nu există reprize. Alege presetul din panoul „Preset reprize” de mai sus.</span>
           </div>
         ) : (
           <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch">
@@ -2730,50 +2730,50 @@ function FullscreenMatchPanel({
                   <div className={`${ROUND_CARD_SHELL} xl:flex-1 xl:min-w-0`}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <span className={`inline-flex min-h-10 items-center border border-black px-3 text-sm font-black uppercase tracking-[0.18em] ${
-                          isActive && isRoundPaused ? 'bg-yellow-200 text-yellow-900' :
-                          isActive ? 'bg-green-600 text-white' :
-                          isCompleted ? 'bg-green-100 text-green-700' :
-                          'bg-gray-100 text-gray-500'
+                        <span className={`inline-flex min-h-10 items-center border border-border px-3 text-sm font-black uppercase tracking-[0.18em] ${
+                          isActive && isRoundPaused ? 'bg-amber-200 text-amber-900' :
+                          isActive ? 'bg-emerald-600 text-white' :
+                          isCompleted ? 'bg-emerald-100 text-emerald-700' :
+                          'bg-muted text-muted-foreground'
                         }`}>
                           Repriza {r.round_number}
                         </span>
                       </div>
                       <div className="text-right">
                         {isCompleted ? (
-                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-green-600">Finalizat</span>
+                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">Finalizat</span>
                         ) : isActive && isRoundPaused ? (
-                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-yellow-700">Pauză</span>
+                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Pauză</span>
                         ) : isActive ? (
-                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-green-600">Live</span>
+                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">Live</span>
                         ) : (
-                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-gray-400">În așteptare</span>
+                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground/60">În așteptare</span>
                         )}
                       </div>
                     </div>
                     {/* Round body — collapsed if completed */}
                     {isCompleted ? (
                       <div className={`${ROUND_BODY_PANEL} flex flex-col items-center justify-center gap-2 text-center`}>
-                        <span className="flex h-12 w-12 items-center justify-center border border-black bg-green-100 text-2xl font-black text-green-700">
+                        <span className="flex h-12 w-12 items-center justify-center border border-border bg-emerald-100 text-2xl font-black text-emerald-700">
                           ✓
                         </span>
                         <button onClick={() => setShowRoundResetConfirm(r.id)} disabled={busy} className={ROUND_SECONDARY_BUTTON}>Reset</button>
                       </div>
                     ) : (
                       <div className={`${ROUND_BODY_PANEL} space-y-3 ${
-                        isActive && isRoundPaused ? 'bg-yellow-50' :
-                        isActive ? 'bg-green-50/70' :
-                        'bg-white'
+                        isActive && isRoundPaused ? 'bg-amber-50' :
+                        isActive ? 'bg-emerald-50/70' :
+                        'bg-card'
                       }`}>
                         {/* Timer / Status */}
                         <div className="flex min-h-[34px] items-center justify-center gap-2 text-center">
                           {isActive && <LiveTimer round={r} onTimeUp={() => endRound(r.id)} />}
-                          {!isActive && r.status === 'scheduled' && <span className="text-sm font-medium text-gray-400">{r.duration_seconds}s</span>}
-                          {isActive && isRoundPaused && <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.18em] text-yellow-700 bg-yellow-200 animate-pulse">Pauză</span>}
+                          {!isActive && r.status === 'scheduled' && <span className="text-sm font-medium text-muted-foreground/60">{r.duration_seconds}s</span>}
+                          {isActive && isRoundPaused && <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.18em] text-amber-700 bg-amber-200 animate-pulse">Pauză</span>}
                         </div>
                         {r.extra_seconds !== 0 && (
                           <div className="text-center">
-                            <span className={`inline-flex px-2 py-1 text-xs font-bold ${r.extra_seconds > 0 ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'}`}>
+                            <span className={`inline-flex px-2 py-1 text-xs font-bold ${r.extra_seconds > 0 ? 'text-emerald-700 bg-emerald-100' : 'text-red-700 bg-red-100'}`}>
                               {r.extra_seconds > 0 ? '+' : ''}{r.extra_seconds}s
                             </span>
                           </div>
@@ -2783,10 +2783,10 @@ function FullscreenMatchPanel({
                           {r.status === 'scheduled' && (
                             <button onClick={() => { if (idx > 0 && breakTimers[idx - 1]) dismissBreak(idx - 1); startRound(r.id); }} disabled={busy || !!activeRound} className={`text-sm text-white px-5 py-2.5 font-semibold disabled:opacity-40 ${
                               (idx === 0 && isMatchDisplayStarted && !matchStarted)
-                                ? 'border border-black bg-green-600 hover:bg-green-700 ring-4 ring-green-300 animate-pulse'
+                                ? 'border border-border bg-emerald-600 hover:bg-emerald-700 ring-4 ring-emerald-300 animate-pulse'
                                 : idx > 0 && matchRounds[idx - 1]?.status === 'completed' && !breakTimers[idx - 1]
-                                ? 'border border-black bg-green-600 hover:bg-green-700 ring-2 ring-green-300 animate-pulse'
-                                : 'border border-black bg-green-600 hover:bg-green-700'
+                                ? 'border border-border bg-emerald-600 hover:bg-emerald-700 ring-2 ring-emerald-300 animate-pulse'
+                                : 'border border-border bg-emerald-600 hover:bg-emerald-700'
                             }`}>Start Repriza</button>
                           )}
                           {isActive && !isRoundPaused && (
@@ -2817,14 +2817,14 @@ function FullscreenMatchPanel({
                     (showBreak || (showBreakPlaceholder && !breakTimers[idx])) ? (
                       <div className={`${ROUND_CARD_SHELL} bg-orange-50/40 xl:flex-1 xl:min-w-0`}>
                         <div className="flex items-center justify-between gap-3">
-                          <span className="inline-flex min-h-10 items-center border border-black px-3 text-sm font-black uppercase tracking-[0.18em] bg-orange-200 text-orange-900">
+                          <span className="inline-flex min-h-10 items-center border border-border px-3 text-sm font-black uppercase tracking-[0.18em] bg-orange-200 text-orange-900">
                             Pauză
                           </span>
                           <span className="text-xs font-bold uppercase tracking-[0.18em] text-orange-500">Între reprize</span>
                         </div>
                         {/* Break timer body */}
                         {showBreak && (
-                          <div className={`${ROUND_BODY_PANEL} bg-white`}>
+                          <div className={`${ROUND_BODY_PANEL} bg-card`}>
                             <BreakTimer
                               onDone={() => dismissBreak(idx)}
                               busy={busy}
@@ -2838,14 +2838,14 @@ function FullscreenMatchPanel({
                         )}
                         {/* Break placeholder — start button */}
                         {showBreakPlaceholder && !breakTimers[idx] && (
-                          <button onClick={() => setBreakTimers(prev => ({ ...prev, [idx]: true }))} className="flex w-full items-center justify-center border border-black bg-white px-4 py-4 text-sm font-bold uppercase tracking-[0.18em] text-orange-600 transition hover:bg-orange-50 cursor-pointer">
+                          <button onClick={() => setBreakTimers(prev => ({ ...prev, [idx]: true }))} className="flex w-full items-center justify-center border border-border bg-card px-4 py-4 text-sm font-bold uppercase tracking-[0.18em] text-orange-600 transition hover:bg-orange-50 cursor-pointer">
                             Start Pauza
                           </button>
                         )}
                       </div>
                     ) : (
                       <div className="hidden xl:flex xl:w-6 xl:items-center xl:justify-center">
-                        <div className={`h-0.5 w-full ${isCompleted ? 'bg-green-200' : 'bg-gray-200'}`} />
+                        <div className={`h-0.5 w-full ${isCompleted ? 'bg-emerald-200' : 'bg-muted'}`} />
                       </div>
                     )
                   )}
@@ -2857,17 +2857,17 @@ function FullscreenMatchPanel({
             {allRoundsCompleted && (
             <>
             <div className="hidden xl:flex xl:w-6 xl:items-center xl:justify-center">
-              <div className="h-0.5 w-full bg-black/20" />
+              <div className="h-0.5 w-full bg-border" />
             </div>
             <div className={`${ROUND_CARD_SHELL} xl:flex-1 xl:min-w-0`}>
               <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex min-h-10 items-center border border-black px-3 text-sm font-black uppercase tracking-[0.18em] bg-white text-black">
+                <span className="inline-flex min-h-10 items-center border border-border px-3 text-sm font-black uppercase tracking-[0.18em] bg-card text-foreground">
                   Decizia arbitrilor
                 </span>
-                <span className="text-xs font-bold uppercase tracking-[0.18em] text-gray-400">După reprize</span>
+                <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground/60">După reprize</span>
               </div>
               <div className={`${ROUND_BODY_PANEL} space-y-3`}>
-                <span className="block text-xs text-gray-400 text-center">
+                <span className="block text-xs text-muted-foreground/60 text-center">
                   {matchRefScores.filter(s => s.winner_choice && s.round == null).length}/{matchReferees.length || 5} decizii
                 </span>
                 {/* Big A1-A5 boxes */}
@@ -2884,10 +2884,10 @@ function FullscreenMatchPanel({
                             setRefModalData({ ref, matchId: match.id });
                           }
                         }}
-                        className={`h-16 w-14 flex flex-col items-center justify-center border border-black text-sm font-black cursor-pointer transition hover:opacity-80 disabled:cursor-default ${
+                        className={`h-16 w-14 flex flex-col items-center justify-center border border-border text-sm font-black cursor-pointer transition hover:opacity-80 disabled:cursor-default ${
                         choice === 'red' ? 'bg-red-500 text-white' :
                         choice === 'blue' ? 'bg-blue-500 text-white' :
-                        'bg-white text-gray-500 hover:bg-gray-100'
+                        'bg-card text-muted-foreground hover:bg-muted'
                       }`} title={`${ref.name}: click to set/view decision`}>
                         <span className="text-lg font-black">A{ref.pos}</span>
                         <span className="text-[9px] mt-0.5">{choice === 'red' ? 'ROȘU' : choice === 'blue' ? 'ALB' : '—'}</span>
@@ -2908,7 +2908,7 @@ function FullscreenMatchPanel({
                         revealWinner();
                       }
                     }} disabled={busy || operationalLockActive}
-                      className={`text-base text-white px-8 py-3 font-bold shadow-sm disabled:opacity-40 transition whitespace-nowrap ${allRefereesDecided ? 'bg-green-600 hover:bg-green-700 ring-4 ring-green-300 animate-pulse' : 'bg-green-600 hover:bg-green-700'}`}>
+                      className={`text-base text-white px-8 py-3 font-bold shadow-sm disabled:opacity-40 transition whitespace-nowrap ${allRefereesDecided ? 'bg-emerald-600 hover:bg-emerald-700 ring-4 ring-emerald-300 animate-pulse' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
                       Afișează câștigător
                     </button>
                   )}
@@ -2919,14 +2919,14 @@ function FullscreenMatchPanel({
                         switchDisplay(session.current_category, session.current_match, session.current_athlete, 'displaying');
                       }
                     }} disabled={busy || operationalLockActive}
-                      className="text-base bg-gray-500 hover:bg-gray-600 text-white px-8 py-3 font-bold shadow-sm disabled:opacity-40 transition whitespace-nowrap">
+                      className="text-base bg-muted-foreground/50 hover:bg-muted-foreground text-white px-8 py-3 font-bold shadow-sm disabled:opacity-40 transition whitespace-nowrap">
                       Ascunde câștigător
                     </button>
                   )}
                   <button
                     onClick={() => { setExtraRoundDuration(60); setShowExtraRoundModal(true); }}
                     disabled={busy}
-                    className="text-sm border border-black bg-white px-4 py-2 font-bold text-orange-700 transition hover:bg-orange-50 disabled:opacity-40 whitespace-nowrap">
+                    className="text-sm border border-border bg-card px-4 py-2 font-bold text-orange-700 transition hover:bg-orange-50 disabled:opacity-40 whitespace-nowrap">
                     + Repriză Extra
                   </button>
                 </div>
@@ -2940,13 +2940,13 @@ function FullscreenMatchPanel({
 
       {/* ── REFEREE LIVE SCORES TABLE — full width, centralizator style ── */}
       {matchRounds.length > 0 && (
-        <div className="w-full overflow-hidden border-2 border-black bg-white shadow-sm">
-          <div className="border-b-2 border-black bg-gray-100 px-4 py-3 flex items-center justify-between gap-3">
-            <p className="text-sm font-bold uppercase tracking-wide text-gray-700">Scoruri arbitri</p>
+        <div className="w-full overflow-hidden border-2 border-border bg-card shadow-sm">
+          <div className="border-b-2 border-border bg-muted px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-bold uppercase tracking-wide text-foreground/80">Scoruri arbitri</p>
             <button
               onClick={exportMatchToExcel}
               disabled={exportingExcel}
-              className="flex items-center gap-1.5 border border-black bg-white px-3 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-green-50 hover:text-green-700 disabled:opacity-40"
+              className="flex items-center gap-1.5 border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground/80 transition hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-40"
               title="Exportă meci în Excel (3 sheet-uri: scoruri, evenimente, timeline puncte)"
             >
               {exportingExcel ? '⏳ Export...' : '⬇ Export Excel'}
@@ -2955,15 +2955,15 @@ function FullscreenMatchPanel({
           <div className="w-full overflow-x-auto">
           <table className="w-full border-collapse border-0">
             <thead>
-              <tr className="bg-gray-100">
-                <th className="w-40 border border-black bg-gray-200 px-4 py-3 text-left text-sm font-bold uppercase tracking-wide text-gray-700">Arbitru</th>
+              <tr className="bg-muted">
+                <th className="w-40 border border-border bg-muted px-4 py-3 text-left text-sm font-bold uppercase tracking-wide text-foreground/80">Arbitru</th>
                 {matchRounds.map((r, rIdx) => (
-                  <th key={r.id} colSpan={2} className={`border border-black bg-gray-200 px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-gray-700 ${rIdx > 0 ? 'border-l-[3px] border-l-black' : ''}`}>
+                  <th key={r.id} colSpan={2} className={`border border-border bg-muted px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-foreground/80 ${rIdx > 0 ? 'border-l-[3px] border-l-border' : ''}`}>
                     R{r.round_number}
                   </th>
                 ))}
-                <th colSpan={2} className="border border-black border-l-[3px] border-l-black bg-yellow-300 px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-black">{isLiveScoringMatch ? 'Puncte validate' : 'TOTAL'}</th>
-                {allRefereesDecided && <th className="border border-black bg-gray-200 px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-gray-700">Decizie</th>}
+                <th colSpan={2} className="border border-border border-l-[3px] border-l-amber-400 bg-amber-300 px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-amber-950">{isLiveScoringMatch ? 'Puncte validate' : 'TOTAL'}</th>
+                {allRefereesDecided && <th className="border border-border bg-muted px-2 py-3 text-center text-sm font-bold uppercase tracking-wide text-foreground/80">Decizie</th>}
               </tr>
             </thead>
             <tbody>
@@ -2972,8 +2972,8 @@ function FullscreenMatchPanel({
                 const winnerChoice = refScoresForRef.find(s => s.winner_choice && s.round == null)?.winner_choice;
                 const livePointStats = ref.id ? pointStatsByRef[ref.id] : null;
                 return (
-                  <tr key={ref.pos} className={`${refIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} transition hover:bg-yellow-50/50`}>
-                    <td className="max-w-[160px] truncate border border-black/20 px-4 py-2.5 text-sm font-medium text-gray-700"><span className="mr-1 font-bold text-black">A{ref.pos}</span> {ref.name || `Arbitru ${ref.pos}`}</td>
+                  <tr key={ref.pos} className={`${refIdx % 2 === 0 ? 'bg-card' : 'bg-muted/40'} transition hover:bg-amber-50/50`}>
+                    <td className="max-w-[160px] truncate border border-border/20 px-4 py-2.5 text-sm font-medium text-foreground/80"><span className="mr-1 font-bold text-foreground">A{ref.pos}</span> {ref.name || `Arbitru ${ref.pos}`}</td>
                     {matchRounds.map((r, rIdx) => {
                       const roundScore = refScoresForRef.find(s => s.round === r.id);
                       const redScore = roundScore?.red_corner_score != null ? Number(roundScore.red_corner_score) : null;
@@ -2981,21 +2981,21 @@ function FullscreenMatchPanel({
                       const liveRoundStats = livePointStats?.rounds?.[r.id] || { sent: { red: 0, blue: 0 }, validated: { red: 0, blue: 0 } };
                       return (
                         <React.Fragment key={r.id}>
-                          <td className={`border border-black/20 px-2 py-2.5 text-center text-sm font-bold tabular-nums ${rIdx > 0 ? 'border-l-[3px] border-l-black/50' : ''}`}>
+                          <td className={`border border-border/20 px-2 py-2.5 text-center text-sm font-bold tabular-nums ${rIdx > 0 ? 'border-l-[3px] border-l-border/50' : ''}`}>
                             {isLiveScoringMatch ? (
                               <div className="flex flex-col items-center leading-tight">
-                                <span className="text-xs font-medium text-gray-400">{liveRoundStats.sent.red !== 0 ? liveRoundStats.sent.red : '—'}</span>
-                                <span className={liveRoundStats.validated.red !== 0 ? 'text-red-600' : 'text-gray-300'}>{liveRoundStats.validated.red !== 0 ? liveRoundStats.validated.red : '—'}</span>
+                                <span className="text-xs font-medium text-muted-foreground/60">{liveRoundStats.sent.red !== 0 ? liveRoundStats.sent.red : '—'}</span>
+                                <span className={liveRoundStats.validated.red !== 0 ? 'text-red-600' : 'text-muted-foreground/40'}>{liveRoundStats.validated.red !== 0 ? liveRoundStats.validated.red : '—'}</span>
                               </div>
-                            ) : redScore != null ? <span className="text-red-600">{redScore}</span> : <span className="text-gray-300">-</span>}
+                            ) : redScore != null ? <span className="text-red-600">{redScore}</span> : <span className="text-muted-foreground/40">-</span>}
                           </td>
-                          <td className="border border-black/20 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
+                          <td className="border border-border/20 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
                             {isLiveScoringMatch ? (
                               <div className="flex flex-col items-center leading-tight">
-                                <span className="text-xs font-medium text-gray-400">{liveRoundStats.sent.blue !== 0 ? liveRoundStats.sent.blue : '—'}</span>
-                                <span className={liveRoundStats.validated.blue !== 0 ? 'text-blue-600' : 'text-gray-300'}>{liveRoundStats.validated.blue !== 0 ? liveRoundStats.validated.blue : '—'}</span>
+                                <span className="text-xs font-medium text-muted-foreground/60">{liveRoundStats.sent.blue !== 0 ? liveRoundStats.sent.blue : '—'}</span>
+                                <span className={liveRoundStats.validated.blue !== 0 ? 'text-blue-600' : 'text-muted-foreground/40'}>{liveRoundStats.validated.blue !== 0 ? liveRoundStats.validated.blue : '—'}</span>
                               </div>
-                            ) : blueScore != null ? <span className="text-blue-600">{blueScore}</span> : <span className="text-gray-300">-</span>}
+                            ) : blueScore != null ? <span className="text-blue-600">{blueScore}</span> : <span className="text-muted-foreground/40">-</span>}
                           </td>
                         </React.Fragment>
                       );
@@ -3011,27 +3011,27 @@ function FullscreenMatchPanel({
                       const hasLiveValidatedTotals = liveValidatedTotals.red !== 0 || liveValidatedTotals.blue !== 0;
                       return (
                         <>
-                          <td className="border border-black/20 border-l-[3px] border-l-black bg-yellow-50 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
+                          <td className="border border-border/20 border-l-[3px] border-l-border bg-amber-50 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
                             {isLiveScoringMatch
-                              ? (hasLiveValidatedTotals ? <span className="text-red-700">{liveValidatedTotals.red}</span> : <span className="text-gray-300">-</span>)
-                              : (hasScores ? <span className="text-red-700">{refGrandRed} {adjustRed !== 0 && <span className={`text-xs font-medium ${adjustRed > 0 ? 'text-green-600' : 'text-red-500'}`}>({adjustRed > 0 ? '+' : ''}{adjustRed})</span>}</span> : <span className="text-gray-300">-</span>)}
+                              ? (hasLiveValidatedTotals ? <span className="text-red-700">{liveValidatedTotals.red}</span> : <span className="text-muted-foreground/40">-</span>)
+                              : (hasScores ? <span className="text-red-700">{refGrandRed} {adjustRed !== 0 && <span className={`text-xs font-medium ${adjustRed > 0 ? 'text-emerald-600' : 'text-red-500'}`}>({adjustRed > 0 ? '+' : ''}{adjustRed})</span>}</span> : <span className="text-muted-foreground/40">-</span>)}
                           </td>
-                          <td className="border border-black/20 bg-yellow-50 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
+                          <td className="border border-border/20 bg-amber-50 px-2 py-2.5 text-center text-sm font-bold tabular-nums">
                             {isLiveScoringMatch
-                              ? (hasLiveValidatedTotals ? <span className="text-blue-700">{liveValidatedTotals.blue}</span> : <span className="text-gray-300">-</span>)
-                              : (hasScores ? <span className="text-blue-700">{refGrandBlue} {adjustBlue !== 0 && <span className={`text-xs font-medium ${adjustBlue > 0 ? 'text-green-600' : 'text-red-500'}`}>({adjustBlue > 0 ? '+' : ''}{adjustBlue})</span>}</span> : <span className="text-gray-300">-</span>)}
+                              ? (hasLiveValidatedTotals ? <span className="text-blue-700">{liveValidatedTotals.blue}</span> : <span className="text-muted-foreground/40">-</span>)
+                              : (hasScores ? <span className="text-blue-700">{refGrandBlue} {adjustBlue !== 0 && <span className={`text-xs font-medium ${adjustBlue > 0 ? 'text-emerald-600' : 'text-red-500'}`}>({adjustBlue > 0 ? '+' : ''}{adjustBlue})</span>}</span> : <span className="text-muted-foreground/40">-</span>)}
                           </td>
                         </>
                       );
                     })()}
                     {allRefereesDecided && (
-                    <td className="border border-black/20 px-2 py-2.5 text-center">
+                    <td className="border border-border/20 px-2 py-2.5 text-center">
                       {winnerChoice === 'red' ? (
-                        <span className="inline-flex items-center gap-1 border border-black bg-red-500 px-2.5 py-1 text-xs font-bold text-white">Rosu</span>
+                        <span className="inline-flex items-center gap-1 border border-border bg-red-500 px-2.5 py-1 text-xs font-bold text-white">Rosu</span>
                       ) : winnerChoice === 'blue' ? (
-                        <span className="inline-flex items-center gap-1 border border-black bg-blue-500 px-2.5 py-1 text-xs font-bold text-white">Albastru</span>
+                        <span className="inline-flex items-center gap-1 border border-border bg-blue-500 px-2.5 py-1 text-xs font-bold text-white">Albastru</span>
                       ) : (
-                        <span className="text-gray-300 text-xs">—</span>
+                        <span className="text-muted-foreground/40 text-xs">—</span>
                       )}
                     </td>
                     )}
@@ -3045,41 +3045,41 @@ function FullscreenMatchPanel({
       )}
 
       {/* EVENT LOG — always visible, scrollable, 10-row default height */}
-      <div className="overflow-hidden border-2 border-black bg-white shadow-sm">
-        <div className="border-b-2 border-black bg-gray-100 px-4 py-3">
-          <p className="text-sm font-bold uppercase tracking-wide text-gray-700">Evenimente ({eventLogRows.length})</p>
+      <div className="overflow-hidden border-2 border-border bg-card shadow-sm">
+        <div className="border-b-2 border-border bg-muted px-4 py-3">
+          <p className="text-sm font-bold uppercase tracking-wide text-foreground/80">Evenimente ({eventLogRows.length})</p>
         </div>
         <div className="overflow-y-auto" style={{ height: '320px' }}>
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10">
-              <tr className="bg-gray-100">
-                <th className="border border-black bg-gray-200 px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-600">Ora</th>
-                <th className="border border-black bg-gray-200 px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-600">Eveniment</th>
-                <th className="border border-black bg-gray-200 px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-gray-600">Valoare</th>
-                <th className="border border-black bg-gray-200 px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-gray-600">Repriza</th>
+              <tr className="bg-muted">
+                <th className="border border-border bg-muted px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Ora</th>
+                <th className="border border-border bg-muted px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Eveniment</th>
+                <th className="border border-border bg-muted px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-muted-foreground">Valoare</th>
+                <th className="border border-border bg-muted px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-muted-foreground">Repriza</th>
               </tr>
             </thead>
             <tbody>
               {eventLogRows.length === 0 ? (
-                <tr><td colSpan="4" className="border border-black/20 px-3 py-6 text-center text-sm italic text-gray-400">Niciun eveniment înregistrat</td></tr>
+                <tr><td colSpan="4" className="border border-border/20 px-3 py-6 text-center text-sm italic text-muted-foreground/60">Niciun eveniment înregistrat</td></tr>
               ) : (
                 eventLogRows.map((ev, evIdx) => {
                   return (
-                    <tr key={ev.key} className={evIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="border border-black/20 px-3 py-1.5 text-xs text-gray-400 tabular-nums whitespace-nowrap">{ev.time}</td>
-                      <td className="border border-black/20 px-3 py-1.5">
+                    <tr key={ev.key} className={evIdx % 2 === 0 ? 'bg-card' : 'bg-muted/40'}>
+                      <td className="border border-border/20 px-3 py-1.5 text-xs text-muted-foreground/60 tabular-nums whitespace-nowrap">{ev.time}</td>
+                      <td className="border border-border/20 px-3 py-1.5">
                         <div className="flex items-center gap-1.5">
                           <span className={`w-2 h-2 shrink-0 ${ev.dotClass}`} />
                           <div>
                             <span className={`text-sm font-medium ${ev.labelClass}`}>{ev.label}</span>
-                            {ev.sublabel ? <p className="text-[11px] text-gray-500">{ev.sublabel}</p> : null}
+                            {ev.sublabel ? <p className="text-[11px] text-muted-foreground">{ev.sublabel}</p> : null}
                           </div>
                         </div>
                       </td>
-                      <td className="border border-black/20 px-3 py-1.5 text-center text-sm font-bold tabular-nums">
+                      <td className="border border-border/20 px-3 py-1.5 text-center text-sm font-bold tabular-nums">
                         <span className={ev.valueClass}>{ev.value}</span>
                       </td>
-                      <td className="border border-black/20 px-3 py-1.5 text-center text-xs text-gray-500">{ev.roundLabel}</td>
+                      <td className="border border-border/20 px-3 py-1.5 text-center text-xs text-muted-foreground">{ev.roundLabel}</td>
                     </tr>
                   );
                 })
@@ -3094,17 +3094,17 @@ function FullscreenMatchPanel({
 
 function FullscreenModal({ onClose, title, description, maxWidth = 'max-w-md', actions, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
-      <div className={`w-full ${maxWidth} overflow-hidden border-2 border-black bg-white shadow-2xl`} onClick={e => e.stopPropagation()}>
-        <div className="border-b-2 border-black bg-yellow-300 px-5 py-4">
+    <div role="dialog" aria-modal="true" aria-labelledby="fullscreen-modal-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className={`w-full ${maxWidth} overflow-hidden rounded-lg border border-border bg-card shadow-2xl`} onClick={e => e.stopPropagation()}>
+        <div className="border-b border-border bg-primary px-5 py-4 text-primary-foreground">
           <div>
-            <h3 className="text-xl font-black text-gray-900">{title}</h3>
-            {description ? <p className="mt-1 text-sm text-gray-700">{description}</p> : null}
+            <h3 id="fullscreen-modal-title" className="font-display text-xl font-semibold">{title}</h3>
+            {description ? <p className="mt-1 text-sm text-primary-foreground/80">{description}</p> : null}
           </div>
         </div>
         {children ? <div className="space-y-4 px-5 py-4">{children}</div> : null}
         {actions ? (
-          <div className="flex flex-col-reverse gap-2 border-t-2 border-black bg-gray-50 px-5 py-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-2 border-t border-border bg-muted px-5 py-4 sm:flex-row sm:justify-end">
             {actions}
           </div>
         ) : null}
@@ -3151,7 +3151,7 @@ function LiveTimer({ round, onTimeUp }) {
   const isLow = timeLeft <= 10;
   return (
     <span className={`text-3xl font-black tabular-nums ${
-      round.is_paused ? 'text-yellow-700' : isLow ? 'text-red-600 animate-pulse' : 'text-green-700'
+      round.is_paused ? 'text-amber-700' : isLow ? 'text-red-600 animate-pulse' : 'text-emerald-700'
     }`}>
       {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
     </span>
@@ -3254,20 +3254,20 @@ function BreakTimer({ onDone, busy, duration = 60, autoStart = false, endedAt, s
   const secs = secondsLeft % 60;
   return (
     <div className={`flex flex-col items-center gap-2 py-3 px-3 border ${
-      isFinished ? 'border-green-300 bg-green-50' : 'border-orange-200 bg-orange-50'
+      isFinished ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'
     }`}>
       <span className={`text-2xl font-black tabular-nums ${
-        isFinished ? 'text-green-600' : secondsLeft <= 5 ? 'text-red-600 animate-pulse' : 'text-orange-700'
+        isFinished ? 'text-emerald-600' : secondsLeft <= 5 ? 'text-red-600 animate-pulse' : 'text-orange-700'
       }`}>
         {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
       </span>
       <div className="flex flex-wrap items-center gap-2 justify-center">
-        <button onClick={handleToggle} className={`text-sm px-5 py-2.5 font-semibold border ${running ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-green-100 text-green-700 border-green-300'}`}>
+        <button onClick={handleToggle} className={`text-sm px-5 py-2.5 font-semibold border ${running ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-emerald-100 text-emerald-700 border-emerald-300'}`}>
           {running ? 'Pauza' : 'Start'}
         </button>
         <button onClick={handleSkip} className="text-sm px-5 py-2.5 font-bold bg-purple-100 text-purple-700 border border-purple-300 hover:bg-purple-200">SKIP</button>
-        <button onClick={() => adjust(-10)} className="text-sm bg-gray-200 text-gray-700 px-3 py-1.5 hover:bg-gray-300">-10s</button>
-        <button onClick={() => adjust(10)} className="text-sm bg-gray-200 text-gray-700 px-3 py-1.5 hover:bg-gray-300">+10s</button>
+        <button onClick={() => adjust(-10)} className="text-sm bg-muted text-foreground/80 px-3 py-1.5 hover:bg-accent">-10s</button>
+        <button onClick={() => adjust(10)} className="text-sm bg-muted text-foreground/80 px-3 py-1.5 hover:bg-accent">+10s</button>
       </div>
     </div>
   );

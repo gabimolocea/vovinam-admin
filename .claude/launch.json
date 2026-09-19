@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "public-site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/public-site"],
+      "port": 5179
+    },
+    {
+      "name": "app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/app"],
+      "port": 5175
+    },
+    {
+      "name": "competition-admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/competition-admin", "--", "--port", "5191"],
+      "port": 5191
+    },
+    {
+      "name": "referee-scoring",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/referee-scoring", "--", "--port", "5176"],
+      "port": 5176
+    },
+    {
+      "name": "public-display",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/public-display", "--", "--port", "5177"],
+      "port": 5177
+    }
+  ]
+}
