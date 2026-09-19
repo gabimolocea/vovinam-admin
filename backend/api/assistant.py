@@ -31,7 +31,8 @@ Rolul utilizatorului curent: {role_description}
 Reguli importante:
 - Scrie în text simplu, fără formatare Markdown (fără **bold**, fără # titluri, fără liste cu `-`/`*`) - interfața de chat afișează textul brut, așa că orice simbol de formatare ar apărea literal. Pentru liste, scrie fiecare element pe rândul lui, numerotat simplu ("1. ...").
 - Nu poți vedea sau modifica date din alte cluburi decât dacă utilizatorul este administrator sau termenul-limită de înscriere al competiției a trecut deja - uneltele impun deja această restricție; nu încerca să o ocolești și nu presupune că ai acces la ceva ce o unealtă refuză.
-- Când utilizatorul cere o acțiune (înscriere, dezînscriere), TREBUIE să apelezi unealta corespunzătoare (enroll_athlete/unenroll_athlete) - nu descrie în text ce "ai pregătit" sau ce "urmează să faci" fără să fi apelat efectiv unealta, pentru că altfel nu apare niciun buton de confirmare și utilizatorul rămâne fără nicio acțiune reală de confirmat. Dacă îți lipsește un id exact (de exemplu categoria potrivită), folosește mai întâi o unealtă de citire (list_categories, search_athletes) ca să-l găsești, apoi apelează unealta de scriere - nu cere utilizatorului să reformuleze doar pentru că tu nu ai apelat unealta.
+- Când utilizatorul cere o acțiune (înscriere, dezînscriere, creare/editare club sau sportiv, creare/editare competiție/categorie/grupă, aprobare/respingere), TREBUIE să apelezi unealta corespunzătoare - nu descrie în text ce "ai pregătit" sau ce "urmează să faci" fără să fi apelat efectiv unealta, pentru că altfel nu apare niciun buton de confirmare și utilizatorul rămâne fără nicio acțiune reală de confirmat. Dacă îți lipsește un id exact (de exemplu categoria potrivită), folosește mai întâi o unealtă de citire (list_categories, search_athletes, list_pending_approvals) ca să-l găsești, apoi apelează unealta de scriere - nu cere utilizatorului să reformuleze doar pentru că tu nu ai apelat unealta.
+- Uneltele marcate ADMIN funcționează doar pentru administratori - dacă un antrenor le cere, unealta va întoarce o eroare de permisiune; explică-i politicos că acea acțiune e disponibilă doar pentru administratori, nu încerca alt mod de a o face.
 - Execuția reală a unei unelte de scriere se întâmplă doar după ce utilizatorul apasă explicit "Confirmă" în interfață (asta se întâmplă automat, nu e treaba ta) - dar TU trebuie mereu să apelezi unealta pentru ca acel buton de confirmare să existe. Nu spune niciodată că ai "făcut deja" o modificare - dacă ai apelat unealta și a întors o propunere, spune că ai pregătit-o și aștepți confirmarea; dacă nu ai apelat nicio unealtă, nu vorbi despre "pregătire" deloc.
 - Dacă o unealtă întoarce o eroare (de exemplu lipsă de permisiune sau ceva negăsit), explică politicos utilizatorului de ce, fără să sugerezi ocolirea restricției.
 - Fii concis și concret."""
@@ -121,6 +122,192 @@ TOOLS = [
             'type': 'object',
             'properties': {'category_athlete_id': {'type': 'integer'}},
             'required': ['category_athlete_id'],
+        },
+    },
+    # --- Admin-only tools below - disponibile doar pentru administrator,
+    # nu pentru antrenori (uneltele refuză cu eroare dacă apelantul nu e
+    # admin, indiferent de ce spune promptul de sistem).
+    {
+        'name': 'create_club',
+        'description': 'ADMIN. Propune crearea unui club nou. Necesită confirmare.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string'},
+                'city_id': {'type': 'integer'},
+                'description': {'type': 'string'},
+                'address': {'type': 'string'},
+                'mobile_number': {'type': 'string'},
+                'website': {'type': 'string'},
+            },
+            'required': ['name'],
+        },
+    },
+    {
+        'name': 'edit_club',
+        'description': (
+            'ADMIN. Propune modificarea unui club existent (nume, oraș, descriere, adresă, telefon, website). '
+            'Necesită confirmare. Trimite doar câmpurile pe care vrei să le schimbi.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'club_id': {'type': 'integer'},
+                'name': {'type': 'string'},
+                'city_id': {'type': 'integer'},
+                'description': {'type': 'string'},
+                'address': {'type': 'string'},
+                'mobile_number': {'type': 'string'},
+                'website': {'type': 'string'},
+            },
+            'required': ['club_id'],
+        },
+    },
+    {
+        'name': 'edit_athlete',
+        'description': (
+            'ADMIN. Propune modificarea datelor unui sportiv existent (nume, data nașterii, gen, adresă, '
+            'telefon, contact de urgență, club, grad, rol federație, titlu). NU poate schimba starea de '
+            'aprobare, poza de profil sau CNP-ul - acelea au propriile fluxuri (vezi approve_request/reject_request). '
+            'Necesită confirmare.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'athlete_id': {'type': 'integer'},
+                'first_name': {'type': 'string'},
+                'last_name': {'type': 'string'},
+                'date_of_birth': {'type': 'string', 'description': 'Format YYYY-MM-DD.'},
+                'gender': {'type': 'string'},
+                'address': {'type': 'string'},
+                'mobile_number': {'type': 'string'},
+                'emergency_contact_name': {'type': 'string'},
+                'emergency_contact_phone': {'type': 'string'},
+                'previous_experience': {'type': 'string'},
+                'city_id': {'type': 'integer'},
+                'current_grade_id': {'type': 'integer'},
+                'club_id': {'type': 'integer'},
+                'federation_role_id': {'type': 'integer'},
+                'title_id': {'type': 'integer'},
+            },
+            'required': ['athlete_id'],
+        },
+    },
+    {
+        'name': 'create_competition',
+        'description': 'ADMIN. Propune crearea unei competiții/eveniment noi. Necesită confirmare.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string'},
+                'start_date': {'type': 'string', 'description': 'Dată/oră ISO sau YYYY-MM-DD.'},
+                'end_date': {'type': 'string'},
+                'city_id': {'type': 'integer'},
+                'address': {'type': 'string'},
+                'description': {'type': 'string'},
+                'event_type': {'type': 'string', 'description': "competition, examination sau training_seminar (implicit competition)."},
+                'coach_registration_deadline': {'type': 'string'},
+            },
+            'required': ['name', 'start_date'],
+        },
+    },
+    {
+        'name': 'create_category',
+        'description': 'ADMIN. Propune crearea unei categorii noi pentru o competiție. Necesită confirmare.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'event_id': {'type': 'integer'},
+                'name': {'type': 'string'},
+                'category_type': {'type': 'string', 'description': 'solo, team sau fight (implicit solo).'},
+                'gender': {'type': 'string', 'description': 'male, female sau mixt (implicit mixt).'},
+                'group_id': {'type': 'integer'},
+            },
+            'required': ['event_id', 'name'],
+        },
+    },
+    {
+        'name': 'edit_category',
+        'description': 'ADMIN. Propune modificarea unei categorii existente - doar nume, gen și ordinea de afișare pot fi schimbate. Necesită confirmare.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'category_id': {'type': 'integer'},
+                'name': {'type': 'string'},
+                'gender': {'type': 'string'},
+                'display_order': {'type': 'integer'},
+            },
+            'required': ['category_id'],
+        },
+    },
+    {
+        'name': 'create_group',
+        'description': 'ADMIN. Propune crearea unei grupe de vârstă noi pentru o competiție. Necesită confirmare.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'event_id': {'type': 'integer'},
+                'name': {'type': 'string'},
+                'birth_year_start': {'type': 'integer'},
+                'birth_year_end': {'type': 'integer'},
+                'allow_younger': {'type': 'boolean'},
+            },
+            'required': ['event_id', 'name'],
+        },
+    },
+    {
+        'name': 'edit_group',
+        'description': 'ADMIN. Propune modificarea unei grupe existente. Trimite doar câmpurile pe care vrei să le schimbi. Necesită confirmare.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'group_id': {'type': 'integer'},
+                'name': {'type': 'string'},
+                'birth_year_start': {'type': 'integer'},
+                'birth_year_end': {'type': 'integer'},
+                'allow_younger': {'type': 'boolean'},
+                'display_order': {'type': 'integer'},
+            },
+            'required': ['group_id'],
+        },
+    },
+    {
+        'name': 'list_pending_approvals',
+        'description': (
+            'ADMIN. Listează cererile în așteptare de aprobare - conturi, poze de profil, examene de grad, '
+            'rezultate, stagii, vize. Nu necesită confirmare (doar citește).'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'domain': {'type': 'string', 'description': 'Opțional: account, photo, grade, result, seminar sau visa. Dacă lipsește, le arată pe toate.'},
+            },
+        },
+    },
+    {
+        'name': 'approve_request',
+        'description': 'ADMIN. Propune aprobarea unei cereri din coada de aprobări. Necesită confirmare.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'domain': {'type': 'string', 'description': 'account, photo, grade, result, seminar sau visa.'},
+                'item_id': {'type': 'integer'},
+                'notes': {'type': 'string'},
+            },
+            'required': ['domain', 'item_id'],
+        },
+    },
+    {
+        'name': 'reject_request',
+        'description': 'ADMIN. Propune respingerea unei cereri din coada de aprobări. Necesită confirmare.',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'domain': {'type': 'string', 'description': 'account, photo, grade, result, seminar sau visa.'},
+                'item_id': {'type': 'integer'},
+                'notes': {'type': 'string'},
+            },
+            'required': ['domain', 'item_id'],
         },
     },
 ]

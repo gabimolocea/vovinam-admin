@@ -12,8 +12,14 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from api.models import AssistantConversation, AssistantMessage, Athlete, Category, CategoryAthlete, Club, FightCategory
-from api.assistant_tools import tool_list_categories, _visible_club_ids
+from api.models import (
+    AssistantConversation, AssistantMessage, Athlete, Category, CategoryAthlete, Club,
+    FightCategory, Grade, GradeHistory,
+)
+from api.assistant_tools import (
+    tool_list_categories, _visible_club_ids, tool_create_club, tool_edit_athlete,
+    tool_create_category, tool_approve_request, tool_reject_request, execute_confirmed_tool,
+)
 from landing.models import Event
 
 User = get_user_model()
@@ -257,6 +263,113 @@ class AssistantVisibilityToolTests(TestCase):
         self.assertEqual(_visible_club_ids(self.coach_user, self.future_deadline_event), {self.club_a.id})
         self.assertIsNone(_visible_club_ids(self.coach_user, self.past_deadline_event))
         self.assertIsNone(_visible_club_ids(self.admin, self.future_deadline_event))
+
+
+class AssistantAdminToolsTests(TestCase):
+    """The admin-only write tools (clubs, athletes, competitions/categories/
+    groups, approvals) - see the ADMIN-only section of assistant_tools.py.
+    Calls the tool_* propose functions and execute_confirmed_tool directly
+    (no mocked Claude needed) - matches AssistantVisibilityToolTests' style
+    below."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username='admin-tools-admin', email='admin-tools-admin@example.com', password='testpass123',
+            role='admin', is_staff=True,
+        )
+        self.coach_user = User.objects.create_user(
+            username='admin-tools-coach', email='admin-tools-coach@example.com', password='testpass123', role='athlete',
+        )
+        self.club = Club.objects.create(name='Admin Tools Club')
+        Athlete.objects.create(user=self.coach_user, first_name='Tools', last_name='Coach', is_coach=True, club=self.club, status='approved')
+        self.athlete = Athlete.objects.create(first_name='Edit', last_name='Target', club=self.club, status='approved')
+
+    def test_non_admin_cannot_propose_club_creation(self):
+        result = tool_create_club(self.coach_user, name='Sneaky Club')
+        self.assertIn('error', result)
+        self.assertFalse(Club.objects.filter(name='Sneaky Club').exists())
+
+    def test_admin_create_club_end_to_end(self):
+        proposal = tool_create_club(self.admin, name='New Club', description='desc')
+        self.assertTrue(proposal['requires_confirmation'])
+        self.assertFalse(Club.objects.filter(name='New Club').exists())
+        outcome = execute_confirmed_tool(self.admin, 'create_club', proposal['args'])
+        self.assertTrue(outcome['success'])
+        self.assertTrue(Club.objects.filter(name='New Club').exists())
+
+    def test_edit_athlete_ignores_disallowed_fields(self):
+        proposal = tool_edit_athlete(
+            self.admin, athlete_id=self.athlete.id, status='approved', cnp='1234567890123', first_name='Renamed',
+        )
+        self.assertTrue(proposal['requires_confirmation'])
+        self.assertEqual(proposal['args'], {'athlete_id': self.athlete.id, 'first_name': 'Renamed'})
+        outcome = execute_confirmed_tool(self.admin, 'edit_athlete', proposal['args'])
+        self.assertTrue(outcome['success'])
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.first_name, 'Renamed')
+
+    def test_non_admin_edit_athlete_refused(self):
+        result = tool_edit_athlete(self.coach_user, athlete_id=self.athlete.id, first_name='Hacked')
+        self.assertIn('error', result)
+        self.athlete.refresh_from_db()
+        self.assertNotEqual(self.athlete.first_name, 'Hacked')
+
+    def test_execute_confirmed_tool_rechecks_admin(self):
+        """Even called directly with a non-admin user (bypassing the propose
+        step entirely), the executor itself must still refuse - defense in
+        depth, not just a UI-layer check."""
+        outcome = execute_confirmed_tool(self.coach_user, 'create_club', {'name': 'Bypass Club'})
+        self.assertFalse(outcome['success'])
+        self.assertFalse(Club.objects.filter(name='Bypass Club').exists())
+
+    def test_create_category_respects_operational_lock(self):
+        now = timezone.now()
+        event = Event.objects.create(
+            title='Admin Tools Event', slug='admin-tools-event', start_date=now, end_date=now,
+            event_type='competition', sync_mode='local_event', sync_locked=True, local_sync_status='exported',
+        )
+        proposal = tool_create_category(self.admin, event_id=event.id, name='New Category')
+        self.assertTrue(proposal['requires_confirmation'])
+        outcome = execute_confirmed_tool(self.admin, 'create_category', proposal['args'])
+        self.assertFalse(outcome['success'])
+        self.assertIn('blocat', outcome['error'])
+
+    def test_approve_account_request(self):
+        pending_user = User.objects.create_user(
+            username='pending-account', email='pending-account@example.com', password='testpass123', role='athlete',
+        )
+        pending_athlete = Athlete.objects.create(user=pending_user, first_name='Pending', last_name='Account', status='pending')
+        proposal = tool_approve_request(self.admin, domain='account', item_id=pending_athlete.id)
+        self.assertTrue(proposal['requires_confirmation'])
+        outcome = execute_confirmed_tool(self.admin, 'approve_request', proposal['args'])
+        self.assertTrue(outcome['success'])
+        pending_athlete.refresh_from_db()
+        self.assertEqual(pending_athlete.status, 'approved')
+
+    def test_reject_grade_request_with_notes(self):
+        grade = Grade.objects.create(name='Test Belt', rank_order=1)
+        gh = GradeHistory.objects.create(athlete=self.athlete, grade=grade, submitted_by_athlete=True)
+        self.assertEqual(gh.status, 'pending')
+        proposal = tool_reject_request(self.admin, domain='grade', item_id=gh.id, notes='Lipsă document')
+        outcome = execute_confirmed_tool(self.admin, 'reject_request', proposal['args'])
+        self.assertTrue(outcome['success'])
+        gh.refresh_from_db()
+        self.assertEqual(gh.status, 'rejected')
+        self.assertEqual(gh.admin_notes, 'Lipsă document')
+
+    def test_cannot_approve_already_resolved_request(self):
+        grade = Grade.objects.create(name='Test Belt 2', rank_order=2)
+        gh = GradeHistory.objects.create(athlete=self.athlete, grade=grade, status='approved')
+        result = tool_approve_request(self.admin, domain='grade', item_id=gh.id)
+        self.assertIn('error', result)
+
+    def test_non_admin_cannot_approve(self):
+        grade = Grade.objects.create(name='Test Belt 3', rank_order=3)
+        gh = GradeHistory.objects.create(athlete=self.athlete, grade=grade, submitted_by_athlete=True)
+        result = tool_approve_request(self.coach_user, domain='grade', item_id=gh.id)
+        self.assertIn('error', result)
+        gh.refresh_from_db()
+        self.assertEqual(gh.status, 'pending')
 
 
 class AssistantReportTests(TestCase):
