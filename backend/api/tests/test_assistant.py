@@ -13,12 +13,13 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api.models import (
-    AssistantConversation, AssistantMessage, Athlete, Category, CategoryAthlete, Club,
+    AssistantConversation, AssistantMessage, Athlete, Category, CategoryAthlete, City, Club,
     FightCategory, Grade, GradeHistory,
 )
 from api.assistant_tools import (
-    tool_list_categories, _visible_club_ids, tool_create_club, tool_edit_athlete,
+    tool_list_categories, _visible_club_ids, tool_create_club, tool_edit_athlete, tool_create_athlete,
     tool_create_category, tool_approve_request, tool_reject_request, execute_confirmed_tool,
+    tool_list_cities, tool_list_grades,
 )
 from landing.models import Event
 
@@ -281,6 +282,7 @@ class AssistantAdminToolsTests(TestCase):
             username='admin-tools-coach', email='admin-tools-coach@example.com', password='testpass123', role='athlete',
         )
         self.club = Club.objects.create(name='Admin Tools Club')
+        self.city = City.objects.create(name='Admin Tools City')
         Athlete.objects.create(user=self.coach_user, first_name='Tools', last_name='Coach', is_coach=True, club=self.club, status='approved')
         self.athlete = Athlete.objects.create(first_name='Edit', last_name='Target', club=self.club, status='approved')
 
@@ -313,6 +315,93 @@ class AssistantAdminToolsTests(TestCase):
         self.assertIn('error', result)
         self.athlete.refresh_from_db()
         self.assertNotEqual(self.athlete.first_name, 'Hacked')
+
+    def test_create_athlete_requires_club_id_for_admin(self):
+        """Mirrors AthleteViewSet.create()'s own admin-path rule: a coach's
+        club is implicit, but an admin has none of their own, so they must
+        say which club the new athlete belongs to."""
+        result = tool_create_athlete(self.admin, first_name='New', last_name='Athlete', date_of_birth='2000-01-01', city_id=self.city.id)
+        self.assertIn('error', result)
+        self.assertFalse(Athlete.objects.filter(first_name='New', last_name='Athlete').exists())
+
+    def test_create_athlete_requires_date_of_birth_and_city(self):
+        """AthleteSerializer requires both even though the Athlete model
+        itself allows them blank - discovered by this test failing against
+        the real serializer during development, not assumed from the model."""
+        result = tool_create_athlete(self.admin, first_name='New', last_name='Athlete', club_id=self.club.id)
+        self.assertIn('error', result)
+
+    def test_admin_create_athlete_minimal_fields_end_to_end(self):
+        proposal = tool_create_athlete(
+            self.admin, first_name='Minimal', last_name='Athlete', club_id=self.club.id,
+            date_of_birth='2000-01-01', city_id=self.city.id,
+        )
+        self.assertTrue(proposal['requires_confirmation'])
+        outcome = execute_confirmed_tool(self.admin, 'create_athlete', proposal['args'])
+        self.assertTrue(outcome['success'])
+        created = Athlete.objects.get(pk=outcome['data']['id'])
+        self.assertEqual(created.first_name, 'Minimal')
+        self.assertEqual(created.club_id, self.club.id)
+        self.assertEqual(created.status, 'approved')
+
+    def test_create_athlete_cannot_set_cnp(self):
+        proposal = tool_create_athlete(
+            self.admin, first_name='NoCnp', last_name='Athlete', club_id=self.club.id,
+            date_of_birth='2000-01-01', city_id=self.city.id, cnp='1234567890123',
+        )
+        self.assertNotIn('cnp', proposal['args'])
+        outcome = execute_confirmed_tool(self.admin, 'create_athlete', proposal['args'])
+        self.assertTrue(outcome['success'])
+        created = Athlete.objects.get(pk=outcome['data']['id'])
+        self.assertIsNone(created.cnp)
+
+    def test_non_admin_cannot_create_athlete(self):
+        result = tool_create_athlete(
+            self.coach_user, first_name='Sneaky', last_name='Athlete', club_id=self.club.id,
+            date_of_birth='2000-01-01', city_id=self.city.id,
+        )
+        self.assertIn('error', result)
+        self.assertFalse(Athlete.objects.filter(first_name='Sneaky').exists())
+
+    def test_create_athlete_rejects_a_city_id_that_does_not_exist(self):
+        """Guards against exactly the bug this tool was built to prevent:
+        a model that guesses a numeric city_id instead of calling
+        list_cities first must still be refused if that id is bogus."""
+        result = tool_create_athlete(
+            self.admin, first_name='Bad', last_name='City', club_id=self.club.id,
+            date_of_birth='2000-01-01', city_id=999999,
+        )
+        self.assertIn('error', result)
+        self.assertFalse(Athlete.objects.filter(first_name='Bad', last_name='City').exists())
+
+    def test_list_cities_lets_a_caller_resolve_a_real_id(self):
+        result = tool_list_cities(self.admin, query=self.city.name[:6])
+        self.assertIn({'id': self.city.id, 'name': self.city.name}, result['cities'])
+
+    def test_list_cities_matches_across_diacritic_variants(self):
+        """Reproduces the exact real-world row that broke the search
+        during live testing: a city name mixing both Unicode encodings of
+        ș/ț (cedilla vs comma-below) within the same string."""
+        mixed = City.objects.create(name='Iaşi, Iași County')
+        result = tool_list_cities(self.admin, query='Iași')
+        self.assertIn({'id': mixed.id, 'name': mixed.name}, result['cities'])
+
+    def test_list_cities_prioritizes_shorter_closer_matches(self):
+        """A close match ("Zzyxville, Zzyxdemo County") must outrank the
+        30 small comunas whose name also ends in "... Zzyxdemo County" -
+        sorted alphabetically these would bury the real city past the
+        25-result cap, exactly what happened during live testing with
+        "Iași" and its 1000+ same-county comunas."""
+        city = City.objects.create(name='Zzyxville, Zzyxdemo County')
+        for i in range(30):
+            City.objects.create(name=f'Alt-comuna {i:03d}, Zzyxdemo County')
+        result = tool_list_cities(self.admin, query='Zzyxdemo')
+        self.assertEqual(result['cities'][0], {'id': city.id, 'name': city.name})
+
+    def test_list_grades_returns_real_ids(self):
+        grade = Grade.objects.create(name='Lookup Belt', rank_order=1)
+        result = tool_list_grades(self.admin)
+        self.assertIn({'id': grade.id, 'name': grade.name}, result['grades'])
 
     def test_execute_confirmed_tool_rechecks_admin(self):
         """Even called directly with a non-admin user (bypassing the propose

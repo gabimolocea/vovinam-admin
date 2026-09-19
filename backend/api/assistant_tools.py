@@ -18,10 +18,11 @@ decision).
 """
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
+from django.db.models.functions import Length
 from django.utils import timezone
 
 from .models import (
-    Athlete, Club, City, Category, CategoryAthlete, CategoryAthleteScore, Competition, Group,
+    Athlete, Club, City, Category, CategoryAthlete, CategoryAthleteScore, Competition, Grade, Group,
     GradeHistory, Visa, TrainingSeminarParticipation,
 )
 from .serializers import ClubSerializer, AthleteSerializer, GroupSerializer
@@ -95,6 +96,63 @@ def _serialize_athlete(athlete):
 def tool_list_clubs(user, **_kwargs):
     clubs = Club.objects.select_related('city').order_by('name').values('id', 'name', 'city__name')
     return {'clubs': [{'id': c['id'], 'name': c['name'], 'city': c['city__name']} for c in clubs]}
+
+
+def _diacritic_variants(text):
+    """Romanian city names in this database inconsistently mix the two
+    Unicode encodings of ș/ț - comma-below (ș U+0219, ț U+021B, the correct
+    modern form) and cedilla (ş U+015F, ţ U+0163, a legacy artifact of old
+    fonts/imports) - sometimes even within the same row (e.g. one real row
+    is literally "Iaşi, Iași County": cedilla in the city name, comma-below
+    in the county). A plain icontains search misses matches across that
+    split, which surfaced as a real failure in tool_list_cities during
+    development (the model correctly refused to guess an id when its
+    search came up empty, but couldn't find the row at all either).
+    Generates every combination for both letter pairs so a caller only
+    needs to search once for whichever variant they typed."""
+    variants = {text}
+    for correct, legacy in (('ș', 'ş'), ('ț', 'ţ')):
+        variants |= {v.replace(correct, legacy) for v in variants}
+        variants |= {v.replace(legacy, correct) for v in variants}
+    return variants
+
+
+def tool_list_cities(user, query=None, **_kwargs):
+    """Look up a real City id by name. Exists specifically so a write tool
+    that needs a city_id (create_athlete, edit_athlete, create_club, ...)
+    never has to guess one - a model that only ever sees a city NAME (e.g.
+    in tool_list_clubs's output) has no way to know the matching primary
+    key otherwise, and guessing produced a real bug during development:
+    the model once guessed city_id=1 for "Iași" and silently attached a
+    real athlete to a random, unrelated city instead.
+
+    Ordered shortest-name-first rather than alphabetically when searching:
+    a big city like "Iași" also substring-matches the "... Iași County"
+    suffix of a thousand-plus small comunas in that county, which - sorted
+    alphabetically - buried the actual city well past the result cap
+    during development (another real failure this tool exists to prevent
+    a bad guess from, but this time it failed *too* safely, finding
+    nothing usable instead of the obvious match). The city itself is
+    reliably one of the shortest matching names, since it doesn't carry
+    that county suffix twice over with extra commune-name text."""
+    qs = City.objects.all()
+    if query:
+        q_filter = Q()
+        for variant in _diacritic_variants(query):
+            q_filter |= Q(name__icontains=variant)
+        qs = qs.filter(q_filter)
+        qs = qs.annotate(_name_len=Length('name')).order_by('_name_len', 'name')
+    else:
+        qs = qs.order_by('name')
+    qs = qs[:25]
+    return {'cities': [{'id': c.id, 'name': c.name} for c in qs]}
+
+
+def tool_list_grades(user, **_kwargs):
+    """Same reasoning as tool_list_cities - resolves a real Grade id by
+    name for current_grade_id, instead of a write tool's caller guessing."""
+    grades = Grade.objects.order_by('rank_order').values('id', 'name')
+    return {'grades': list(grades)}
 
 
 def tool_search_athletes(user, query=None, **_kwargs):
@@ -298,6 +356,26 @@ ATHLETE_EDITABLE_FIELDS = {
     'city_id', 'current_grade_id', 'club_id', 'federation_role_id', 'title_id',
 }
 
+# Same reasoning as ATHLETE_EDITABLE_FIELDS below, minus club_id (handled
+# as its own required argument - see tool_create_athlete) and minus cnp:
+# unlike the other fields here, a national ID is sensitive PII that
+# shouldn't pass through a chat conversation (persisted in
+# AssistantMessage, visible in the usage report) even when the caller is
+# a legitimate admin - it goes through the normal edit form instead.
+#
+# date_of_birth and city_id are NOT actually optional despite the Athlete
+# model itself allowing blank/null for both - AthleteSerializer (the same
+# one AthleteViewSet.create() uses) forces date_of_birth via extra_kwargs
+# and declares city without required=False, so both are required in
+# practice. Discovered by this module's own tests failing against the
+# real serializer rather than an assumption about the model - see
+# tool_create_athlete, which requires them as named arguments like club_id.
+ATHLETE_CREATE_OPTIONAL_FIELDS = {
+    'gender', 'license_series', 'license_number',
+    'address', 'mobile_number', 'emergency_contact_name', 'emergency_contact_phone',
+    'previous_experience', 'current_grade_id',
+}
+
 GROUP_EDITABLE_FIELDS = {
     'name', 'birth_year_start', 'birth_year_end', 'birth_date_start',
     'birth_date_end', 'allow_younger', 'allowed_grade_type', 'display_order',
@@ -387,6 +465,46 @@ def tool_edit_athlete(user, athlete_id=None, **fields):
     return {
         'requires_confirmation': True, 'status': 'pending', 'summary': summary,
         'tool': 'edit_athlete', 'args': {'athlete_id': athlete_id, **changed},
+    }
+
+
+def tool_create_athlete(user, first_name=None, last_name=None, club_id=None, date_of_birth=None, city_id=None, **fields):
+    """Create a brand-new athlete profile. Mirrors AthleteViewSet.create()'s
+    admin path (views/athletes.py) - which requires an explicit club_id for
+    an admin caller specifically (a coach's club is implicit; an admin has
+    none of their own). first_name/last_name/date_of_birth/city_id are all
+    required here because AthleteSerializer - the same one that view calls
+    - genuinely requires them (date_of_birth via an explicit extra_kwargs
+    override, city via having no required=False despite allow_null=True),
+    even though the Athlete model itself would allow both blank. Everything
+    else in ATHLETE_CREATE_OPTIONAL_FIELDS really is optional."""
+    error = _require_admin(user)
+    if error:
+        return error
+    if not first_name or not last_name:
+        return {'error': 'first_name și last_name sunt obligatorii.'}
+    if not club_id:
+        return {'error': 'club_id este obligatoriu - ca administrator, trebuie să indici explicit clubul noului sportiv.'}
+    if not date_of_birth:
+        return {'error': 'date_of_birth este obligatoriu.'}
+    if not city_id:
+        return {'error': 'city_id este obligatoriu.'}
+    try:
+        club = Club.objects.get(pk=club_id)
+    except Club.DoesNotExist:
+        return {'error': 'Clubul indicat nu a fost găsit.'}
+    if not City.objects.filter(pk=city_id).exists():
+        return {'error': 'Orașul indicat nu a fost găsit.'}
+
+    changed = {k: v for k, v in fields.items() if k in ATHLETE_CREATE_OPTIONAL_FIELDS and v is not None}
+    summary = f'Creează sportivul {first_name} {last_name} (născut {date_of_birth}) la clubul "{club.name}".'
+    return {
+        'requires_confirmation': True, 'status': 'pending', 'summary': summary,
+        'tool': 'create_athlete',
+        'args': {
+            'first_name': first_name, 'last_name': last_name, 'club_id': club_id,
+            'date_of_birth': date_of_birth, 'city_id': city_id, **changed,
+        },
     }
 
 
@@ -620,6 +738,26 @@ def execute_confirmed_tool(user, tool_name, args):
         serializer.save()
         return {'success': True, 'data': {'id': athlete.id, 'name': f'{athlete.first_name} {athlete.last_name}'}}
 
+    if tool_name == 'create_athlete':
+        try:
+            club = Club.objects.get(pk=args.get('club_id'))
+        except Club.DoesNotExist:
+            return {'success': False, 'error': 'Clubul nu a fost găsit.'}
+        payload = {k: v for k, v in args.items() if k in {'first_name', 'last_name', 'date_of_birth', 'city_id'} | ATHLETE_CREATE_OPTIONAL_FIELDS}
+        field_map = {'city_id': 'city', 'current_grade_id': 'current_grade'}
+        for src, dest in field_map.items():
+            if src in payload:
+                payload[dest] = payload.pop(src)
+        serializer = AthleteSerializer(data=payload)
+        if not serializer.is_valid():
+            return {'success': False, 'error': _format_serializer_errors(serializer.errors)}
+        # club/status forced explicitly rather than trusted from payload,
+        # matching AthleteViewSet.create()'s admin path exactly - an
+        # admin-created athlete is auto-approved (no separate review step
+        # for something the admin themselves just added).
+        athlete = serializer.save(club=club, status='approved')
+        return {'success': True, 'data': {'id': athlete.id, 'name': f'{athlete.first_name} {athlete.last_name}'}}
+
     if tool_name == 'create_competition':
         from .views.competitions import CompetitionViewSet
         payload = {
@@ -721,6 +859,8 @@ def execute_confirmed_tool(user, tool_name, args):
 
 TOOL_FUNCTIONS = {
     'list_clubs': tool_list_clubs,
+    'list_cities': tool_list_cities,
+    'list_grades': tool_list_grades,
     'search_athletes': tool_search_athletes,
     'get_athlete': tool_get_athlete,
     'list_competitions': tool_list_competitions,
@@ -731,6 +871,7 @@ TOOL_FUNCTIONS = {
     'create_club': tool_create_club,
     'edit_club': tool_edit_club,
     'edit_athlete': tool_edit_athlete,
+    'create_athlete': tool_create_athlete,
     'create_competition': tool_create_competition,
     'create_category': tool_create_category,
     'edit_category': tool_edit_category,
@@ -743,7 +884,7 @@ TOOL_FUNCTIONS = {
 
 WRITE_TOOL_NAMES = {
     'enroll_athlete', 'unenroll_athlete',
-    'create_club', 'edit_club', 'edit_athlete',
+    'create_club', 'edit_club', 'edit_athlete', 'create_athlete',
     'create_competition', 'create_category', 'edit_category',
     'create_group', 'edit_group',
     'approve_request', 'reject_request',

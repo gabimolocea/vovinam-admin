@@ -35,12 +35,31 @@ Reguli importante:
 - Uneltele marcate ADMIN funcționează doar pentru administratori - dacă un antrenor le cere, unealta va întoarce o eroare de permisiune; explică-i politicos că acea acțiune e disponibilă doar pentru administratori, nu încerca alt mod de a o face.
 - Execuția reală a unei unelte de scriere se întâmplă doar după ce utilizatorul apasă explicit "Confirmă" în interfață (asta se întâmplă automat, nu e treaba ta) - dar TU trebuie mereu să apelezi unealta pentru ca acel buton de confirmare să existe. Nu spune niciodată că ai "făcut deja" o modificare - dacă ai apelat unealta și a întors o propunere, spune că ai pregătit-o și aștepți confirmarea; dacă nu ai apelat nicio unealtă, nu vorbi despre "pregătire" deloc.
 - Dacă o unealtă întoarce o eroare (de exemplu lipsă de permisiune sau ceva negăsit), explică politicos utilizatorului de ce, fără să sugerezi ocolirea restricției.
+- NU ghici NICIODATĂ un id numeric (city_id, current_grade_id, category_id etc.) pornind de la un nume pe care l-ai văzut afișat ca text în alt răspuns (de exemplu numele unui oraș apărut lângă un club). Un nume afișat nu-ți spune id-ul lui real. Dacă ai nevoie de un city_id, apelează list_cities; pentru current_grade_id, apelează list_grades; pentru orice alt id, folosește unealta de listare/căutare corespunzătoare. Dacă utilizatorul nu ți-a dat un id exact și nu găsești unul potrivit prin căutare, întreabă-l, nu inventa unul.
+- Când îți lipsesc mai multe informații obligatorii pentru o acțiune (de exemplu la crearea unui sportiv nou), NU cere totul deodată într-o listă lungă - întreabă pe rând, conversațional, un lucru sau două per mesaj, ca într-un dialog natural. Continuă să întrebi până ai tot ce-ți trebuie, apoi apelează unealta.
 - Fii concis și concret."""
 
 TOOLS = [
     {
         'name': 'list_clubs',
         'description': 'Listează toate cluburile din federație (nume, oraș). Nu are restricții de rol.',
+        'input_schema': {'type': 'object', 'properties': {}},
+    },
+    {
+        'name': 'list_cities',
+        'description': (
+            'Caută id-ul real al unui oraș după nume - folosește OBLIGATORIU această unealtă înainte de a '
+            'trimite un city_id către orice altă unealtă. NU ghici niciodată un city_id dintr-un nume de '
+            'oraș văzut în alt răspuns (de exemplu în lista de cluburi) - acolo apare doar ca text, nu ca id.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'query': {'type': 'string', 'description': 'Text de căutare (opțional).'}},
+        },
+    },
+    {
+        'name': 'list_grades',
+        'description': 'Listează gradele existente cu id-urile lor reale - folosește-o înainte de a trimite un current_grade_id, din același motiv ca list_cities.',
         'input_schema': {'type': 'object', 'properties': {}},
     },
     {
@@ -191,6 +210,35 @@ TOOLS = [
                 'title_id': {'type': 'integer'},
             },
             'required': ['athlete_id'],
+        },
+    },
+    {
+        'name': 'create_athlete',
+        'description': (
+            'ADMIN. Propune crearea unui sportiv nou. club_id, date_of_birth și city_id sunt obligatorii '
+            '(un administrator, spre deosebire de un antrenor, nu are un club implicit; data nașterii și '
+            'orașul sunt cerute de validarea din spate, chiar dacă par opționale). CNP-ul nu se poate seta '
+            'prin această unealtă - se completează separat, din profilul sportivului. Necesită confirmare.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'first_name': {'type': 'string'},
+                'last_name': {'type': 'string'},
+                'club_id': {'type': 'integer'},
+                'date_of_birth': {'type': 'string', 'description': 'Format YYYY-MM-DD.'},
+                'city_id': {'type': 'integer'},
+                'gender': {'type': 'string'},
+                'license_series': {'type': 'string'},
+                'license_number': {'type': 'string'},
+                'address': {'type': 'string'},
+                'mobile_number': {'type': 'string'},
+                'emergency_contact_name': {'type': 'string'},
+                'emergency_contact_phone': {'type': 'string'},
+                'previous_experience': {'type': 'string'},
+                'current_grade_id': {'type': 'integer'},
+            },
+            'required': ['first_name', 'last_name', 'club_id', 'date_of_birth', 'city_id'],
         },
     },
     {
