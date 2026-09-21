@@ -14,41 +14,45 @@ export const DIPLOMA_CATEGORY_SCOPE_OPTIONS = [
   { value: 'fight', label: 'Luptă' },
 ];
 
+// `scopes` lists which specific category scopes (solo/team/fight) a field
+// is relevant to - never 'all' itself, which getAvailableDiplomaFields
+// handles separately (a scope: 'all' template is a generic fallback that
+// can end up used by any category type, so it gets every field on offer).
 export const DIPLOMA_FIELDS = [
   {
     key: 'athlete_name',
     label: 'Nume sportiv',
-    scopes: ['all', 'solo', 'fight'],
+    scopes: ['solo', 'fight'],
   },
   {
     key: 'club_name',
     label: 'Club',
-    scopes: ['all', 'solo', 'team', 'fight'],
+    scopes: ['solo', 'team', 'fight'],
   },
   {
     key: 'athlete_with_club',
     label: 'Nume sportiv (club)',
-    scopes: ['all', 'solo', 'fight'],
+    scopes: ['solo', 'fight'],
   },
   {
     key: 'team_with_club',
     label: 'Nume echipă (club)',
-    scopes: ['all', 'team'],
+    scopes: ['team'],
   },
   {
     key: 'group_with_gender',
     label: 'Grupa + gen',
-    scopes: ['all', 'solo', 'team', 'fight'],
+    scopes: ['solo', 'team', 'fight'],
   },
   {
     key: 'event_name',
     label: 'Nume competiție',
-    scopes: ['all', 'solo', 'team', 'fight'],
+    scopes: ['solo', 'team', 'fight'],
   },
   {
     key: 'place_label',
     label: 'Loc / tip diplomă',
-    scopes: ['all', 'solo', 'team', 'fight'],
+    scopes: ['solo', 'team', 'fight'],
   },
 ];
 
@@ -168,7 +172,8 @@ export function createDiplomaPlacement(field) {
 }
 
 export function getAvailableDiplomaFields(scope = 'all') {
-  return DIPLOMA_FIELDS.filter((field) => field.scopes.includes('all') || field.scopes.includes(scope));
+  if (scope === 'all') return DIPLOMA_FIELDS;
+  return DIPLOMA_FIELDS.filter((field) => field.scopes.includes(scope));
 }
 
 export function getDiplomaTemplateLabel(kind) {
