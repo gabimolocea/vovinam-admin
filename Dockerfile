@@ -12,10 +12,12 @@ COPY apps/public-site/package.json apps/public-site/package.json
 COPY apps/shared/package.json apps/shared/package.json
 # package-lock.json is generated on macOS, so it only pins the darwin-arm64
 # rollup binary (npm/cli#4828: npm doesn't record optional-dependency
-# entries for other platforms in the lockfile). `npm ci` alone can't fetch
-# the linux-x64-gnu binary Rollup needs here, so fall back to a full
-# `npm install` - inside this ephemeral build stage only - when that happens.
-RUN npm ci || (rm -rf node_modules package-lock.json && npm install)
+# entries for other platforms in the lockfile). `npm ci` doesn't even fail
+# on this - it silently installs everything else and only the later
+# `npm run build` blows up trying to require() the missing linux-x64-gnu
+# binary - so use `npm install` outright, which resolves fresh against
+# this build stage's actual (linux) platform.
+RUN npm install
 
 COPY apps/public-site apps/public-site
 COPY apps/shared apps/shared
