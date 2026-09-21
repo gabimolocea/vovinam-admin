@@ -53,14 +53,16 @@ jobs:
     # package-lock.json is generated on macOS, so it only pins the resolved
     # darwin-arm64 rollup binary - the linux-x64-gnu one Vite/Vitest need
     # here only exists inside Rollup's own optionalDependencies metadata,
-    # never as an installable lockfile entry (npm/cli#4828). `npm ci`
-    # doesn't even fail on this - it silently installs everything else and
-    # only the later `vitest run` blows up trying to require() it - so a
-    # `npm ci || fallback` doesn't help; use `npm install` outright, which
-    # resolves fresh against this runner's actual platform (see also the
-    # same fix in the Dockerfile's frontend-builder stage).
+    # never as an installable lockfile entry (npm/cli#4828). Neither
+    # `npm ci` (doesn't even fail on this - it silently installs everything
+    # else and only the later `vitest run` blows up requiring it) nor a
+    # plain `npm install` with the lockfile still present (npm treats it as
+    # authoritative and won't add the missing platform entry either) fixes
+    # this - the lockfile has to actually be deleted first so npm does a
+    # fresh resolve against this runner's real platform (see also the same
+    # fix in the Dockerfile's frontend-builder stage).
     - name: Install dependencies
-      run: npm install
+      run: rm -f package-lock.json && npm install
 
     - name: Run frontend unit tests
       run: npm run test --workspaces --if-present
@@ -82,9 +84,9 @@ jobs:
         node-version: '20'
         cache: 'npm'
 
-    # See the frontend-unit job above for why this uses npm install, not npm ci.
+    # See the frontend-unit job above for why the lockfile is deleted first.
     - name: Install dependencies
-      run: npm install
+      run: rm -f package-lock.json && npm install
 
     - name: Install Playwright browsers
       run: npx playwright install --with-deps chromium
