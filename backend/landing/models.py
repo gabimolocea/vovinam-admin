@@ -256,6 +256,10 @@ class Event(SEOModel):
         default='upcoming',
         help_text='Operational status of the event'
     )
+    is_publicly_visible = models.BooleanField(
+        default=True,
+        help_text='Show this event on the public site. Uncheck to keep it admin-only.'
+    )
     sync_mode = models.CharField(
         max_length=20,
         choices=SYNC_MODE_CHOICES,

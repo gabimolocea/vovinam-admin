@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cityAPI, competitionAPI } from '@shared/lib/api';
-import { Alert, Button, Card, Input, Label, Textarea } from '../components/ui';
+import { Alert, Button, Card, Input, Label, Switch, Textarea } from '../components/ui';
 
 const INITIAL_FORM = {
   name: '',
@@ -11,6 +11,7 @@ const INITIAL_FORM = {
   end_date: '',
   coach_registration_deadline: '',
   description: '',
+  is_publicly_visible: true,
 };
 
 const normalizeText = (value = '') =>
@@ -96,6 +97,7 @@ export default function CompetitionForm() {
         end_date: form.end_date || form.start_date,
         coach_registration_deadline: form.coach_registration_deadline || form.start_date,
         description: form.description,
+        is_publicly_visible: form.is_publicly_visible,
       };
       const { data } = await competitionAPI.create(payload);
       navigate(`/competitions/${data.id}`);
@@ -135,6 +137,16 @@ export default function CompetitionForm() {
               multiline
               placeholder="Descriere opțională, similar cu formularul din backend."
             />
+            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2.5">
+              <div>
+                <Label className="block text-sm font-medium text-foreground">Vizibil public</Label>
+                <p className="text-xs text-muted-foreground">Afișează acest eveniment pe site-ul public.</p>
+              </div>
+              <Switch
+                checked={form.is_publicly_visible}
+                onCheckedChange={(checked) => setForm((f) => ({ ...f, is_publicly_visible: checked }))}
+              />
+            </div>
           </div>
         </Card>
 

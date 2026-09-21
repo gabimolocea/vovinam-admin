@@ -76,6 +76,7 @@ class CompetitionViewSet(viewsets.ViewSet):
                 'effective_coach_registration_deadline': getattr(ev, 'effective_coach_registration_deadline', ev.start_date),
                 'event_type': ev.event_type,
                 'status': getattr(ev, 'status', None),
+                'is_publicly_visible': ev.is_publicly_visible,
                 'sync_mode': ev.sync_mode,
                 'sync_locked': ev.sync_locked,
                 'local_sync_status': ev.local_sync_status,
@@ -103,6 +104,7 @@ class CompetitionViewSet(viewsets.ViewSet):
             'effective_coach_registration_deadline': getattr(ev, 'effective_coach_registration_deadline', ev.start_date),
             'event_type': ev.event_type,
             'status': getattr(ev, 'status', None),
+            'is_publicly_visible': ev.is_publicly_visible,
             'sync_mode': ev.sync_mode,
             'sync_locked': ev.sync_locked,
             'local_sync_status': ev.local_sync_status,
@@ -212,6 +214,7 @@ class CompetitionViewSet(viewsets.ViewSet):
             description=d.get('description', ''),
             event_types=[event_type],
             status=d.get('status', 'upcoming'),
+            is_publicly_visible=_coerce_bool(d.get('is_publicly_visible'), default=True),
             sync_mode=d.get('sync_mode', 'cloud') or 'cloud',
             sync_locked=_coerce_bool(d.get('sync_locked'), default=False),
             local_sync_status=d.get('local_sync_status', 'idle') or 'idle',
@@ -330,6 +333,8 @@ class CompetitionViewSet(viewsets.ViewSet):
             ev.description = d['description']
         if 'status' in d:
             ev.status = d['status']
+        if 'is_publicly_visible' in d:
+            ev.is_publicly_visible = _coerce_bool(d.get('is_publicly_visible'), default=ev.is_publicly_visible)
         if 'sync_mode' in d:
             ev.sync_mode = d.get('sync_mode') or ev.sync_mode
         if 'sync_locked' in d:

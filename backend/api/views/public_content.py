@@ -519,8 +519,11 @@ class PublicEventViewSet(viewsets.ViewSet):
     def get_queryset(self):
         # Exams a club coach created themselves (organizing_club set) are
         # for that club's own athletes, not a federation-wide announcement -
-        # keep them out of the public calendar.
-        return Event.objects.filter(organizing_club__isnull=True).select_related('city').order_by('-start_date')
+        # keep them out of the public calendar. is_publicly_visible is the
+        # admin's own explicit toggle for the same purpose.
+        return Event.objects.filter(
+            organizing_club__isnull=True, is_publicly_visible=True
+        ).select_related('city').order_by('-start_date')
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -538,7 +541,8 @@ class PublicEventViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
         queryset = Event.objects.filter(
-            status='upcoming', start_date__gt=timezone.now(), organizing_club__isnull=True
+            status='upcoming', start_date__gt=timezone.now(),
+            organizing_club__isnull=True, is_publicly_visible=True
         ).select_related('city').order_by('start_date')
         serializer = PublicEventSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)

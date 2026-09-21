@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { competitionAPI, offlineAPI } from '@shared/lib/api';
 import { getSyncLockMeta, getSyncModeMeta, getSyncStatusMeta } from '@shared/lib/syncStatus';
-import { PageHeader, Card, StatusBadge, Spinner, Badge, Button } from '../components/ui';
+import { PageHeader, Card, StatusBadge, Spinner, Badge, Button, Switch } from '../components/ui';
 import { cn } from '../lib/utils';
 
 function downloadJson(filename, payload) {
@@ -91,6 +91,19 @@ export default function CompetitionDetail() {
     }
   };
 
+  const handleTogglePublicVisibility = async (checked) => {
+    setBusy(true);
+    setMessage('');
+    try {
+      await competitionAPI.update(id, { is_publicly_visible: checked });
+      await loadCompetition();
+    } catch (error) {
+      setMessage(error.response?.data?.detail || 'Schimbarea vizibilității a eșuat.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleCompleteLocalSync = async () => {
     setBusy(true);
     setMessage('');
@@ -153,6 +166,17 @@ export default function CompetitionDetail() {
           {comp.description && (
             <p className="mt-4 text-sm text-muted-foreground">{comp.description}</p>
           )}
+          <div className="mt-4 flex items-center justify-between rounded-md border border-border px-3 py-2.5">
+            <div>
+              <span className="block text-sm font-medium text-foreground">Vizibil public</span>
+              <span className="text-xs text-muted-foreground">Afișează acest eveniment pe site-ul public.</span>
+            </div>
+            <Switch
+              checked={comp.is_publicly_visible}
+              disabled={busy}
+              onCheckedChange={handleTogglePublicVisibility}
+            />
+          </div>
         </Card>
 
         {/* Stats card */}
