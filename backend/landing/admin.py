@@ -104,8 +104,8 @@ class EventAdminForm(forms.ModelForm):
 
 class EventAdmin(admin.ModelAdmin):
     form = EventAdminForm
-    list_display = ['title', 'start_date', 'city', 'event_types_display', 'event_status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured']
-    list_filter = ['status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'start_date']
+    list_display = ['title', 'start_date', 'city', 'event_types_display', 'event_status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'is_publicly_visible']
+    list_filter = ['status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'is_publicly_visible', 'start_date']
     search_fields = ['title', 'description', 'city__name', 'tags']
     autocomplete_fields = ['city']
     prepopulated_fields = {'slug': ('title',)}
@@ -124,7 +124,7 @@ class EventAdmin(admin.ModelAdmin):
             'fields': ('start_date', 'end_date', 'coach_registration_deadline', 'city', 'address', 'price', 'event_types', 'status')
         }),
         (_('Setări afișare'), {
-            'fields': ('is_featured',)
+            'fields': ('is_featured', 'is_publicly_visible')
         }),
         (_('Sincronizare eveniment local'), {
             'fields': ('sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at'),
