@@ -96,6 +96,10 @@ jobs:
 
     - name: Upload Playwright report
       if: always()
+      continue-on-error: true # a debugging aid, not the source of truth - an
+      # upload-storage hiccup on GitHub's end (e.g. transient 403s from the
+      # artifact backend) must never fail an otherwise-green run; the actual
+      # test results already came from the "Run e2e tests" step above.
       uses: actions/upload-artifact@v4
       with:
         name: playwright-report
