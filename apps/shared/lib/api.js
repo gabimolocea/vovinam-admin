@@ -478,6 +478,14 @@ export const refereePresenceAPI = {
   clear: (data) => api.post('/referee-presence/clear/', data),
 };
 
+// ── Referee QR Login (scan-to-authenticate, no password) ─
+export const refereeQrLoginAPI = {
+  get: (eventId, athleteId) => api.get(`/events/${eventId}/referees/${athleteId}/qr-login/`),
+  reset: (eventId, athleteId) => api.post(`/events/${eventId}/referees/${athleteId}/qr-login/reset/`),
+  // Unauthenticated on purpose - this IS the login call.
+  exchange: (token) => api.post('/referee-qr-login/', { token }),
+};
+
 // ── Offline / Local Event Sync ───────────────────────
 export const offlineAPI = {
   athletes: (params) => api.get('/offline/athletes/', { params }),

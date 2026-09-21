@@ -150,6 +150,11 @@ urlpatterns = autocomplete_urlpatterns + [
     path('events/<int:event_id>/auto-assign-referees/', views.auto_assign_referees, name='auto-assign-referees'),
     path('matches/<int:match_id>/advance-winner/', views.advance_match_winner, name='advance-match-winner'),
 
+    # Referee QR login - scan-to-authenticate for referee-scoring
+    path('events/<int:event_id>/referees/<int:athlete_id>/qr-login/', views.referee_qr_login_info, name='referee-qr-login-info'),
+    path('events/<int:event_id>/referees/<int:athlete_id>/qr-login/reset/', views.referee_qr_login_reset, name='referee-qr-login-reset'),
+    path('referee-qr-login/', views.referee_qr_login_exchange, name='referee-qr-login-exchange'),
+
     # AI chat assistant (admin/coach only - see api/assistant.py)
     path('assistant/chat/', AssistantChatView.as_view(), name='assistant-chat'),
     path('assistant/confirm/', AssistantConfirmView.as_view(), name='assistant-confirm'),

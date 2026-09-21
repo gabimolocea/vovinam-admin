@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import ScoringPanel from './pages/ScoringPanel';
 import MatchScoring from './pages/MatchScoring';
+import QrLogin from './pages/QrLogin';
 
 export default function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -11,6 +12,8 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Always reachable, logged in or not - scanning the QR IS the login. */}
+      <Route path="/qr-login/:token" element={<QrLogin />} />
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}

@@ -223,6 +223,45 @@ class RefereePresence(models.Model):
         return f"Referee {self.referee_id} on category {self.category_id}"
 
 
+class RefereeQRLogin(models.Model):
+    """A long-lived, admin-resettable QR login credential for a referee at
+    a specific event. Scanning the QR (which encodes a URL carrying this
+    `token`) hits a public endpoint that exchanges it for a real JWT
+    session, so a referee never has to type email/password on their own
+    phone. `token` stays valid all day until an admin explicitly resets
+    it (see referee_qr_login_reset) - there's no fixed expiry, since a
+    referee's session naturally comes and goes throughout an event and
+    they should just be able to re-scan the same still-displayed code."""
+    event = models.ForeignKey(
+        'landing.Event',
+        on_delete=models.CASCADE,
+        verbose_name=_('Eveniment'),
+        related_name='referee_qr_logins',
+    )
+    referee = models.ForeignKey(
+        'Athlete',
+        on_delete=models.CASCADE,
+        verbose_name=_('Arbitru'),
+        related_name='qr_logins',
+    )
+    token = models.CharField(_('Token'), max_length=64, unique=True, db_index=True)
+    created_at = models.DateTimeField(_('Creat la'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Actualizat la'), auto_now=True)
+
+    class Meta:
+        unique_together = ('event', 'referee')
+        verbose_name = _('Login QR arbitru')
+        verbose_name_plural = _('Login-uri QR arbitri')
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"QR login for referee {self.referee_id} on event {self.event_id}"
+
+
 # DISABLED FEATURES (for future use):
 # MatchVideoSegment - Timestamp segments within a match video for specific rounds/periods
 # RefereePointEventTimestamp - Links a specific referee point event to a video timestamp

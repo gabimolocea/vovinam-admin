@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from datetime import datetime, timedelta
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
@@ -21,6 +21,8 @@ from django.core.files.base import ContentFile
 import logging
 from pathlib import Path
 from django.db import IntegrityError
+from rest_framework_simplejwt.tokens import RefreshToken
+import secrets
 
 from ._common import _event_operational_lock_response, _referee_schedule_conflict_warnings
 
@@ -539,6 +541,78 @@ class RefereePresenceViewSet(viewsets.ViewSet):
         else:
             RefereePresence.objects.filter(category_id=category, referee_id=referee).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Referee QR login - scan-to-authenticate for referee-scoring, no
+# email/password. See RefereeQRLogin's docstring for the token model.
+# ═══════════════════════════════════════════════════════════════════
+
+def _get_or_create_referee_user(athlete):
+    """Most referee athletes in this app were never given a login (they're
+    local club coaches/officials, not registered platform users) - the QR
+    flow needs *a* User to mint a JWT for, so provision a minimal one
+    on first use. Its password is left unusable: this account is only
+    ever reachable through a valid QR token, never a password login."""
+    if athlete.user_id:
+        return athlete.user
+    user = User(
+        username=f'referee-{athlete.id}',
+        email=f'referee-{athlete.id}@qr.frvv.local',
+        first_name=athlete.first_name,
+        last_name=athlete.last_name,
+        role='athlete',
+    )
+    user.set_unusable_password()
+    user.save()
+    athlete.user = user
+    athlete.save(update_fields=['user'])
+    return user
+
+
+@api_view(['GET'])
+@permission_classes([IsAdmin])
+def referee_qr_login_info(request, event_id, athlete_id):
+    """Get-or-create this referee's QR login for the event. Never rotates
+    an existing token - reopening this screen later in the day must not
+    silently invalidate a referee who already scanned in this morning."""
+    athlete = get_object_or_404(Athlete, pk=athlete_id)
+    qr, _ = RefereeQRLogin.objects.get_or_create(event_id=event_id, referee=athlete)
+    return Response({'token': qr.token, 'login_path': f'/qr-login/{qr.token}'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAdmin])
+def referee_qr_login_reset(request, event_id, athlete_id):
+    """Rotate this referee's QR token, so whatever code was previously
+    displayed/scanned/photographed immediately stops working."""
+    athlete = get_object_or_404(Athlete, pk=athlete_id)
+    qr, _ = RefereeQRLogin.objects.get_or_create(event_id=event_id, referee=athlete)
+    qr.token = secrets.token_urlsafe(32)
+    qr.save(update_fields=['token', 'updated_at'])
+    return Response({'token': qr.token, 'login_path': f'/qr-login/{qr.token}'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def referee_qr_login_exchange(request):
+    """Public: exchange a QR token for a fresh JWT session. Called by the
+    referee-scoring app's /qr-login/:token route the instant a referee
+    scans the code - the token itself never expires on its own, only via
+    an explicit admin reset (see referee_qr_login_reset), so re-scanning
+    the same still-displayed code works any time during the event."""
+    token = request.data.get('token')
+    if not token:
+        return Response({'error': 'Token lipsă.'}, status=status.HTTP_400_BAD_REQUEST)
+    qr = RefereeQRLogin.objects.select_related('referee').filter(token=token).first()
+    if not qr:
+        return Response({'error': 'Cod QR invalid sau resetat. Cere unui admin un cod nou.'}, status=status.HTTP_404_NOT_FOUND)
+    user = _get_or_create_referee_user(qr.referee)
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'user': UserSerializer(user).data,
+        'tokens': {'refresh': str(refresh), 'access': str(refresh.access_token)},
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════

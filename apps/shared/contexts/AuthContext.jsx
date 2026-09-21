@@ -50,6 +50,15 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  // Stores a token pair obtained some way other than the normal
+  // email/password form (e.g. a QR-code login exchange) and loads the
+  // resulting user, same as login() does after its own token exchange.
+  const loginWithTokens = async ({ access, refresh }) => {
+    if (access) localStorage.setItem('authToken', access);
+    if (refresh) localStorage.setItem('refreshToken', refresh);
+    await fetchUser();
+  };
+
   const register = async ({ email, password, passwordConfirm, termsAccepted }) => {
     const { data } = await authAPI.register({
       email,
@@ -89,6 +98,7 @@ export function AuthProvider({ children }) {
     user,
     loading,
     login,
+    loginWithTokens,
     register,
     logout,
     refetchUser: fetchUser,
