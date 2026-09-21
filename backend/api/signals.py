@@ -464,8 +464,13 @@ def sync_category_athlete_to_fight_weight(sender, instance, created, **kwargs):
         category=fight_cat,
         athlete=instance.athlete,
     )
-    # Sync enrollment weight → pre_weight_kg (only if enrollment has a weight)
-    if instance.weight and (fw_created or not fw.pre_weight_kg):
+    # Keep pre_weight_kg mirroring the coach's latest submitted weight on
+    # every edit, not just the first one - a coach correcting a typo or
+    # updating the declared weight closer to the event must still reach
+    # the admin's screen. is_weight_locked is the explicit "official
+    # weigh-in confirmed, stop overwriting" signal, so that's the only
+    # thing that should stop this sync.
+    if instance.weight and not fw.is_weight_locked and fw.pre_weight_kg != instance.weight:
         fw.pre_weight_kg = instance.weight
         fw.save(update_fields=['pre_weight_kg'])
 

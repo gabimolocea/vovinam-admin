@@ -23,6 +23,7 @@ test_*.py
 *_test.py
 !backend/api/tests/test_public_api_permissions.py
 !backend/api/tests/test_self_enrollment.py
+!backend/api/tests/test_category_athlete_fight_weight_sync.py
 !backend/api/tests/test_live_state_performance.py
 !backend/api/tests/test_bulk_operations.py
 !backend/api/tests/test_assigned_referee_score_permissions.py
