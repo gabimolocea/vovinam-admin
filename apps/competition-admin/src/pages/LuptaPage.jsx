@@ -366,6 +366,17 @@ export default function LuptaPage() {
     return null;
   }, []);
 
+  // Keyed the same way as the row map below (group_id-athlete_id) so it can
+  // fall back for athletes whose CategoryAthlete.weight was never (re)set
+  // after assignment - assignToCategory only copies registered_weight_kg
+  // into CategoryAthlete.weight once, at the moment of assignment, so a
+  // weight submitted or corrected afterwards would otherwise never show up
+  // here even though it's sitting right there in the pre-registration pool.
+  const groupEnrollmentWeightByKey = useMemo(
+    () => new Map(fightGroupEnrollments.map((ge) => [`${ge.group}-${ge.athlete}`, ge.registered_weight_kg])),
+    [fightGroupEnrollments]
+  );
+
   const preEnrollmentRowsRaw = useMemo(() => {
     const map = new Map();
     fightGroups.forEach(({ group, cats }) => {
@@ -376,7 +387,7 @@ export default function LuptaPage() {
           const key = `${group.id}-${athleteId}`;
           const existing = map.get(key);
           const athleteDetails = enrollment.athlete_details || existing?.athlete_details || null;
-          const submittedWeight = enrollment.weight ?? existing?.submitted_weight ?? '';
+          const submittedWeight = enrollment.weight ?? groupEnrollmentWeightByKey.get(key) ?? existing?.submitted_weight ?? '';
           const fw = findWeight(cat.id, athleteId);
           const row = {
             key,
@@ -415,7 +426,7 @@ export default function LuptaPage() {
       if (a.group_name !== b.group_name) return a.group_name.localeCompare(b.group_name);
       return a.athlete_name.localeCompare(b.athlete_name);
     });
-  }, [fightGroups, findWeight]);
+  }, [fightGroups, findWeight, groupEnrollmentWeightByKey]);
 
   const preEnrollmentRows = useMemo(() => {
     const rows = [...preEnrollmentRowsRaw];
