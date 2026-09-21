@@ -24,60 +24,67 @@ export default function LoginPage({ title = 'Login' }) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted px-4">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-8 shadow-sm">
-        <div className="text-center">
-          <div className="mb-4 flex justify-center">
-            <Logo size={96} />
-          </div>
-          <h1 className="font-display text-2xl font-semibold text-foreground">{title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Federația Română de Vovinam Viet Vo Dao</p>
-        </div>
+      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+        <div className="h-1.5 bg-gradient-to-r from-primary via-amber-400 to-primary" />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-              {error}
+        <div className="space-y-6 p-8">
+          <div className="text-center">
+            <div className="mb-4 flex justify-center">
+              <Logo size={88} />
             </div>
-          )}
-
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-foreground">
-              Email
-            </label>
-            <input
-              id="email"
-              type="text"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            />
+            <h1 className="font-display text-2xl font-semibold text-foreground">{title}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Federația Română de Vovinam Viet Vo Dao</p>
           </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-foreground">
-              Parolă
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+                {error}
+              </div>
+            )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {busy ? 'Se autentifică…' : 'Autentificare'}
-          </button>
-        </form>
+            <div>
+              <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Email
+              </label>
+              <input
+                id="email"
+                type="text"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1.5 block h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Parolă
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-1.5 block h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
+            >
+              {busy && (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" />
+              )}
+              {busy ? 'Se autentifică…' : 'Autentificare'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

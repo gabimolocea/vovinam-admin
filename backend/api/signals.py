@@ -350,6 +350,25 @@ def update_team_name_on_member_add(sender, instance, created, **kwargs):
     return
 
 
+@receiver(post_save, sender=Match)
+def create_default_match_rounds(sender, instance, created, **kwargs):
+    """
+    Auto-create the 2x2min round preset for a newly-created fight match, so
+    it's immediately scoreable instead of sitting with zero rounds until an
+    admin opens the live-scoring screen and manually picks a preset there -
+    which is what caused rounds/timers to render broken ("glitch") for any
+    match nobody had happened to click into yet.
+    """
+    if not created:
+        return
+    if MatchRound.objects.filter(match=instance).exists():
+        return
+    MatchRound.objects.bulk_create([
+        MatchRound(match=instance, round_number=1, duration_seconds=120),
+        MatchRound(match=instance, round_number=2, duration_seconds=120),
+    ])
+
+
 def _ensure_event_participation_for_category(athlete, category):
     event = getattr(category, 'event', None)
     if not athlete or not event:

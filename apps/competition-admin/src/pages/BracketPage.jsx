@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { CentralizatorContext, GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
-import { api, MEDIA_BASE_URL } from '@shared';
-import { formatGroupBadgeLabel } from '../components/ui';
+import { api, MEDIA_BASE_URL, fieldAPI, matchFieldAssignmentAPI } from '@shared';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, formatGroupBadgeLabel } from '../components/ui';
 import ExcelJS from 'exceljs';
 
 /* ── round label map ── */
@@ -11,17 +11,20 @@ const ROUND_LABELS = {
   'quarter-finals': 'Sferturi',
   'semi-finals': 'Semifinale',
   'finals': 'Finală',
-  'bronze': 'Meci Bronz',
+  'bronze': 'Finala mică',
 };
 
 const ADMIN_BASE = MEDIA_BASE_URL;
 
 /* Shared bracket-tree layout math, used by both the on-screen BracketTree
    and the standalone print/PDF export - so the two never drift apart.
-   Round 1 is evenly spaced; every later round is positioned recursively -
-   each match sits at the exact vertical midpoint of the two matches that
-   feed into it (bracket_position p's children are at 2p and 2p+1 in the
-   previous round, matching the backend's pairing in generate_brackets). */
+   Round 1 is evenly spaced; every later round is positioned from whoever
+   actually feeds into each match - via next_match for a normal winner
+   slot, or loser_next_match for the bronze match's two semi-final losers.
+   Deriving from real match relationships (rather than "the previous
+   round's paired slot" by bracket_position) is what lets the bronze match
+   live in its own round/column - possibly before the final's - without
+   the final losing track of the two semis it actually descends from. */
 function computeBracketLayout(matches, { CARD_W, CARD_H, COL_GAP, BASE_GAP }) {
   const byRound = {};
   for (const m of matches) {
@@ -42,17 +45,21 @@ function computeBracketLayout(matches, { CARD_W, CARD_H, COL_GAP, BASE_GAP }) {
       return;
     }
 
-    const prevRoundMatches = byRound[rounds[ri - 1]].sort((a, b) => a.bracket_position - b.bracket_position);
-    roundMatches.forEach((m, mi) => {
-      const child1 = prevRoundMatches[mi * 2];
-      const child2 = prevRoundMatches[mi * 2 + 1];
-      const y1 = child1 ? positions[child1.id].y : 0;
-      const y2 = child2 ? positions[child2.id].y : y1;
-      positions[m.id] = {
-        x: ri * (CARD_W + COL_GAP),
-        y: (y1 + y2) / 2,
-      };
+    roundMatches.forEach((m) => {
+      const children = matches.filter((cm) => cm.next_match === m.id || cm.loser_next_match === m.id);
+      const ys = children.map((c) => positions[c.id]?.y).filter((y) => y != null);
+      const y = ys.length > 0 ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0;
+      positions[m.id] = { x: ri * (CARD_W + COL_GAP), y };
     });
+
+    // The bronze match lands on the exact same row as the final (both are
+    // fed by the very same two semis) - drop it into its own lane below
+    // the main tree so the semis-to-final winner line never has to cross
+    // through it, whichever column bronze is drawn in.
+    const bronze = roundMatches.find((m) => m.match_type === 'bronze');
+    if (bronze) {
+      positions[bronze.id].y += CARD_H + BASE_GAP;
+    }
   });
 
   const allPos = Object.values(positions);
@@ -74,6 +81,12 @@ export default function BracketPage() {
   const [matchDetailModal, setMatchDetailModal] = useState(null); // match object or null
   const [searchTerm, setSearchTerm] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
+  // categoryId -> that CategoryBracket's own fetchMatches, so the drawer can
+  // refresh just the affected category's cards after a quick-schedule action.
+  const categoryRefetchersRef = useRef({});
+  const registerCategoryRefetch = useCallback((categoryId, fn) => {
+    categoryRefetchersRef.current[categoryId] = fn;
+  }, []);
 
   if (!ctx) return null;
 
@@ -168,6 +181,7 @@ export default function BracketPage() {
               eventId={eventId}
               fightWeights={fightWeights}
               onMatchClick={(match) => setMatchDetailModal(match)}
+              registerRefetch={registerCategoryRefetch}
             />
           );
         })}
@@ -178,6 +192,11 @@ export default function BracketPage() {
         <MatchDetailModal
           match={matchDetailModal}
           onClose={() => setMatchDetailModal(null)}
+          eventId={eventId}
+          onScheduled={(updatedMatch) => {
+            setMatchDetailModal(updatedMatch);
+            categoryRefetchersRef.current[updatedMatch.category]?.();
+          }}
         />
       )}
     </div>
@@ -187,171 +206,217 @@ export default function BracketPage() {
 /* ═══════════════════════════════════════════════════════════════════
    MATCH DETAIL MODAL  –  full info about a match
    ═══════════════════════════════════════════════════════════════════ */
-function MatchDetailModal({ match: m, onClose }) {
+function MatchDetailModal({ match: m, onClose, eventId, onScheduled }) {
   const adminUrl = `${ADMIN_BASE}/admin/api/match/${m.id}/change/`;
+  // hasWinner-gated so a still-open BYE/TBD slot (both m.winner and the
+  // empty corner are null/undefined) doesn't false-positive as "won".
+  const redWon = !!m.winner && m.winner === m.red_corner;
+  const blueWon = !!m.winner && m.winner === m.blue_corner;
+  const redLost = !!m.winner && !redWon && !!m.red_corner;
+  const blueLost = !!m.winner && !blueWon && !!m.blue_corner;
+  // Aggregate final score: sum of every referee's tally for each corner
+  // (each referee's total already has central penalties folded in - see
+  // MatchSerializer.get_referee_scores on the backend).
+  const hasScores = m.referee_scores && m.referee_scores.length > 0;
+  const finalRedScore = hasScores ? m.referee_scores.reduce((sum, rs) => sum + (rs.total_red || 0), 0) : null;
+  const finalBlueScore = hasScores ? m.referee_scores.reduce((sum, rs) => sum + (rs.total_blue || 0), 0) : null;
+
+  // Quick tatami scheduling, right from the drawer - full drag-and-drop
+  // ordering within a tatami's queue still only lives on Programare.
+  const [fields, setFields] = useState([]);
+  const [fieldAssignments, setFieldAssignments] = useState([]);
+  const [fieldsLoading, setFieldsLoading] = useState(true);
+  const [assigning, setAssigning] = useState(false);
+  const [scheduleError, setScheduleError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [fieldsRes, assignRes] = await Promise.all([
+          fieldAPI.list({ event_id: eventId }),
+          matchFieldAssignmentAPI.list({ event_id: eventId }),
+        ]);
+        if (cancelled) return;
+        setFields((fieldsRes.data?.results || fieldsRes.data || []).slice().sort((a, b) => a.field_number - b.field_number));
+        setFieldAssignments(assignRes.data?.results || assignRes.data || []);
+      } catch {
+        /* quick-scheduling just won't be available this time */
+      } finally {
+        if (!cancelled) setFieldsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [eventId]);
+
+  const handleScheduleChange = async (e) => {
+    const value = e.target.value;
+    const existing = fieldAssignments.find((a) => a.match === m.id);
+    setAssigning(true);
+    setScheduleError(null);
+    try {
+      if (!value) {
+        if (existing) {
+          await matchFieldAssignmentAPI.delete(existing.id);
+          setFieldAssignments((prev) => prev.filter((a) => a.id !== existing.id));
+        }
+        onScheduled?.({ ...m, field_id: null, field_number: null, field_status: null });
+        return;
+      }
+      const fieldId = Number(value);
+      const field = fields.find((f) => f.id === fieldId);
+      if (existing) {
+        await matchFieldAssignmentAPI.update(existing.id, { field: fieldId });
+        setFieldAssignments((prev) => prev.map((a) => (a.id === existing.id ? { ...a, field: fieldId } : a)));
+      } else {
+        const maxOrder = fieldAssignments.filter((a) => a.field === fieldId).reduce((max, a) => Math.max(max, a.order), -1) + 1;
+        const res = await matchFieldAssignmentAPI.create({ match: m.id, field: fieldId, order: maxOrder });
+        setFieldAssignments((prev) => [...prev, res.data]);
+      }
+      onScheduled?.({ ...m, field_id: fieldId, field_number: field?.field_number ?? null, field_status: null });
+    } catch (err) {
+      setScheduleError(err.response?.data?.error || 'Nu s-a putut programa meciul.');
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="flex max-h-[85vh] w-[90vw] max-w-lg flex-col overflow-hidden border-2 border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent fullScreen className="gap-0 p-0">
 
         {/* Header */}
-        <div className="flex items-center justify-between border-b-2 border-border bg-secondary px-5 py-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-foreground">Meci ID {m.id}</h2>
-              <a
-                href={adminUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono hover:bg-indigo-200 transition"
-                title="Deschide în Django Admin"
-              >
-                ID: {m.id} ↗
-              </a>
-            </div>
-            <div className="flex items-center gap-2 mt-1">
-              {m.match_type && (
-                <span className="text-sm bg-muted text-muted-foreground px-1.5 py-0.5 rounded font-medium">
-                  {ROUND_LABELS[m.match_type] || m.match_type}
-                </span>
-              )}
-              {m.category_name && (
-                <span className="text-sm text-muted-foreground">{m.category_name}</span>
-              )}
-              {m.winner && (
-                <span className="text-sm bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-semibold">✓ Finalizat</span>
-              )}
-            </div>
+        <DialogHeader className="border-b-2 border-border bg-muted px-5 py-3 text-left">
+          <div className="flex items-center gap-2">
+            <DialogTitle className="text-sm font-bold">Meci #{m.id}</DialogTitle>
+            <a
+              href={adminUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground"
+              title="Deschide în Django Admin"
+            >
+              ↗
+            </a>
+            {m.winner && <span className="text-sm font-semibold text-green-700">· Finalizat</span>}
           </div>
-          <button onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center border-2 border-border bg-background text-lg font-black text-muted-foreground transition hover:bg-accent">×</button>
-        </div>
+          {(m.match_type || m.category_name) && (
+            <div className="text-sm text-muted-foreground">
+              {[ROUND_LABELS[m.match_type] || m.match_type, m.category_name].filter(Boolean).join(' · ')}
+            </div>
+          )}
+        </DialogHeader>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
-          {/* Corners */}
+          {/* Corners - same visual language as the bracket card (MatchCard) */}
           <div className="space-y-2">
-            <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide">Colțuri</h3>
+            <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide">Sportivi</h3>
 
-            {/* Colțul roșu */}
-            <div className={`flex items-center gap-3 p-3 rounded-lg border ${m.winner === m.red_corner ? 'bg-green-50 border-green-300' : 'bg-red-50/30 border-red-200'}`}>
-              <div className="w-4 h-4 rounded bg-red-500 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm text-foreground">
-                  {m.red_corner_full_name || <span className="text-muted-foreground italic">TBD</span>}
-                  {m.red_corner_club_name && <span className="text-sm text-muted-foreground font-normal ml-1">({m.red_corner_club_name})</span>}
+            <div className="border-2 border-border overflow-hidden">
+              {/* Colțul roșu */}
+              <div className={`relative flex min-h-[38px] items-center gap-1 border-b border-border px-2 py-1 ${redWon ? 'bg-green-100 font-bold' : ''}`}>
+                {redLost && (
+                  <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none">
+                    <line x1="0" y1="0" x2="100%" y2="100%" stroke="#ef4444" strokeWidth="1.5" />
+                  </svg>
+                )}
+                <div className="h-2.5 w-2.5 shrink-0 bg-red-500" />
+                <div className="min-w-0 flex-1">
+                  {m.red_corner_full_name ? (
+                    <>
+                      <span className="block truncate font-bold text-foreground">{m.red_corner_full_name}</span>
+                      {m.red_corner_club_name && <span className="block truncate text-xs text-muted-foreground">{m.red_corner_club_name}</span>}
+                    </>
+                  ) : (
+                    <span className="text-xs italic text-muted-foreground/50">TBD</span>
+                  )}
                 </div>
+                {finalRedScore != null && <span className="shrink-0 font-mono text-sm text-foreground">{finalRedScore}</span>}
               </div>
-              {m.winner === m.red_corner && <span className="text-green-600 text-sm font-bold">🏆 Câștigător</span>}
-            </div>
 
-            {/* Colțul albastru */}
-            <div className={`flex items-center gap-3 p-3 rounded-lg border ${m.winner === m.blue_corner ? 'bg-green-50 border-green-300' : 'bg-blue-50/30 border-blue-200'}`}>
-              <div className="w-4 h-4 rounded bg-blue-500 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm text-foreground">
-                  {m.blue_corner_full_name || <span className="text-muted-foreground italic">TBD</span>}
-                  {m.blue_corner_club_name && <span className="text-sm text-muted-foreground font-normal ml-1">({m.blue_corner_club_name})</span>}
+              {/* Colțul albastru */}
+              <div className={`relative flex min-h-[38px] items-center gap-1 px-2 py-1 ${blueWon ? 'bg-green-100 font-bold' : ''}`}>
+                {blueLost && (
+                  <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none">
+                    <line x1="0" y1="0" x2="100%" y2="100%" stroke="#ef4444" strokeWidth="1.5" />
+                  </svg>
+                )}
+                <div className="h-2.5 w-2.5 shrink-0 bg-blue-500" />
+                <div className="min-w-0 flex-1">
+                  {m.blue_corner_full_name ? (
+                    <>
+                      <span className="block truncate font-bold text-foreground">{m.blue_corner_full_name}</span>
+                      {m.blue_corner_club_name && <span className="block truncate text-xs text-muted-foreground">{m.blue_corner_club_name}</span>}
+                    </>
+                  ) : (
+                    <span className="text-xs italic text-muted-foreground/50">TBD</span>
+                  )}
                 </div>
+                {finalBlueScore != null && <span className="shrink-0 font-mono text-sm text-foreground">{finalBlueScore}</span>}
               </div>
-              {m.winner === m.blue_corner && <span className="text-green-600 text-sm font-bold">🏆 Câștigător</span>}
             </div>
           </div>
 
-          {/* Referees */}
-          {m.referees && m.referees.length > 0 && (
+          {/* Referees - names only (central marked separately), no
+              per-round breakdown - see finalRedScore/finalBlueScore above
+              for the score summary instead. Chip style matches the live
+              scoring referee slots (LiveFullscreenPage.jsx). */}
+          {(m.referees?.length > 0 || m.central_referee_name) && (
             <div>
-              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">Arbitri</h3>
-              <div className="flex flex-wrap gap-2">
-                {m.referees.map((ref, i) => (
-                  <div key={ref.id || i} className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 text-sm text-blue-800 font-medium">
-                    {ref.referee_name || ref.name || `Arbitru #${ref.referee || ref.id}`}
-                    {ref.role && <span className="text-blue-500 ml-1">({ref.role})</span>}
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</span>
+              <div className="flex flex-wrap gap-1.5">
+                {m.central_referee_name && (
+                  <div className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground/80">
+                    <span className="font-black text-foreground">C</span>
+                    <span className="truncate">{m.central_referee_name}</span>
+                  </div>
+                )}
+                {m.referees?.map((ref, i) => (
+                  // m.referees is a StringRelatedField (many=True) on the backend - already plain
+                  // display strings (e.g. "Florin Macovei, Club Sportiv X"), not objects.
+                  <div key={i} className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground/80">
+                    <span className="font-black text-foreground">A{i + 1}</span>
+                    <span className="truncate">{ref}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Central referee */}
-          {m.central_referee_name && (
-            <div>
-              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">Arbitru central</h3>
-              <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-1.5 text-sm text-purple-800 font-medium inline-block">
-                ⚖️ {m.central_referee_name}
+          {/* Match info + quick tatami scheduling */}
+          <div className="flex gap-2 text-sm">
+            {m.next_match && (
+              <div className="flex-1 bg-muted rounded-lg p-2">
+                <div className="text-muted-foreground text-xs uppercase">Meci următor</div>
+                <div className="font-semibold text-foreground">#{m.next_match}</div>
               </div>
-              {(m.central_penalties_red > 0 || m.central_penalties_blue > 0) && (
-                <div className="flex gap-3 mt-2 text-sm">
-                  <span className="text-red-600">🔴 Penalități roșu: <b>{m.central_penalties_red || 0}</b></span>
-                  <span className="text-blue-600">🔵 Penalități albastru: <b>{m.central_penalties_blue || 0}</b></span>
-                </div>
+            )}
+            <div className="flex-1 bg-muted rounded-lg p-2">
+              <div className="text-muted-foreground text-xs uppercase">Tatami</div>
+              {fieldsLoading ? (
+                <div className="text-sm text-muted-foreground">Se încarcă…</div>
+              ) : (
+                <select
+                  value={m.field_id || ''}
+                  onChange={handleScheduleChange}
+                  disabled={assigning}
+                  className="mt-0.5 w-full rounded border border-input bg-background px-1.5 py-1 text-sm font-semibold text-foreground outline-none disabled:opacity-50"
+                >
+                  <option value="">— neprogramat —</option>
+                  {fields.map((f) => (
+                    <option key={f.id} value={f.id}>Tatami {f.field_number}</option>
+                  ))}
+                </select>
               )}
-            </div>
-          )}
-
-          {/* Referee scores */}
-          {m.referee_scores && m.referee_scores.length > 0 && (
-            <div>
-              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">Scoruri arbitri</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-muted">
-                      <th className="text-left px-2 py-1.5 border-b border-border font-semibold text-muted-foreground">Arbitru</th>
-                      <th className="text-center px-2 py-1.5 border-b border-border font-semibold text-red-600">🔴 Roșu</th>
-                      <th className="text-center px-2 py-1.5 border-b border-border font-semibold text-blue-600">🔵 Albastru</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {m.referee_scores.map((rs, i) => (
-                      <tr key={i} className="hover:bg-muted">
-                        <td className="px-2 py-1.5 border-b border-border font-medium text-foreground">
-                          {rs.referee_name || `Arbitru #${rs.referee}`}
-                        </td>
-                        <td className="text-center px-2 py-1.5 border-b border-border font-mono text-red-700 font-semibold">
-                          {rs.score_red != null ? rs.score_red : '—'}
-                        </td>
-                        <td className="text-center px-2 py-1.5 border-b border-border font-mono text-blue-700 font-semibold">
-                          {rs.score_blue != null ? rs.score_blue : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Match info */}
-          <div>
-            <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide mb-2">Informații meci</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="bg-muted rounded-lg p-2">
-                <div className="text-muted-foreground text-xs uppercase">Runda</div>
-                <div className="font-semibold text-foreground">{m.round_number || '—'}</div>
-              </div>
-              <div className="bg-muted rounded-lg p-2">
-                <div className="text-muted-foreground text-xs uppercase">Poziție în tablou</div>
-                <div className="font-semibold text-foreground">{m.bracket_position != null ? m.bracket_position : '—'}</div>
-              </div>
-              {m.next_match && (
-                <div className="bg-muted rounded-lg p-2">
-                  <div className="text-muted-foreground text-xs uppercase">Meci următor</div>
-                  <div className="font-semibold text-foreground">#{m.next_match}</div>
-                </div>
-              )}
-              {m.field_number && (
-                <div className="bg-muted rounded-lg p-2">
-                  <div className="text-muted-foreground text-xs uppercase">Tatami</div>
-                  <div className="font-semibold text-foreground">#{m.field_number}</div>
-                </div>
-              )}
+              {scheduleError && <div className="mt-1 text-xs text-red-600">{scheduleError}</div>}
             </div>
           </div>
 
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -359,7 +424,7 @@ function MatchDetailModal({ match: m, onClose }) {
    PER-CATEGORY BRACKET COMPONENT
    Shows athlete list + bracket tree side-by-side with drag & drop
    ═══════════════════════════════════════════════════════════════════ */
-function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchClick }) {
+function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchClick, registerRefetch }) {
   const ctx = useContext(CentralizatorContext);
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -393,6 +458,13 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
   useEffect(() => {
     fetchMatches();
   }, [fetchMatches]);
+
+  /* let BracketPage trigger a refetch for this specific category after a
+     change made outside this component's own handlers (e.g. MatchDetailModal
+     quick-scheduling a match to a tatami). */
+  useEffect(() => {
+    registerRefetch?.(category.id, fetchMatches);
+  }, [registerRefetch, category.id, fetchMatches]);
 
   const handleGenerate = () => {
     ctx?.setConfirmModal({
@@ -462,6 +534,32 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
     } catch (err) {
       alert(err.response?.data?.error || 'Nu s-a putut avansa câștigătorul.');
     }
+  };
+
+  /* ── Add a 3rd-place/bronze match to an existing bracket that was
+     generated without one - without wiping and regenerating everything. ── */
+  const [addingBronze, setAddingBronze] = useState(false);
+  const handleAddBronzeMatch = () => {
+    ctx?.setConfirmModal({
+      title: 'Adaugă meci de bronz',
+      message: 'Se creează un meci pentru locul 3 între pierzătorii semifinalelor (deja jucate). Continui?',
+      icon: '🥉',
+      color: 'orange',
+      confirmLabel: 'Adaugă',
+      onConfirm: async () => {
+        try {
+          setAddingBronze(true);
+          setError(null);
+          await api.post(`/categories/${category.id}/add-bronze-match/`);
+          await fetchMatches();
+        } catch (err) {
+          setError(err.response?.data?.error || 'Nu s-a putut adăuga meciul de bronz.');
+        } finally {
+          setAddingBronze(false);
+          ctx?.setConfirmModal(null);
+        }
+      },
+    });
   };
 
   const handleDeleteBracket = () => {
@@ -1023,6 +1121,16 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
           >
             {generating ? 'Generare...' : matches.length > 0 ? 'Regenerează' : 'Generează bracket'}
           </button>
+          {matches.length > 0 && !matches.some(m => m.match_type === 'bronze') && (
+            <button
+              onClick={handleAddBronzeMatch}
+              disabled={addingBronze}
+              className="rounded border border-border bg-background px-2 py-1.5 text-sm font-semibold text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+              title="Adaugă un meci pentru locul 3, fără să regenerezi tot bracket-ul"
+            >
+              {addingBronze ? 'Se adaugă...' : '🥉 Adaugă meci de bronz'}
+            </button>
+          )}
           {/* Export buttons */}
           <button
             onClick={exportExcel}
@@ -1138,8 +1246,6 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
                     onDropOnSlot={handleDropOnSlot}
                     onRemoveFromSlot={handleRemoveFromSlot}
                     onMatchClick={onMatchClick}
-                    fightWeights={fightWeights}
-                    categoryId={category.id}
                   />
                 )}
               </div>
@@ -1154,26 +1260,19 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
    BRACKET TREE  –  horizontal single-elimination bracket layout
    Renders rounds left-to-right with SVG connector lines between them
    ═══════════════════════════════════════════════════════════════════ */
-function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, fightWeights, categoryId }) {
-  /* Build weight lookup: athleteId → weight (current_weight_kg preferred) */
-  const weightMap = {};
-  if (fightWeights && categoryId) {
-    for (const fw of fightWeights) {
-      if (fw.category === categoryId) {
-        weightMap[fw.athlete] = fw.current_weight_kg || fw.pre_weight_kg || null;
-      }
-    }
-  }
-
+function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick }) {
   /* layout constants */
-  const CARD_W = 290;
-  const CARD_H = 214;
-  const COL_GAP = 160;  // horizontal gap between rounds (for connectors)
-  const BASE_GAP = 24;  // vertical gap in round 1
+  const CARD_W = 220;
+  const CARD_H = 138;  // tallest real case: header + 2 corner rows + advance button
+  const COL_GAP = 90;  // horizontal gap between rounds (for connectors)
+  const BASE_GAP = 12;  // vertical gap in round 1
 
   const { byRound, rounds, positions, canvasW, canvasH, yShift } = computeBracketLayout(
     matches, { CARD_W, CARD_H, COL_GAP, BASE_GAP },
   );
+
+  const matchById = {};
+  for (const m of matches) matchById[m.id] = m;
 
   /* connector lines */
   const lines = [];
@@ -1238,7 +1337,7 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
         return (
           <div
             key={`hdr-${rnd}`}
-            className="absolute border border-border bg-muted px-2 py-1 text-center text-sm font-bold uppercase tracking-wider text-muted-foreground"
+            className="absolute border border-border bg-muted px-2 py-0.5 text-center text-xs font-bold uppercase tracking-wider text-muted-foreground"
             style={{ left: ri * (CARD_W + COL_GAP), top: 0, width: CARD_W }}
           >
             {label}
@@ -1250,6 +1349,8 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
       {matches.map(m => {
         const pos = positions[m.id];
         if (!pos) return null;
+        const nextMatch = m.next_match ? matchById[m.next_match] : null;
+        const alreadyAdvanced = !!nextMatch && (nextMatch.red_corner === m.winner || nextMatch.blue_corner === m.winner);
         return (
           <div
             key={m.id}
@@ -1266,7 +1367,7 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
               onDropOnSlot={onDropOnSlot}
               onRemoveFromSlot={onRemoveFromSlot}
               onMatchClick={onMatchClick}
-              weightMap={weightMap}
+              alreadyAdvanced={alreadyAdvanced}
             />
           </div>
         );
@@ -1278,13 +1379,15 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
 /* ═══════════════════════════════════════════════════════════════════
    MATCH CARD  –  with drop zones for red & blue corners
    ═══════════════════════════════════════════════════════════════════ */
-function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, weightMap = {} }) {
+function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, alreadyAdvanced }) {
   const ctx = useContext(CentralizatorContext);
   const hasWinner = !!m.winner;
-  const redWeight = m.red_corner ? weightMap[m.red_corner] : null;
-  const blueWeight = m.blue_corner ? weightMap[m.blue_corner] : null;
-  const redWon = m.winner === m.red_corner;
-  const blueWon = m.winner === m.blue_corner;
+  // hasWinner-gated so a still-open BYE slot (both m.winner and the empty
+  // corner are null/undefined) doesn't false-positive as "won" on nothing.
+  const redWon = hasWinner && m.winner === m.red_corner;
+  const blueWon = hasWinner && m.winner === m.blue_corner;
+  const redLost = hasWinner && !redWon && !!m.red_corner;
+  const blueLost = hasWinner && !blueWon && !!m.blue_corner;
   const isBye = (m.red_corner && !m.blue_corner) || (!m.red_corner && m.blue_corner);
   const assignedFieldId = m.field_id || m.field || null;
   const hasAssignedField = Boolean(assignedFieldId || m.field_number || m.field_name);
@@ -1333,20 +1436,40 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
   };
 
   return (
-    <div className={`flex min-h-[214px] cursor-pointer flex-col overflow-hidden border-2 bg-card text-sm shadow-sm transition-shadow hover:shadow-md ${
+    <div className={`flex cursor-pointer flex-col overflow-hidden border-2 bg-card text-sm shadow-sm transition-shadow hover:shadow-md ${
       hasWinner ? 'border-border' : isBye ? 'border-border' : 'border-border'
     }`} onClick={() => onMatchClick && onMatchClick(m)}>
-      {/* header */}
-      <div className="flex justify-between border-b-2 border-border bg-muted px-3 py-1 text-sm font-mono text-muted-foreground">
+      {/* header - status doubles as the scheduling shortcut: click "Neprogramat"
+          to jump to Programare, or "Programat" to jump to the live view. */}
+      <div className="flex items-center justify-between border-b-2 border-border bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground">
         <span title={`ID backend: ${m.id}`}>ID {m.id}</span>
-        {hasWinner && <span className="font-bold text-foreground">Finalizat</span>}
-        {isBye && <span className="font-semibold text-muted-foreground">BYE</span>}
+        {hasWinner ? (
+          <span className="font-bold text-green-700">Finalizat</span>
+        ) : isBye ? (
+          <span className="font-semibold text-muted-foreground">BYE</span>
+        ) : hasAssignedField ? (
+          <button
+            type="button"
+            onClick={handleMoreInfoClick}
+            className="font-semibold text-foreground underline decoration-dotted underline-offset-2 hover:text-foreground/70"
+          >
+            {m.field_number ? `Tatami ${m.field_number}` : m.field_name || 'Programat'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleMoreInfoClick}
+            className="font-semibold text-amber-700 underline decoration-dotted underline-offset-2 hover:text-amber-800"
+          >
+            Neprogramat
+          </button>
+        )}
       </div>
 
       {/* red corner */}
       <div
-        className={`group flex min-h-[56px] items-center gap-2 border-b border-border px-3 py-2.5 transition-colors
-          ${redWon ? 'bg-yellow-100 font-bold' : ''}
+        className={`group relative flex min-h-[38px] items-center gap-1 border-b border-border px-2 py-1 transition-colors
+          ${redWon ? 'bg-green-100 font-bold' : ''}
           ${isRedOver ? 'bg-yellow-100 ring-2 ring-inset ring-black' : ''}
           ${isDroppable && !m.red_corner ? 'bg-muted' : ''}
         `}
@@ -1354,21 +1477,24 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
         onDragLeave={() => handleDragLeave('red')}
         onDrop={(e) => handleDrop(e, 'red')}
       >
-        <div className="h-3 w-3 shrink-0 bg-red-500" />
+        {redLost && (
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none">
+            <line x1="0" y1="0" x2="100%" y2="100%" stroke="#ef4444" strokeWidth="1.5" />
+          </svg>
+        )}
+        <div className="h-2.5 w-2.5 shrink-0 bg-red-500" />
         <div className="min-w-0 flex-1">
           {m.red_corner_full_name ? (
             <>
               <span className="block truncate font-bold text-foreground">{m.red_corner_full_name}</span>
-              {m.red_corner_club_name && <span className="block truncate text-sm text-muted-foreground">{m.red_corner_club_name}</span>}
+              {m.red_corner_club_name && <span className="block truncate text-xs text-muted-foreground">{m.red_corner_club_name}</span>}
             </>
           ) : (
-            <span className={`text-sm italic ${isDroppable ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
+            <span className={`text-xs italic ${isDroppable ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
               {isDroppable ? '← Trage sportiv aici' : 'TBD'}
             </span>
           )}
         </div>
-        {redWeight && <span className="shrink-0 font-mono text-sm text-muted-foreground">{redWeight}kg</span>}
-        {redWon && <span className="text-sm font-bold text-foreground">CÂȘTIGĂ</span>}
         {onRemoveFromSlot && m.red_corner && !hasWinner && (
           <button
             onClick={(e) => { e.stopPropagation(); onRemoveFromSlot(m.id, 'red'); }}
@@ -1380,8 +1506,8 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
 
       {/* blue corner */}
       <div
-        className={`group flex min-h-[56px] items-center gap-2 px-3 py-2.5 transition-colors
-          ${blueWon ? 'bg-yellow-100 font-bold' : ''}
+        className={`group relative flex min-h-[38px] items-center gap-1 px-2 py-1 transition-colors
+          ${blueWon ? 'bg-green-100 font-bold' : ''}
           ${isBlueOver ? 'bg-yellow-100 ring-2 ring-inset ring-black' : ''}
           ${isDroppable && !m.blue_corner ? 'bg-muted' : ''}
         `}
@@ -1389,21 +1515,24 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
         onDragLeave={() => handleDragLeave('blue')}
         onDrop={(e) => handleDrop(e, 'blue')}
       >
-        <div className="h-3 w-3 shrink-0 bg-blue-500" />
+        {blueLost && (
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none">
+            <line x1="0" y1="0" x2="100%" y2="100%" stroke="#ef4444" strokeWidth="1.5" />
+          </svg>
+        )}
+        <div className="h-2.5 w-2.5 shrink-0 bg-blue-500" />
         <div className="min-w-0 flex-1">
           {m.blue_corner_full_name ? (
             <>
               <span className="block truncate font-bold text-foreground">{m.blue_corner_full_name}</span>
-              {m.blue_corner_club_name && <span className="block truncate text-sm text-muted-foreground">{m.blue_corner_club_name}</span>}
+              {m.blue_corner_club_name && <span className="block truncate text-xs text-muted-foreground">{m.blue_corner_club_name}</span>}
             </>
           ) : (
-            <span className={`text-sm italic ${isDroppable ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
+            <span className={`text-xs italic ${isDroppable ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
               {isDroppable ? '← Trage sportiv aici' : 'TBD'}
             </span>
           )}
         </div>
-        {blueWeight && <span className="shrink-0 font-mono text-sm text-muted-foreground">{blueWeight}kg</span>}
-        {blueWon && <span className="text-sm font-bold text-foreground">CÂȘTIGĂ</span>}
         {onRemoveFromSlot && m.blue_corner && !hasWinner && (
           <button
             onClick={(e) => { e.stopPropagation(); onRemoveFromSlot(m.id, 'blue'); }}
@@ -1413,22 +1542,15 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
         )}
       </div>
 
-      {/* advance button */}
-      {hasWinner && m.next_match && (
+      {/* advance button - hidden once the winner is already sitting in the next match's slot */}
+      {hasWinner && m.next_match && !alreadyAdvanced && (
         <button
           onClick={(e) => { e.stopPropagation(); onAdvance(m.id); }}
-          className="border-t-2 border-border bg-secondary py-1.5 text-sm font-semibold text-secondary-foreground hover:bg-secondary/90"
+          className="border-t-2 border-border bg-secondary py-0.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/90"
         >
           Avansează câștigător ▸
         </button>
       )}
-      <button
-        type="button"
-        onClick={handleMoreInfoClick}
-        className="border-t border-border bg-card px-3 py-1.5 text-center text-sm font-semibold text-muted-foreground hover:bg-muted"
-      >
-        Mai multe informații ↗
-      </button>
     </div>
   );
 }

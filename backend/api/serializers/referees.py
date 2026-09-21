@@ -90,4 +90,4 @@ class RefereePresenceSerializer(serializers.ModelSerializer):
     """Serializer for referee presence heartbeat"""
     class Meta:
         model = RefereePresence
-        fields = ['id', 'category', 'referee', 'last_ping']
+        fields = ['id', 'category', 'match', 'referee', 'last_ping']

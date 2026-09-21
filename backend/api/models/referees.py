@@ -1,5 +1,5 @@
 from django.db import models, transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.core.exceptions import ValidationError
 from django.contrib import admin
 from django.conf import settings
@@ -174,15 +174,28 @@ class CompetitionReferee(models.Model):
 
 
 class RefereePresence(models.Model):
-    """Tracks which referees are actively connected to a category scoring page.
-    The referee scoring panel pings this endpoint every poll cycle to indicate presence.
+    """Tracks which referees are actively connected to a category or match
+    scoring page. The referee scoring panel pings this endpoint every poll
+    cycle to indicate presence. Exactly one of category/match is set - solo
+    /team scoring pings by category, fight scoring pings by match.
     """
     category = models.ForeignKey(
         'Category',
         on_delete=models.CASCADE,
         verbose_name=_('Categorie'),
         related_name='referee_presences',
-        help_text=_('Categoria pe care o arbitrează acest arbitru.')
+        null=True,
+        blank=True,
+        help_text=_('Categoria pe care o arbitrează acest arbitru (probe solo/echipă).')
+    )
+    match = models.ForeignKey(
+        'Match',
+        on_delete=models.CASCADE,
+        verbose_name=_('Meci'),
+        related_name='referee_presences',
+        null=True,
+        blank=True,
+        help_text=_('Meciul pe care îl arbitrează acest arbitru (probe de luptă).')
     )
     referee = models.ForeignKey(
         'Athlete',
@@ -197,11 +210,16 @@ class RefereePresence(models.Model):
     )
 
     class Meta:
-        unique_together = ('category', 'referee')
+        constraints = [
+            models.UniqueConstraint(fields=['category', 'referee'], condition=Q(category__isnull=False), name='unique_category_referee_presence'),
+            models.UniqueConstraint(fields=['match', 'referee'], condition=Q(match__isnull=False), name='unique_match_referee_presence'),
+        ]
         verbose_name = _('Prezență arbitru')
         verbose_name_plural = _('Prezențe ale arbitrilor')
 
     def __str__(self):
+        if self.match_id:
+            return f"Referee {self.referee_id} on match {self.match_id}"
         return f"Referee {self.referee_id} on category {self.category_id}"
 
 

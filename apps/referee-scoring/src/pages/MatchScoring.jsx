@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { matchAPI, roundAPI, matchRefereeScoreAPI, matchEventAPI, refereeAPI } from '@shared/lib/api';
+import { matchAPI, roundAPI, matchRefereeScoreAPI, matchEventAPI, refereeAPI, refereePresenceAPI, API_BASE_URL } from '@shared/lib/api';
 import { useAuth } from '@shared';
 import { Spinner, formatGroupBadgeLabel } from '../components/ui';
 
@@ -29,6 +29,23 @@ export default function MatchScoring() {
   const pollRef = useRef(null);
   const [draftScores, setDraftScores] = useState({});
 
+  const myAthleteId = user?.athlete_id || user?.athlete?.id;
+
+  const clearPresenceBeacon = useCallback(() => {
+    if (!myAthleteId || !matchId) return;
+    const token = localStorage.getItem('authToken');
+    fetch(`${API_BASE_URL}/referee-presence/clear/`, {
+      method: 'POST',
+      keepalive: true,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ match: parseInt(matchId), referee: myAthleteId }),
+    }).catch(() => {});
+  }, [matchId, myAthleteId]);
+
   const fetchAll = useCallback(async () => {
     try {
       const [mR, rR, eR, sR] = await Promise.all([
@@ -42,18 +59,32 @@ export default function MatchScoring() {
       setRounds(rArr.sort((a, b) => a.round_number - b.round_number));
       setEvents(Array.isArray(eR.data) ? eR.data : eR.data?.results || []);
       setRefScores(Array.isArray(sR.data) ? sR.data : sR.data?.results || []);
+      if (myAthleteId) {
+        // Heartbeat ping — report presence on this scoring page
+        try { await refereePresenceAPI.ping({ match: parseInt(matchId), referee: myAthleteId }); } catch {}
+      }
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
       setLoading(false);
     }
-  }, [matchId]);
+  }, [matchId, myAthleteId]);
 
   useEffect(() => {
     fetchAll();
     pollRef.current = setInterval(fetchAll, POLL_INTERVAL);
     return () => clearInterval(pollRef.current);
   }, [fetchAll]);
+
+  useEffect(() => {
+    const handlePageHide = () => clearPresenceBeacon();
+    window.addEventListener('pagehide', handlePageHide);
+    return () => window.removeEventListener('pagehide', handlePageHide);
+  }, [clearPresenceBeacon]);
+
+  useEffect(() => () => {
+    clearPresenceBeacon();
+  }, [clearPresenceBeacon]);
 
   const prevScoreCountRef = useRef(0);
   useEffect(() => {
@@ -63,7 +94,6 @@ export default function MatchScoring() {
 
   const allRoundsDone = rounds.length > 0 && rounds.every(r => r.status === 'completed');
 
-  const myAthleteId = user?.athlete_id || user?.athlete?.id;
   const myRoundScores = refScores.filter(s => s.referee === myAthleteId && s.round != null);
   const myFinalScore = refScores.find(s => s.referee === myAthleteId && s.round == null);
   const getMyScoreForRound = (roundId) => myRoundScores.find(s => s.round === roundId);

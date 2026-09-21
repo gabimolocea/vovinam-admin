@@ -14,6 +14,52 @@ function publicDisplayOrigin() {
 
 const DisplayPreviewContext = createContext(null);
 
+// If the public-display dev server isn't up yet the moment a preview opens
+// (a very common ordering - the admin app tends to start first), the
+// iframe's connection is refused and it never retries on its own, leaving
+// the panel permanently black even once the server comes online. An
+// iframe's own `onLoad` can't tell us whether that happened - Chrome (and
+// others) fire `load` for the internal "can't be reached" error page too,
+// so a refused connection looks identical to a real success from here.
+// Instead, poll the target with a no-cors fetch (resolves the instant
+// *anything* answers on that port, rejects only on an actual connection
+// failure) and don't mount the iframe until one succeeds.
+function PreviewIframe({ src, title }) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer;
+    setReady(false);
+
+    const check = () => {
+      fetch(src, { mode: 'no-cors', cache: 'no-store' })
+        .then(() => { if (!cancelled) setReady(true); })
+        .catch(() => { if (!cancelled) timer = setTimeout(check, 3000); });
+    };
+    check();
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [src]);
+
+  if (!ready) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+        Se conectează…
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      src={src}
+      className="border-0 pointer-events-none"
+      title={title}
+      style={{ width: '1920px', height: '1080px', transform: 'scale(0.2083)', transformOrigin: 'top left' }}
+    />
+  );
+}
+
 export function useDisplayPreview() {
   return useContext(DisplayPreviewContext);
 }
@@ -84,12 +130,7 @@ export function DisplayPreviewProvider({ children }) {
               <span>{label} — Preview</span>
               <button onClick={() => closePreview(fId)} className="text-gray-400 hover:text-white text-xs leading-none px-1">✕</button>
             </div>
-            <iframe
-              src={`${publicDisplayOrigin()}/display/${fId}`}
-              className="border-0 pointer-events-none"
-              title={`${label} Preview`}
-              style={{ width: '1920px', height: '1080px', transform: 'scale(0.2083)', transformOrigin: 'top left' }}
-            />
+            <PreviewIframe src={`${publicDisplayOrigin()}/display/${fId}`} title={`${label} Preview`} />
           </div>
         );
       })}

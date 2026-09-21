@@ -199,6 +199,158 @@ def get_category_referees(request, pk):
         return Response({'referees': []}, status=404)
 
 
+# ═══════════════════════════════════════════════════════
+# Auto-assign referees (solo/team categories + fight matches)
+# ═══════════════════════════════════════════════════════
+
+REFEREE_SLOTS = 5
+
+
+def _fill_referee_panel(candidates, competing_club_ids, load, used_athlete_ids=None):
+    """Greedily pick up to REFEREE_SLOTS referee athlete ids from
+    `candidates` (each a CompetitionReferee with `.athlete` preloaded),
+    preferring the least-loaded referees and avoiding a referee whose own
+    club already has a seat in this panel or is one of `competing_club_ids`
+    (a competitor's own club judging them, or one club dominating the
+    panel, being exactly the "influence the result" risk this exists to
+    reduce). Falls back to relaxing the club rule rather than leaving a
+    slot empty when the roster is too small/concentrated to avoid it."""
+    used_athlete_ids = used_athlete_ids or set()
+    ranked = sorted(candidates, key=lambda cr: load.get(cr.athlete_id, 0))
+
+    def pick(strict):
+        panel_club_ids = set()
+        picks = []
+        for cr in ranked:
+            if cr.athlete_id in used_athlete_ids or cr in picks:
+                continue
+            club_id = cr.athlete.club_id
+            if strict and club_id and (club_id in panel_club_ids or club_id in competing_club_ids):
+                continue
+            picks.append(cr)
+            used_athlete_ids.add(cr.athlete_id)
+            if club_id:
+                panel_club_ids.add(club_id)
+            if len(picks) == REFEREE_SLOTS:
+                break
+        return picks
+
+    picks = pick(strict=True)
+    relaxed = len(picks) < REFEREE_SLOTS
+    if relaxed:
+        # Not enough conflict-free candidates - fill remaining slots
+        # ignoring the club rule, still skipping athletes already picked.
+        for cr in ranked:
+            if len(picks) == REFEREE_SLOTS:
+                break
+            if cr.athlete_id in used_athlete_ids:
+                continue
+            picks.append(cr)
+            used_athlete_ids.add(cr.athlete_id)
+    for cr in picks:
+        load[cr.athlete_id] = load.get(cr.athlete_id, 0) + 1
+    return picks, relaxed and len(picks) > 0
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def auto_assign_referees(request, event_id):
+    """
+    Auto-assign referee panels to solo/team categories and fight matches
+    that don't have one yet (gap-fill, same as auto_schedule_fields - a
+    manually-built panel is never touched). Unlike tatami scheduling, this
+    covers fight matches too: a match's referee slots don't depend on who
+    ends up competing in it, since the Match rows already exist once the
+    bracket is generated.
+
+    Panels are built to spread load evenly across the roster and to avoid
+    seating two referees from the same club together, or a referee whose
+    own club has an athlete/team in that specific item, when the roster
+    has enough alternatives to do so.
+    """
+    from landing.models import Event
+
+    try:
+        event = Event.objects.get(pk=event_id)
+    except Event.DoesNotExist:
+        return Response({'error': 'Evenimentul nu a fost găsit.'}, status=404)
+
+    locked = _event_operational_lock_response(event)
+    if locked is not None:
+        return locked
+
+    roster = list(CompetitionReferee.objects.filter(event=event).select_related('athlete', 'athlete__club'))
+    if not roster:
+        return Response({'error': 'Evenimentul nu are niciun arbitru în lot.'}, status=400)
+
+    load = {}  # athlete_id -> assignment count so far, for workload balance
+    warnings = []
+    assigned = 0
+
+    # ── solo/team categories ──
+    already_assigned_cat_ids = set(
+        CategoryRefereeAssignment.objects.filter(category__event=event).values_list('category_id', flat=True)
+    )
+    categories = (
+        Category.objects.filter(event=event)
+        .exclude(id__in=already_assigned_cat_ids)
+        .select_related('group')
+        .order_by('display_order', 'id')
+    )
+    categories = [c for c in categories if c.type in ('solo', 'team')]
+    for cat in categories:
+        if cat.type == 'team':
+            # Team categories enroll via CategoryTeam -> Team -> TeamMember,
+            # not CategoryAthlete, so their competing clubs come from each
+            # enrolled team's members' clubs instead.
+            competing_club_ids = set(
+                TeamMember.objects.filter(team__categories=cat, athlete__club__isnull=False)
+                .values_list('athlete__club_id', flat=True)
+            )
+        else:
+            competing_club_ids = set(
+                CategoryAthlete.objects.filter(category=cat, athlete__club__isnull=False)
+                .values_list('athlete__club_id', flat=True)
+            )
+        picks, relaxed = _fill_referee_panel(roster, competing_club_ids, load)
+        if not picks:
+            continue
+        kwargs = {f'referee_{i + 1}_id': picks[i].athlete_id for i in range(len(picks))}
+        CategoryRefereeAssignment.objects.create(category=cat, **kwargs)
+        assigned += 1
+        if relaxed:
+            warnings.append(f'"{cat.name}": nu au fost destui arbitri fără conflict de club - panel completat oricum.')
+
+    # ── fight matches ──
+    already_assigned_match_ids = set(
+        MatchRefereeAssignment.objects.filter(match__category__event=event).values_list('match_id', flat=True)
+    )
+    matches = (
+        Match.objects.filter(category__event=event)
+        .exclude(id__in=already_assigned_match_ids)
+        .select_related('red_corner__club', 'blue_corner__club')
+        .order_by('round_number', 'bracket_position', 'id')
+    )
+    for m in matches:
+        competing_club_ids = {
+            a.club_id for a in (m.red_corner, m.blue_corner) if a and a.club_id
+        }
+        picks, relaxed = _fill_referee_panel(roster, competing_club_ids, load)
+        if not picks:
+            continue
+        kwargs = {f'referee_{i + 1}_id': picks[i].athlete_id for i in range(len(picks))}
+        MatchRefereeAssignment.objects.create(match=m, **kwargs)
+        assigned += 1
+        if relaxed:
+            warnings.append(f'Meciul #{m.id}: nu au fost destui arbitri fără conflict de club - panel completat oricum.')
+
+    if assigned == 0:
+        return Response({'assigned': 0, 'warnings': [],
+                          'detail': 'Nimic de alocat - toate categoriile/meciurile au deja arbitri.'})
+
+    return Response({'assigned': assigned, 'warnings': warnings})
+
+
 class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
     """ViewSet for assigning 5 referees to solo/team categories"""
     permission_classes = [IsAdminOrReadOnly]
@@ -350,22 +502,27 @@ class RefereePresenceViewSet(viewsets.ViewSet):
     def list(self, request):
         from datetime import timedelta
         category_id = request.query_params.get('category')
+        match_id = request.query_params.get('match')
         event_id = request.query_params.get('event_id')
         cutoff = timezone.now() - timedelta(seconds=15)
         qs = RefereePresence.objects.filter(last_ping__gte=cutoff)
         if category_id:
             qs = qs.filter(category_id=category_id)
+        if match_id:
+            qs = qs.filter(match_id=match_id)
         if event_id:
-            qs = qs.filter(category__event_id=event_id)
+            qs = qs.filter(Q(category__event_id=event_id) | Q(match__category__event_id=event_id))
         return Response(RefereePresenceSerializer(qs, many=True).data)
 
     def create(self, request):
         category = request.data.get('category')
+        match = request.data.get('match')
         referee = request.data.get('referee')
-        if not category or not referee:
-            return Response({'error': 'category and referee required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not (category or match) or not referee:
+            return Response({'error': 'category or match, and referee, are required'}, status=status.HTTP_400_BAD_REQUEST)
+        lookup = {'match_id': match, 'referee_id': referee} if match else {'category_id': category, 'referee_id': referee}
         obj, created = RefereePresence.objects.update_or_create(
-            category_id=category, referee_id=referee,
+            **lookup,
             defaults={'last_ping': timezone.now()}
         )
         return Response(RefereePresenceSerializer(obj).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
@@ -373,10 +530,14 @@ class RefereePresenceViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def clear(self, request):
         category = request.data.get('category')
+        match = request.data.get('match')
         referee = request.data.get('referee')
-        if not category or not referee:
-            return Response({'error': 'category and referee required'}, status=status.HTTP_400_BAD_REQUEST)
-        RefereePresence.objects.filter(category_id=category, referee_id=referee).delete()
+        if not (category or match) or not referee:
+            return Response({'error': 'category or match, and referee, are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if match:
+            RefereePresence.objects.filter(match_id=match, referee_id=referee).delete()
+        else:
+            RefereePresence.objects.filter(category_id=category, referee_id=referee).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

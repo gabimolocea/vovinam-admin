@@ -981,7 +981,6 @@ export default function LuptaPage() {
                 ) : (
                   preEnrollmentRowsFiltered.map((row) => {
                     const suggestedId = getSuggestedCategoryId(row);
-                    const initialSuggestedId = getInitialSuggestedCategoryId(row);
                     // The confirmed competition-day weight suggests a category
                     // that doesn't match where the athlete is currently placed
                     // (which normally follows the submitted weight) - purely
@@ -997,9 +996,15 @@ export default function LuptaPage() {
                     // field and the category dropdown once true.
                     const weightConfirmed = Boolean(row.confirmed_weight) && row.confirmed_locked;
                     const isManualSelection = preAssignManual[row.key] === true;
+                    // Preselect from the same suggestion shown in "Categorie
+                    // sugerată" (confirmed weight once it exists, else the
+                    // submitted one) - purely a display default so the two
+                    // columns agree. This never moves the athlete by itself:
+                    // that still only happens on an explicit dropdown change
+                    // or "Confirmă greutate" click.
                     const selectedTarget = isManualSelection
                       ? (preAssignTargets[row.key] || '')
-                      : (initialSuggestedId ? String(initialSuggestedId) : '');
+                      : (suggestedId ? String(suggestedId) : '');
                     const options = categories.filter((cat) => (
                       cat.type === 'fight' && cat.group === row.group_id
                     ));

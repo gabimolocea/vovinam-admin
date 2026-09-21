@@ -43,7 +43,7 @@ const MODAL_SECONDARY_BUTTON = 'rounded-md border border-input bg-background px-
 const MODAL_DANGER_BUTTON = 'rounded-md bg-destructive px-4 py-2.5 font-bold text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-40';
 const MODAL_SUCCESS_BUTTON = 'rounded-md bg-emerald-600 px-4 py-2.5 font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40';
 const MODAL_WARNING_BUTTON = 'rounded-md bg-amber-400 px-4 py-2.5 font-bold text-amber-950 transition hover:bg-amber-300 disabled:opacity-40';
-const PANEL_BUTTON_BASE = 'rounded-md border border-input px-3 py-2 font-bold transition disabled:opacity-40';
+const PANEL_BUTTON_BASE = 'rounded-md border border-input px-3 py-3 text-lg font-black transition disabled:opacity-40';
 const PANEL_BUTTON_NEUTRAL = `${PANEL_BUTTON_BASE} bg-background text-foreground hover:bg-accent`;
 const PANEL_BUTTON_DANGER = `${PANEL_BUTTON_BASE} bg-background text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30`;
 const PANEL_BUTTON_SUCCESS = `${PANEL_BUTTON_BASE} bg-background text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30`;
@@ -84,7 +84,7 @@ const writeCachedCategoryData = (eventId, groups, categories) => {
 export default function LiveFullscreenPage() {
   const { id: eventId } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const fieldId = Number(searchParams.get('field'));
   const panelType = searchParams.get('panel'); // 'category' | 'match'
   const itemId = Number(searchParams.get('id')); // category or match ID
@@ -275,7 +275,10 @@ export default function LiveFullscreenPage() {
     fetchData();
     fetchMatchState();
     if (eventId) preview.loadFields(eventId);
-    pollRef.current = setInterval(fetchMatchState, 2000);
+    // Kept in step with public-display's own poll interval so a score
+    // submitted elsewhere (e.g. referee-scoring) shows up here about as
+    // fast as it does on the public screen, not visibly lagging behind it.
+    pollRef.current = setInterval(fetchMatchState, 600);
     return () => clearInterval(pollRef.current);
   }, [fetchData, fetchMatchState]);
 
@@ -297,6 +300,40 @@ export default function LiveFullscreenPage() {
   const currentMatch = fieldMatches.find(m => m.id === session?.current_match)
     || matches.find(m => m.id === session?.current_match)
     || (panelType === 'match' && itemId ? matches.find(m => m.id === itemId) : null);
+
+  // What's actually rendered (currentCat/currentMatch) follows the live
+  // session, but fetchMatchState's round/event/ref-score fetching keys off
+  // the URL's static ?id= - so if the session auto-advances to the next
+  // scheduled match/category while this screen is already open, the URL
+  // never catches up and every subsequent poll keeps fetching the PREVIOUS
+  // match's data (rounds included) under the new match's name/corners. Keep
+  // the URL following the session so fetchMatchState always fetches for
+  // whatever is actually on screen.
+  //
+  // This only ever corrects `id` within the CURRENT panelType (match stays
+  // match, category stays category) - it must not also switch panelType
+  // itself. A session can have both current_match and current_category set
+  // at once (e.g. "Afișează pe TV" on a match sets its category too), and
+  // reacting to whichever one doesn't match the URL - regardless of which
+  // panel is actually open - ping-pongs panel between 'match' and
+  // 'category' forever, each flip forcing a full refetch (the "refreshes a
+  // thousand times" glitch).
+  useEffect(() => {
+    if (panelType === 'match' && session?.current_match && itemId !== session.current_match) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('id', String(session.current_match));
+        return next;
+      }, { replace: true });
+    } else if (panelType === 'category' && session?.current_category && itemId !== session.current_category) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('id', String(session.current_category));
+        return next;
+      }, { replace: true });
+    }
+  }, [session?.current_match, session?.current_category, panelType, itemId, setSearchParams]);
+
   const currentFieldRecordingSession = recordingSessions.find(rs => rs.field === fieldId && rs.status === 'recording')
     || recordingSessions.find(rs => rs.field === fieldId)
     || null;
@@ -870,6 +907,7 @@ export default function LiveFullscreenPage() {
           />
         ) : panelType === 'match' && currentMatch ? (
           <FullscreenMatchPanel
+            key={currentMatch.id}
             match={currentMatch}
             session={session}
             matchRounds={matchRoundsForMatch}
@@ -878,6 +916,7 @@ export default function LiveFullscreenPage() {
             matchEvents={matchEvents.filter(e => e.match === currentMatch.id)}
             pointEvents={matchPointEvents.filter(event => event.match === currentMatch.id)}
             matchRefAssignment={matchRefAssignments.find(a => a.match === currentMatch.id)}
+            refPresence={refPresence.filter(rp => rp.match === currentMatch.id)}
             allCats={allCats}
             busy={busy}
             setBusy={setBusy}
@@ -1825,7 +1864,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
    ═══════════════════════════════════════════════════════ */
 function FullscreenMatchPanel({
   match, session, matchRounds, activeRound, matchRefScores, matchEvents, pointEvents,
-  matchRefAssignment, allCats, busy, setBusy, competitionReferees, recordingSession, setIdle, startRound, endRound, resetRound, createRounds,
+  matchRefAssignment, refPresence, allCats, busy, setBusy, competitionReferees, recordingSession, setIdle, startRound, endRound, resetRound, createRounds,
   pauseRound, resumeRound, addWarning, addPenalty, addBonus, addInfraction, addDisqualification,
   removeLastEvent, adjustTime, resetMatch, finalizeMatch, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh,
   operationalLockActive, operationalLockMessage, ensureOperationalWrite,
@@ -1839,9 +1878,10 @@ function FullscreenMatchPanel({
   const [refModalData, setRefModalData] = useState(null); // { ref, matchId }
   const [replaceMatchRefData, setReplaceMatchRefData] = useState(null); // { pos, id, name }
   const [replacementMatchRefId, setReplacementMatchRefId] = useState('');
-  const [matchDisplayMode, setMatchDisplayMode] = useState(match.display_mode || 'reveal_final');
+  const [matchDisplayMode, setMatchDisplayMode] = useState(match.display_mode || 'real_time');
   const [exportingExcel, setExportingExcel] = useState(false);
   const prevRoundStatusRef = useRef({});
+  const autoRoundProvisionRef = useRef(new Set());
 
   // Build referee list from match referee assignment
   const matchRefSlots = [1, 2, 3, 4, 5].map(i => {
@@ -1851,6 +1891,7 @@ function FullscreenMatchPanel({
   });
   const matchReferees = [];
   matchRefSlots.forEach(ref => { if (ref.id) matchReferees.push(ref); });
+  const connectedRefIds = new Set((refPresence || []).map(rp => rp.referee));
 
   const availableMatchReplacementRefs = (competitionReferees || []).filter(cr => {
     const athleteId = cr.athlete;
@@ -1925,18 +1966,21 @@ function FullscreenMatchPanel({
   const settingsLocked = matchStarted || isMatchDisplayStarted || isMatchFinalized;
   const operationalSettingsLocked = settingsLocked || operationalLockActive;
   const selectedRoundPreset = useMemo(() => {
-    if (!matchRounds.length) return null;
-    const allTwoMinutes = matchRounds.every((round) => Number(round.duration_seconds) === 120);
-    if (allTwoMinutes && matchRounds.length === 3) return '3x2';
-    if (allTwoMinutes && matchRounds.length === 2) return '2x2';
+    // No rounds yet (a legacy match from before rounds were auto-provisioned
+    // on creation, or one still loading) - default the display to 2x2min so
+    // the preset control never renders with nothing selected.
+    if (!matchRounds.length) return '2x2';
+    const allSameDuration = (seconds) => matchRounds.every((round) => Number(round.duration_seconds) === seconds);
+    if (matchRounds.length === 3 && allSameDuration(120)) return '3x2';
+    if (matchRounds.length === 2 && allSameDuration(90)) return '2x1.5';
+    if (matchRounds.length === 2 && allSameDuration(120)) return '2x2';
     if (matchRounds.length === 3) return '3x2';
     if (matchRounds.length === 2) return '2x2';
     return 'custom';
   }, [matchRounds]);
-  const isThreeRoundPreset = selectedRoundPreset === '3x2';
 
   useEffect(() => {
-    setMatchDisplayMode(match.display_mode || 'reveal_final');
+    setMatchDisplayMode(match.display_mode || 'real_time');
   }, [match.display_mode, match.id]);
 
   useEffect(() => {
@@ -2225,7 +2269,7 @@ function FullscreenMatchPanel({
     setBusy(false);
   };
 
-  const applyRoundPreset = async (roundCount) => {
+  const applyRoundPreset = async (roundCount, durationSeconds = 120) => {
     if (busy || operationalSettingsLocked) return;
     if (!ensureOperationalWrite()) return;
     setBusy(true);
@@ -2236,7 +2280,7 @@ function FullscreenMatchPanel({
       }
       for (let i = 1; i <= roundCount; i += 1) {
         // eslint-disable-next-line no-await-in-loop
-        await roundAPI.create({ match: match.id, round_number: i, duration_seconds: 120 });
+        await roundAPI.create({ match: match.id, round_number: i, duration_seconds: durationSeconds });
       }
       await onRefresh();
     } catch (error) {
@@ -2245,6 +2289,22 @@ function FullscreenMatchPanel({
     }
     setBusy(false);
   };
+
+  // Legacy matches created before rounds were auto-provisioned on Match
+  // creation (see api.signals.create_default_match_rounds) can still show
+  // up here with zero rounds - back them onto the same 2x2min default so
+  // "Reprize" is never empty, instead of requiring the admin to notice and
+  // pick a preset by hand. Guarded by a ref (not just matchRounds.length)
+  // so a slow round-creation round-trip can't trigger it twice for the
+  // same match while onRefresh() is still in flight.
+  useEffect(() => {
+    if (matchRounds.length > 0) return;
+    if (busy || operationalSettingsLocked) return;
+    if (autoRoundProvisionRef.current.has(match.id)) return;
+    autoRoundProvisionRef.current.add(match.id);
+    applyRoundPreset(2, 120);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match.id, matchRounds.length, busy, operationalSettingsLocked]);
 
   const isLiveScoringMatch = match.display_mode === 'real_time';
 
@@ -2538,43 +2598,64 @@ function FullscreenMatchPanel({
           <div className="w-full overflow-hidden bg-card shadow-sm">
             <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
               <div className="flex flex-wrap items-start gap-2 xl:self-start">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={matchDisplayMode === 'real_time'}
-                  onClick={() => updateMatchDisplayMode(matchDisplayMode === 'real_time' ? 'reveal_final' : 'real_time')}
-                  disabled={busy || operationalSettingsLocked}
-                  className={`relative inline-flex h-9 min-w-[236px] items-center overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50 ${matchDisplayMode === 'real_time' ? 'border-emerald-700 bg-emerald-500/95 text-white' : 'border-amber-700 bg-amber-300 text-amber-950'}`}
-                  title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Modul nu mai poate fi schimbat după ce meciul a început.' : 'Schimbă modul de afișare'}
+                <div
+                  role="radiogroup"
+                  aria-label="Mod afișare"
+                  className={`relative inline-flex h-9 min-w-[236px] items-stretch overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition-colors duration-200 ${(busy || operationalSettingsLocked) ? 'opacity-50' : ''} ${matchDisplayMode === 'real_time' ? 'border-emerald-700 bg-emerald-500/95' : 'border-amber-700 bg-amber-300'}`}
+                  title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Modul nu mai poate fi schimbat după ce meciul a început.' : 'Alege modul de afișare'}
                 >
                   <span
-                    className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-full border border-black/20 bg-white/95 shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform duration-200 ${matchDisplayMode === 'real_time' ? 'translate-x-[calc(100%+2px)]' : 'translate-x-0'}`}
+                    className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-full border border-black/20 bg-white/95 shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform duration-200 ${matchDisplayMode === 'real_time' ? 'translate-x-0' : 'translate-x-[calc(100%+2px)]'}`}
                     aria-hidden="true"
                   />
-                  <span className="relative z-10 grid w-full grid-cols-2 items-center gap-2 px-3 whitespace-nowrap">
-                    <span className={`text-center transition-colors ${matchDisplayMode === 'real_time' ? 'text-white/75' : 'text-foreground'}`}>Decizia la final</span>
-                    <span className={`text-center transition-colors ${matchDisplayMode === 'real_time' ? 'text-foreground' : 'text-amber-950/70'}`}>Scor timp real</span>
-                  </span>
-                </button>
+                  {[
+                    { key: 'real_time', label: 'Scor timp real', inactiveClass: 'text-white/75' },
+                    { key: 'reveal_final', label: 'Decizia la final', inactiveClass: 'text-amber-950/70' },
+                  ].map((mode) => {
+                    const isSelected = matchDisplayMode === mode.key;
+                    return (
+                      <button
+                        key={mode.key}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => updateMatchDisplayMode(mode.key)}
+                        disabled={busy || operationalSettingsLocked}
+                        className={`relative z-10 flex-1 text-center transition-colors disabled:cursor-not-allowed ${isSelected ? 'text-foreground' : mode.inactiveClass}`}
+                      >
+                        {mode.label}
+                      </button>
+                    );
+                  })}
+                </div>
 
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={isThreeRoundPreset}
-                  onClick={() => applyRoundPreset(isThreeRoundPreset ? 2 : 3)}
-                  disabled={busy || operationalSettingsLocked}
-                  className={`relative inline-flex h-9 min-w-[168px] items-center overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50 ${isThreeRoundPreset ? 'border-emerald-700 bg-emerald-500/95 text-white' : 'border-sky-700 bg-sky-500 text-white'}`}
-                  title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Presetul nu mai poate fi schimbat după ce meciul a început.' : 'Comută între 3 x 2 și 2 x 2'}
+                <div
+                  role="radiogroup"
+                  aria-label="Preset reprize"
+                  className="inline-flex h-9 items-stretch gap-0.5 rounded-full border border-sky-700 bg-sky-500 p-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm"
+                  title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Presetul nu mai poate fi schimbat după ce meciul a început.' : 'Alege presetul de reprize'}
                 >
-                  <span
-                    className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-full border border-black/20 bg-white/95 shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform duration-200 ${isThreeRoundPreset ? 'translate-x-0' : 'translate-x-[calc(100%+2px)]'}`}
-                    aria-hidden="true"
-                  />
-                  <span className="relative z-10 grid w-full grid-cols-2 items-center gap-2 px-3 whitespace-nowrap">
-                    <span className={`text-center transition-colors ${isThreeRoundPreset ? 'text-foreground' : 'text-white/75'}`}>3x2min</span>
-                    <span className={`text-center transition-colors ${isThreeRoundPreset ? 'text-white/75' : 'text-foreground'}`}>2x2min</span>
-                  </span>
-                </button>
+                  {[
+                    { key: '3x2', label: '3x2min', rounds: 3, duration: 120 },
+                    { key: '2x2', label: '2x2min', rounds: 2, duration: 120 },
+                    { key: '2x1.5', label: '2x 1m30', rounds: 2, duration: 90 },
+                  ].map((preset) => {
+                    const isSelected = selectedRoundPreset === preset.key;
+                    return (
+                      <button
+                        key={preset.key}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => applyRoundPreset(preset.rounds, preset.duration)}
+                        disabled={busy || operationalSettingsLocked}
+                        className={`rounded-full px-3 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isSelected ? 'bg-white/95 text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.18)]' : 'text-white/85 hover:text-white'}`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 {operationalLockActive ? (
                   <div className="w-full max-w-[360px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -2583,10 +2664,11 @@ function FullscreenMatchPanel({
                 ) : null}
               </div>
               <div className="w-full xl:hidden">
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</p>
-                <div className="flex flex-wrap gap-1">
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</p>
+                <div className="flex flex-wrap gap-1.5">
                   {matchRefSlots.map(r => {
                     const isEmpty = !r.id;
+                    const isConnected = r.id ? connectedRefIds.has(r.id) : false;
                     return (
                       <button
                         key={r.pos}
@@ -2595,12 +2677,22 @@ function FullscreenMatchPanel({
                           setReplaceMatchRefData(r);
                           setReplacementMatchRefId(r.id ? String(r.id) : '');
                         }}
-                        className={`flex items-center gap-1.5 border px-2 py-1 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground/60 hover:bg-muted/40' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
-                        title={isEmpty ? 'Adaugă arbitru' : 'Înlocuiește arbitrul'}
+                        className={`flex items-stretch overflow-hidden rounded-md border text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground/60 hover:bg-muted/40' : isConnected ? 'border-border bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
+                        title={isEmpty ? 'Adaugă arbitru' : isConnected ? 'Arbitru conectat' : 'Arbitru neconectat'}
                       >
-                        <span className={`inline-block h-2 w-2 shrink-0 ${isEmpty ? 'bg-muted' : 'bg-muted-foreground/40'}`}></span>
-                        <span className="font-black text-foreground">A{r.pos}</span>
-                        {r.name && <span className="min-w-0 truncate">{r.name}</span>}
+                        <span className={`flex w-6 shrink-0 items-center justify-center ${isEmpty ? 'bg-muted' : isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                          {isEmpty ? (
+                            <Wifi className="h-3 w-3 text-muted-foreground/70" strokeWidth={3} />
+                          ) : isConnected ? (
+                            <Wifi className="h-3 w-3 text-white" strokeWidth={3} />
+                          ) : (
+                            <WifiOff className="h-3 w-3 text-white" strokeWidth={3} />
+                          )}
+                        </span>
+                        <span className="flex min-w-0 items-center gap-1.5 px-2 py-1">
+                          <span className="font-black text-foreground">A{r.pos}</span>
+                          {r.name && <span className="min-w-0 truncate">{r.name}</span>}
+                        </span>
                       </button>
                     );
                   })}
@@ -2649,6 +2741,7 @@ function FullscreenMatchPanel({
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
                   {matchRefSlots.map(r => {
                     const isEmpty = !r.id;
+                    const isConnected = r.id ? connectedRefIds.has(r.id) : false;
                     return (
                       <button
                         key={r.pos}
@@ -2657,12 +2750,22 @@ function FullscreenMatchPanel({
                           setReplaceMatchRefData(r);
                           setReplacementMatchRefId(r.id ? String(r.id) : '');
                         }}
-                        className={`flex w-full items-center gap-2 border px-3 py-2 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
-                        title={isEmpty ? 'Adaugă arbitru' : 'Înlocuiește arbitrul'}
+                        className={`flex w-full items-stretch overflow-hidden rounded-md border text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : isConnected ? 'border-border bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
+                        title={isEmpty ? 'Adaugă arbitru' : isConnected ? 'Arbitru conectat' : 'Arbitru neconectat'}
                       >
-                        <span className={`inline-block h-2.5 w-2.5 shrink-0 ${isEmpty ? 'bg-muted' : 'bg-muted-foreground/40'}`}></span>
-                        <span className="font-black text-foreground">A{r.pos}</span>
-                        <span className="min-w-0 flex-1 truncate font-semibold">{r.name || 'Adaugă arbitru'}</span>
+                        <span className={`flex w-6 shrink-0 items-center justify-center ${isEmpty ? 'bg-muted' : isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                          {isEmpty ? (
+                            <Wifi className="h-3.5 w-3.5 text-muted-foreground/70" strokeWidth={3} />
+                          ) : isConnected ? (
+                            <Wifi className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                          ) : (
+                            <WifiOff className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                          )}
+                        </span>
+                        <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1">
+                          <span className="font-black text-foreground">A{r.pos}</span>
+                          <span className="min-w-0 flex-1 truncate font-semibold">{r.name || 'Adaugă arbitru'}</span>
+                        </span>
                       </button>
                     );
                   })}
@@ -2749,13 +2852,13 @@ function FullscreenMatchPanel({
             </div>
           </div>
           {/* Point buttons + action buttons in one row */}
-          <div className="grid grid-cols-6 gap-1">
-            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -2)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_DANGER} text-sm font-black py-1`}>-2</button>
-            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -1)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_DANGER} flex flex-col items-center py-0.5 leading-none`}><span className="text-sm font-black">-1</span><span className="text-[7px] opacity-75">Căd/Ieș</span></button>
-            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 1)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_SUCCESS} text-sm font-black py-1`}>+1</button>
-            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 2)} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_SUCCESS} text-sm font-black py-1`}>+2</button>
-            <button onClick={() => handleInfraction('red')} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-xs py-1`}>+Abatere</button>
-            <button onClick={() => { addWarning(match.id, 'red', activeRound?.id); if (warningsRed + 1 >= 3 && !disqualifiedRed) addDisqualification(match.id, 'red'); }} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-xs py-1`}>+Avertism.</button>
+          <div className="grid grid-cols-6 gap-1.5">
+            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -2)} disabled={busy || disqualifiedRed} className={PANEL_BUTTON_DANGER}>-2</button>
+            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -1)} disabled={busy || disqualifiedRed} className={PANEL_BUTTON_DANGER}>-1</button>
+            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 1)} disabled={busy || disqualifiedRed} className={PANEL_BUTTON_SUCCESS}>+1</button>
+            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 2)} disabled={busy || disqualifiedRed} className={PANEL_BUTTON_SUCCESS}>+2</button>
+            <button onClick={() => handleInfraction('red')} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-base`}>+Abatere</button>
+            <button onClick={() => { addWarning(match.id, 'red', activeRound?.id); if (warningsRed + 1 >= 3 && !disqualifiedRed) addDisqualification(match.id, 'red'); }} disabled={busy || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-base`}>+Avertism.</button>
           </div>
         </div>
         {/* BLUE corner */}
@@ -2792,13 +2895,13 @@ function FullscreenMatchPanel({
             </div>
           </div>
           {/* Point buttons + action buttons in one row */}
-          <div className="grid grid-cols-6 gap-1">
-            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -2)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_DANGER} text-sm font-black py-1`}>-2</button>
-            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -1)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_DANGER} flex flex-col items-center py-0.5 leading-none`}><span className="text-sm font-black">-1</span><span className="text-[7px] opacity-75">Căd/Ieș</span></button>
-            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 1)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_SUCCESS} text-sm font-black py-1`}>+1</button>
-            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 2)} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_SUCCESS} text-sm font-black py-1`}>+2</button>
-            <button onClick={() => handleInfraction('blue')} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-xs py-1`}>+Abatere</button>
-            <button onClick={() => { addWarning(match.id, 'blue', activeRound?.id); if (warningsBlue + 1 >= 3 && !disqualifiedBlue) addDisqualification(match.id, 'blue'); }} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-xs py-1`}>+Avertism.</button>
+          <div className="grid grid-cols-6 gap-1.5">
+            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -2)} disabled={busy || disqualifiedBlue} className={PANEL_BUTTON_DANGER}>-2</button>
+            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -1)} disabled={busy || disqualifiedBlue} className={PANEL_BUTTON_DANGER}>-1</button>
+            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 1)} disabled={busy || disqualifiedBlue} className={PANEL_BUTTON_SUCCESS}>+1</button>
+            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 2)} disabled={busy || disqualifiedBlue} className={PANEL_BUTTON_SUCCESS}>+2</button>
+            <button onClick={() => handleInfraction('blue')} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-base`}>+Abatere</button>
+            <button onClick={() => { addWarning(match.id, 'blue', activeRound?.id); if (warningsBlue + 1 >= 3 && !disqualifiedBlue) addDisqualification(match.id, 'blue'); }} disabled={busy || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-base`}>+Avertism.</button>
           </div>
         </div>
       </div>
@@ -2874,7 +2977,6 @@ function FullscreenMatchPanel({
                         <div className="flex min-h-[34px] items-center justify-center gap-2 text-center">
                           {isActive && <LiveTimer round={r} onTimeUp={() => endRound(r.id)} />}
                           {!isActive && r.status === 'scheduled' && <span className="text-sm font-medium text-muted-foreground/60">{r.duration_seconds}s</span>}
-                          {isActive && isRoundPaused && <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.18em] text-amber-700 bg-amber-200 animate-pulse">Pauză</span>}
                         </div>
                         {r.extra_seconds !== 0 && (
                           <div className="text-center">
@@ -2886,7 +2988,7 @@ function FullscreenMatchPanel({
                         {/* Action buttons */}
                         <div className="flex flex-wrap justify-center gap-2">
                           {r.status === 'scheduled' && (
-                            <button onClick={() => { if (idx > 0 && breakTimers[idx - 1]) dismissBreak(idx - 1); startRound(r.id); }} disabled={busy || !!activeRound} className={`text-sm text-white px-5 py-2.5 font-semibold disabled:opacity-40 ${
+                            <button onClick={() => { if (idx > 0 && breakTimers[idx - 1]) dismissBreak(idx - 1); startRound(r.id); }} disabled={busy || !!activeRound} className={`rounded-md text-sm text-white px-5 py-2.5 font-semibold disabled:opacity-40 ${
                               (idx === 0 && isMatchDisplayStarted && !matchStarted)
                                 ? 'border border-border bg-emerald-600 hover:bg-emerald-700 ring-4 ring-emerald-300 animate-pulse'
                                 : idx > 0 && matchRounds[idx - 1]?.status === 'completed' && !breakTimers[idx - 1]

@@ -286,6 +286,22 @@ class MatchFieldAssignment(models.Model):
         except Exception:
             pass
 
+    def delete(self, *args, **kwargs):
+        # Mirror of save()'s sync: unassigning a match from its tatami must
+        # also clear the denormalized Match.field, or MatchSerializer keeps
+        # reporting the match as still scheduled there (it falls back to
+        # obj.field_id whenever this assignment - obj.field_assignment - is
+        # gone) even though the assignment row that set it no longer exists.
+        match = self.match if self.match_id else None
+        field_id = self.field_id
+        super().delete(*args, **kwargs)
+        try:
+            if match and match.field_id == field_id:
+                match.field_id = None
+                match.save(update_fields=['field'])
+        except Exception:
+            pass
+
 
 class DisplayMonitorSession(models.Model):
     """

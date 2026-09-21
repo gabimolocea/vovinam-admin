@@ -302,6 +302,16 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
             loser_next_match_id=_safe_fk_id(Match, match.get('loser_next_match_id')),
         )
 
+    # A newly-created Match auto-provisions its own 2x2min rounds (see
+    # api.signals.create_default_match_rounds) - those aren't part of this
+    # pack, and would collide on (match_id, round_number) with the pack's
+    # own rounds below, so drop anything not present in the incoming
+    # payload before upserting it. The pack is the source of truth for a
+    # match's rounds during import.
+    MatchRound.objects.filter(match_id__in=[m['id'] for m in matches_payload]).exclude(
+        pk__in=[r['id'] for r in match_rounds_payload]
+    ).delete()
+
     for round_obj in match_rounds_payload:
         _upsert(
             MatchRound,

@@ -7,6 +7,7 @@ import {
   competitionRefereeAPI,
   fieldBreakAPI,
   scoreAPI, refereeAPI,
+  schedulingAPI,
 } from '@shared/lib/api';
 import {
   formatGroupBadgeLabel,
@@ -66,6 +67,8 @@ export default function ProgramarePage() {
   const [matchRefAssignments, setMatchRefAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(null); // 'fields' | 'referees' | null
+  const [autoWarnings, setAutoWarnings] = useState([]);
 
   // DnD state — dragItem uses ref to avoid re-render (which would recreate inner components and cancel the drag)
   const dragItemRef = useRef(null);
@@ -117,6 +120,53 @@ export default function ProgramarePage() {
   }, [eventId]);
 
   useEffect(() => { fetchScheduleData(); }, [fetchScheduleData]);
+
+  // ── Auto-scheduling (gap-fill only — never touches existing assignments) ──
+  const handleAutoScheduleFields = () => {
+    ctx?.setConfirmModal({
+      title: 'Auto-alocă tatami-uri',
+      message: 'Categoriile solo/echipă nealocate vor fi repartizate automat pe terenuri (grupe în ordine crescătoare, seniorii ultimii, cu pauze între probele aceluiași sportiv). Alocările existente rămân neschimbate.',
+      icon: '🏟️',
+      color: 'orange',
+      confirmLabel: 'Auto-alocă',
+      onConfirm: async () => {
+        try {
+          setAutoBusy('fields');
+          const res = await schedulingAPI.autoScheduleFields(eventId);
+          setAutoWarnings(res.data?.warnings || []);
+          await fetchScheduleData();
+        } catch (err) {
+          setAutoWarnings([err.response?.data?.error || 'Eroare la alocarea automată a terenurilor.']);
+        } finally {
+          setAutoBusy(null);
+          ctx?.setConfirmModal(null);
+        }
+      },
+    });
+  };
+
+  const handleAutoAssignReferees = () => {
+    ctx?.setConfirmModal({
+      title: 'Auto-alocă arbitri',
+      message: 'Categoriile și meciurile fără arbitri vor primi automat un panel din lotul de arbitri al evenimentului, evitând pe cât posibil arbitri din cluburile care concurează. Panelurile deja alocate rămân neschimbate.',
+      icon: '🧑‍⚖️',
+      color: 'orange',
+      confirmLabel: 'Auto-alocă',
+      onConfirm: async () => {
+        try {
+          setAutoBusy('referees');
+          const res = await schedulingAPI.autoAssignReferees(eventId);
+          setAutoWarnings(res.data?.warnings || []);
+          await fetchScheduleData();
+        } catch (err) {
+          setAutoWarnings([err.response?.data?.error || 'Eroare la alocarea automată a arbitrilor.']);
+        } finally {
+          setAutoBusy(null);
+          ctx?.setConfirmModal(null);
+        }
+      },
+    });
+  };
 
   // ── Early return AFTER all hooks ─────────────────
   if (!ctx) return null;
@@ -1076,8 +1126,26 @@ export default function ProgramarePage() {
         </div>
         <div className="border-b-2 border-border bg-accent px-3 py-2">
           <h3 className="text-sm font-bold text-accent-foreground uppercase tracking-wide">Nealocate</h3>
-          <p className="mt-0.5 text-sm text-accent-foreground/80">Trage categorii sau meciuri pe un teren</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Button type="button" size="sm" disabled={!!autoBusy} onClick={handleAutoScheduleFields}>
+              {autoBusy === 'fields' ? 'Se alocă…' : 'Mută categorii automat'}
+            </Button>
+            <Button type="button" size="sm" disabled={!!autoBusy} onClick={handleAutoAssignReferees}>
+              {autoBusy === 'referees' ? 'Se alocă…' : 'Asignează arbitri automat'}
+            </Button>
+          </div>
         </div>
+        {autoWarnings.length > 0 && (
+          <div className="border-b-2 border-border bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-bold">⚠️ De verificat manual:</p>
+              <button type="button" onClick={() => setAutoWarnings([])} className="text-amber-700 hover:text-amber-900" title="Închide">✕</button>
+            </div>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              {autoWarnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </div>
+        )}
           <div className="flex-1 overflow-y-auto bg-accent/30 p-3 space-y-3">
 
           {/* Solo/Team categories */}
@@ -1133,42 +1201,37 @@ export default function ProgramarePage() {
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, field.id)}
             >
-              {/* Field header */}
-              <div className={`border-b-2 border-border ${isDragOver ? 'bg-secondary/70' : 'bg-secondary'}`}>
-                <div className="flex items-center justify-between">
-                  <h3 className="px-3 py-2 text-sm font-bold uppercase tracking-wide text-secondary-foreground">{formatFieldLabel(field.name)}</h3>
-                  <span className="px-3 py-2 text-xs font-semibold text-secondary-foreground/80">{items.length} probe</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 border-b-2 border-border bg-accent px-3 py-2">
-                {/* Start time editor */}
-                  <span className="text-sm text-accent-foreground/80">🕐</span>
-                  {isEditingTime ? (
-                    <input
-                      type="time" autoFocus
-                      className="w-24 border border-input bg-background px-1.5 py-0.5 text-sm text-foreground outline-none"
-                      value={editingStartTime.value}
-                      onChange={(e) => setEditingStartTime({ ...editingStartTime, value: e.target.value })}
-                      onBlur={() => saveStartTime(field.id, editingStartTime.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveStartTime(field.id, editingStartTime.value);
-                        if (e.key === 'Escape') setEditingStartTime(null);
-                      }}
-                    />
-                  ) : (
-                    <button
-                      onClick={() => setEditingStartTime({ fieldId: field.id, value: field.start_time || '09:00' })}
-                      className="rounded border border-transparent px-1.5 py-0.5 text-sm text-accent-foreground transition hover:border-border hover:bg-accent/70"
-                      title="Click pentru a seta ora de start"
-                    >
-                      {field.start_time ? formatTime(...field.start_time.split(':').map(Number)) : 'Setează ora'}
-                    </button>
-                  )}
-                  {totalMin > 0 && (
-                    <span className="ml-auto text-xs font-medium text-accent-foreground/80">
-                      {endTime ? `→ ${formatTime(endTime.h, endTime.m)}` : `${Math.floor(totalMin / 60) > 0 ? `${Math.floor(totalMin / 60)}h ` : ''}${totalMin % 60}min`}
-                    </span>
-                  )}
+              {/* Field header — compact single row, styled like the Tehnica category cards */}
+              <div className={`flex items-center gap-1.5 border-b border-sidebar-border px-2 py-1 ${isDragOver ? 'bg-secondary/70' : 'bg-secondary'}`}>
+                <h3 className="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary-foreground">{formatFieldLabel(field.name)}</h3>
+                <span className="text-xs text-secondary-foreground/70">🕐</span>
+                {isEditingTime ? (
+                  <input
+                    type="time" autoFocus
+                    className="w-20 border border-input bg-background px-1 py-0.5 text-xs text-foreground outline-none"
+                    value={editingStartTime.value}
+                    onChange={(e) => setEditingStartTime({ ...editingStartTime, value: e.target.value })}
+                    onBlur={() => saveStartTime(field.id, editingStartTime.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveStartTime(field.id, editingStartTime.value);
+                      if (e.key === 'Escape') setEditingStartTime(null);
+                    }}
+                  />
+                ) : (
+                  <button
+                    onClick={() => setEditingStartTime({ fieldId: field.id, value: field.start_time || '09:00' })}
+                    className="rounded border border-transparent px-1 py-0.5 text-xs text-secondary-foreground transition hover:border-border hover:bg-secondary/70"
+                    title="Click pentru a seta ora de start"
+                  >
+                    {field.start_time ? formatTime(...field.start_time.split(':').map(Number)) : 'Setează ora'}
+                  </button>
+                )}
+                {totalMin > 0 && (
+                  <span className="text-xs text-secondary-foreground/70">
+                    {endTime ? `→ ${formatTime(endTime.h, endTime.m)}` : `${Math.floor(totalMin / 60) > 0 ? `${Math.floor(totalMin / 60)}h ` : ''}${totalMin % 60}min`}
+                  </span>
+                )}
+                <span className="ml-auto shrink-0 text-xs font-semibold text-secondary-foreground/80">{items.length} probe</span>
               </div>
 
               {/* Items */}

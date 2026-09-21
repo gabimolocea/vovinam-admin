@@ -962,14 +962,22 @@ def generate_brackets(request, category_id):
         finals_match = [m for m in all_matches.values() if m.match_type == 'finals']
 
         if len(semi_matches) >= 2:
-            # Standard case: 4+ athletes → bronze match between 2 semi-final losers
+            # Standard case: 4+ athletes → bronze match between 2 semi-final losers.
+            # Takes over the final's round_number (its own column, right before
+            # the final's - computeBracketLayout now derives every match's
+            # position from its real next_match/loser_next_match feeders rather
+            # than "the previous round's paired slot", so bumping the final one
+            # round further out doesn't cost it its own semis-derived position).
             bronze = Match.objects.create(
                 category=category,
                 match_type='bronze',
-                round_number=num_rounds,  # Same round as finals
-                bracket_position=1,       # Position after finals
+                round_number=num_rounds,
+                bracket_position=0,
                 match_number='BRONZE',
             )
+            if finals_match:
+                finals_match[0].round_number = num_rounds + 1
+                finals_match[0].save(update_fields=['round_number'])
             # Link semi-final losers to bronze match
             for sm in semi_matches:
                 sm.loser_next_match = bronze
@@ -998,6 +1006,94 @@ def generate_brackets(request, category_id):
     final_matches = Match.objects.filter(category=category).order_by('round_number', 'bracket_position')
     serializer = MatchSerializer(final_matches, many=True)
     return Response(serializer.data, status=201)
+
+
+def _loser_of(match):
+    """The athlete who didn't win `match`, or None if it has no winner yet."""
+    winner = match.winner
+    if not winner:
+        return None
+    return match.blue_corner if winner == match.red_corner else match.red_corner
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def add_bronze_match(request, category_id):
+    """
+    Add a single 3rd-place/bronze match to a bracket that was generated
+    without one (bracket_type='single_elimination') - for when the need
+    for one is only noticed after the semi-finals (and, in the 3-athlete
+    case, the final) have already been played, without wiping and
+    regenerating the whole bracket via generate_brackets.
+
+    Mirrors generate_brackets' own 'consolation' branch (same two cases -
+    2 semi-final losers, or 1 semi-final + 1 final loser for a 3-athlete
+    bracket), but places the two already-decided losers directly into the
+    new match's corners instead of only linking loser_next_match for a
+    future auto-advance, since their matches are already over. Also
+    clears any joint-3rd-place already recorded for them by
+    advance_match_winner's no-bronze-playoff fallback, since that's about
+    to be superseded by an actual decider.
+    """
+    try:
+        category = Category.objects.get(pk=category_id)
+    except Category.DoesNotExist:
+        return Response({'error': 'Categoria nu a fost gasita.'}, status=404)
+
+    matches = Match.objects.filter(category=category).select_related('red_corner', 'blue_corner')
+    if matches.filter(match_type='bronze').exists():
+        return Response({'error': 'Această categorie are deja un meci de bronz.'}, status=400)
+
+    semi_matches = list(matches.filter(match_type='semi-finals'))
+    finals_matches = list(matches.filter(match_type='finals'))
+
+    with transaction.atomic():
+        if len(semi_matches) >= 2:
+            losers = [_loser_of(m) for m in semi_matches[:2]]
+            if not all(losers):
+                return Response({'error': 'Ambele semifinale trebuie să aibă un câștigător înainte de a adăuga meciul de bronz.'}, status=400)
+            # Takes over the final's round_number (its own column, right before
+            # the final's), and the final is bumped one round further out -
+            # see generate_brackets' consolation branch for why sharing a round
+            # mis-groups bronze under "Finală" in the tree, and why bumping the
+            # final doesn't cost it its own semis-derived position.
+            if finals_matches:
+                bronze_round = finals_matches[0].round_number
+                finals_matches[0].round_number = bronze_round + 1
+                finals_matches[0].save(update_fields=['round_number'])
+            else:
+                bronze_round = max((m.round_number for m in matches), default=0) + 1
+            bronze = Match.objects.create(
+                category=category, match_type='bronze', round_number=bronze_round,
+                bracket_position=0, match_number='BRONZE',
+                red_corner=losers[0], blue_corner=losers[1],
+            )
+            for sm in semi_matches[:2]:
+                sm.loser_next_match = bronze
+                sm.save(update_fields=['loser_next_match'])
+            CategoryAthlete.objects.filter(category=category, athlete__in=losers, place=3).update(place=None)
+
+        elif len(semi_matches) == 1 and finals_matches:
+            semi, final = semi_matches[0], finals_matches[0]
+            loser_semi = _loser_of(semi)
+            loser_final = _loser_of(final)
+            if not loser_semi or not loser_final:
+                return Response({'error': 'Semifinala și finala trebuie să aibă un câștigător înainte de a adăuga meciul de bronz.'}, status=400)
+            bronze = Match.objects.create(
+                category=category, match_type='bronze', round_number=final.round_number + 1,
+                bracket_position=0, match_number='BRONZE',
+                red_corner=loser_semi, blue_corner=loser_final,
+            )
+            semi.loser_next_match = bronze
+            semi.save(update_fields=['loser_next_match'])
+            final.loser_next_match = bronze
+            final.save(update_fields=['loser_next_match'])
+            CategoryAthlete.objects.filter(category=category, athlete__in=[loser_semi, loser_final], place=3).update(place=None)
+
+        else:
+            return Response({'error': 'Acest bracket nu are semifinale din care să se formeze un meci de bronz.'}, status=400)
+
+    return Response(MatchSerializer(bronze).data, status=201)
 
 
 def _advance_to_next(next_match, from_match, athlete):

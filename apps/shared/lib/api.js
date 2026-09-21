@@ -457,6 +457,12 @@ export const matchRefereeAssignmentAPI = {
   delete: (id) => api.delete(`/match-referee-assignments/${id}/`),
 };
 
+// ── Auto-scheduling (tatami allocation + referee assignment) ──
+export const schedulingAPI = {
+  autoScheduleFields: (eventId) => api.post(`/events/${eventId}/auto-schedule-fields/`),
+  autoAssignReferees: (eventId) => api.post(`/events/${eventId}/auto-assign-referees/`),
+};
+
 // ── Competition Referees (roster) ─────────────────────
 export const competitionRefereeAPI = {
   list: (params) => api.get('/competition-referees/', { params }),

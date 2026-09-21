@@ -30,6 +30,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/public-display", "--", "--port", "5177"],
       "port": 5177
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd /Users/gabimolocea/copilot-worktrees/vovinam-admin/gabimolocea-supreme-eureka/backend && python3 manage.py runserver 0.0.0.0:8000"],
+      "port": 8000
     }
   ]
 }

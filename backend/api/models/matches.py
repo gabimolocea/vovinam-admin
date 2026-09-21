@@ -63,7 +63,7 @@ class Match(models.Model):
     central_referee = models.ForeignKey('Athlete', on_delete=models.SET_NULL, verbose_name=_('Arbitru central'), null=True, blank=True, related_name='central_for_matches', limit_choices_to={'is_referee': True})
     # Winner is now computed from scoring system - no longer stored
     name = models.CharField(_('Nume'), max_length=255, blank=True)  # Automatically generated match name
-    display_mode = models.CharField(_('Mod afișare'), max_length=20, choices=DISPLAY_MODE_CHOICES, default='reveal_final')
+    display_mode = models.CharField(_('Mod afișare'), max_length=20, choices=DISPLAY_MODE_CHOICES, default='real_time')
 
     class Meta:
         verbose_name = _('Meci')

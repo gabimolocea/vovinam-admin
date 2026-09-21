@@ -333,6 +333,243 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
         return Response({'status': 'ok'})
 
 
+# ═══════════════════════════════════════════════════════
+# Auto-scheduling: tatami allocation for solo/team categories
+# ═══════════════════════════════════════════════════════
+
+def _group_is_senior(group):
+    """Structural "no upper age bound" check (e.g. the live event's own
+    "Sen. Gr. Mici"/"Sen. Gr. Mari", both birth_year_start=2008 with no end)
+    rather than name-matching, so it isn't tied to a particular label."""
+    if not group:
+        return False
+    return bool(
+        (group.birth_year_start or group.birth_date_start)
+        and not group.birth_year_end
+        and not group.birth_date_end
+    )
+
+
+def _group_sort_key(group):
+    """Ascending display_order, ungrouped categories after named groups,
+    every senior group last regardless of its own display_order."""
+    if not group:
+        return (1, 0, 0)
+    return (2 if _group_is_senior(group) else 0, group.display_order, group.id)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def auto_schedule_fields(request, event_id):
+    """
+    Auto-assign solo/team categories to tatamis. Groups are clustered onto
+    whichever active field currently has the least scheduled time (seniors
+    always last), categories within a group ordered by their own
+    display_order. Only fills categories with no existing
+    CategoryFieldAssignment - anything already assigned by hand is left
+    untouched, so this can be re-run any time to just fill in the rest.
+
+    Fight matches are intentionally out of scope: round 2+ matches don't
+    have known participants until the previous round finishes, so they
+    can't be pre-scheduled as a block the way a whole category can - they
+    stay on the existing manual/live tatami assignment flow.
+
+    Also runs a best-effort local repair pass so the same athlete doesn't
+    end up back-to-back with themselves on one tatami (a short FieldBreak
+    is inserted when a swap can't separate them) or, as much as possible,
+    overlapping across two different tatamis at once. Anything that
+    couldn't be resolved is returned in `warnings` for manual fixing with
+    the existing drag-and-drop.
+    """
+    from landing.models import Event
+    from collections import defaultdict
+
+    try:
+        event = Event.objects.get(pk=event_id)
+    except Event.DoesNotExist:
+        return Response({'error': 'Evenimentul nu a fost găsit.'}, status=404)
+
+    locked = _event_operational_lock_response(event)
+    if locked is not None:
+        return locked
+
+    fields = list(CompetitionField.objects.filter(event=event, is_active=True).order_by('field_number'))
+    if not fields:
+        return Response({'error': 'Evenimentul nu are niciun teren activ.'}, status=400)
+
+    already_assigned_ids = set(
+        CategoryFieldAssignment.objects.filter(category__event=event).values_list('category_id', flat=True)
+    )
+    candidates = (
+        Category.objects.filter(event=event)
+        .exclude(id__in=already_assigned_ids)
+        .select_related('group')
+    )
+    # Category.type checks hasattr(self, 'solocategory'/...) - a per-instance
+    # DB hit each, same pattern already used elsewhere in this codebase
+    # (e.g. generate_brackets' consolation branch) rather than a queryset-
+    # level type filter, since per-event category counts are small.
+    # Enrollment lives on different through models per type: solo athletes
+    # via CategoryAthlete (enrolled_athletes), teams via CategoryTeam (teams).
+    def _has_enrollment(c):
+        if c.type == 'solo':
+            return c.enrolled_athletes.exists()
+        if c.type == 'team':
+            return c.teams.exists()
+        return False
+    to_schedule = [c for c in candidates if _has_enrollment(c)]
+
+    if not to_schedule:
+        return Response({'assigned': 0, 'warnings': [],
+                          'detail': 'Nimic de alocat - toate categoriile solo/echipă sunt deja programate.'})
+
+    DEFAULT_DURATION = 15
+
+    by_group = defaultdict(list)
+    group_by_id = {}
+    for cat in to_schedule:
+        by_group[cat.group_id].append(cat)
+        group_by_id[cat.group_id] = cat.group
+    ordered_group_ids = sorted(by_group.keys(), key=lambda gid: _group_sort_key(group_by_id.get(gid)))
+
+    # Seed each field's queue with its existing assignments, so newly
+    # appended categories continue after whatever's already scheduled there.
+    existing_assignments = list(CategoryFieldAssignment.objects.filter(field__in=fields))
+    field_queue = defaultdict(list)  # field_id -> list of {'kind','duration','category'|'break_label'}
+    field_minutes = {f.id: 0 for f in fields}
+    for a in sorted(existing_assignments, key=lambda a: a.order):
+        field_queue[a.field_id].append({'kind': 'existing', 'duration': a.estimated_duration or DEFAULT_DURATION, 'assignment': a})
+        field_minutes[a.field_id] += a.estimated_duration or DEFAULT_DURATION
+
+    new_assignments = []  # CategoryFieldAssignment instances to bulk_create
+    for gid in ordered_group_ids:
+        cats = sorted(by_group[gid], key=lambda c: (c.display_order, c.id))
+        target = min(fields, key=lambda f: field_minutes[f.id])
+        for cat in cats:
+            assignment = CategoryFieldAssignment(category=cat, field=target, order=0, estimated_duration=DEFAULT_DURATION)
+            new_assignments.append(assignment)
+            field_queue[target.id].append({'kind': 'new', 'duration': DEFAULT_DURATION, 'assignment': assignment, 'category': cat})
+            field_minutes[target.id] += DEFAULT_DURATION
+
+    # ── athlete → category ids, across every category touched by this run ──
+    all_category_ids = [item['category'].id if item['kind'] == 'new' else item['assignment'].category_id
+                         for items in field_queue.values() for item in items]
+    athlete_categories = defaultdict(set)
+    for row in CategoryAthlete.objects.filter(category_id__in=all_category_ids).values('athlete_id', 'category_id'):
+        athlete_categories[row['athlete_id']].add(row['category_id'])
+    # Team categories enroll via CategoryTeam -> Team -> TeamMember instead
+    # of CategoryAthlete, so a team's athletes need pulling in separately
+    # for the same back-to-back/overlap checks to apply to them too.
+    category_team_rows = list(CategoryTeam.objects.filter(category_id__in=all_category_ids).values('category_id', 'team_id'))
+    team_athlete_ids = defaultdict(set)
+    for row in TeamMember.objects.filter(team_id__in={r['team_id'] for r in category_team_rows}).values('team_id', 'athlete_id'):
+        team_athlete_ids[row['team_id']].add(row['athlete_id'])
+    for row in category_team_rows:
+        for athlete_id in team_athlete_ids[row['team_id']]:
+            athlete_categories[athlete_id].add(row['category_id'])
+    categories_of = defaultdict(set)
+    for athlete_id, cat_ids in athlete_categories.items():
+        for cid in cat_ids:
+            categories_of[cid].add(athlete_id)
+
+    def shared_athletes(cat_id_a, cat_id_b):
+        return categories_of[cat_id_a] & categories_of[cat_id_b]
+
+    def item_category_id(item):
+        return item['category'].id if item['kind'] == 'new' else item['assignment'].category_id
+
+    warnings = []
+    breaks_to_create = []
+
+    def _next_content_index(items, start):
+        """Index of the next non-break item at or after `start`, or None -
+        breaks themselves have no category to compare, so every walk below
+        hops over them via this instead of touching items[i+1] directly."""
+        j = start
+        while j < len(items) and items[j]['kind'] == 'break':
+            j += 1
+        return j if j < len(items) else None
+
+    # ── same-field back-to-back repair ──
+    for field_id, items in field_queue.items():
+        i = _next_content_index(items, 0)
+        while i is not None:
+            j = _next_content_index(items, i + 1)
+            if j is None:
+                break
+            # Only a *true* back-to-back pair (nothing already separating
+            # them, e.g. a break from an earlier repair in this same pass)
+            # needs repairing.
+            if j == i + 1 and shared_athletes(item_category_id(items[i]), item_category_id(items[j])):
+                swapped = False
+                k = _next_content_index(items, j + 1)
+                if k is not None and not shared_athletes(item_category_id(items[i]), item_category_id(items[k])):
+                    items[j], items[k] = items[k], items[j]
+                    swapped = True
+                if not swapped:
+                    field = next(f for f in fields if f.id == field_id)
+                    items.insert(j, {'kind': 'break', 'duration': 10})
+                    breaks_to_create.append({'field': field, 'position': j})
+                    warnings.append(
+                        f'Pauză de 10 min inserată automat pe {field.name} - un sportiv era programat '
+                        f'consecutiv în două probe.'
+                    )
+                    j += 1  # step past the break we just inserted
+            i = j
+
+    # ── recompute [start,end) windows (in minutes, relative to each field's own start) ──
+    def compute_windows():
+        windows = {}  # category_id -> (field_id, start, end)
+        for field_id, items in field_queue.items():
+            cursor = 0
+            for item in items:
+                if item['kind'] != 'break':
+                    windows[item_category_id(item)] = (field_id, cursor, cursor + item['duration'])
+                cursor += item['duration']
+        return windows
+
+    windows = compute_windows()
+
+    # ── best-effort cross-field overlap repair (single pass) ──
+    for athlete_id, cat_ids in athlete_categories.items():
+        cat_ids = list(cat_ids)
+        for x in range(len(cat_ids)):
+            for y in range(x + 1, len(cat_ids)):
+                wa, wb = windows.get(cat_ids[x]), windows.get(cat_ids[y])
+                if not wa or not wb or wa[0] == wb[0]:
+                    continue  # same field (or unscheduled) - not a cross-field conflict
+                if wa[1] < wb[2] and wb[1] < wa[2]:  # overlap
+                    field_b_id, items_b = wb[0], field_queue[wb[0]]
+                    idx = next((k for k, it in enumerate(items_b) if it['kind'] != 'break' and item_category_id(it) == cat_ids[y]), None)
+                    if idx is not None:
+                        items_b.append(items_b.pop(idx))
+                        windows = compute_windows()
+                        wa, wb = windows.get(cat_ids[x]), windows.get(cat_ids[y])
+                    if wa and wb and wa[0] != wb[0] and wa[1] < wb[2] and wb[1] < wa[2]:
+                        cat_a = Category.objects.get(pk=cat_ids[x])
+                        cat_b = Category.objects.get(pk=cat_ids[y])
+                        warnings.append(
+                            f'{cat_a.name} și {cat_b.name} se suprapun pe terenuri diferite pentru un sportiv '
+                            f'înscris la ambele - ajustează manual ordinea.'
+                        )
+
+    # ── persist: renumber order per field, create breaks, bulk-create assignments ──
+    with transaction.atomic():
+        for field_id, items in field_queue.items():
+            for order, item in enumerate(items):
+                if item['kind'] == 'new':
+                    item['assignment'].order = order
+                elif item['kind'] == 'existing':
+                    if item['assignment'].order != order:
+                        item['assignment'].order = order
+                        item['assignment'].save(update_fields=['order'])
+        CategoryFieldAssignment.objects.bulk_create(new_assignments)
+        for b in breaks_to_create:
+            FieldBreak.objects.create(field=b['field'], label='Pauză', duration=10, order=b['position'])
+
+    return Response({'assigned': len(new_assignments), 'breaks_added': len(breaks_to_create), 'warnings': warnings})
+
+
 class DisplayMonitorSessionViewSet(viewsets.ViewSet):
     """ViewSet for managing display monitor sessions.
     Public read access needed for public-display app (no auth).

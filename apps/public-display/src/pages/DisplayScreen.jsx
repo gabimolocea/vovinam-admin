@@ -2,7 +2,13 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '@shared/lib/api';
 
-const POLL_INTERVAL = 2000;
+// Round/break timers tick from an absolute started_at timestamp client-side
+// (see RoundTimer/BreakCountdown below), so they stay smooth between polls
+// regardless of this interval - this only controls how fast a state CHANGE
+// made in competition-admin (round started/paused, a point added, display
+// switched) shows up here. Kept short so this screen feels effectively
+// live rather than visibly catching up every couple of seconds.
+const POLL_INTERVAL = 600;
 
 const normalizeId = (value) => {
   if (value == null || value === '') return null;

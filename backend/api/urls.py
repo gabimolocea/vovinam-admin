@@ -145,6 +145,9 @@ urlpatterns = autocomplete_urlpatterns + [
     
     # Bracket generation endpoints
     path('categories/<int:category_id>/generate-brackets/', views.generate_brackets, name='generate-brackets'),
+    path('categories/<int:category_id>/add-bronze-match/', views.add_bronze_match, name='add-bronze-match'),
+    path('events/<int:event_id>/auto-schedule-fields/', views.auto_schedule_fields, name='auto-schedule-fields'),
+    path('events/<int:event_id>/auto-assign-referees/', views.auto_assign_referees, name='auto-assign-referees'),
     path('matches/<int:match_id>/advance-winner/', views.advance_match_winner, name='advance-match-winner'),
 
     # AI chat assistant (admin/coach only - see api/assistant.py)
