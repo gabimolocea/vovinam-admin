@@ -44,7 +44,12 @@ function buildServiceDefs(lanIp) {
       command: backendPython(),
       args: ['manage.py', 'runserver', '0.0.0.0:8000'],
       cwd: BACKEND_DIR,
-      env: { LAN_HOST: lanIp },
+      // IS_LOCAL_EVENT_SERVER exempts this instance from the operational
+      // lock a synced event carries (see api/views/_common.py) - without
+      // it, this backend is indistinguishable from the cloud instance the
+      // lock exists to protect, and nothing (weigh-ins, category
+      // assignments, scores) can be edited here once an event is synced.
+      env: { LAN_HOST: lanIp, IS_LOCAL_EVENT_SERVER: 'True' },
     },
     {
       id: 'competition-admin',

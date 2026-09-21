@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -159,6 +159,27 @@ class EventSyncLockTests(TestCase):
         self.assertEqual(self.locked_event.local_sync_status, 'completed')
         self.assertIsNotNone(self.locked_event.results_uploaded_at)
         self.assertIsNotNone(self.locked_event.sync_completed_at)
+
+    @override_settings(IS_LOCAL_EVENT_SERVER=True)
+    def test_local_event_server_is_exempt_from_its_own_lock(self):
+        """The lock exists to stop the CLOUD instance from accepting
+        operational edits after an event is exported to a local venue
+        machine. On the local machine itself - the new authority once
+        locked - the exact same operations must be allowed, or nothing
+        (weigh-ins, category assignments, scores) can be entered there for
+        the rest of the event."""
+        response = self.client.post(
+            '/api/category-athletes/',
+            {
+                'category': self.locked_category.id,
+                'athlete': self.athlete.id,
+                'weight': 55,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(CategoryAthlete.objects.filter(category=self.locked_category, athlete=self.athlete).exists())
 
     def test_mark_local_in_progress_requires_locked_exported_event(self):
         response = self.client.post(f'/api/events/{self.locked_event.id}/mark-local-in-progress/', format='json')

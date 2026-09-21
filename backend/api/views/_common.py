@@ -48,6 +48,13 @@ def _coach_deadline_locked_response(user, event):
 
 
 def _event_operational_lock_response(event):
+    # The lock exists to stop the CLOUD instance from accepting operational
+    # edits once an event has been exported to a local venue machine - the
+    # local machine is the new authority at that point, so it must be
+    # exempt from its own lock, or nothing (weigh-ins, assignments, scores)
+    # can be entered there for the rest of the event.
+    if getattr(settings, 'IS_LOCAL_EVENT_SERVER', False):
+        return None
     if not event or not getattr(event, 'operational_lock_active', False):
         return None
     return Response(
