@@ -146,11 +146,20 @@ class ApprovalWorkflowMixin:
         return self._transition_status('revision_required', admin_user, notes)
 
 
-# Proxy model so the custom User appears under Django's 'auth' app section in admin
+# Proxy model giving the admin a dedicated "Utilizatori" entry alongside
+# User. app_label was previously forced to 'auth' to nest this under
+# Django's built-in "Authentication and Authorization" section - but that
+# makes Django attribute this proxy's migrations to django.contrib.auth
+# itself, writing into that *installed package's* migrations directory
+# (site-packages) instead of this app's own, tracked one. That directory
+# isn't writable (nor should it be) once deployed, so `makemigrations`
+# crashes there in production. The custom ADMIN_MODEL_GROUPS grouping
+# (api/admin/_common.py) already places UserProxy under "GENERAL" - it
+# just needs app_label left as the default ('api') for that to actually
+# take effect, instead of being silently inert under 'auth'.
 class UserProxy(User):
     class Meta:
         proxy = True
-        app_label = 'auth'
         verbose_name = _('Utilizator')
         verbose_name_plural = _('Utilizatori')
     
