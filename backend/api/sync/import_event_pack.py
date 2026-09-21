@@ -18,6 +18,7 @@ from api.models import (
     CompetitionReferee,
     DisplayMonitorSession,
     FightCategory,
+    FightGroupEnrollment,
     Group,
     Match,
     MatchFieldAssignment,
@@ -156,6 +157,7 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
     match_rounds_payload = _section(payload, 'match_rounds')
     competition_referees_payload = _section(payload, 'competition_referees')
     event_enrollments_payload = _section(payload, 'event_enrollments')
+    fight_group_enrollments_payload = _section(payload, 'fight_group_enrollments')
     category_field_assignments_payload = _section(payload, 'category_field_assignments')
     match_field_assignments_payload = _section(payload, 'match_field_assignments')
     category_referee_assignments_payload = _section(payload, 'category_referee_assignments')
@@ -375,6 +377,25 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
             },
         )
 
+    # "Etapa 1" fight pre-registration pool - a coach's submitted weight
+    # before the athlete is drawn into a specific category. group_ids was
+    # already computed above (used to prune stale Groups), so this reuses
+    # it to scope the same cleanup-then-upsert pattern.
+    fight_group_enrollment_ids = {entry['id'] for entry in fight_group_enrollments_payload}
+    FightGroupEnrollment.objects.filter(group_id__in=group_ids).exclude(pk__in=fight_group_enrollment_ids).delete()
+    for entry in fight_group_enrollments_payload:
+        _upsert(
+            FightGroupEnrollment,
+            entry['id'],
+            {
+                'event_id': event.id,
+                'group_id': _safe_fk_id(Group, entry.get('group_id')),
+                'athlete_id': _safe_fk_id(Athlete, entry.get('athlete_id')),
+                'registered_weight_kg': entry.get('registered_weight_kg'),
+                'notes': entry.get('notes', ''),
+            },
+        )
+
     for assignment in category_field_assignments_payload:
         _upsert(
             CategoryFieldAssignment,
@@ -495,6 +516,7 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
             'match_rounds': len(match_rounds_payload),
             'competition_referees': len(competition_referees_payload),
             'event_enrollments': len(event_enrollments_payload),
+            'fight_group_enrollments': len(fight_group_enrollments_payload),
             'category_field_assignments': len(category_field_assignments_payload),
             'match_field_assignments': len(match_field_assignments_payload),
             'category_referee_assignments': len(category_referee_assignments_payload),

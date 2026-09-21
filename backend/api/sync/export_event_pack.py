@@ -16,6 +16,7 @@ from api.models import (
     CompetitionField,
     CompetitionReferee,
     DisplayMonitorSession,
+    FightGroupEnrollment,
     Group,
     Match,
     MatchFieldAssignment,
@@ -191,6 +192,18 @@ def build_event_pack(*, event_id: int) -> dict[str, Any]:
     )
     athlete_ids.update(entry.athlete_id for entry in event_enrollments if entry.athlete_id)
 
+    # "Etapa 1" pre-registration pool for fight categories: a coach weighs
+    # an athlete in and submits a weight for the group before anyone draws
+    # them into a specific weight-bracket category. Without this, that
+    # submitted weight is invisible on a local venue machine until the
+    # athlete has already been assigned to a category.
+    fight_group_enrollments = list(
+        FightGroupEnrollment.objects.filter(event_id=event_id)
+        .select_related('athlete')
+        .order_by('group_id', 'athlete__last_name', 'athlete__first_name')
+    )
+    athlete_ids.update(entry.athlete_id for entry in fight_group_enrollments if entry.athlete_id)
+
     athletes = list(
         Athlete.objects.filter(id__in=athlete_ids)
         .select_related('club', 'city', 'current_grade', 'federation_role', 'title')
@@ -339,6 +352,17 @@ def build_event_pack(*, event_id: int) -> dict[str, Any]:
                 'admin_notes': entry.admin_notes,
             }
             for entry in event_enrollments
+        ],
+        'fight_group_enrollments': [
+            {
+                'id': entry.id,
+                'event_id': entry.event_id,
+                'group_id': entry.group_id,
+                'athlete_id': entry.athlete_id,
+                'registered_weight_kg': entry.registered_weight_kg,
+                'notes': entry.notes,
+            }
+            for entry in fight_group_enrollments
         ],
         'competition_referees': [
             {
