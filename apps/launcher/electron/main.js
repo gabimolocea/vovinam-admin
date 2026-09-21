@@ -38,9 +38,24 @@ function createWindow() {
       webviewTag: true,
     },
   });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 
   const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '..', 'dist', 'index.html')}`;
   mainWindow.loadURL(startUrl);
+}
+
+// Child-process stdout/sync-progress events keep firing asynchronously
+// even after the window closes (or during app quit) - `mainWindow?.` alone
+// doesn't catch that, since the reference stays non-null while the native
+// window is destroyed, so `.webContents.send()` throws "Object has been
+// destroyed" as an uncaught main-process exception. This is the one safe
+// way to reach the renderer.
+function sendToWindow(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
 }
 
 // Native menu bar (top of the screen on macOS, window menu bar elsewhere) -
@@ -80,7 +95,7 @@ function buildMenu() {
             // (if running) is left untouched so an in-progress competition
             // isn't disrupted by the admin logging out and back in.
             session = { ...session, cloudToken: null, email: null, password: null, localToken: null };
-            mainWindow?.webContents.send('auth:logged-out');
+            sendToWindow('auth:logged-out');
           },
         },
       ],
@@ -93,8 +108,8 @@ function buildMenu() {
 function getServiceManager() {
   if (!serviceManager) {
     serviceManager = new ServiceManager({
-      onLog: (id, line) => mainWindow?.webContents.send('service:log', { id, line }),
-      onStatusChange: (id, status) => mainWindow?.webContents.send('service:status', { id, status }),
+      onLog: (id, line) => sendToWindow('service:log', { id, line }),
+      onStatusChange: (id, status) => sendToWindow('service:status', { id, status }),
     });
   }
   return serviceManager;
@@ -171,10 +186,10 @@ ipcMain.handle('services:start-local-stack', async () => {
   const defs = manager.startAll(lanIp);
 
   const localBaseUrl = `http://localhost:${LOCAL_BACKEND_PORT}`;
-  mainWindow?.webContents.send('sync:progress', { direction: 'local', message: 'Se pornește backend-ul local…' });
+  sendToWindow('sync:progress', { direction: 'local', message: 'Se pornește backend-ul local…' });
   await waitForBackend(localBaseUrl);
 
-  mainWindow?.webContents.send('sync:progress', {
+  sendToWindow('sync:progress', {
     direction: 'local',
     message: 'Se configurează contul de administrator pe acest calculator…',
   });
@@ -200,7 +215,7 @@ ipcMain.handle('sync:start-local', async (_event, { eventId }) => {
     localBaseUrl: session.localBaseUrl,
     localToken: session.localToken,
     eventId,
-    onProgress: (message) => mainWindow?.webContents.send('sync:progress', { direction: 'local', message }),
+    onProgress: (message) => sendToWindow('sync:progress', { direction: 'local', message }),
   });
 });
 
@@ -214,7 +229,7 @@ ipcMain.handle('sync:to-cloud', async (_event, { eventId }) => {
     localBaseUrl: session.localBaseUrl,
     localToken: session.localToken,
     eventId,
-    onProgress: (message) => mainWindow?.webContents.send('sync:progress', { direction: 'cloud', message }),
+    onProgress: (message) => sendToWindow('sync:progress', { direction: 'cloud', message }),
   });
 });
 
