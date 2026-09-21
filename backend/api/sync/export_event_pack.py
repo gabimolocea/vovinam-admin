@@ -23,6 +23,7 @@ from api.models import (
     MatchRound,
     Team,
     TeamMember,
+    TrainingSeminarParticipation,
 )
 from landing.models import Event
 
@@ -179,6 +180,17 @@ def build_event_pack(*, event_id: int) -> dict[str, Any]:
     )
     athlete_ids.update(entry.athlete_id for entry in competition_referees if entry.athlete_id)
 
+    # Athletes/coaches can enroll in an event before being drawn into a
+    # category - that registration (what vovinam.ro's sign-up flow
+    # creates) needs to travel with the pack too, or a local venue machine
+    # only ever sees whoever already happens to be assigned to a category.
+    event_enrollments = list(
+        TrainingSeminarParticipation.objects.filter(event_id=event_id)
+        .select_related('athlete')
+        .order_by('athlete__last_name', 'athlete__first_name')
+    )
+    athlete_ids.update(entry.athlete_id for entry in event_enrollments if entry.athlete_id)
+
     athletes = list(
         Athlete.objects.filter(id__in=athlete_ids)
         .select_related('club', 'city', 'current_grade', 'federation_role', 'title')
@@ -314,6 +326,19 @@ def build_event_pack(*, event_id: int) -> dict[str, Any]:
                 'estimated_duration': assignment.estimated_duration,
             }
             for assignment in match_field_assignments
+        ],
+        'event_enrollments': [
+            {
+                'id': entry.id,
+                'event_id': entry.event_id,
+                'athlete_id': entry.athlete_id,
+                'status': entry.status,
+                'submitted_by_athlete': entry.submitted_by_athlete,
+                'submitted_date': entry.submitted_date,
+                'notes': entry.notes,
+                'admin_notes': entry.admin_notes,
+            }
+            for entry in event_enrollments
         ],
         'competition_referees': [
             {

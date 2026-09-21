@@ -51,6 +51,7 @@ node_modules/
 dist/
 dev-dist/
 logs/
+apps/launcher/release/
 
 # Playwright (e2e) local run output
 playwright-report/

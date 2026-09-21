@@ -1,0 +1,43 @@
+{
+  "name": "@vovinam/launcher",
+  "private": true,
+  "version": "1.0.0",
+  "description": "FRVV Competition Launcher - runs the full competition stack locally, syncing an event down from the cloud before the day starts and back up afterwards.",
+  "main": "electron/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev:renderer": "vite --port 5178",
+    "dev": "concurrently -k -n renderer,electron -c cyan,magenta \"npm run dev:renderer\" \"wait-on tcp:5178 && cross-env ELECTRON_START_URL=http://localhost:5178 electron .\"",
+    "build:renderer": "vite build",
+    "build": "npm run build:renderer && electron-builder"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "vite": "^6.0.5",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "ro.frvv.launcher",
+    "productName": "FRVV Competition Launcher",
+    "electronVersion": "33.4.11",
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.sports",
+      "target": "dmg"
+    }
+  }
+}

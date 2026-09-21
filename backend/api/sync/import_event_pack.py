@@ -4,6 +4,7 @@ from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils.dateparse import parse_datetime
 
 from api.models import (
     Athlete,
@@ -26,6 +27,7 @@ from api.models import (
     Team,
     TeamCategory,
     TeamMember,
+    TrainingSeminarParticipation,
 )
 from landing.models import Event
 
@@ -128,6 +130,19 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
     )
     event = Event.objects.get(pk=event_data['id'])
 
+    # Importing a pack is this instance taking operational custody of the
+    # event, the same status an export puts it in on the cloud side (see
+    # OfflineSyncViewSet.event_pack). Without this, mark-local-in-progress
+    # (and mark-results-uploaded) always 400 with "Event must be locked for
+    # local operation", since a freshly imported Event otherwise starts
+    # with sync_locked=False.
+    manifest = payload.get('manifest') or {}
+    exported_at = manifest.get('exported_at')
+    if isinstance(exported_at, str):
+        exported_at = parse_datetime(exported_at)
+    event.mark_exported_to_local(exported_at=exported_at)
+    event.save(update_fields=['sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at'])
+
     clubs_payload = _section(payload, 'clubs')
     athletes_payload = _section(payload, 'athletes')
     groups_payload = _section(payload, 'groups')
@@ -140,6 +155,7 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
     matches_payload = _section(payload, 'matches')
     match_rounds_payload = _section(payload, 'match_rounds')
     competition_referees_payload = _section(payload, 'competition_referees')
+    event_enrollments_payload = _section(payload, 'event_enrollments')
     category_field_assignments_payload = _section(payload, 'category_field_assignments')
     match_field_assignments_payload = _section(payload, 'match_field_assignments')
     category_referee_assignments_payload = _section(payload, 'category_referee_assignments')
@@ -340,6 +356,25 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
             },
         )
 
+    # Event registrations (an athlete/coach signing up before being drawn
+    # into a category) - without these, a local venue machine only ever
+    # shows whoever already happens to be assigned to a category.
+    event_enrollment_ids = {entry['id'] for entry in event_enrollments_payload}
+    TrainingSeminarParticipation.objects.filter(event_id=event.id).exclude(pk__in=event_enrollment_ids).delete()
+    for enrollment in event_enrollments_payload:
+        _upsert(
+            TrainingSeminarParticipation,
+            enrollment['id'],
+            {
+                'event_id': event.id,
+                'athlete_id': _safe_fk_id(Athlete, enrollment.get('athlete_id')),
+                'status': enrollment.get('status', 'approved'),
+                'submitted_by_athlete': enrollment.get('submitted_by_athlete', False),
+                'notes': enrollment.get('notes'),
+                'admin_notes': enrollment.get('admin_notes'),
+            },
+        )
+
     for assignment in category_field_assignments_payload:
         _upsert(
             CategoryFieldAssignment,
@@ -459,6 +494,7 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
             'matches': len(matches_payload),
             'match_rounds': len(match_rounds_payload),
             'competition_referees': len(competition_referees_payload),
+            'event_enrollments': len(event_enrollments_payload),
             'category_field_assignments': len(category_field_assignments_payload),
             'match_field_assignments': len(match_field_assignments_payload),
             'category_referee_assignments': len(category_referee_assignments_payload),
