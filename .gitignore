@@ -16,15 +16,16 @@ db.sqlite3
 media/
 staticfiles/
 
-# Debug and test scripts
+# Debug and test scripts (ad-hoc scratch scripts, not the real test
+# suites - those live under */tests/ and are excluded from this pattern
+# below, or this silently drops real, committed-looking test files from
+# git with no warning, which happened to 11 files in backend/api/tests/)
 check_*.py
 debug_*.py
 test_*.py
 *_test.py
-!backend/api/tests/test_public_api_permissions.py
-!backend/api/tests/test_self_enrollment.py
-!backend/api/tests/test_category_athlete_fight_weight_sync.py
-!backend/api/tests/test_live_state_performance.py
+!backend/api/tests/*.py
+!backend/tests/*.py
 !backend/api/tests/test_bulk_operations.py
 !backend/api/tests/test_assigned_referee_score_permissions.py
 !backend/api/tests/test_event_sync_lock.py
