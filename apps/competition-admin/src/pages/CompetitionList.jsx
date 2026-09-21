@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { competitionAPI } from '@shared/lib/api';
 import { getSyncStatusMeta } from '@shared/lib/syncStatus';
-import { Badge, Button, Card, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
+import { Badge, Button, Card, Spinner, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 import { Plus } from 'lucide-react';
 
 function formatDate(value) {
@@ -32,6 +32,13 @@ export default function CompetitionList() {
       setEvents(list);
     }).finally(() => setLoading(false));
   }, []);
+
+  const handleToggleVisibility = (ev, checked) => {
+    setEvents((prev) => prev.map((item) => (item.id === ev.id ? { ...item, is_publicly_visible: checked } : item)));
+    competitionAPI.update(ev.id, { is_publicly_visible: checked }).catch(() => {
+      setEvents((prev) => prev.map((item) => (item.id === ev.id ? { ...item, is_publicly_visible: !checked } : item)));
+    });
+  };
 
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
 
@@ -130,7 +137,14 @@ export default function CompetitionList() {
                 </div>
               </div>
 
-              <div className="mt-4 flex justify-end">
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                  <Switch
+                    checked={ev.is_publicly_visible}
+                    onCheckedChange={(checked) => handleToggleVisibility(ev, checked)}
+                  />
+                  <span className="text-xs font-medium text-muted-foreground">Public</span>
+                </div>
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -159,6 +173,7 @@ export default function CompetitionList() {
               <TableHead>Perioadă</TableHead>
               <TableHead>Oraș</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Public</TableHead>
               <TableHead className="text-right">Acțiune</TableHead>
             </TableRow>
           </TableHeader>
@@ -182,6 +197,12 @@ export default function CompetitionList() {
                   </TableCell>
                   <TableCell className="align-top">
                     <Badge className={status.className}>{status.label}</Badge>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Switch
+                      checked={ev.is_publicly_visible}
+                      onCheckedChange={(checked) => handleToggleVisibility(ev, checked)}
+                    />
                   </TableCell>
                   <TableCell className="text-right align-top">
                     <div className="flex justify-end gap-2">
