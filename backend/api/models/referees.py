@@ -140,6 +140,20 @@ class CompetitionReferee(models.Model):
         limit_choices_to={'is_referee': True},
         help_text=_('Sportivul care arbitrează.')
     )
+    ROLE_CHOICES = [
+        ('central', 'Arbitru central'),
+        ('corner', 'Arbitru de colț'),
+        ('table', 'Arbitru masă centrală'),
+        ('secretariat', 'Secretariat'),
+    ]
+    role = models.CharField(
+        _('Rol delegat'), max_length=20, choices=ROLE_CHOICES, blank=True, default='',
+        help_text=_('Rolul cu care este delegat arbitrul la această competiție (folosit pe delegarea oficială).')
+    )
+    license_number = models.CharField(
+        _('Licență'), max_length=50, blank=True, default='',
+        help_text=_('Numărul licenței de arbitru, afișat pe delegarea oficială.')
+    )
     notes = models.TextField(
         _('Note'),
         blank=True,

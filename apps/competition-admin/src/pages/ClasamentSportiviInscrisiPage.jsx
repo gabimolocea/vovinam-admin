@@ -176,38 +176,45 @@ export default function ClasamentSportiviInscrisiPage() {
     }
   };
 
-  const handleGenerateAll = async () => {
+  const handleGenerateAll = () => {
     if (!enrolledAthletes.length) return;
-    if (!window.confirm(`Generezi un singur PDF cu ${enrolledAthletes.length} diplome de participare, câte o pagină pentru fiecare sportiv?`)) {
-      return;
-    }
-    setGeneratingAll(true);
-    try {
-      const previewWindow = window.open('about:blank', '_blank');
-      if (previewWindow?.document) {
-        previewWindow.document.write('<title>Generare diplome participare</title><p style="font-family: sans-serif; padding: 16px;">Se generează PDF-ul cu toate diplomele de participare...</p>');
-        previewWindow.document.close();
-      }
+    ctx.setConfirmModal({
+      title: 'Generează diplome de participare',
+      message: `Generezi un singur PDF cu ${enrolledAthletes.length} diplome de participare, câte o pagină pentru fiecare sportiv?`,
+      icon: '📄',
+      color: 'orange',
+      confirmLabel: 'Generează',
+      onConfirm: async () => {
+        setGeneratingAll(true);
+        try {
+          const previewWindow = window.open('about:blank', '_blank');
+          if (previewWindow?.document) {
+            previewWindow.document.write('<title>Generare diplome participare</title><p style="font-family: sans-serif; padding: 16px;">Se generează PDF-ul cu toate diplomele de participare...</p>');
+            previewWindow.document.close();
+          }
 
-      const diplomaJobs = enrolledAthletes.map((athlete) => {
-        const participation = buildParticipationValues(athlete);
-        const template = resolveDiplomaTemplate(diplomaTemplates, { place: 0, scope: participation.scope });
-        return template ? { template, values: participation.values } : null;
-      }).filter(Boolean);
+          const diplomaJobs = enrolledAthletes.map((athlete) => {
+            const participation = buildParticipationValues(athlete);
+            const template = resolveDiplomaTemplate(diplomaTemplates, { place: 0, scope: participation.scope });
+            return template ? { template, values: participation.values } : null;
+          }).filter(Boolean);
 
-      if (!diplomaJobs.length) {
-        if (previewWindow && !previewWindow.closed) previewWindow.close();
-        window.alert('Nu există un șablon de diplomă de participare disponibil. Configurează unul în tab-ul Diplome.');
-        return;
-      }
+          if (!diplomaJobs.length) {
+            if (previewWindow && !previewWindow.closed) previewWindow.close();
+            window.alert('Nu există un șablon de diplomă de participare disponibil. Configurează unul în tab-ul Diplome.');
+            return;
+          }
 
-      await generateCombinedDiplomaPdf(diplomaJobs, previewWindow);
-    } catch (error) {
-      console.error('Failed to generate combined participation diplomas:', error);
-      window.alert(error.message || 'Nu s-a putut genera PDF-ul cu diplomele de participare.');
-    } finally {
-      setGeneratingAll(false);
-    }
+          await generateCombinedDiplomaPdf(diplomaJobs, previewWindow);
+        } catch (error) {
+          console.error('Failed to generate combined participation diplomas:', error);
+          window.alert(error.message || 'Nu s-a putut genera PDF-ul cu diplomele de participare.');
+        } finally {
+          setGeneratingAll(false);
+          ctx.setConfirmModal(null);
+        }
+      },
+    });
   };
 
   if (!ctx) return null;

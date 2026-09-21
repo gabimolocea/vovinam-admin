@@ -335,6 +335,11 @@ function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScore
                       <span className={`text-[9vw] tabular-nums leading-none ${hasScore && isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
                         {hasScore ? Math.round(score) : '–'}
                       </span>
+                      {hasScore && isCancelled && (
+                        <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%" preserveAspectRatio="none">
+                          <line x1="0" y1="0" x2="100%" y2="100%" stroke="#dc2626" strokeWidth="6" strokeLinecap="round" />
+                        </svg>
+                      )}
                     </div>
                   </div>
                 );

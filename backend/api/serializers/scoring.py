@@ -59,6 +59,7 @@ class CategoryRefereeScoreSerializer(serializers.ModelSerializer):
 class CategoryRefereeScoreEventSerializer(serializers.ModelSerializer):
     referee_name = serializers.SerializerMethodField(read_only=True)
     athlete_name = serializers.SerializerMethodField(read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
     category_id = serializers.IntegerField(source='athlete_score.category_id', read_only=True)
     event_id = serializers.IntegerField(source='athlete_score.category.event_id', read_only=True)
 
@@ -66,13 +67,19 @@ class CategoryRefereeScoreEventSerializer(serializers.ModelSerializer):
         model = CategoryRefereeScoreEvent
         fields = [
             'id', 'athlete_score', 'category_id', 'event_id', 'referee', 'referee_name', 'athlete_name',
-            'action', 'source', 'score_value', 'previous_score', 'notes', 'timestamp', 'created_by',
+            'action', 'source', 'score_value', 'previous_score', 'notes', 'timestamp', 'created_by', 'created_by_name',
             'recording_session', 'video_offset_ms', 'metadata'
         ]
         read_only_fields = ['timestamp', 'created_by', 'video_offset_ms']
 
     def get_referee_name(self, obj):
         return _person_name(obj.referee)
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return None
+        full_name = f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+        return full_name or obj.created_by.email
 
     def get_athlete_name(self, obj):
         athlete_score = obj.athlete_score

@@ -342,6 +342,14 @@ class FightAthleteWeightViewSet(viewsets.ViewSet):
             locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))
             if locked:
                 return locked
+            # A confirmed weight is locked to prevent an accidental edit from
+            # silently overwriting the official weigh-in value - changing
+            # pre_weight_kg/current_weight_kg on an already-locked record is
+            # rejected unless the same request also unlocks it.
+            changes_weight = 'pre_weight_kg' in request.data or 'current_weight_kg' in request.data
+            still_locked = request.data.get('is_weight_locked', instance.is_weight_locked)
+            if instance.is_weight_locked and changes_weight and still_locked:
+                return Response({'error': 'Greutatea este blocată. Deblocați înregistrarea înainte de a o modifica.'}, status=400)
             serializer = self.serializer_class(instance, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()

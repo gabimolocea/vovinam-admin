@@ -44,13 +44,23 @@ class CompetitionRefereeSerializer(serializers.ModelSerializer):
     """Serializer for competition referee roster"""
     athlete_name = serializers.SerializerMethodField(read_only=True)
     club_name = serializers.SerializerMethodField(read_only=True)
-    grade = serializers.CharField(source='athlete.current_grade', read_only=True)
+    # `athlete.current_grade` on its own would fall back to Grade.__str__,
+    # which is the admin-facing "Name (Rank: X, Type: Y)" debug format, not
+    # something to show a competition admin - point straight at the plain name.
+    grade = serializers.CharField(source='athlete.current_grade.name', read_only=True, default=None)
+    category_display = serializers.SerializerMethodField(read_only=True)
+    role_display = serializers.CharField(source='get_role_display', read_only=True, default=None)
+    # Not a real field on the model - the referee's county/locality is the
+    # same "Localitate" already tracked on their club, so it's read off
+    # `athlete.club.city` rather than duplicated as separately-entered data.
+    county = serializers.CharField(source='athlete.club.city.name', read_only=True, default=None)
 
     class Meta:
         model = CompetitionReferee
         fields = [
             'id', 'event', 'athlete', 'athlete_name', 'club_name',
-            'grade', 'notes',
+            'grade', 'category_display', 'role', 'role_display',
+            'license_number', 'county', 'notes',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -63,6 +73,16 @@ class CompetitionRefereeSerializer(serializers.ModelSerializer):
     def get_club_name(self, obj):
         if obj.athlete and obj.athlete.club:
             return obj.athlete.club.name
+        return None
+
+    def get_category_display(self, obj):
+        athlete = obj.athlete
+        if not athlete:
+            return None
+        if athlete.referee_level == 'international':
+            return 'Internațional'
+        if athlete.referee_category:
+            return athlete.get_referee_category_display()
         return None
 
 

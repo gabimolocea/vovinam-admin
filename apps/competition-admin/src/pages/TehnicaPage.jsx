@@ -1,30 +1,69 @@
-import React, { useContext } from 'react';
-import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui';
+import React, { useContext, useMemo, useState } from 'react';
+import { Plus, X } from 'lucide-react';
+import { CentralizatorContext, GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
+import { Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
+
+function formatGroupYears(group) {
+  if (!group) return '';
+  if (group.birth_year_start && group.birth_year_end) return `${group.birth_year_start} - ${group.birth_year_end}`;
+  if (group.birth_year_start) return `${group.birth_year_start}+`;
+  if (group.birth_year_end) return `până la ${group.birth_year_end}`;
+  if (group.birth_date_start && group.birth_date_end) return `${group.birth_date_start} - ${group.birth_date_end}`;
+  return '';
+}
+
+function formatGroupLabel(group) {
+  if (!group) return 'Grupă';
+  const years = formatGroupYears(group);
+  return years ? `${group.name} (${years})` : group.name;
+}
+
+const MIN_ENTRIES = { solo: 3, team: 1 };
 
 export default function TehnicaPage() {
   const ctx = useContext(CentralizatorContext);
-  if (!ctx) return null;
-
-  const {
-    columnStructure, busy,
-    handleCellClick, handleUnenroll, handleTeamUnenroll,
-    isEditLocked,
-  } = ctx;
+  const [groupFilter, setGroupFilter] = useState('all');
+  const [catFilter, setCatFilter] = useState('all');
+  const [genderFilter, setGenderFilter] = useState('all');
 
   // Collect solo/team categories that have enrolled athletes, deduplicated
-  const seenCatIds = new Set();
-  const techGroups = columnStructure
-    .map(col => ({
-      group: col.group,
-      cats: col.cats.filter(c => {
-        if (seenCatIds.has(c.id)) return false;
-        if (c.type !== 'solo' && c.type !== 'team') return false;
-        seenCatIds.add(c.id);
-        return true;
-      }),
-    }))
-    .filter(g => g.cats.length > 0);
+  const techGroups = useMemo(() => {
+    const seen = new Set();
+    return (ctx?.columnStructure || [])
+      .map(col => ({
+        group: col.group,
+        cats: col.cats.filter(c => {
+          if (seen.has(c.id)) return false;
+          if (c.type !== 'solo' && c.type !== 'team' && c.type !== 'teams') return false;
+          seen.add(c.id);
+          return true;
+        }),
+      }))
+      .filter(g => g.cats.length > 0);
+  }, [ctx?.columnStructure]);
+
+  const catNameOptions = useMemo(
+    () => [...new Set(techGroups.flatMap(tg => tg.cats.map(c => c.name)))].sort(),
+    [techGroups],
+  );
+  const genderOptions = useMemo(
+    () => [...new Set(techGroups.flatMap(tg => tg.cats.map(c => c.gender)))],
+    [techGroups],
+  );
+
+  const filteredTechGroups = useMemo(() => {
+    return techGroups
+      .filter(tg => groupFilter === 'all' || String(tg.group.id) === groupFilter)
+      .map(tg => ({
+        group: tg.group,
+        cats: tg.cats.filter(c => (catFilter === 'all' || c.name === catFilter) && (genderFilter === 'all' || c.gender === genderFilter)),
+      }))
+      .filter(tg => tg.cats.length > 0);
+  }, [techGroups, groupFilter, catFilter, genderFilter]);
+
+  if (!ctx) return null;
+
+  const { busy, handleCellClick, handleUnenroll, handleTeamUnenroll, isEditLocked } = ctx;
 
   if (techGroups.length === 0) {
     return (
@@ -37,149 +76,152 @@ export default function TehnicaPage() {
   return (
     <div className="flex-1 overflow-auto bg-background p-3 md:p-4">
       <div inert={isEditLocked ? '' : undefined} className={isEditLocked ? 'opacity-95' : ''}>
-      {techGroups.map(({ group, cats }) => (
-        <div key={`tech-grp-${group.id}`} className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {cats.map(cat => {
-            const isTeamCategory = cat.type === 'team';
-            const enrolled = (cat.enrolled_athletes || []).slice().sort((a, b) => {
-              const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
-              const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
-              return na.localeCompare(nb);
-            });
-            const enrolledTeams = (cat.enrolled_teams || []).slice().sort((a, b) => {
-              const na = a.team_name || '';
-              const nb = b.team_name || '';
-              return na.localeCompare(nb);
-            });
-            const totalEntries = isTeamCategory ? enrolledTeams.length : enrolled.length;
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Select value={groupFilter} onValueChange={setGroupFilter}>
+            <SelectTrigger aria-label="Filtrează după grupă" className="h-8 w-40 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Grupă</SelectItem>
+              {techGroups.map(({ group }) => (
+                <SelectItem key={group.id} value={String(group.id)}>{group.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={catFilter} onValueChange={setCatFilter}>
+            <SelectTrigger aria-label="Filtrează după categorie" className="h-8 w-44 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Categorie</SelectItem>
+              {catNameOptions.map(name => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={genderFilter} onValueChange={setGenderFilter}>
+            <SelectTrigger aria-label="Filtrează după gen" className="h-8 w-32 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Gen</SelectItem>
+              {genderOptions.map(gender => (
+                <SelectItem key={gender} value={gender}>{GENDER_LABELS[gender] || gender}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(groupFilter !== 'all' || catFilter !== 'all' || genderFilter !== 'all') && (
+            <button
+              type="button"
+              onClick={() => { setGroupFilter('all'); setCatFilter('all'); setGenderFilter('all'); }}
+              className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Resetează filtrele
+            </button>
+          )}
+        </div>
 
-            return (
-              <div key={cat.id}>
-                <Table className="border-collapse">
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead colSpan={3}
-                        className="bg-secondary text-secondary-foreground border border-border px-2 sm:px-3 py-1.5 text-center font-bold text-sm normal-case h-auto">
-                        {group.name}
-                        {(group.birth_date_start || group.birth_year_start) && (
-                          <span className="font-normal ml-1">
-                            ( {group.birth_date_start
-                              ? `${new Date(group.birth_date_start).getFullYear()}–${new Date(group.birth_date_end).getFullYear()}`
-                              : `${group.birth_year_start}–${group.birth_year_end}`} )
-                          </span>
-                        )}
+        {filteredTechGroups.length === 0 ? (
+          <div className="py-16 text-center text-sm italic text-muted-foreground">Niciun rezultat pentru filtrele alese.</div>
+        ) : (
+          filteredTechGroups.map(({ group, cats }) => (
+            <div key={`tech-grp-${group.id}`} className="mb-4 flex flex-col gap-3 lg:grid lg:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              {cats.map(cat => {
+                const isTeamCategory = cat.type === 'team' || cat.type === 'teams';
+                const enrolled = isTeamCategory
+                  ? (cat.enrolled_teams || []).slice().sort((a, b) => (a.team_name || '').localeCompare(b.team_name || ''))
+                  : (cat.enrolled_athletes || []).slice().sort((a, b) => {
+                      const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
+                      const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
+                      return na.localeCompare(nb);
+                    });
+                const belowMin = enrolled.length < (isTeamCategory ? MIN_ENTRIES.team : MIN_ENTRIES.solo);
+
+                return (
+                  <div key={cat.id} className="border border-sidebar-border bg-card lg:overflow-hidden">
+                    <div className="sticky top-0 z-10 bg-card">
+                      <div className="flex items-center justify-between gap-2 border-b border-sidebar-border bg-muted px-2 py-1 text-xs font-semibold text-foreground">
+                        <span className="truncate">{formatGroupLabel(group)}</span>
                         {group.allowed_grade_type === 'inferior' && (
-                          <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/20 text-amber-800 text-[8px] font-medium px-1.5 py-0.5" title="Doar grade inferioare (gradele superioare nu au voie)">
-                            Grade inferioare
-                          </span>
+                          <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-medium text-amber-800" title="Doar grade inferioare (gradele superioare nu au voie)">Grade inf.</span>
                         )}
                         {group.allowed_grade_type === 'superior' && (
-                          <span className="ml-1.5 inline-flex items-center rounded-full bg-emerald-500/20 text-emerald-800 text-[8px] font-medium px-1.5 py-0.5" title="Doar grade superioare">
-                            Grade superioare
-                          </span>
+                          <span className="shrink-0 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[8px] font-medium text-emerald-800" title="Doar grade superioare">Grade sup.</span>
                         )}
-                      </TableHead>
-                    </TableRow>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="bg-muted border border-border px-2 py-1.5 text-left font-bold text-xs text-foreground w-[40px] sm:w-[60px] h-auto">
-                        PROBA
-                      </TableHead>
-                      <TableHead className={`border border-border px-2 py-1.5 text-left font-bold text-xs h-auto ${
-                        cat.gender === 'male' ? 'bg-blue-100 text-blue-900' : cat.gender === 'female' ? 'bg-pink-100 text-pink-900' : 'bg-amber-100 text-amber-900'
-                      }`}>
-                        {cat.name} - {GENDER_LABELS[cat.gender] || cat.gender}
-                      </TableHead>
-                      <TableHead className="bg-muted border border-border px-1 py-1.5 text-center font-bold text-[10px] text-foreground/90 w-[30px] h-auto"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isTeamCategory ? enrolledTeams.map((team, rowIdx) => {
-                      const memberNames = (team.members || []).map(member => member.name).join(' & ');
-                      const teamLabel = team.team_name || memberNames || 'Echipă';
-                      const clubName = team.club_name || '';
-                      return (
-                        <TableRow key={team.id}>
-                          <TableCell className="border border-border/60 px-1 py-0.5 text-xs w-[30px] text-center text-muted-foreground bg-muted/40">
-                            {rowIdx + 1}
-                          </TableCell>
-                          <TableCell className="border border-border/60 px-1 py-0.5 text-sm text-foreground">
-                            <span className="block font-semibold">
-                              {teamLabel}
-                            </span>
-                            {memberNames && memberNames !== teamLabel && (
-                              <span className="block text-xs text-muted-foreground">{memberNames}</span>
-                            )}
-                            {clubName && <span className="block text-xs text-muted-foreground">{clubName}</span>}
-                          </TableCell>
-                          <TableCell className="w-[44px] border border-border/60 px-0.5 py-0.5 text-center">
-                            <button
-                              onClick={(e) => handleTeamUnenroll(team.id, teamLabel, cat.name, e)}
-                              disabled={busy}
-                              className="inline-flex h-11 w-11 items-center justify-center border border-destructive/40 bg-destructive text-base font-black leading-none text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-40"
-                              title="Scoate echipa din categorie"
-                            >×</button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    }) : enrolled.map((ath, rowIdx) => {
-                      const athleteDetails = ath?.athlete_details;
-                      const athleteName = athleteDetails
-                        ? `${athleteDetails.last_name || ''} ${athleteDetails.first_name || ''}`.trim()
-                        : '';
-                      const clubName = athleteDetails?.club?.name || '';
-                      return (
-                        <TableRow key={ath.id}>
-                          <TableCell className="border border-border/60 px-1 py-0.5 text-xs w-[30px] text-center text-muted-foreground bg-muted/40">
-                            {rowIdx + 1}
-                          </TableCell>
-                          <TableCell className="border border-border/60 px-1 py-0.5 text-sm text-foreground">
-                            <span className="block truncate">
-                                {athleteName}
-                                {clubName && <span className="text-muted-foreground ml-1">({clubName})</span>}
-                            </span>
-                          </TableCell>
-                          <TableCell className="w-[44px] border border-border/60 px-0.5 py-0.5 text-center">
-                            <button
-                              onClick={(e) => handleUnenroll(ath.id, athleteName, cat.name, e)}
-                              disabled={busy}
-                              className="inline-flex h-11 w-11 items-center justify-center border border-destructive/40 bg-destructive text-base font-black leading-none text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-40"
-                              title="Scoate sportivul din categorie"
-                            >×</button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {/* + Adaugă row */}
-                    <TableRow>
-                      <TableCell className="border border-border/40 px-1 py-0.5 w-[30px] bg-muted/40"></TableCell>
-                      <TableCell
-                        className="border border-border/40 px-2 py-1.5 cursor-pointer hover:bg-accent transition-colors"
+                      </div>
+                      <div className={`flex items-center justify-between gap-2 border-b border-sidebar-border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground ${GENDER_BG[cat.gender] || 'bg-muted'}`}>
+                        <span className="truncate">{cat.name} · {GENDER_LABELS[cat.gender] || cat.gender}</span>
+                        <span className={`shrink-0 rounded px-1 font-bold ${belowMin ? 'bg-red-100 text-red-700' : ''}`} title="Nr. participanți">{enrolled.length}</span>
+                      </div>
+                    </div>
+                    <div className="border-b border-sidebar-border p-1.5">
+                      <Button
+                        size="sm"
                         onClick={(e) => handleCellClick(null, cat.id, e)}
+                        className="w-full text-xs"
                       >
-                        <span className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
-                          <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-white/40 bg-white/15 text-sm leading-none">+</span>
-                          {isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="border border-border/40 px-0.5 py-0.5 w-[30px] bg-muted/40"></TableCell>
-                    </TableRow>
-                    {/* Total row */}
-                    <TableRow className="border-t-2 border-border">
-                      <TableCell className="border border-border px-2 py-1.5 font-bold text-xs text-foreground bg-muted text-center">
-                        TOTAL
-                      </TableCell>
-                      <TableCell className={`border border-border px-2 py-1.5 font-bold text-sm ${totalEntries < (isTeamCategory ? 1 : 3) ? 'bg-red-100 text-red-700' : 'bg-muted text-foreground'}`}>
-                        {totalEntries}
-                      </TableCell>
-                      <TableCell className={`w-[44px] border border-border px-0.5 py-0.5 ${totalEntries < (isTeamCategory ? 1 : 3) ? 'bg-red-100' : 'bg-muted'}`}></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+                        <Plus className="h-3.5 w-3.5" />
+                        {isTeamCategory ? 'Adaugă echipă' : 'Adaugă sportiv'}
+                      </Button>
+                    </div>
+                    <div className="divide-y divide-sidebar-border">
+                      {enrolled.length === 0 ? (
+                        <div className="px-2 py-2 text-xs italic text-muted-foreground">{isTeamCategory ? 'Nicio echipă înscrisă.' : 'Niciun sportiv înscris.'}</div>
+                      ) : enrolled.map(entry => {
+                        if (isTeamCategory) {
+                          const memberNames = (entry.members || []).map(m => m.name).filter(Boolean).join(' & ');
+                          const teamLabel = entry.team_name || memberNames || 'Echipă';
+                          return (
+                            <div key={entry.id} className="flex items-center justify-between gap-2 px-2 py-1 text-xs">
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate font-medium text-foreground">{teamLabel}</div>
+                                {memberNames && memberNames !== teamLabel && (
+                                  <div className="truncate text-[10px] text-muted-foreground">{memberNames}</div>
+                                )}
+                                {entry.club_name && <div className="truncate text-[10px] text-muted-foreground">{entry.club_name}</div>}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => handleTeamUnenroll(entry.id, teamLabel, cat.name, e)}
+                                disabled={busy}
+                                aria-label={`Dezînscrie ${teamLabel}`}
+                                title="Scoate echipa din categorie"
+                                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-destructive transition hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          );
+                        }
+                        const athleteDetails = entry?.athlete_details;
+                        const athleteName = athleteDetails ? `${athleteDetails.last_name || ''} ${athleteDetails.first_name || ''}`.trim() : '';
+                        const clubName = athleteDetails?.club?.name || '';
+                        return (
+                          <div key={entry.id} className="flex items-center justify-between gap-2 px-2 py-1 text-xs">
+                            <div className="min-w-0 flex-1 truncate text-foreground">
+                              {athleteName}
+                              {clubName && <span className="text-muted-foreground"> ({clubName})</span>}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => handleUnenroll(entry.id, athleteName, cat.name, e)}
+                              disabled={busy}
+                              aria-label={`Dezînscrie ${athleteName}`}
+                              title="Scoate sportivul din categorie"
+                              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-destructive transition hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

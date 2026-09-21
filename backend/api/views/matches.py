@@ -882,14 +882,29 @@ def generate_brackets(request, category_id):
     
     num_rounds = int(math.log2(bracket_size))
     
-    # Seed athletes (simple 1 vs N, 2 vs N-1, etc.)
+    # Seed athletes (random shuffle for fairness)
     import random
-    seeded = list(athletes)
-    random.shuffle(seeded)  # Random seeding
-    
-    # Pad with None for byes
-    while len(seeded) < bracket_size:
-        seeded.append(None)
+    seeded_athletes = list(athletes)
+    random.shuffle(seeded_athletes)
+
+    num_byes = bracket_size - n
+    num_round1_matches = bracket_size // 2
+
+    # Build the flat round-1 slot list so byes are spread one per match
+    # instead of clustering at the tail. Padding all the byes onto the end
+    # of a single flat list (the previous approach) breaks whenever there's
+    # more than one bye: e.g. 5 athletes -> bracket_size 8 -> 3 byes, the
+    # last match would get paired (None, None) - a match with no athletes
+    # at all, that nobody ever advances out of. Giving the first `num_byes`
+    # matches exactly one real athlete + one bye slot each avoids that;
+    # this is always possible without doubling up because num_byes is
+    # guaranteed to be < num_round1_matches (bracket_size is the smallest
+    # power of two >= n).
+    seeded = []
+    athlete_iter = iter(seeded_athletes)
+    for i in range(num_round1_matches):
+        seeded.append(next(athlete_iter, None))
+        seeded.append(None if i < num_byes else next(athlete_iter, None))
 
     # Build matches round by round
     all_matches = {}  # {(round, position): match}
@@ -994,6 +1009,16 @@ def _advance_to_next(next_match, from_match, athlete):
     next_match.save()
 
 
+def _set_category_place(category, athlete, place):
+    """Record an athlete's final placement for a category. CategoryAthlete.place
+    is per-athlete (not unique per category), so two athletes can both hold
+    place=3 - that's how joint bronze (both semi-final losers, when there's
+    no separate bronze match) is represented."""
+    if not athlete:
+        return
+    CategoryAthlete.objects.filter(category=category, athlete=athlete).update(place=place)
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def advance_match_winner(request, match_id):
@@ -1020,6 +1045,7 @@ def advance_match_winner(request, match_id):
             return Response({'error': 'Nu exista un castigator pentru acest meci.'}, status=400)
 
         result = {}
+        loser = match.blue_corner if winner == match.red_corner else match.red_corner
 
         # Advance winner to next match
         if match.next_match:
@@ -1032,15 +1058,24 @@ def advance_match_winner(request, match_id):
         else:
             result['status'] = 'final'
             result['winner'] = f"{winner.first_name} {winner.last_name}"
+            _set_category_place(match.category, winner, 1)
+            _set_category_place(match.category, loser, 2)
 
         # Advance loser to consolation/bronze match
         if match.loser_next_match:
-            loser = match.blue_corner if winner == match.red_corner else match.red_corner
             if loser:
                 loser_next_match = Match.objects.select_for_update().get(pk=match.loser_next_match_id)
                 already_placed = loser_next_match.red_corner_id == loser.id or loser_next_match.blue_corner_id == loser.id
                 if not already_placed:
                     _advance_to_next(loser_next_match, match, loser)
                 result['loser_advanced_to'] = loser_next_match.id
+        elif match.match_type == 'semi-finals':
+            # No bronze playoff in this bracket - the federation's rule for
+            # fight categories is that both semi-final losers share 3rd
+            # place automatically, with no elimination match for it.
+            _set_category_place(match.category, loser, 3)
+
+        if match.match_type == 'bronze':
+            _set_category_place(match.category, winner, 3)
 
         return Response(result)

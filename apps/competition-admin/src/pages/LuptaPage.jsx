@@ -1,7 +1,10 @@
 import React, { useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
+import { Lock, Plus, X } from 'lucide-react';
+import { CentralizatorContext, GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { fightWeightAPI, athleteAPI, enrollmentAPI, categoryAPI } from '@shared/lib/api';
-import { formatGroupBadgeLabel } from '../components/ui';
+import {
+  formatGroupBadgeLabel, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Input, Label,
+} from '../components/ui';
 
 /* ═══════════════════════════════════════════════════════════════════
    LUPTA PAGE  –  Fight category weigh-in workflow
@@ -13,12 +16,13 @@ export default function LuptaPage() {
   if (!ctx) return null;
 
   const {
-    columnStructure, busy,
+    columnStructure, busy, setBusy,
     handleUnenroll, handleToggleEnroll,
     fightWeights, setFightWeights, fetchAll,
     groups, categories, clubs,
     eventDateStr,
     isEditLocked,
+    setConfirmModal,
   } = ctx;
 
   /* ── inline editing state ── */
@@ -26,15 +30,24 @@ export default function LuptaPage() {
   const [activeStage, setActiveStage] = useState('pre'); // pre | enroll
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [categoryDraft, setCategoryDraft] = useState({ name: '', minKg: '', maxKg: '' });
-  const [confirmedWeights, setConfirmedWeights] = useState({});
   const [preAssignTargets, setPreAssignTargets] = useState({});
   const [preAssignManual, setPreAssignManual] = useState({});
+  // Etapa 2: manual category-reassignment override when the confirmed
+  // competition-day weight no longer fits the athlete's current category.
+  const [dayAssignTargets, setDayAssignTargets] = useState({});
+  const [dayAssignManual, setDayAssignManual] = useState({});
   const [preSortField, setPreSortField] = useState('club'); // club | name
   const [preSortDir, setPreSortDir] = useState('asc'); // asc | desc
+  const [preSearchQuery, setPreSearchQuery] = useState('');
   const [manualEnrollOpen, setManualEnrollOpen] = useState(false);
   const [manualEnrollDraft, setManualEnrollDraft] = useState({ groupId: '', categoryId: '', athleteId: '', weight: '' });
   const [manualEnrollSearch, setManualEnrollSearch] = useState('');
+  const [manualEnrollDropdownOpen, setManualEnrollDropdownOpen] = useState(false);
   const [assignNotice, setAssignNotice] = useState('');
+  // { message, onUndo } - a temporary banner offering to reverse the last
+  // withdraw-from-Lupta action (see handleWithdrawRow), since removing an
+  // athlete from the list is otherwise a one-way action here.
+  const [undoNotice, setUndoNotice] = useState(null);
   const [athleteDrawer, setAthleteDrawer] = useState(null);
 
   /* ── enrollment picker state (local to Lupta page) ── */
@@ -52,6 +65,7 @@ export default function LuptaPage() {
   const groupPickerRef = useRef(null);
   const pickerBtnRefs = useRef({});
   const groupPickerBtnRefs = useRef({});
+  const autoAssignInFlightRef = useRef(new Set());
 
   const ensureAthletesLoaded = useCallback(async () => {
     if (allAthletes.length === 0) {
@@ -66,7 +80,6 @@ export default function LuptaPage() {
   }, [allAthletes.length]);
 
   const storageKey = `fight-group-enrollments:${ctx.eventId}`;
-  const confirmedStorageKey = `fight-confirmed-weights:${ctx.eventId}`;
   const isNotFoundError = (err) => err?.response?.status === 404;
 
   const loadLocalEnrollments = useCallback(() => {
@@ -83,21 +96,6 @@ export default function LuptaPage() {
     window.localStorage.setItem(storageKey, JSON.stringify(items));
     setFightGroupEnrollments(items);
   }, [storageKey]);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(confirmedStorageKey);
-      const parsed = raw ? JSON.parse(raw) : {};
-      setConfirmedWeights(parsed && typeof parsed === 'object' ? parsed : {});
-    } catch {
-      setConfirmedWeights({});
-    }
-  }, [confirmedStorageKey]);
-
-  const persistConfirmedWeights = useCallback((next) => {
-    setConfirmedWeights(next);
-    window.localStorage.setItem(confirmedStorageKey, JSON.stringify(next));
-  }, [confirmedStorageKey]);
 
   const loadFightGroupEnrollments = useCallback(async () => {
     try {
@@ -188,6 +186,24 @@ export default function LuptaPage() {
         setFightWeights(prev => [...prev, res.data]);
         return;
       } catch (err) {
+        // A record for this (category, athlete) pair can already exist on
+        // the server without being in local state yet (e.g. a stray record
+        // left behind by an earlier category reassignment) - the backend's
+        // unique constraint then rejects the create. Recover by fetching the
+        // real record and patching it instead of silently dropping the edit.
+        if (err?.response?.status === 400) {
+          try {
+            const { data } = await fightWeightAPI.list({ category: categoryId });
+            const existing = (Array.isArray(data) ? data : data.results ?? []).find((fw) => fw.athlete === athleteId);
+            if (existing) {
+              const patched = await fightWeightAPI.update(existing.id, patchData);
+              setFightWeights((prev) => [...prev.filter((fw) => fw.id !== existing.id), patched.data]);
+              return;
+            }
+          } catch (recoveryErr) {
+            console.error('Recovering existing fight weight failed:', recoveryErr);
+          }
+        }
         console.error('Create fight weight failed:', err);
         return;
       }
@@ -206,7 +222,12 @@ export default function LuptaPage() {
     if (!editingCell) return;
     const { categoryId, athleteId, field, value } = editingCell;
     setEditingCell(null);
-    await ensureAndPatch(categoryId, athleteId, { [field]: value || null });
+    // A confirmed competition-day weight locks itself automatically (see
+    // handleToggleWeightLock) - clearing it back to empty unlocks it too,
+    // since an empty value can't be "confirmed".
+    const patch = { [field]: value || null };
+    if (field === 'current_weight_kg') patch.is_weight_locked = Boolean(value);
+    await ensureAndPatch(categoryId, athleteId, patch);
   }, [editingCell, ensureAndPatch]);
 
   /* ── toggle disqualified ── */
@@ -215,6 +236,11 @@ export default function LuptaPage() {
       is_disqualified: !currentDQ,
       ...(!currentDQ ? {} : { disqualification_reason: '' }),
     });
+  }, [ensureAndPatch]);
+
+  /* ── lock/unlock the confirmed competition-day weight ── */
+  const handleToggleWeightLock = useCallback(async (categoryId, athleteId, currentLocked) => {
+    await ensureAndPatch(categoryId, athleteId, { is_weight_locked: !currentLocked });
   }, [ensureAndPatch]);
 
   const toggleGroupEnrollment = useCallback(async (group, athlete, gender) => {
@@ -350,9 +376,8 @@ export default function LuptaPage() {
           const key = `${group.id}-${athleteId}`;
           const existing = map.get(key);
           const athleteDetails = enrollment.athlete_details || existing?.athlete_details || null;
-          const fw = findWeight(cat.id, athleteId);
           const submittedWeight = enrollment.weight ?? existing?.submitted_weight ?? '';
-          const confirmedWeight = fw?.current_weight_kg ?? existing?.confirmed_weight ?? '';
+          const fw = findWeight(cat.id, athleteId);
           const row = {
             key,
             group_id: group.id,
@@ -371,7 +396,9 @@ export default function LuptaPage() {
             current_category_id: cat.id,
             current_category_name: cat.name,
             submitted_weight: submittedWeight,
-            confirmed_weight: confirmedWeight,
+            confirmed_weight: fw?.current_weight_kg ?? '',
+            confirmed_locked: fw?.is_weight_locked ?? false,
+            is_disqualified: fw?.is_disqualified ?? false,
           };
           if (!existing) {
             map.set(key, row);
@@ -379,7 +406,6 @@ export default function LuptaPage() {
             map.set(key, {
               ...existing,
               submitted_weight: existing.submitted_weight || row.submitted_weight,
-              confirmed_weight: existing.confirmed_weight || row.confirmed_weight,
             });
           }
         });
@@ -403,15 +429,27 @@ export default function LuptaPage() {
     return rows;
   }, [preEnrollmentRowsRaw, preSortField, preSortDir]);
 
-  const getSuggestedCategoryId = useCallback((row) => {
+  // Live name search on top of the sorted list - a display-only filter, so
+  // it doesn't affect assignment logic (auto-assign etc. still run over the
+  // full preEnrollmentRows, not this filtered view).
+  const preEnrollmentRowsFiltered = useMemo(() => {
+    const q = preSearchQuery.trim().toLocaleLowerCase('ro');
+    if (!q) return preEnrollmentRows;
+    return preEnrollmentRows.filter((row) => row.athlete_name.toLocaleLowerCase('ro').includes(q));
+  }, [preEnrollmentRows, preSearchQuery]);
+
+  // Shared by both stages: which fight category (same group, compatible
+  // gender) actually fits a given weight. Etapa 1 suggests one from the
+  // submitted (pre-registration) weight; Etapa 2 suggests one from the
+  // confirmed competition-day weight, to flag when an athlete has outgrown
+  // the category they were pre-registered into.
+  const suggestCategoryForWeight = useCallback((groupId, gender, weightRaw) => {
     const candidates = categories.filter((cat) => {
       if (cat.type !== 'fight') return false;
-      if (cat.group !== row.group_id) return false;
+      if (cat.group !== groupId) return false;
       const catGender = cat.gender || 'mixt';
-      return catGender === 'mixt' || row.category_gender === 'mixt' || catGender === row.category_gender;
+      return catGender === 'mixt' || gender === 'mixt' || catGender === gender;
     });
-    const confirmed = confirmedWeights[row.key];
-    const weightRaw = confirmed ?? row.confirmed_weight ?? row.submitted_weight;
     const weight = Number(String(weightRaw || '').replace(',', '.'));
     if (!Number.isFinite(weight)) return '';
 
@@ -430,7 +468,21 @@ export default function LuptaPage() {
       return wa - wb;
     });
     return matches[0]?.id || '';
-  }, [categories, confirmedWeights, parseCategoryBounds]);
+  }, [categories, parseCategoryBounds]);
+
+  // Once a weight has been confirmed at the scale, it's the authoritative
+  // one for suggesting/assigning a category - the submitted weight is only
+  // a fallback until then. getInitialSuggestedCategoryId (submitted weight
+  // only) is kept separately so rows can be highlighted when the confirmed
+  // weight has moved them into a different category than their submission
+  // implied (see exceedsInitialCategory in the table body).
+  const getSuggestedCategoryId = useCallback((row) => (
+    suggestCategoryForWeight(row.group_id, row.category_gender, row.confirmed_weight || row.submitted_weight)
+  ), [suggestCategoryForWeight]);
+
+  const getInitialSuggestedCategoryId = useCallback((row) => (
+    suggestCategoryForWeight(row.group_id, row.category_gender, row.submitted_weight)
+  ), [suggestCategoryForWeight]);
 
   useEffect(() => {
     if (activeStage !== 'pre') return;
@@ -439,34 +491,23 @@ export default function LuptaPage() {
       const next = { ...prev };
       preEnrollmentRows.forEach((row) => {
         if (!(row.key in next)) {
-          const suggested = getSuggestedCategoryId(row);
+          const suggested = getInitialSuggestedCategoryId(row);
           next[row.key] = suggested ? String(suggested) : '';
           changed = true;
         }
       });
       return changed ? next : prev;
     });
-  }, [preEnrollmentRows, getSuggestedCategoryId, activeStage]);
+  }, [preEnrollmentRows, getInitialSuggestedCategoryId, activeStage]);
 
   const saveSubmittedWeight = useCallback(async (row, value) => {
     await enrollmentAPI.categoryAthletes.update(row.enrollment_id, { weight: value || null });
     await fetchAll();
   }, [fetchAll]);
 
-  const saveConfirmedWeight = useCallback(async (row, value) => {
-    const next = { ...confirmedWeights, [row.key]: value || '' };
-    persistConfirmedWeights(next);
-    const record = findWeight(row.current_category_id, row.athlete_id);
-    if (record) {
-      try {
-        const res = await fightWeightAPI.update(record.id, { current_weight_kg: value || null });
-        setFightWeights((prev) => prev.map((fw) => (fw.id === record.id ? res.data : fw)));
-      } catch {
-        // Keep local confirmed value even if backend record update fails.
-      }
-    }
-  }, [confirmedWeights, persistConfirmedWeights, findWeight, setFightWeights]);
-
+  // Etapa 1 only assigns a category from the weight the coach submitted at
+  // registration - the actual competition-day weigh-in/confirmation and any
+  // reassignment it triggers happen in Etapa 2 (see reassignDayRowToCategory).
   const assignPreRowToCategory = useCallback(async (row, targetCategoryId) => {
     if (!targetCategoryId) return;
     const targetId = Number(targetCategoryId);
@@ -477,17 +518,101 @@ export default function LuptaPage() {
         athlete: row.athlete_id,
         weight: row.submitted_weight || null,
       });
+      // Carry over any existing weigh-in record (confirmed weight, lock, DQ
+      // status) to the new category - otherwise it stays attached to the old
+      // category id and silently stops showing up anywhere.
+      const previousWeight = findWeight(row.current_category_id, row.athlete_id);
+      if (previousWeight) {
+        await ensureAndPatch(targetId, row.athlete_id, {
+          current_weight_kg: previousWeight.current_weight_kg ?? null,
+          is_weight_locked: previousWeight.is_weight_locked ?? false,
+          pre_weight_kg: previousWeight.pre_weight_kg ?? null,
+          is_disqualified: previousWeight.is_disqualified ?? false,
+          disqualification_reason: previousWeight.disqualification_reason ?? '',
+        });
+        try {
+          await fightWeightAPI.delete(previousWeight.id);
+        } catch (err) {
+          console.error('Cleaning up old fight weight failed:', err);
+        }
+      }
     } else {
       await enrollmentAPI.categoryAthletes.update(row.enrollment_id, {
         weight: row.submitted_weight || null,
       });
     }
-    const confirmed = confirmedWeights[row.key] || null;
-    if (confirmed) {
-      await ensureAndPatch(targetId, row.athlete_id, { current_weight_kg: confirmed });
+    await fetchAll();
+  }, [fetchAll, findWeight, ensureAndPatch]);
+
+  // Keep "Pe categorii" in sync with the category shown as selected on
+  // "Sportivi și cântărire": that dropdown pre-fills with the category the
+  // submitted (pre-registration) weight suggests, without waiting for the
+  // coach/admin to touch it, so without this the actual enrollment (and
+  // therefore the category card the athlete shows up under) could silently
+  // lag behind what the dropdown displays. This only ever follows the
+  // submitted weight, and only until a competition-day weight is entered -
+  // from that point on the placement is settled by the confirmed weight
+  // (either it already matches, or it needs an explicit "Confirmă în
+  // categorie" click), so this effect must leave those rows alone.
+  // Important: this check has to be based on the row's confirmed_weight
+  // (persisted server-side), not just preAssignManual/preAssignTargets
+  // (in-memory React state) - otherwise a page reload would forget which
+  // rows were already settled and silently reassign already-weighed-in
+  // athletes back to their submitted-weight category.
+  useEffect(() => {
+    if (activeStage !== 'pre') return;
+    preEnrollmentRows.forEach((row) => {
+      if (preAssignManual[row.key] || row.confirmed_weight) return;
+      const suggestedId = getInitialSuggestedCategoryId(row);
+      if (!suggestedId) return;
+      const suggestedNum = Number(suggestedId);
+      if (suggestedNum === row.current_category_id) return;
+      if (autoAssignInFlightRef.current.has(row.key)) return;
+      autoAssignInFlightRef.current.add(row.key);
+      assignPreRowToCategory(row, suggestedId)
+        .catch((err) => console.error('Auto-assign to suggested category failed:', err))
+        .finally(() => {
+          autoAssignInFlightRef.current.delete(row.key);
+        });
+    });
+  }, [preEnrollmentRows, preAssignManual, activeStage, getInitialSuggestedCategoryId, assignPreRowToCategory]);
+
+  // Etapa 2: move an athlete whose confirmed competition-day weight no
+  // longer fits their current category into the one selected in the
+  // reassignment dropdown (auto-suggested, but always overridable - see
+  // dayAssignTargets/dayAssignManual). Keeps the confirmed weight, its lock
+  // state, and the original pre-registration weight attached to the new
+  // category's FightAthleteWeight record.
+  const reassignDayRowToCategory = useCallback(async (row, athleteId, weightValue, isLocked, targetCategoryId) => {
+    if (!targetCategoryId) return;
+    const targetId = Number(targetCategoryId);
+    const enrollId = row.enrollment?.id;
+    if (row.cat.id !== targetId) {
+      if (enrollId) await enrollmentAPI.categoryAthletes.delete(enrollId);
+      await enrollmentAPI.categoryAthletes.create({
+        category: targetId,
+        athlete: athleteId,
+        weight: row.enrollment?.weight || null,
+      });
+    }
+    const previousWeight = findWeight(row.cat.id, athleteId);
+    await ensureAndPatch(targetId, athleteId, {
+      current_weight_kg: weightValue || null,
+      is_weight_locked: Boolean(isLocked),
+      ...(previousWeight?.pre_weight_kg ? { pre_weight_kg: previousWeight.pre_weight_kg } : {}),
+    });
+    // Clean up the now-orphaned weigh-in record at the old category so it
+    // can't collide with the unique (category, athlete) constraint if this
+    // athlete is ever moved back there later.
+    if (previousWeight && previousWeight.category !== targetId) {
+      try {
+        await fightWeightAPI.delete(previousWeight.id);
+      } catch (err) {
+        console.error('Cleaning up old fight weight failed:', err);
+      }
     }
     await fetchAll();
-  }, [confirmedWeights, ensureAndPatch, fetchAll]);
+  }, [findWeight, ensureAndPatch, fetchAll]);
 
   const togglePreSort = useCallback((field) => {
     if (preSortField === field) {
@@ -547,6 +672,79 @@ export default function LuptaPage() {
     const timer = window.setTimeout(() => setAssignNotice(''), 3500);
     return () => window.clearTimeout(timer);
   }, [assignNotice]);
+
+  useEffect(() => {
+    if (!undoNotice) return;
+    const timer = window.setTimeout(() => setUndoNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [undoNotice]);
+
+  // Withdraw an athlete from Lupta entirely (they scratched, or got cut for
+  // being over weight with nowhere left to place them). Unlike a category
+  // reassignment this has no "undo the click" affordance in the UI, so it
+  // gets its own undo banner: re-creating the same enrollment restores it,
+  // including its confirmed-weight record (that's keyed by category+athlete,
+  // not by the enrollment row, so it was never touched by the delete).
+  const handleWithdrawRow = useCallback((row) => {
+    const label = row.athlete_name || 'sportivul selectat';
+    setConfirmModal({
+      title: 'Retrage sportivul',
+      message: `Retragi pe ${label} de la Lupta? Poți anula imediat după, din bara care apare.`,
+      icon: '🚪',
+      color: 'red',
+      confirmLabel: 'Retrage',
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          await enrollmentAPI.categoryAthletes.delete(row.enrollment_id);
+          await fetchAll();
+          setUndoNotice({
+            message: `${label} a fost retras de la Lupta.`,
+            onUndo: async () => {
+              setBusy(true);
+              try {
+                await enrollmentAPI.categoryAthletes.create({
+                  category: row.current_category_id,
+                  athlete: row.athlete_id,
+                  weight: row.submitted_weight || null,
+                });
+                await fetchAll();
+                setAssignNotice(`${label} a fost re-înscris.`);
+              } finally {
+                setBusy(false);
+              }
+            },
+          });
+        } finally {
+          setBusy(false);
+          setConfirmModal(null);
+        }
+      },
+    });
+  }, [fetchAll, setConfirmModal, setBusy]);
+
+  const handleToggleDQRow = useCallback((row) => {
+    const label = row.athlete_name || 'sportivul selectat';
+    const isDQ = row.is_disqualified;
+    setConfirmModal({
+      title: isDQ ? 'Anulează descalificarea' : 'Descalifică sportivul',
+      message: isDQ
+        ? `Anulezi descalificarea sportivului „${label}"? Poți descalifica din nou oricând.`
+        : `Descalifici sportivul „${label}" (ex. din cauza greutății)? Poți anula descalificarea oricând, din același buton.`,
+      icon: '🚫',
+      color: isDQ ? 'orange' : 'red',
+      confirmLabel: isDQ ? 'Anulează descalificarea' : 'Descalifică',
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          await handleToggleDQ(row.current_category_id, row.athlete_id, isDQ);
+        } finally {
+          setBusy(false);
+          setConfirmModal(null);
+        }
+      },
+    });
+  }, [handleToggleDQ, setConfirmModal, setBusy]);
 
   const openAthleteDrawer = useCallback((athlete) => {
     if (!athlete) return;
@@ -685,7 +883,7 @@ export default function LuptaPage() {
                 : 'border-input bg-background text-muted-foreground hover:bg-muted'
             }`}
           >
-            Etapa 1 - Pre-inscriere
+            Sportivi și cântărire
           </button>
           <button
             type="button"
@@ -696,29 +894,42 @@ export default function LuptaPage() {
                 : 'border-input bg-background text-muted-foreground hover:bg-muted'
             }`}
           >
-            Etapa 2 - Inscriere pe categorii
+            Pe categorii
           </button>
           {activeStage === 'pre' && (
-            <button
-              type="button"
-              onClick={handleOpenManualEnroll}
-              className="ml-auto rounded border border-green-700 bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
-            >
+            <Button size="sm" onClick={handleOpenManualEnroll} className="ml-auto">
               Inscrie sportiv
-            </button>
+            </Button>
           )}
         </div>
 
-        {activeStage === 'pre' && assignNotice && (
+        {assignNotice && (
           <div className="mb-3 rounded border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800">
             {assignNotice}
+          </div>
+        )}
+
+        {undoNotice && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            <span>{undoNotice.message}</span>
+            <button
+              type="button"
+              onClick={async () => {
+                const undo = undoNotice.onUndo;
+                setUndoNotice(null);
+                await undo();
+              }}
+              className="rounded border border-amber-600 bg-white px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-100"
+            >
+              Anulează
+            </button>
           </div>
         )}
 
         {activeStage === 'pre' && (
           <div className="w-full overflow-x-auto border-2 border-border bg-card">
             <div className="border-b border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
-              Etapa 1: Tabel unic pre-inscriere (sportivi inscrisi de antrenori la Lupta)
+              Toți sportivii înscriși la Lupta — greutatea trimisă de antrenori și confirmarea la cântar în ziua competiției
             </div>
             <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2 text-xs">
               <span className="font-semibold text-muted-foreground">Sortare:</span>
@@ -736,6 +947,13 @@ export default function LuptaPage() {
               >
                 Nume {preSortField === 'name' ? (preSortDir === 'asc' ? '↑' : '↓') : ''}
               </button>
+              <input
+                type="text"
+                value={preSearchQuery}
+                onChange={(event) => setPreSearchQuery(event.target.value)}
+                placeholder="Caută după nume..."
+                className="ml-auto w-48 rounded border border-input bg-background px-2 py-1 text-xs"
+              />
             </div>
             <table className="w-full border-collapse text-sm" style={{ minWidth: '980px' }}>
               <thead>
@@ -745,44 +963,70 @@ export default function LuptaPage() {
                   <TH>Nume sportiv + club</TH>
                   <TH>Varsta</TH>
                   <TH small>Greutate trimisa</TH>
-                  <TH small>Greutate confirmata cantar</TH>
+                  <TH small highlight>Cantar Oficial</TH>
                   <TH>Categorie sugerata</TH>
                   <TH>Categorie selectata</TH>
                   <TH></TH>
                 </tr>
               </thead>
               <tbody>
-                {preEnrollmentRows.length === 0 ? (
+                {preEnrollmentRowsFiltered.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="border border-border px-3 py-3 text-center text-xs italic text-muted-foreground">
-                      Nu exista sportivi inscrisi la Lupta de catre antrenori.
+                      {preEnrollmentRows.length === 0
+                        ? 'Nu exista sportivi inscrisi la Lupta de catre antrenori.'
+                        : 'Niciun sportiv găsit pentru căutarea curentă.'}
                     </td>
                   </tr>
                 ) : (
-                  preEnrollmentRows.map((row) => {
+                  preEnrollmentRowsFiltered.map((row) => {
                     const suggestedId = getSuggestedCategoryId(row);
+                    const initialSuggestedId = getInitialSuggestedCategoryId(row);
+                    // The confirmed competition-day weight suggests a category
+                    // that doesn't match where the athlete is currently placed
+                    // (which normally follows the submitted weight) - purely
+                    // informational until "Confirmă greutate" is clicked,
+                    // which is what actually moves the athlete if needed.
+                    const categoryMismatch = Boolean(
+                      row.confirmed_weight && suggestedId && suggestedId !== row.current_category_id
+                    );
+                    // Explicit, persisted "this weigh-in is final" flag (backed
+                    // by is_weight_locked) - set only by clicking "Confirmă
+                    // greutate", not inferred automatically from the weight
+                    // happening to already match. Freezes the confirmed-weight
+                    // field and the category dropdown once true.
+                    const weightConfirmed = Boolean(row.confirmed_weight) && row.confirmed_locked;
                     const isManualSelection = preAssignManual[row.key] === true;
                     const selectedTarget = isManualSelection
                       ? (preAssignTargets[row.key] || '')
-                      : (suggestedId ? String(suggestedId) : '');
+                      : (initialSuggestedId ? String(initialSuggestedId) : '');
                     const options = categories.filter((cat) => (
                       cat.type === 'fight' && cat.group === row.group_id
                     ));
-                    const confirmedVal = confirmedWeights[row.key] ?? row.confirmed_weight ?? '';
                     const athleteLabel = row.club_name ? `${row.athlete_name} (${row.club_name})` : row.athlete_name;
                     const groupLabel = row.group_years ? `${row.group_name} (${row.group_years})` : row.group_name;
                     return (
-                      <tr key={`pre-row-${row.key}`}>
+                      <tr key={`pre-row-${row.key}`} className={row.is_disqualified ? 'bg-red-50' : categoryMismatch && !weightConfirmed ? 'bg-red-50' : ''}>
                         <td className="border border-border px-2 py-1 text-xs text-muted-foreground">{groupLabel}</td>
                         <td className="border border-border px-2 py-1 text-xs text-muted-foreground">{GENDER_LABELS[row.category_gender] || row.category_gender}</td>
                         <td className="border border-border px-2 py-1 text-sm text-foreground">
                           <button
                             type="button"
                             onClick={() => openAthleteDrawer(row.athlete_details)}
-                            className="text-left text-blue-700 underline-offset-2 hover:underline"
+                            className={`text-left underline-offset-2 hover:underline ${row.is_disqualified ? 'text-red-400 line-through' : 'text-blue-700'}`}
                           >
                             {athleteLabel}
                           </button>
+                          {row.is_disqualified && (
+                            <span className="ml-1 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-700" title="Sportiv descalificat">
+                              DQ
+                            </span>
+                          )}
+                          {categoryMismatch && !weightConfirmed && (
+                            <span className="ml-1 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-700" title="Categoria sugerată de greutatea confirmată diferă de categoria curentă">
+                              Depășește
+                            </span>
+                          )}
                         </td>
                         <td className="border border-border px-2 py-1 text-xs text-muted-foreground">{formatAgeRo(row.athlete_details?.date_of_birth)}</td>
                         <td className="border border-border px-1 py-1 text-center text-xs">
@@ -795,18 +1039,30 @@ export default function LuptaPage() {
                             className="w-20 cursor-not-allowed rounded border border-border bg-muted px-1 py-0.5 text-center text-xs text-muted-foreground"
                           />
                         </td>
-                        <td className="border border-border px-1 py-1 text-center text-xs">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={confirmedVal}
-                            onChange={(event) => persistConfirmedWeights({ ...confirmedWeights, [row.key]: event.target.value })}
-                            onBlur={async (event) => {
-                              await saveConfirmedWeight(row, event.target.value);
-                            }}
-                            className="w-20 rounded border border-input px-1 py-0.5 text-center text-xs"
-                          />
+                        <td className="border-y border-border border-l-2 border-r-2 border-l-amber-500 border-r-amber-500 px-1 py-1 text-center text-xs">
+                          {weightConfirmed ? (
+                            <span
+                              className="inline-block w-20 rounded border border-border bg-muted px-1 py-0.5 text-center text-xs text-muted-foreground"
+                              title="Greutatea a fost confirmată - câmp needitabil"
+                            >
+                              {row.confirmed_weight}
+                            </span>
+                          ) : (
+                            <input
+                              key={`confirmed-${row.key}-${row.confirmed_weight}`}
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              defaultValue={row.confirmed_weight}
+                              onBlur={async (event) => {
+                                const value = event.target.value;
+                                await ensureAndPatch(row.current_category_id, row.athlete_id, {
+                                  current_weight_kg: value || null,
+                                });
+                              }}
+                              className="w-20 rounded border border-input px-1 py-0.5 text-center text-xs"
+                            />
+                          )}
                         </td>
                         <td className="border border-border px-2 py-1 text-xs text-blue-700">
                           {suggestedId ? (categories.find((cat) => cat.id === suggestedId)?.name || '—') : 'Fara sugestie'}
@@ -814,12 +1070,19 @@ export default function LuptaPage() {
                         <td className="border border-border px-1 py-1 text-xs">
                           <select
                             value={selectedTarget}
-                            onChange={(event) => {
+                            disabled={busy || weightConfirmed}
+                            onChange={async (event) => {
                               const nextValue = event.target.value;
                               setPreAssignTargets((prev) => ({ ...prev, [row.key]: nextValue }));
                               setPreAssignManual((prev) => ({ ...prev, [row.key]: nextValue !== '' }));
+                              if (!nextValue || Number(nextValue) === row.current_category_id) return;
+                              const targetCat = categories.find((cat) => cat.id === Number(nextValue));
+                              const athleteLabel = row.athlete_name || 'sportivul selectat';
+                              const targetLabel = targetCat?.name || 'categoria selectata';
+                              await assignPreRowToCategory(row, nextValue);
+                              setAssignNotice(`${athleteLabel} a fost repartizat la ${targetLabel}.`);
                             }}
-                            className="w-full rounded border border-input px-2 py-1 text-xs"
+                            className="w-full rounded border border-input px-2 py-1 text-xs disabled:opacity-50"
                           >
                             <option value="">Selecteaza categoria</option>
                             {options.map((cat) => (
@@ -827,24 +1090,80 @@ export default function LuptaPage() {
                             ))}
                           </select>
                         </td>
-                        <td className="border border-border px-1 py-1 text-center">
-                          <button
-                            type="button"
-                            disabled={!selectedTarget || busy}
-                            onClick={async () => {
-                              const targetId = Number(selectedTarget);
-                              const targetCat = categories.find((cat) => cat.id === targetId);
-                              const athleteLabel = row.athlete_name || 'sportivul selectat';
-                              const targetLabel = targetCat?.name || 'categoria selectata';
-                              const ok = window.confirm(`Confirmi repartizarea lui ${athleteLabel} la ${targetLabel}?`);
-                              if (!ok) return;
-                              await assignPreRowToCategory(row, selectedTarget);
-                              setAssignNotice(`${athleteLabel} a fost repartizat la ${targetLabel}.`);
+                        <td className="border border-border px-1 py-1 text-center text-xs">
+                          <div className="flex flex-nowrap items-center justify-center gap-1">
+                          {weightConfirmed ? (
+                            <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-green-100 px-2 text-[10px] font-semibold text-green-800" title="Greutatea din ziua competiției a fost confirmată">
+                              ✓ Confirmat
+                            </span>
+                          ) : (
+                          <Button
+                            size="sm"
+                            disabled={busy || !row.confirmed_weight}
+                            onClick={() => {
+                              // If the admin already picked a category by
+                              // hand via the dropdown, that choice has
+                              // already been applied (its onChange assigns
+                              // immediately) - confirming should just lock
+                              // it in, not silently override it back to the
+                              // weight-based suggestion, even if that pick
+                              // doesn't match the suggestion.
+                              const shouldAutoMove = categoryMismatch && !isManualSelection;
+                              const targetCat = shouldAutoMove ? categories.find((cat) => cat.id === suggestedId) : null;
+                              const targetLabel = targetCat?.name || 'categoria selectată';
+                              setConfirmModal({
+                                title: 'Confirmă greutatea din ziua competiției',
+                                message: shouldAutoMove
+                                  ? `Greutatea confirmată la cântar (${row.confirmed_weight} kg) diferă de greutatea trimisă (${row.submitted_weight || '—'} kg). Confirmi greutatea și muți pe ${row.athlete_name || 'sportivul selectat'} la ${targetLabel}? Câmpurile de greutate și categorie vor deveni needitabile.`
+                                  : `Confirmi greutatea de ${row.confirmed_weight} kg pentru ${row.athlete_name || 'sportivul selectat'}? Câmpurile de greutate și categorie vor deveni needitabile.`,
+                                icon: '⚖️',
+                                color: 'orange',
+                                confirmLabel: 'Confirmă greutatea',
+                                onConfirm: async () => {
+                                  setBusy(true);
+                                  try {
+                                    let targetId = row.current_category_id;
+                                    if (shouldAutoMove) {
+                                      targetId = suggestedId;
+                                      setPreAssignTargets((prev) => ({ ...prev, [row.key]: String(suggestedId) }));
+                                      setPreAssignManual((prev) => ({ ...prev, [row.key]: true }));
+                                      await assignPreRowToCategory(row, suggestedId);
+                                    }
+                                    await ensureAndPatch(targetId, row.athlete_id, { is_weight_locked: true });
+                                    setAssignNotice(shouldAutoMove
+                                      ? `${row.athlete_name || 'Sportivul'} a fost confirmat la ${targetLabel}.`
+                                      : `Greutatea lui ${row.athlete_name || 'sportivul selectat'} a fost confirmată.`);
+                                  } finally {
+                                    setBusy(false);
+                                    setConfirmModal(null);
+                                  }
+                                },
+                              });
                             }}
-                            className="rounded border border-blue-600 bg-blue-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-600 disabled:opacity-40"
+                            className="shrink-0"
                           >
-                            Repartizeaza
-                          </button>
+                            Confirmă
+                          </Button>
+                          )}
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleToggleDQRow(row)}
+                              className={`inline-flex h-6 shrink-0 items-center justify-center rounded border px-1.5 text-[10px] font-bold uppercase tracking-wide transition disabled:opacity-40 ${
+                                row.is_disqualified
+                                  ? 'border-red-600 bg-red-500 text-white hover:bg-red-600'
+                                  : 'border-input bg-background text-muted-foreground hover:bg-muted'
+                              }`}
+                              title={row.is_disqualified ? 'Anulează descalificarea' : 'Descalifică sportivul'}
+                            >DQ</button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleWithdrawRow(row)}
+                              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-destructive transition hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                              title="Retrage sportivul de la Lupta"
+                            ><X className="h-3.5 w-3.5" /></button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -864,334 +1183,321 @@ export default function LuptaPage() {
           }
 
           return (
-            <div key={`fight-${group.id}`} className="mb-8 space-y-4">
+            <div key={`fight-${group.id}`} className="mb-6">
               {genderOrder.filter(g => catsByGender[g]).map(gender => {
                 const genderCats = catsByGender[gender];
-                const groupRegistrations = fightGroupEnrollments
-                  .filter((item) => item.group === group.id)
-                  .filter((item) => {
-                    const athleteGender = item.athlete_details?.gender;
-                    if (!athleteGender || gender === 'mixt') return true;
-                    return athleteGender === gender;
-                  })
-                  .sort((a, b) => {
-                    const an = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
-                    const bn = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
-                    return an.localeCompare(bn);
-                  });
-                const flatRows = [];
-                for (const cat of genderCats) {
-                  const enrolled = (cat.enrolled_athletes || []).slice().sort((a, b) => {
-                    const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
-                    const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
-                    return na.localeCompare(nb);
-                  });
-                  const catLabel = cat.name
-                    .replace(/ - (Masculin|Feminin|Mixt)/i, '')
-                    .replace(/Đối Kháng\s*/i, '').trim() || cat.name;
-
-                  const catRowSpan = Math.max(enrolled.length, 1) + 1;
-                  if (enrolled.length === 0) {
-                    flatRows.push({
-                      cat, catLabel, enrollment: null, enrolledCount: 0,
-                      isFirstInCat: true, catRowSpan,
-                    });
-                  } else {
-                    enrolled.forEach((enrollment, idx) => {
-                      flatRows.push({
-                        cat, catLabel, enrollment, enrolledCount: enrolled.length,
-                        isFirstInCat: idx === 0, catRowSpan,
-                      });
-                    });
-                  }
-                  // permanent add row
-                  flatRows.push({
-                    cat, catLabel, enrollment: null, enrolledCount: 0,
-                    isFirstInCat: false, isAddRow: true,
-                  });
-                }
 
                 return (
-                  <div key={`${group.id}-${gender}`} className="space-y-3">
-                  {activeStage === 'enroll' && (
-                  <div className="w-full overflow-x-auto border-2 border-border bg-card">
-                  <table className="w-full border-collapse text-sm" style={{ minWidth: '700px' }}>
-                    <colgroup>
-                      <col className="w-[100px]" />{/* CATEGORIE */}
-                      <col />{/* NUME - flex */}
-                      <col className="w-[80px]" />{/* GREUTATE ÎNR */}
-                      <col className="w-[80px]" />{/* GREUTATE ZI */}
-                      <col className="w-[36px]" />{/* DQ */}
-                      <col className="w-[110px]" />{/* MOTIV */}
-                      <col className="w-[30px]" />{/* ACȚIUNI */}
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th colSpan={7}
-                          className="bg-secondary border border-border px-2 sm:px-3 py-1.5 text-center font-bold text-sm text-foreground">
-                          {group.name}
-                          {(group.birth_date_start || group.birth_year_start) && (
-                            <span className="font-normal ml-1">
-                              ( {group.birth_date_start
-                                ? `${new Date(group.birth_date_start).getFullYear()}–${new Date(group.birth_date_end).getFullYear()}`
-                                : `${group.birth_year_start}–${group.birth_year_end}`} )
-                            </span>
-                          )}
-                          {group.allowed_grade_type === 'inferior' && (
-                            <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/20 text-amber-800 text-[8px] font-medium px-1.5 py-0.5" title="Doar grade inferioare (gradele superioare nu au voie)">
-                              Grade inferioare
-                            </span>
-                          )}
-                          {group.allowed_grade_type === 'superior' && (
-                            <span className="ml-1.5 inline-flex items-center rounded-full bg-emerald-500/20 text-emerald-800 text-[8px] font-medium px-1.5 py-0.5" title="Doar grade superioare">
-                              Grade superioare
-                            </span>
-                          )}
-                        </th>
-                      </tr>
-                      <tr>
-                        <th colSpan={7}
-                          className={`border border-border px-3 py-1 text-center font-bold text-sm uppercase tracking-wide ${
-                            gender === 'male' ? 'bg-blue-200 text-blue-900'
-                            : gender === 'female' ? 'bg-pink-200 text-pink-900'
-                            : 'bg-amber-200 text-amber-900'
-                          }`}>
-                          {GENDER_LABELS[gender]}
-                        </th>
-                      </tr>
-                      <tr>
-                        <TH>CATEGORIE (KG)</TH>
-                        <TH>NUME PRACTICANT</TH>
-                        <TH small>GREUTATE<br/>ÎNREG.</TH>
-                        <TH small>GREUTATE<br/>ZI COMP.</TH>
-                        <TH>DQ</TH>
-                        <TH>MOTIV DQ</TH>
-                        <TH></TH>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {flatRows.map((row, ri) => {
-                        if (row.isAddRow) {
-                          return (
-                            <tr key={`add-${ri}`} className="hover:bg-green-50/30">
-                              {/* NUME PRACTICANT — add button */}
-                              <td className="border border-border px-2 py-1 text-sm border-b-2 border-b-border"
-                                ref={el => { pickerBtnRefs.current[row.cat.id] = el; }}
-                              >
-                                <button
-                                  onClick={(e) => openPicker(row.cat.id, e)}
-                                  disabled={busy}
-                                  className="inline-flex items-center justify-center gap-2 rounded-md bg-primary !px-3 !py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-40"
-                                  title="Adaugă sportiv în categorie"
-                                >
-                                  <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-white/40 bg-white/15 text-sm leading-none">+</span>
-                                  Adaugă sportiv
-                                </button>
-                              </td>
-                              {/* GREUTATE ÎNREGISTRATĂ */}
-                              <td className="border border-border border-b-2 border-b-border"></td>
-                              {/* GREUTATE ZI COMPETIȚIE */}
-                              <td className="border border-border border-b-2 border-b-border"></td>
-                              {/* DQ */}
-                              <td className="border border-border border-b-2 border-b-border"></td>
-                              {/* MOTIV DQ */}
-                              <td className="border border-border border-b-2 border-b-border"></td>
-                              {/* ACȚIUNI */}
-                              <td className="border border-border border-b-2 border-b-border"></td>
-                            </tr>
-                          );
-                        }
-                        const a = row.enrollment?.athlete_details;
-                        const athleteId = row.enrollment?.athlete;
-                        const name = a ? `${a.last_name || ''} ${a.first_name || ''}`.trim() : '';
-                        const club = a?.club?.name || '';
-                        const enrollId = row.enrollment?.id;
+                  <div key={`${group.id}-${gender}`} className="mb-4 flex flex-col gap-3 lg:grid lg:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                    {genderCats.map(cat => {
+                      const enrolled = (cat.enrolled_athletes || []).slice().sort((a, b) => {
+                        const na = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
+                        const nb = `${b.athlete_details?.last_name || ''} ${b.athlete_details?.first_name || ''}`;
+                        return na.localeCompare(nb);
+                      });
+                      const catLabel = cat.name
+                        .replace(/ - (Masculin|Feminin|Mixt)/i, '')
+                        .replace(/Đối Kháng\s*/i, '').trim() || cat.name;
+                      const belowMin = enrolled.length < 3;
 
-                        // FightAthleteWeight record for this athlete+category
-                        const fw = athleteId ? findWeight(row.cat.id, athleteId) : null;
-                        // Fall back to enrollment.weight (set by coach on enrollment) if no FightAthleteWeight record
-                        const preW = fw?.pre_weight_kg ?? row.enrollment?.weight ?? '';
-                        const dayW = fw?.current_weight_kg ?? '';
-                        const isDQ = fw?.is_disqualified ?? false;
-                        const dqReason = fw?.disqualification_reason ?? '';
-
-                        const isEditingPre = editingCell?.categoryId === row.cat.id && editingCell?.athleteId === athleteId && editingCell?.field === 'pre_weight_kg';
-                        const isEditingDay = editingCell?.categoryId === row.cat.id && editingCell?.athleteId === athleteId && editingCell?.field === 'current_weight_kg';
-                        const isEditingReason = editingCell?.categoryId === row.cat.id && editingCell?.athleteId === athleteId && editingCell?.field === 'disqualification_reason';
-
-                        const strongTopBorder = row.isFirstInCat ? 'border-t-2 border-t-border' : '';
-
-                        return (
-                          <tr key={ri} className={isDQ ? 'bg-red-50' : ''}>
-                            {/* CATEGORIE */}
-                            {row.isFirstInCat && (
-                              <td className="border border-border px-2 py-1 text-center text-xs font-semibold text-foreground bg-muted relative"
-                                rowSpan={row.catRowSpan}
-                              >
-                                {editingCategoryId === row.cat.id ? (
-                                  <div className="space-y-1 text-left">
+                      return (
+                        <div key={cat.id} className="border border-sidebar-border bg-card lg:overflow-hidden">
+                          <div className="sticky top-0 z-10 bg-card">
+                            <div className="flex items-center justify-between gap-2 border-b border-sidebar-border bg-muted px-2 py-1 text-xs font-semibold text-foreground">
+                              <span className="truncate">
+                                {group.name}
+                                {(group.birth_date_start || group.birth_year_start) && (
+                                  <span className="ml-1 font-normal text-muted-foreground">
+                                    ({group.birth_date_start
+                                      ? `${new Date(group.birth_date_start).getFullYear()}–${new Date(group.birth_date_end).getFullYear()}`
+                                      : `${group.birth_year_start}–${group.birth_year_end}`})
+                                  </span>
+                                )}
+                              </span>
+                              <span className="flex shrink-0 gap-1">
+                                {group.allowed_grade_type === 'inferior' && (
+                                  <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-medium text-amber-800" title="Doar grade inferioare (gradele superioare nu au voie)">Grade inf.</span>
+                                )}
+                                {group.allowed_grade_type === 'superior' && (
+                                  <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[8px] font-medium text-emerald-800" title="Doar grade superioare">Grade sup.</span>
+                                )}
+                              </span>
+                            </div>
+                            <div className={`flex items-center justify-between gap-2 border-b border-sidebar-border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${GENDER_BG[gender] || 'bg-muted'}`}>
+                              {editingCategoryId === cat.id ? (
+                                <div className="flex w-full flex-col gap-1 py-0.5 normal-case">
+                                  <input
+                                    type="text"
+                                    value={categoryDraft.name}
+                                    onChange={(event) => setCategoryDraft((prev) => ({ ...prev, name: event.target.value }))}
+                                    className="w-full rounded border border-input px-1 py-0.5 text-[10px]"
+                                    placeholder="Nume categorie"
+                                  />
+                                  <div className="grid grid-cols-2 gap-1">
                                     <input
-                                      type="text"
-                                      value={categoryDraft.name}
-                                      onChange={(event) => setCategoryDraft((prev) => ({ ...prev, name: event.target.value }))}
+                                      type="number"
+                                      step="0.1"
+                                      value={categoryDraft.minKg}
+                                      onChange={(event) => setCategoryDraft((prev) => ({ ...prev, minKg: event.target.value }))}
                                       className="w-full rounded border border-input px-1 py-0.5 text-[10px]"
-                                      placeholder="Nume categorie"
+                                      placeholder="Min kg"
                                     />
-                                    <div className="grid grid-cols-2 gap-1">
-                                      <input
-                                        type="number"
-                                        step="0.1"
-                                        value={categoryDraft.minKg}
-                                        onChange={(event) => setCategoryDraft((prev) => ({ ...prev, minKg: event.target.value }))}
-                                        className="w-full rounded border border-input px-1 py-0.5 text-[10px]"
-                                        placeholder="Min kg"
-                                      />
-                                      <input
-                                        type="number"
-                                        step="0.1"
-                                        value={categoryDraft.maxKg}
-                                        onChange={(event) => setCategoryDraft((prev) => ({ ...prev, maxKg: event.target.value }))}
-                                        className="w-full rounded border border-input px-1 py-0.5 text-[10px]"
-                                        placeholder="Max kg"
-                                      />
-                                    </div>
-                                    <div className="flex gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={async () => {
-                                          await saveCategoryEdit(row.cat);
-                                        }}
-                                        className="rounded border border-blue-600 bg-blue-500 px-1.5 py-0.5 text-[10px] font-semibold text-white"
-                                      >
-                                        Salveaza
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingCategoryId(null)}
-                                        className="rounded border border-input bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
-                                      >
-                                        Anuleaza
-                                      </button>
-                                    </div>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={categoryDraft.maxKg}
+                                      onChange={(event) => setCategoryDraft((prev) => ({ ...prev, maxKg: event.target.value }))}
+                                      className="w-full rounded border border-input px-1 py-0.5 text-[10px]"
+                                      placeholder="Max kg"
+                                    />
                                   </div>
-                                ) : (
-                                  <>
-                                    {row.catLabel}
+                                  <div className="flex gap-1">
                                     <button
                                       type="button"
-                                      onClick={() => startCategoryEdit(row.cat)}
-                                      className="ml-1 rounded border border-input bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground hover:bg-muted"
+                                      onClick={async () => { await saveCategoryEdit(cat); }}
+                                      className="rounded border border-blue-600 bg-blue-500 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                                    >Salveaza</button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingCategoryId(null)}
+                                      className="rounded border border-input bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                                    >Anuleaza</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="flex min-w-0 items-center gap-1 truncate">
+                                    <span className="truncate">{catLabel}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => startCategoryEdit(cat)}
+                                      className="inline-flex h-5 shrink-0 items-center rounded border border-black/10 bg-white/40 px-1.5 text-[10px] font-semibold normal-case text-current transition hover:bg-white/70"
+                                      title="Editează categoria"
+                                    >Edit</button>
+                                  </span>
+                                  <span className={`shrink-0 rounded px-1 font-bold ${belowMin ? 'bg-red-100 text-red-700' : ''}`} title="Nr. participanți">{enrolled.length}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="border-b border-sidebar-border p-1.5" ref={el => { pickerBtnRefs.current[cat.id] = el; }}>
+                            <Button
+                              size="sm"
+                              onClick={(e) => openPicker(cat.id, e)}
+                              disabled={busy}
+                              className="w-full text-xs"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Adaugă sportiv
+                            </Button>
+                          </div>
+                          <div className="divide-y divide-sidebar-border">
+                            {enrolled.length === 0 ? (
+                              <div className="px-2 py-2 text-xs italic text-muted-foreground">Niciun sportiv înscris.</div>
+                            ) : enrolled.map(entry => {
+                              const a = entry.athlete_details;
+                              const athleteId = entry.athlete;
+                              const name = a ? `${a.last_name || ''} ${a.first_name || ''}`.trim() : '';
+                              const club = a?.club?.name || '';
+                              const enrollId = entry.id;
+
+                              const fw = athleteId ? findWeight(cat.id, athleteId) : null;
+                              const preW = fw?.pre_weight_kg ?? entry.weight ?? '';
+                              const dayW = fw?.current_weight_kg ?? '';
+                              const isDQ = fw?.is_disqualified ?? false;
+                              const dqReason = fw?.disqualification_reason ?? '';
+                              const isWeightLocked = fw?.is_weight_locked ?? false;
+
+                              // Does the confirmed competition-day weight still fit
+                              // the category this athlete is currently enrolled in?
+                              // If not, offer a reassignment to the category it
+                              // actually fits (pre-selected, but overridable).
+                              const currentBounds = parseCategoryBounds(cat.name);
+                              const dayWeightNum = Number(String(dayW || '').replace(',', '.'));
+                              const exceedsCategory = Boolean(
+                                athleteId && dayW !== '' && currentBounds && Number.isFinite(dayWeightNum)
+                                && (dayWeightNum < currentBounds.min || dayWeightNum > currentBounds.max)
+                              );
+                              const dayRowKey = `${cat.id}-${athleteId}`;
+                              const suggestedDayCatId = exceedsCategory ? suggestCategoryForWeight(group.id, gender, dayW) : '';
+                              const isManualDayTarget = dayAssignManual[dayRowKey] === true;
+                              const dayTarget = isManualDayTarget
+                                ? (dayAssignTargets[dayRowKey] || '')
+                                : (suggestedDayCatId ? String(suggestedDayCatId) : '');
+                              const dayReassignOptions = categories.filter((c) => c.type === 'fight' && c.group === group.id);
+
+                              const isEditingPre = editingCell?.categoryId === cat.id && editingCell?.athleteId === athleteId && editingCell?.field === 'pre_weight_kg';
+                              const isEditingDay = editingCell?.categoryId === cat.id && editingCell?.athleteId === athleteId && editingCell?.field === 'current_weight_kg';
+                              const isEditingReason = editingCell?.categoryId === cat.id && editingCell?.athleteId === athleteId && editingCell?.field === 'disqualification_reason';
+
+                              return (
+                                <div key={entry.id} className={`px-2 py-1.5 text-xs ${isDQ ? 'bg-red-50' : ''}`}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openAthleteDrawer(a)}
+                                      className={`min-w-0 flex-1 truncate text-left underline-offset-2 hover:underline ${isDQ ? 'text-red-400 line-through' : 'text-blue-700'}`}
                                     >
-                                      Edit
+                                      {name}
+                                      {club && <span className="font-normal text-muted-foreground"> ({club})</span>}
                                     </button>
-                                    {row.cat.birth_year_start && row.cat.birth_year_end && (
-                                      <span className="block text-[8px] text-blue-400 font-normal">
-                                        ({row.cat.birth_year_start}–{row.cat.birth_year_end})
-                                      </span>
-                                    )}
-                                    <span className={`mt-0.5 block text-[9px] ${row.enrolledCount < 3 ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}>
-                                      {row.enrolledCount} sportiv{row.enrolledCount !== 1 ? 'i' : ''}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!athleteId) return;
+                                        setConfirmModal({
+                                          title: isDQ ? 'Anulează descalificarea' : 'Descalifică sportivul',
+                                          message: isDQ
+                                            ? `Anulezi descalificarea sportivului „${name}"?`
+                                            : `Descalifici sportivul „${name}"?`,
+                                          icon: '🚫',
+                                          color: isDQ ? 'orange' : 'red',
+                                          confirmLabel: isDQ ? 'Anulează descalificarea' : 'Descalifică',
+                                          onConfirm: async () => {
+                                            setBusy(true);
+                                            try {
+                                              await handleToggleDQ(cat.id, athleteId, isDQ);
+                                            } finally {
+                                              setBusy(false);
+                                              setConfirmModal(null);
+                                            }
+                                          },
+                                        });
+                                      }}
+                                      disabled={!athleteId}
+                                      className={`inline-flex h-6 shrink-0 items-center justify-center rounded border px-1.5 text-[10px] font-bold uppercase tracking-wide transition disabled:opacity-40 ${
+                                        isDQ
+                                          ? 'border-red-600 bg-red-500 text-white hover:bg-red-600'
+                                          : 'border-input bg-background text-muted-foreground hover:bg-muted'
+                                      }`}
+                                      title={isDQ ? 'Anulează descalificarea' : 'Descalifică sportivul'}
+                                    >DQ</button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleUnenroll(enrollId, name, cat.name, e)}
+                                      disabled={busy}
+                                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-destructive/30 bg-destructive/10 text-destructive transition hover:bg-destructive hover:text-destructive-foreground disabled:opacity-40"
+                                      title="Scoate sportivul din categorie"
+                                    ><X className="h-3.5 w-3.5" /></button>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                    <span
+                                      className="text-muted-foreground"
+                                      onDoubleClick={() => athleteId && setEditingCell({ categoryId: cat.id, athleteId, field: 'pre_weight_kg', value: preW.toString() })}
+                                    >
+                                      Greutate trimisă:{' '}
+                                      {isEditingPre ? (
+                                        <InlineInput
+                                          value={editingCell.value}
+                                          onChange={v => setEditingCell(prev => ({ ...prev, value: v }))}
+                                          onSave={handleSaveEdit}
+                                          onCancel={() => setEditingCell(null)}
+                                        />
+                                      ) : (
+                                        <span className="cursor-pointer rounded px-1 font-medium text-foreground hover:bg-blue-50" title="Dublu-click pentru a edita">{preW || '–'}</span>
+                                      )}
                                     </span>
-                                  </>
-                                )}
-                              </td>
-                            )}
-                            {/* NUME PRACTICANT */}
-                            <td className={`border border-border px-2 py-1 text-sm ${strongTopBorder} ${isDQ ? 'line-through text-red-400' : 'text-foreground'}`}>
-                              <button
-                                type="button"
-                                onClick={() => openAthleteDrawer(a)}
-                                className="block w-full truncate text-left text-blue-700 underline-offset-2 hover:underline"
-                              >
-                                {name}
-                                {club && name && <span className="text-muted-foreground ml-1">({club})</span>}
-                              </button>
-                            </td>
-                            {/* GREUTATE ÎNREGISTRATĂ */}
-                            <td className={`border border-border px-1 py-0.5 text-center text-xs text-foreground font-medium whitespace-nowrap ${strongTopBorder}`}
-                              onDoubleClick={() => athleteId && setEditingCell({ categoryId: row.cat.id, athleteId, field: 'pre_weight_kg', value: preW.toString() })}>
-                              {athleteId ? (
-                                isEditingPre ? (
-                                  <InlineInput
-                                    value={editingCell.value}
-                                    onChange={v => setEditingCell(prev => ({ ...prev, value: v }))}
-                                    onSave={handleSaveEdit}
-                                    onCancel={() => setEditingCell(null)}
-                                  />
-                                ) : (
-                                  <span className="cursor-pointer hover:bg-blue-50 px-1 rounded" title="Dublu-click pentru a edita">
-                                    {preW || '–'}
-                                  </span>
-                                )
-                              ) : null}
-                            </td>
-                            {/* GREUTATE ZI COMPETIȚIE */}
-                            <td className={`border border-border px-1 py-0.5 text-center text-xs font-medium whitespace-nowrap ${strongTopBorder}`}
-                              onDoubleClick={() => athleteId && setEditingCell({ categoryId: row.cat.id, athleteId, field: 'current_weight_kg', value: dayW.toString() })}>
-                              {athleteId ? (
-                                isEditingDay ? (
-                                  <InlineInput
-                                    value={editingCell.value}
-                                    onChange={v => setEditingCell(prev => ({ ...prev, value: v }))}
-                                    onSave={handleSaveEdit}
-                                    onCancel={() => setEditingCell(null)}
-                                  />
-                                ) : (
-                                  <WeightCell preW={preW} dayW={dayW}
-                                    onClick={() => athleteId && setEditingCell({ categoryId: row.cat.id, athleteId, field: 'current_weight_kg', value: dayW.toString() })}
-                                  />
-                                )
-                              ) : null}
-                            </td>
-                            {/* DQ */}
-                            <td className={`border border-border px-0.5 py-0.5 text-center ${strongTopBorder}`}>
-                              {athleteId && (
-                                <input
-                                  type="checkbox"
-                                  checked={isDQ}
-                                  onChange={() => handleToggleDQ(row.cat.id, athleteId, isDQ)}
-                                  className="w-3.5 h-3.5 accent-red-500 cursor-pointer"
-                                  title={isDQ ? 'Descalifică sportivul' : 'Marchează ca descalificat'}
-                                />
-                              )}
-                            </td>
-                            {/* MOTIV DQ */}
-                            <td className={`border border-border px-1 py-0.5 text-xs text-muted-foreground ${strongTopBorder}`}
-                              onDoubleClick={() => athleteId && isDQ && setEditingCell({ categoryId: row.cat.id, athleteId, field: 'disqualification_reason', value: dqReason })}>
-                              {athleteId && isDQ ? (
-                                isEditingReason ? (
-                                  <InlineInput
-                                    value={editingCell.value}
-                                    onChange={v => setEditingCell(prev => ({ ...prev, value: v }))}
-                                    onSave={handleSaveEdit}
-                                    onCancel={() => setEditingCell(null)}
-                                    wide
-                                  />
-                                ) : (
-                                  <span className="cursor-pointer hover:bg-muted px-1 rounded text-red-500" title="Dublu-click pentru a edita motivul">
-                                    {dqReason || '(click pt motiv)'}
-                                  </span>
-                                )
-                              ) : null}
-                            </td>
-                            {/* ACȚIUNI */}
-                            <td className={`w-[44px] border border-border px-0.5 py-0.5 text-center ${strongTopBorder}`}>
-                              {enrollId && (
-                                <button
-                                  onClick={(e) => handleUnenroll(enrollId, name, row.cat.name, e)}
-                                  disabled={busy}
-                                  className="inline-flex h-11 w-11 items-center justify-center border border-destructive/40 bg-destructive text-base font-black leading-none text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-40"
-                                  title="Scoate sportivul din categorie"
-                                >×</button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  </div>
-                  )}
+                                    <span
+                                      className="flex items-center gap-1 text-muted-foreground"
+                                      onDoubleClick={() => athleteId && !isWeightLocked && setEditingCell({ categoryId: cat.id, athleteId, field: 'current_weight_kg', value: dayW.toString() })}
+                                    >
+                                      Greutate confirmată:{' '}
+                                      {isEditingDay ? (
+                                        <InlineInput
+                                          value={editingCell.value}
+                                          onChange={v => setEditingCell(prev => ({ ...prev, value: v }))}
+                                          onSave={handleSaveEdit}
+                                          onCancel={() => setEditingCell(null)}
+                                        />
+                                      ) : isWeightLocked ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <WeightCell preW={preW} dayW={dayW} locked />
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleWeightLock(cat.id, athleteId, true)}
+                                            disabled={busy}
+                                            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-amber-600 transition hover:bg-amber-100 disabled:opacity-40"
+                                            title="Deblochează greutatea pentru corectare"
+                                          ><Lock className="h-3 w-3" /></button>
+                                        </span>
+                                      ) : (
+                                        <WeightCell preW={preW} dayW={dayW}
+                                          onClick={() => athleteId && setEditingCell({ categoryId: cat.id, athleteId, field: 'current_weight_kg', value: dayW.toString() })}
+                                        />
+                                      )}
+                                    </span>
+                                  </div>
+                                  {isDQ && (
+                                    <div
+                                      className="mt-1"
+                                      onDoubleClick={() => athleteId && setEditingCell({ categoryId: cat.id, athleteId, field: 'disqualification_reason', value: dqReason })}
+                                    >
+                                      {isEditingReason ? (
+                                        <InlineInput
+                                          value={editingCell.value}
+                                          onChange={v => setEditingCell(prev => ({ ...prev, value: v }))}
+                                          onSave={handleSaveEdit}
+                                          onCancel={() => setEditingCell(null)}
+                                          wide
+                                        />
+                                      ) : (
+                                        <span className="cursor-pointer rounded px-1 text-red-500 hover:bg-muted" title="Dublu-click pentru a edita motivul">{dqReason || '(click pt motiv DQ)'}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {exceedsCategory && (
+                                    <div className="mt-1 flex flex-col gap-0.5 rounded border border-amber-400 bg-amber-50 px-1 py-1">
+                                      <span className="text-[9px] font-semibold text-amber-700">Depășește categoria</span>
+                                      <select
+                                        value={dayTarget}
+                                        onChange={(event) => {
+                                          const nextValue = event.target.value;
+                                          setDayAssignTargets((prev) => ({ ...prev, [dayRowKey]: nextValue }));
+                                          setDayAssignManual((prev) => ({ ...prev, [dayRowKey]: true }));
+                                        }}
+                                        className="w-full rounded border border-amber-300 bg-white px-1 py-0.5 text-[10px]"
+                                      >
+                                        <option value="">Selectează categoria</option>
+                                        {dayReassignOptions.map((c) => (
+                                          <option key={`day-opt-${dayRowKey}-${c.id}`} value={c.id}>{c.name}</option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        type="button"
+                                        disabled={!dayTarget || busy}
+                                        onClick={() => {
+                                          const targetCat = categories.find((c) => c.id === Number(dayTarget));
+                                          const targetLabel = targetCat?.name || 'categoria selectată';
+                                          setConfirmModal({
+                                            title: 'Mută sportivul',
+                                            message: `Confirmi mutarea lui ${name || 'sportivul selectat'} la ${targetLabel}?`,
+                                            icon: '↔️',
+                                            color: 'orange',
+                                            confirmLabel: 'Mută',
+                                            onConfirm: async () => {
+                                              setBusy(true);
+                                              try {
+                                                await reassignDayRowToCategory({ cat, enrollment: entry }, athleteId, dayW, isWeightLocked, dayTarget);
+                                                setAssignNotice(`${name || 'Sportivul'} a fost mutat la ${targetLabel}.`);
+                                              } finally {
+                                                setBusy(false);
+                                                setConfirmModal(null);
+                                              }
+                                            },
+                                          });
+                                        }}
+                                        className="w-full rounded border border-amber-600 bg-amber-500 px-1 py-0.5 text-[10px] font-semibold text-white hover:bg-amber-600 disabled:opacity-40"
+                                        title="Mută sportivul la categoria selectată"
+                                      >Mută</button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
@@ -1344,7 +1650,11 @@ export default function LuptaPage() {
           athleteOptions = athleteOptions.filter((ath) => !ath.gender || ath.gender === selectedCategory.gender);
         }
 
-        const q = manualEnrollSearch.toLowerCase();
+        // Once an athlete is picked, the input displays their full label
+        // (name + club) rather than what was typed to find them - don't
+        // filter against that label if the dropdown is reopened, or it
+        // would match nothing and show an empty list.
+        const q = manualEnrollDraft.athleteId ? '' : manualEnrollSearch.toLowerCase();
         if (q) {
           athleteOptions = athleteOptions.filter((ath) => {
             const fullName = `${ath.last_name || ''} ${ath.first_name || ''}`.toLowerCase();
@@ -1360,15 +1670,18 @@ export default function LuptaPage() {
         });
 
         return (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onClick={() => setManualEnrollOpen(false)}>
-            <div className="w-full max-w-2xl overflow-hidden rounded border-2 border-border bg-card" onClick={(e) => e.stopPropagation()}>
-              <div className="border-b border-border bg-secondary px-4 py-3 text-sm font-bold text-foreground">Inscriere manuala sportiv in pre-inscriere</div>
-              <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
+          <Dialog open={manualEnrollOpen} onOpenChange={(open) => { if (!open) setManualEnrollOpen(false); }}>
+            <DialogContent fullScreen>
+              <DialogHeader><DialogTitle>Inscriere manuala sportiv in pre-inscriere</DialogTitle></DialogHeader>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Grupa</label>
+                  <Label className="mb-1 block text-xs font-semibold text-muted-foreground">Grupa</Label>
                   <select
                     value={manualEnrollDraft.groupId}
-                    onChange={(e) => setManualEnrollDraft((prev) => ({ ...prev, groupId: e.target.value, categoryId: '', athleteId: '' }))}
+                    onChange={(e) => {
+                      setManualEnrollDraft((prev) => ({ ...prev, groupId: e.target.value, categoryId: '', athleteId: '' }));
+                      setManualEnrollSearch('');
+                    }}
                     className="w-full rounded border border-input px-2 py-1.5 text-sm"
                   >
                     <option value="">Selecteaza grupa</option>
@@ -1378,10 +1691,13 @@ export default function LuptaPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Categorie</label>
+                  <Label className="mb-1 block text-xs font-semibold text-muted-foreground">Categorie</Label>
                   <select
                     value={manualEnrollDraft.categoryId}
-                    onChange={(e) => setManualEnrollDraft((prev) => ({ ...prev, categoryId: e.target.value, athleteId: '' }))}
+                    onChange={(e) => {
+                      setManualEnrollDraft((prev) => ({ ...prev, categoryId: e.target.value, athleteId: '' }));
+                      setManualEnrollSearch('');
+                    }}
                     className="w-full rounded border border-input px-2 py-1.5 text-sm"
                   >
                     <option value="">Selecteaza categoria</option>
@@ -1390,54 +1706,72 @@ export default function LuptaPage() {
                     ))}
                   </select>
                 </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Cauta sportiv (nume/club)</label>
-                  <input
+                <div className="relative md:col-span-2">
+                  <Label className="mb-1 block text-xs font-semibold text-muted-foreground">Sportiv (cauta dupa nume/club)</Label>
+                  <Input
                     type="text"
                     value={manualEnrollSearch}
-                    onChange={(e) => setManualEnrollSearch(e.target.value)}
+                    onChange={(e) => {
+                      setManualEnrollSearch(e.target.value);
+                      setManualEnrollDraft((prev) => ({ ...prev, athleteId: '' }));
+                      setManualEnrollDropdownOpen(true);
+                    }}
+                    onFocus={(e) => { setManualEnrollDropdownOpen(true); e.target.select(); }}
+                    onBlur={() => window.setTimeout(() => setManualEnrollDropdownOpen(false), 150)}
                     placeholder="Ex: Popescu / Club ..."
-                    className="w-full rounded border border-input px-2 py-1.5 text-sm"
+                    autoComplete="off"
                   />
+                  {manualEnrollDropdownOpen && (
+                    <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-input bg-card shadow-lg">
+                      {athleteOptions.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs italic text-muted-foreground">Niciun sportiv gasit.</div>
+                      ) : (
+                        athleteOptions.map((ath) => {
+                          const athLabel = `${ath.last_name} ${ath.first_name} - ${ath.club?.name || 'Fara club'}`;
+                          const isSelected = String(ath.id) === String(manualEnrollDraft.athleteId);
+                          return (
+                            <button
+                              key={`manual-ath-opt-${ath.id}`}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setManualEnrollDraft((prev) => ({ ...prev, athleteId: String(ath.id) }));
+                                setManualEnrollSearch(athLabel);
+                                setManualEnrollDropdownOpen(false);
+                              }}
+                              className={`block w-full px-2 py-1.5 text-left text-sm hover:bg-muted ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-foreground'}`}
+                            >
+                              {athLabel}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Sportiv</label>
-                  <select
-                    value={manualEnrollDraft.athleteId}
-                    onChange={(e) => setManualEnrollDraft((prev) => ({ ...prev, athleteId: e.target.value }))}
-                    className="w-full rounded border border-input px-2 py-1.5 text-sm"
-                  >
-                    <option value="">Selecteaza sportiv</option>
-                    {athleteOptions.map((ath) => (
-                      <option key={`manual-ath-${ath.id}`} value={ath.id}>{ath.last_name} {ath.first_name} - {ath.club?.name || 'Fara club'}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Greutate trimisa (optional)</label>
-                  <input
+                  <Label className="mb-1 block text-xs font-semibold text-muted-foreground">Greutate trimisa (optional)</Label>
+                  <Input
                     type="number"
                     step="0.1"
                     min="0"
                     value={manualEnrollDraft.weight}
                     onChange={(e) => setManualEnrollDraft((prev) => ({ ...prev, weight: e.target.value }))}
-                    className="w-full rounded border border-input px-2 py-1.5 text-sm"
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-end gap-2 border-t border-border bg-muted px-4 py-3">
-                <button type="button" onClick={() => setManualEnrollOpen(false)} className="rounded border border-input bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground">Renunta</button>
-                <button
-                  type="button"
+              <DialogFooter>
+                <Button size="sm" variant="outline" onClick={() => setManualEnrollOpen(false)}>Renunta</Button>
+                <Button
+                  size="sm"
                   disabled={!manualEnrollDraft.categoryId || !manualEnrollDraft.athleteId || busy}
                   onClick={async () => { await handleManualEnroll(); }}
-                  className="rounded border border-green-700 bg-green-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
                 >
                   Inscrie sportiv
-                </button>
-              </div>
-            </div>
-          </div>
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         );
       })()}
 
@@ -1624,12 +1958,12 @@ export default function LuptaPage() {
 
 
 /* ── Reusable table header cell ── */
-function TH({ children, small }) {
+function TH({ children, small, highlight }) {
   return (
     <th
-      className={`bg-muted border border-border px-1.5 py-1.5 text-center font-bold text-foreground ${
-        small ? 'text-[10px] whitespace-normal leading-tight' : 'text-xs whitespace-nowrap'
-      }`}
+      className={`bg-muted px-1.5 py-1.5 text-center font-bold text-foreground ${
+        highlight ? 'border-y border-border border-l-2 border-r-2 border-l-amber-500 border-r-amber-500' : 'border border-border'
+      } ${small ? 'text-[10px] whitespace-normal leading-tight' : 'text-xs whitespace-nowrap'}`}
     >
       {children}
     </th>
@@ -1655,10 +1989,12 @@ function InlineInput({ value, onChange, onSave, onCancel, wide }) {
 }
 
 /* ── Weight cell with color coding ── */
-function WeightCell({ preW, dayW, onClick }) {
+function WeightCell({ preW, dayW, onClick, locked }) {
+  const interactionClass = locked ? '' : 'cursor-pointer hover:bg-blue-50';
+  const title = locked ? 'Greutate blocată' : 'Dublu-click pentru a edita';
   if (!dayW && dayW !== 0) {
     return (
-      <span className="cursor-pointer hover:bg-blue-50 px-1 rounded text-muted-foreground" title="Dublu-click pentru a edita" onClick={onClick}>
+      <span className={`px-1 rounded text-muted-foreground ${interactionClass}`} title={title} onClick={locked ? undefined : onClick}>
         –
       </span>
     );
@@ -1672,7 +2008,7 @@ function WeightCell({ preW, dayW, onClick }) {
     else if (pct > 2) color = 'text-amber-600';
   }
   return (
-    <span className={`cursor-pointer hover:bg-blue-50 px-1 rounded ${color}`} title="Dublu-click pentru a edita" onClick={onClick}>
+    <span className={`px-1 rounded ${color} ${interactionClass}`} title={title} onClick={locked ? undefined : onClick}>
       {dayW}
     </span>
   );

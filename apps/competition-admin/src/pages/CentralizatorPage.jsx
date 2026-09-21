@@ -1,13 +1,55 @@
-import React, { useContext } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
+import { ArrowUp, GripVertical, Plus, X } from 'lucide-react';
+import { api } from '@shared';
 import { CentralizatorContext, GENDER_BG, GENDER_LABELS, TYPE_LABELS } from './CategoriesLayout';
-import { Button } from '../components/ui';
+import { Button, Input } from '../components/ui';
+import { buildFullCompetitionWorkbook, downloadWorkbook } from '../lib/fullExport';
+
+// The shared GENDER_BG tokens are translucent (nice over a card background),
+// but this table's header row is sticky - a translucent background lets
+// scrolled-under body rows bleed through, so it uses its own opaque tint.
+const GENDER_HEADER_BG = { male: 'bg-blue-100 dark:bg-blue-950', female: 'bg-pink-100 dark:bg-pink-950', mixt: 'bg-amber-100 dark:bg-amber-950' };
 
 export default function CentralizatorPage() {
   const ctx = useContext(CentralizatorContext);
+
+  // Independent, packed list per (club, category) instead of one shared row
+  // axis per club across every column - an athlete enrolled in only one
+  // category no longer leaves a blank row in every other column; every
+  // column's entries start at row 0 regardless of what any other column
+  // looks like. Also covers team enrollments, which the old shared-row
+  // build (clubRows/athleteMap, athlete-only) never surfaced in the grid.
+  const enrollmentsByClubAndCategory = useMemo(() => {
+    const map = {};
+    for (const cat of ctx?.categories || []) {
+      const isTeam = cat.type === 'team' || cat.type === 'teams';
+      const entries = isTeam ? (cat.enrolled_teams || []) : (cat.enrolled_athletes || []);
+      for (const entry of entries) {
+        let clubId, name;
+        if (isTeam) {
+          const firstMember = entry.members?.[0];
+          clubId = firstMember?.club?.id ?? 0;
+          name = entry.team_name || (entry.members || []).map((m) => m.name).filter(Boolean).join(' & ') || 'Echipă';
+        } else {
+          const a = entry.athlete_details;
+          clubId = a?.club?.id ?? 0;
+          name = `${a?.last_name || ''} ${a?.first_name || ''}`.trim();
+        }
+        if (!map[clubId]) map[clubId] = {};
+        if (!map[clubId][cat.id]) map[clubId][cat.id] = [];
+        map[clubId][cat.id].push({ enrollmentId: entry.id, name, isTeam });
+      }
+    }
+    return map;
+  }, [ctx?.categories]);
+
+  const [exportingComplet, setExportingComplet] = useState(false);
+
   if (!ctx) return null;
 
   const {
-    columnStructure, allCols, clubRows, countPerCat, groups,
+    columnStructure, allCols, clubRows, countPerCat, groups, categories,
+    eventId, eventData, fightWeights,
     dragType, dragId, dragOverId,
     editingGroupId, editingGroupName, setEditingGroupId, setEditingGroupName,
     editingCatId, editingCatName, setEditingCatId, setEditingCatName,
@@ -19,7 +61,7 @@ export default function CentralizatorPage() {
     handleCatDragStart, handleCatDragOver, handleCatDrop, handleDragEnd,
     handleClubDragStart, handleClubDragOver, handleClubDrop,
     handleCellClick, handleDeleteGroup, handleDeleteCat,
-    handleUnenroll,
+    handleUnenroll, handleTeamUnenroll,
     isEditLocked,
     canUnlockEdit,
     generatingDefaults,
@@ -27,6 +69,28 @@ export default function CentralizatorPage() {
     handleGenerateStandardStructure,
     dismissStandardStructureBanner,
   } = ctx;
+
+  const handleExportComplet = async () => {
+    setExportingComplet(true);
+    try {
+      const { data } = await api.get('/matches/', { params: { event_id: eventId } });
+      const matches = Array.isArray(data) ? data : (data.results || []);
+      const wb = await buildFullCompetitionWorkbook({
+        eventTitle: eventData?.name || eventData?.title || 'Competiție',
+        groups,
+        categories,
+        fightWeights,
+        matches,
+      });
+      const safeTitle = (eventData?.name || eventData?.title || 'Competitie').replace(/[\\/:*?"<>|]/g, '_').substring(0, 60);
+      await downloadWorkbook(wb, `Export_complet_${safeTitle}.xlsx`);
+    } catch (err) {
+      console.error('Export complet failed', err);
+      window.alert('Exportul complet a eșuat: ' + (err.message || 'eroare necunoscută'));
+    } finally {
+      setExportingComplet(false);
+    }
+  };
 
   // Total colSpan for the empty-state message
   const totalColSpan = 1
@@ -74,6 +138,17 @@ export default function CentralizatorPage() {
           </div>
         </div>
       )}
+      <div className="flex items-center justify-end border-b border-border bg-card px-3 py-2 md:px-5 lg:px-7 xl:px-8 2xl:px-10">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleExportComplet}
+          disabled={exportingComplet}
+        >
+          {exportingComplet ? 'Se exportă...' : '⬇ Export complet (Excel)'}
+        </Button>
+      </div>
+
       <div className={`space-y-4 p-3 md:hidden ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
         {columnStructure.length === 0 ? (
           <div className="rounded-md border-2 border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground italic">
@@ -144,14 +219,14 @@ export default function CentralizatorPage() {
         )}
       </div>
 
-      <div className="hidden p-5 md:block lg:p-7 xl:p-8 2xl:p-10">
+      <div className="hidden p-3 md:block lg:p-4 xl:p-5">
       <div className="overflow-auto rounded-md border-2 border-border bg-card">
-      <table className={`border-collapse text-sm w-max min-w-full ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
+      <table className={`border-collapse text-xs w-max min-w-full ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
 
         {/* ═══ ROW 1: Group headers + "+" add-group column ═══ */}
         <thead className="sticky top-0 z-20">
           <tr>
-            <th className="sticky left-0 z-40 bg-sidebar text-sidebar-foreground border border-border px-4 py-4 text-left font-black text-sm uppercase tracking-wide min-w-[170px] lg:min-w-[220px]"
+            <th className="sticky left-0 z-40 min-w-[130px] border border-border bg-sidebar px-2 py-1.5 text-left text-[11px] font-black uppercase tracking-wide text-sidebar-foreground lg:min-w-[170px]"
               rowSpan={3}>
               CLUB
             </th>
@@ -162,9 +237,9 @@ export default function CentralizatorPage() {
                   <div className="absolute inset-y-0 -left-2 -right-2 z-30 flex items-center justify-center">
                     <button
                       onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: ci }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
-                      className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-md border border-primary bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-1 transition-all hover:bg-primary/90 whitespace-nowrap"
+                      className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-md border border-primary bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-1.5 transition-all hover:bg-primary/90 whitespace-nowrap shadow-sm"
                       title="Adaugă grupă aici"
-                    ><span className="inline-flex h-4 w-4 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-[10px] leading-none">+</span> Adaugă grupă</button>
+                    ><Plus className="h-3.5 w-3.5" /> Adaugă grupă</button>
                   </div>
                 </th>
 
@@ -175,19 +250,19 @@ export default function CentralizatorPage() {
                   onDragOver={(e) => handleGroupDragOver(e, col.group.id)}
                   onDrop={(e) => handleGroupDrop(e, col.group.id)}
                   onDragEnd={handleDragEnd}
-                  className={`bg-sidebar-accent text-sidebar-accent-foreground border border-border px-4 py-3 text-center font-black text-sm whitespace-nowrap relative cursor-grab active:cursor-grabbing transition-all ${
+                  className={`bg-sidebar-accent text-sidebar-accent-foreground border border-border px-2 py-1 text-center font-bold text-xs whitespace-nowrap relative cursor-grab active:cursor-grabbing transition-all ${
                     dragType === 'group' && dragId === col.group.id ? 'opacity-40 scale-95' : ''
                   } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-blue-400 ring-inset' : ''}`}>
-                  <div className="flex items-center justify-center gap-1 sm:gap-1.5 flex-wrap">
-                    <span className="opacity-40 text-[10px] select-none">⠿</span>
+                  <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5">
+                    <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-40" aria-hidden="true" />
                     {editingGroupId === col.group.id ? (
-                      <input
+                      <Input
                         value={editingGroupName}
                         onChange={(e) => setEditingGroupName(e.target.value)}
                         onBlur={() => handleGroupRenameSubmit(col.group)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleGroupRenameSubmit(col.group); if (e.key === 'Escape') setEditingGroupId(null); }}
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-card border border-border rounded px-1 py-0.5 text-foreground text-xs font-bold text-center w-28 outline-none focus:bg-accent"
+                        className="h-6 w-24 px-1.5 py-0.5 text-center text-xs font-semibold"
                         autoFocus
                       />
                     ) : (
@@ -216,26 +291,26 @@ export default function CentralizatorPage() {
                     {/* Allow younger toggle */}
                     <button
                       onClick={(e) => { e.stopPropagation(); handleToggleAllowYounger(col.group); }}
-                      className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[8px] font-medium transition ${
+                      className={`inline-flex h-5 items-center gap-0.5 rounded-full px-1.5 text-[10px] font-medium transition ${
                         col.group.allow_younger
                           ? 'bg-amber-400/40 text-amber-900 hover:bg-amber-400/55'
                           : 'bg-card/70 text-muted-foreground hover:bg-card hover:text-foreground'
                       }`}
                       title={col.group.allow_younger ? 'Acceptă vârste mai mici (activ) — click pentru a dezactiva' : 'Permite sportivi mai tineri să urce la categorie superioară'}
                     >
-                      <span>⬆</span>
+                      <ArrowUp className="h-3 w-3" />
                       <span className="hidden sm:inline">{col.group.allow_younger ? 'Tineri ✓' : 'Tineri'}</span>
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setCatModal({ groupId: col.group.id }); setCatForm({ name: '', category_type: 'solo', gender: 'male' }); }}
-                      className="inline-flex items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[9px] font-semibold text-foreground transition hover:bg-card"
+                      className="inline-flex h-5 items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 text-[10px] font-semibold text-foreground transition hover:bg-card"
                       title="Adaugă categorie"
-                    ><span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded border border-border bg-accent text-[10px] leading-none">+</span><span className="hidden sm:inline">Categorie</span></button>
+                    ><Plus className="h-3 w-3" /><span className="hidden sm:inline">Categorie</span></button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteGroup(col.group.id); }}
-                      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-card/80 hover:bg-destructive/80 text-muted-foreground hover:text-destructive-foreground text-xs font-bold transition"
+                      className="inline-flex items-center justify-center w-5 h-5 rounded-full text-muted-foreground transition hover:bg-destructive hover:text-destructive-foreground"
                       title="Șterge grupa"
-                    >×</button>
+                    ><X className="h-3.5 w-3.5" /></button>
                   </div>
                 </th>
               </React.Fragment>
@@ -246,9 +321,9 @@ export default function CentralizatorPage() {
               <div className="absolute inset-y-0 -left-2 right-0 z-30 flex items-center justify-center" style={{ minWidth: '24px' }}>
                 <button
                   onClick={(e) => { e.stopPropagation(); setGroupModal({ atIndex: columnStructure.length }); setGroupForm({ name: '', birth_date_start: '', birth_date_end: '', allow_younger: false }); }}
-                  className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-md border border-primary bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-1 transition-all hover:bg-primary/90 whitespace-nowrap"
+                  className="opacity-0 group-hover/insert:opacity-100 inline-flex items-center gap-1 rounded-md border border-primary bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-1.5 transition-all hover:bg-primary/90 whitespace-nowrap shadow-sm"
                   title="Adaugă grupă"
-                ><span className="inline-flex h-4 w-4 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-[10px] leading-none">+</span> Adaugă grupă</button>
+                ><Plus className="h-3.5 w-3.5" /> Adaugă grupă</button>
               </div>
             </th>
           </tr>
@@ -257,12 +332,12 @@ export default function CentralizatorPage() {
           <tr>
             {columnStructure.map(col =>
               col.genderSections.length === 0
-                ? <th key={`g-empty-${col.group.id}`} className="bg-muted border border-border px-1 py-1 text-center text-xs text-muted-foreground italic">
+                ? <th key={`g-empty-${col.group.id}`} className="bg-muted border border-border px-1 py-0.5 text-center text-[10px] text-muted-foreground italic">
                     Fără categorii
                   </th>
                 : col.genderSections.map(gs => (
                     <th key={`${col.group.id}-${gs.gender}`} colSpan={gs.colSpan}
-                      className={`${GENDER_BG[gs.gender] || 'bg-muted'} border border-border px-2 py-2 text-center font-bold text-sm uppercase tracking-wide text-foreground`}>
+                      className={`${GENDER_HEADER_BG[gs.gender] || 'bg-muted'} border border-border px-1.5 py-1 text-center font-bold text-[11px] uppercase tracking-wide text-foreground`}>
                       {GENDER_LABELS[gs.gender] || gs.gender}
                     </th>
                   ))
@@ -273,7 +348,7 @@ export default function CentralizatorPage() {
           <tr>
             {allCols.length === 0 && columnStructure.length > 0 ? (
               columnStructure.map(col => (
-                <th key={`empty-${col.group.id}`} className="bg-muted border border-border px-1 py-1 text-center text-xs text-muted-foreground italic min-w-[80px]">
+                <th key={`empty-${col.group.id}`} className="bg-muted border border-border px-1 py-0.5 text-center text-[10px] text-muted-foreground italic min-w-[70px]">
                   click + sus
                 </th>
               ))
@@ -285,20 +360,20 @@ export default function CentralizatorPage() {
                   onDragOver={(e) => handleCatDragOver(e, cat.id)}
                   onDrop={(e) => handleCatDrop(e, cat.id)}
                   onDragEnd={handleDragEnd}
-                  className={`bg-muted border border-border px-3 py-3 text-center font-bold text-sm text-foreground min-w-[150px] group/cat cursor-grab active:cursor-grabbing transition-all ${
+                  className={`bg-muted border border-border px-1.5 py-1 text-center font-semibold text-[11px] text-foreground min-w-[110px] group/cat cursor-grab active:cursor-grabbing transition-all ${
                     dragType === 'category' && dragId === cat.id ? 'opacity-40 scale-95' : ''
                   } ${dragType === 'category' && dragOverId === cat.id ? 'ring-2 ring-blue-400 ring-inset bg-blue-50' : ''}`}
                   title={`${cat.name} (${TYPE_LABELS[cat.type] || cat.type}) — trage pentru a reordona`}
                 >
                   <div className="leading-tight whitespace-normal relative">
                     {editingCatId === cat.id ? (
-                      <input
+                      <Input
                         value={editingCatName}
                         onChange={(e) => setEditingCatName(e.target.value)}
                         onBlur={() => handleCatRenameSubmit(cat)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleCatRenameSubmit(cat); if (e.key === 'Escape') setEditingCatId(null); }}
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-card border border-input rounded px-1 py-0.5 text-[10px] text-foreground font-medium text-center w-full outline-none focus:border-ring"
+                        className="h-6 w-full px-1 py-0.5 text-center text-[10px] font-medium"
                         autoFocus
                       />
                     ) : (
@@ -308,8 +383,8 @@ export default function CentralizatorPage() {
                       </span>
                     )}
                     <button onClick={() => handleDeleteCat(cat.id)} disabled={busy}
-                      className="absolute -top-2 -right-2 hidden group-hover/cat:inline-flex items-center justify-center w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold leading-none hover:bg-destructive/90"
-                      title="Șterge categoria">×</button>
+                      className="absolute -top-1.5 -right-1.5 hidden group-hover/cat:inline-flex items-center justify-center w-4 h-4 rounded-full bg-destructive text-destructive-foreground transition hover:bg-destructive/90"
+                      title="Șterge categoria"><X className="h-2.5 w-2.5" /></button>
                   </div>
                 </th>
               ))
@@ -317,11 +392,13 @@ export default function CentralizatorPage() {
           </tr>
         </thead>
 
-        {/* ═══ BODY: One row per athlete, grouped by club ═══ */}
+        {/* ═══ BODY: one pinned "add" row per club, then packed enrollment
+             rows per category — no more blank rows chasing gaps between
+             an athlete's own row and other columns' entries ═══ */}
         <tbody>
           {clubRows.length === 0 ? (
             <tr>
-              <td colSpan={totalColSpan} className="px-4 py-12 text-center text-sm text-muted-foreground italic">
+              <td colSpan={totalColSpan} className="px-4 py-10 text-center text-xs text-muted-foreground italic">
                 {groups.length === 0
                   ? <><span className="text-2xl block mb-2">📋</span>Treci cu mouse-ul între coloane pentru a adăuga prima grupă de vârstă.</>
                   : allCols.length === 0
@@ -330,119 +407,48 @@ export default function CentralizatorPage() {
               </td>
             </tr>
           ) : (
-            clubRows.map(({ clubId, club, athletes }) => {
-              const rowCount = Math.max(athletes.length, 1);
+            clubRows.map(({ clubId, club }) => {
+              const perCat = enrollmentsByClubAndCategory[clubId] || {};
+              const maxCount = allCols.reduce((max, cat) => Math.max(max, (perCat[cat.id] || []).length), 0);
               const isDraggedClub = dragType === 'club' && dragId === clubId;
               const isDragOverClub = dragType === 'club' && dragOverId === clubId;
-              const firstAvailableAthleteRowByCategory = new Map();
-              allCols.forEach((cat) => {
-                const firstIndex = athletes.findIndex((ath) => !ath.enrollments?.[cat.id]);
-                firstAvailableAthleteRowByCategory.set(cat.id, firstIndex);
-              });
-              return athletes.length === 0 ? (
-                /* Club with no enrolled athletes — single empty row */
-                <tr key={`club-${clubId}`}
-                  className={`border-t-2 border-border hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
-                >
-                  <td className="sticky left-0 z-10 bg-card border border-border px-4 py-3 font-bold text-sm text-foreground align-middle cursor-grab active:cursor-grabbing select-none"
-                    draggable
-                    onDragStart={(e) => handleClubDragStart(e, clubId)}
-                    onDragOver={(e) => handleClubDragOver(e, clubId)}
-                    onDrop={(e) => handleClubDrop(e, clubId)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="opacity-40 text-[10px]">⠿</span>
-                      <span className="truncate">{club}</span>
-                    </div>
-                  </td>
-                  {columnStructure.map(col => (
-                    <React.Fragment key={`grp-${col.group.id}`}>
-                      <td className="p-0 w-0 border-none"></td>
-                      {col.cats.length === 0 ? (
-                        <td className="border border-border/60 text-muted-foreground/40"></td>
-                      ) : col.cats.map(cat => {
-                        const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
-                        return (
-                          <td key={cat.id}
-                            onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                            className={`border border-border/60 px-2 py-2 text-center cursor-pointer transition-colors group/cell ${
-                              isPickerOpen ? 'bg-green-50 ring-2 ring-green-400 ring-inset' : 'hover:bg-green-50'
-                            }`}
-                          >
-                            <span className="mx-auto flex max-w-full items-center justify-center gap-2 rounded-md bg-primary px-2 py-1 text-[10px] font-medium leading-tight text-primary-foreground">
-                              <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-[10px] leading-none">+</span>
-                              <span className="hidden lg:inline">{isTeamCategory(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv'}</span>
-                              <span className="lg:hidden">Adaugă</span>
-                            </span>
-                          </td>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
-                  <td className="border border-border/40"></td>
-                </tr>
-              ) : (
+
+              return (
                 <React.Fragment key={`club-${clubId}`}>
-                {athletes.map((ath, athIdx) => (
-                  <tr key={ath.id}
-                    className={`${athIdx === 0 ? 'border-t-2 border-border' : ''} hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub && athIdx === 0 ? 'ring-t-2 ring-blue-400' : ''}`}
-                  >
-                    {athIdx === 0 && (
-                      <td className="sticky left-0 z-10 bg-card border border-border px-4 py-4 font-bold text-sm text-foreground align-top cursor-grab active:cursor-grabbing select-none"
-                        rowSpan={rowCount}
-                        draggable
-                        onDragStart={(e) => handleClubDragStart(e, clubId)}
-                        onDragOver={(e) => handleClubDragOver(e, clubId)}
-                        onDrop={(e) => handleClubDrop(e, clubId)}
-                        onDragEnd={handleDragEnd}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span className="opacity-40 text-[10px]">⠿</span>
-                          <span className="truncate">{club}</span>
-                        </div>
-                      </td>
-                    )}
+                  <tr className={`border-t-2 border-border hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''} ${isDragOverClub ? 'ring-2 ring-blue-400 ring-inset' : ''}`}>
+                    <td className="sticky left-0 z-10 bg-card border border-border px-2 py-1 align-top font-bold text-xs text-foreground cursor-grab active:cursor-grabbing select-none"
+                      rowSpan={maxCount + 1}
+                      draggable
+                      onDragStart={(e) => handleClubDragStart(e, clubId)}
+                      onDragOver={(e) => handleClubDragOver(e, clubId)}
+                      onDrop={(e) => handleClubDrop(e, clubId)}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-40" aria-hidden="true" />
+                        <span className="truncate">{club}</span>
+                      </div>
+                    </td>
                     {columnStructure.map(col => (
                       <React.Fragment key={`grp-${col.group.id}`}>
                         <td className="p-0 w-0 border-none"></td>
                         {col.cats.length === 0 ? (
                           <td className="border border-border/60 text-muted-foreground/40"></td>
                         ) : col.cats.map(cat => {
-                          const enrollment = ath.enrollments[cat.id];
                           const isPickerOpen = enrollPickerCell?.clubId === clubId && enrollPickerCell?.catId === cat.id;
-                          const firstAvailableRowIndex = firstAvailableAthleteRowByCategory.get(cat.id);
-                          const showAddButton = !enrollment && firstAvailableRowIndex === athIdx;
                           return (
                             <td key={cat.id}
-                              onClick={(e) => handleCellClick(clubId, cat.id, e)}
-                              className={`border border-border/60 px-2 py-2 text-center cursor-pointer transition-colors group/cell ${
-                                isPickerOpen
-                                  ? 'bg-green-50 ring-2 ring-green-400 ring-inset'
-                                  : enrollment ? 'bg-green-50 text-foreground hover:bg-green-100' : 'hover:bg-green-50'
-                              }`}
+                              className={`border border-border/60 p-0.5 text-center transition-colors ${isPickerOpen ? 'bg-green-50 ring-2 ring-green-400 ring-inset' : ''}`}
                             >
-                              {enrollment ? (
-                                  <span className="block relative" title={ath.name}>
-                                    <span className="flex items-center justify-between gap-2">
-                                      <span className="min-w-0 truncate font-medium leading-tight">{ath.name}</span>
-                                      <button
-                                        onClick={(e) => handleUnenroll(enrollment.id, ath.name, cat.name, e)}
-                                        disabled={busy}
-                                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center border border-destructive bg-destructive text-base font-black leading-none text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-40"
-                                        title="Scoate sportivul din categorie"
-                                      >×</button>
-                                    </span>
-                                </span>
-                              ) : (
-                                showAddButton ? (
-                                  <span className="mx-auto flex max-w-full items-center justify-center gap-2 rounded-md bg-primary px-2 py-1 text-[10px] font-medium leading-tight text-primary-foreground">
-                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-primary-foreground/40 bg-primary-foreground/15 text-[10px] leading-none">+</span>
-                                    <span className="hidden xl:inline">{isTeamCategory(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv'}</span>
-                                    <span className="xl:hidden">Adaugă</span>
-                                  </span>
-                                ) : null
-                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => handleCellClick(clubId, cat.id, e)}
+                                className="flex w-full items-center justify-center gap-1 rounded-md bg-primary px-1.5 py-1 text-[11px] font-medium leading-tight text-primary-foreground transition-colors hover:bg-primary/90"
+                              >
+                                <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                <span className="hidden lg:inline truncate">{isTeamCategory(cat.type) ? 'Adaugă echipă' : 'Adaugă sportiv'}</span>
+                                <span className="lg:hidden">Adaugă</span>
+                              </button>
                             </td>
                           );
                         })}
@@ -450,7 +456,38 @@ export default function CentralizatorPage() {
                     ))}
                     <td className="border border-border/40"></td>
                   </tr>
-                ))}
+
+                  {Array.from({ length: maxCount }).map((_, rowIdx) => (
+                    <tr key={rowIdx} className={`hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''}`}>
+                      {columnStructure.map(col => (
+                        <React.Fragment key={`grp-${col.group.id}`}>
+                          <td className="p-0 w-0 border-none"></td>
+                          {col.cats.length === 0 ? (
+                            <td className="border border-border/60 text-muted-foreground/40"></td>
+                          ) : col.cats.map(cat => {
+                            const entry = (perCat[cat.id] || [])[rowIdx];
+                            if (!entry) return <td key={cat.id} className="border border-border/60"></td>;
+                            return (
+                              <td key={cat.id} title={entry.name} className="border border-border/60 bg-green-50 px-1.5 py-1 text-center text-foreground">
+                                <span className="flex items-center justify-between gap-1">
+                                  <span className="min-w-0 truncate text-left font-medium leading-tight">{entry.name}</span>
+                                  <button
+                                    onClick={(e) => entry.isTeam
+                                      ? handleTeamUnenroll(entry.enrollmentId, entry.name, cat.name, e)
+                                      : handleUnenroll(entry.enrollmentId, entry.name, cat.name, e)}
+                                    disabled={busy}
+                                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-destructive bg-destructive text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-40"
+                                    title={entry.isTeam ? 'Scoate echipa din categorie' : 'Scoate sportivul din categorie'}
+                                  ><X className="h-3 w-3" /></button>
+                                </span>
+                              </td>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                      <td className="border border-border/40"></td>
+                    </tr>
+                  ))}
                 </React.Fragment>
               );
             })
@@ -461,8 +498,8 @@ export default function CentralizatorPage() {
         {allCols.length > 0 && (
           <tfoot>
             <tr className="bg-muted border-t-2 border-border">
-              <td className="sticky left-0 z-10 bg-muted border border-border px-4 py-3 font-bold text-sm text-foreground">
-                Număr participanți
+              <td className="sticky left-0 z-10 bg-muted border border-border px-2 py-1.5 font-bold text-xs text-foreground">
+                Nr. participanți
               </td>
               {columnStructure.map(col => (
                 <React.Fragment key={`f-${col.group.id}`}>
@@ -470,7 +507,7 @@ export default function CentralizatorPage() {
                   {col.cats.length === 0 ? (
                     <td className="border border-border bg-muted"></td>
                   ) : col.cats.map(cat => (
-                    <td key={cat.id} className="border border-border px-2 py-3 text-center font-bold text-base text-foreground">
+                    <td key={cat.id} className="border border-border px-1.5 py-1.5 text-center font-bold text-xs text-foreground">
                       {countPerCat[cat.id] || 0}
                     </td>
                   ))}

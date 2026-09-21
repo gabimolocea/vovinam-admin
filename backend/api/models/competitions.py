@@ -465,6 +465,7 @@ class FightAthleteWeight(models.Model):
     is_disqualified = models.BooleanField(_('Descalificat'), default=False, help_text=_('Bifați dacă sportivul este descalificat din cauza greutății.'))
     disqualification_reason = models.CharField(_('Motiv descalificare'), max_length=255, blank=True, help_text=_('Motivul descalificării.'))
     place = models.PositiveSmallIntegerField(_('Loc'), choices=PLACE_CHOICES, null=True, blank=True, help_text=_('Locul obținut.'))
+    is_weight_locked = models.BooleanField(_('Greutate blocată'), default=False, help_text=_('Blocată automat după confirmarea greutății la cântar, pentru a preveni modificări accidentale. Poate fi deblocată manual pentru o corecție.'))
     recorded_at = models.DateTimeField(_('Înregistrat la'), auto_now=True)
 
     class Meta:

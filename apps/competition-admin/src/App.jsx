@@ -5,7 +5,6 @@ import LoginPage from '@shared/components/LoginPage';
 import { Spinner } from './components/ui';
 import Layout from './components/Layout';
 
-const PortalPage = lazy(() => import('./pages/PortalPage'));
 const CompetitionList = lazy(() => import('./pages/CompetitionList'));
 const CompetitionForm = lazy(() => import('./pages/CompetitionForm'));
 const CreateAthlete = lazy(() => import('./pages/CreateAthlete'));
@@ -54,7 +53,7 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<PortalPage />} />
+        <Route index element={<Navigate to="/competitions" replace />} />
         <Route path="competitions" element={<CompetitionList />} />
         <Route path="competitions/new" element={<CompetitionForm />} />
         <Route path="athletes/new" element={<CreateAthlete />} />

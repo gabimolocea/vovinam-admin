@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import apiClient, { competitionAPI, diplomaTemplateAPI } from '@shared/lib/api';
 import {
-  Button, Card, Checkbox, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner,
+  Button, Card, Checkbox, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select,
+  SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner,
 } from '../components/ui';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -58,6 +59,7 @@ export default function DiplomaConfiguratorPage() {
   const [replacementPdfFile, setReplacementPdfFile] = useState(null);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [message, setMessage] = useState('');
+  const [confirmModal, setConfirmModal] = useState(null);
   const [uploadForm, setUploadForm] = useState({
     title: '',
     template_kind: 'first_place',
@@ -370,26 +372,36 @@ export default function DiplomaConfiguratorPage() {
     };
   }, [selectedTemplate, replacementPdfFile, showTemplateSelector]);
 
-  const handleDeleteTemplateForId = async (templateId) => {
+  const handleDeleteTemplateForId = (templateId) => {
     const templateToDelete = templates.find((template) => template.id === templateId);
-    if (!templateToDelete || !window.confirm('Ștergi acest șablon de diplomă?')) return;
-    setSaving(true);
-    setMessage('');
-    try {
-      await diplomaTemplateAPI.delete(templateToDelete.id);
-      const remaining = templates.filter((template) => template.id !== templateToDelete.id);
-      setTemplates(remaining);
-      if (selectedId === templateToDelete.id) {
-        setSelectedId(remaining[0]?.id || null);
-        setSelectedPlacementId(null);
-      }
-      setShowTemplatePicker(!remaining.length || selectedId === templateToDelete.id);
-      setMessage('Șablonul de diplomă a fost șters.');
-    } catch (error) {
-      setMessage(error.response?.data?.detail || 'Ștergerea șablonului a eșuat.');
-    } finally {
-      setSaving(false);
-    }
+    if (!templateToDelete) return;
+    setConfirmModal({
+      title: 'Șterge șablonul',
+      message: 'Ștergi acest șablon de diplomă?',
+      icon: '🗑️',
+      color: 'red',
+      confirmLabel: 'Șterge',
+      onConfirm: async () => {
+        setSaving(true);
+        setMessage('');
+        try {
+          await diplomaTemplateAPI.delete(templateToDelete.id);
+          const remaining = templates.filter((template) => template.id !== templateToDelete.id);
+          setTemplates(remaining);
+          if (selectedId === templateToDelete.id) {
+            setSelectedId(remaining[0]?.id || null);
+            setSelectedPlacementId(null);
+          }
+          setShowTemplatePicker(!remaining.length || selectedId === templateToDelete.id);
+          setMessage('Șablonul de diplomă a fost șters.');
+        } catch (error) {
+          setMessage(error.response?.data?.detail || 'Ștergerea șablonului a eșuat.');
+        } finally {
+          setSaving(false);
+          setConfirmModal(null);
+        }
+      },
+    });
   };
 
   const handleDeleteTemplate = async () => {
@@ -919,6 +931,33 @@ export default function DiplomaConfiguratorPage() {
           </>
         )}
       </div>
+
+      <Dialog open={!!confirmModal} onOpenChange={(open) => { if (!open) setConfirmModal(null); }}>
+        <DialogContent className="max-w-md">
+          {confirmModal && (
+            <>
+              <DialogHeader><DialogTitle>{confirmModal.title}</DialogTitle></DialogHeader>
+              <div>
+                <p className="text-sm leading-relaxed text-foreground">{confirmModal.message}</p>
+                {confirmModal.detail && (
+                  <p className="mt-3 max-h-24 overflow-y-auto rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                    {confirmModal.detail}
+                  </p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setConfirmModal(null)}>Anulează</Button>
+                <Button
+                  onClick={confirmModal.onConfirm}
+                  disabled={saving}
+                  variant="destructive"
+                  className={confirmModal.color === 'orange' ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : ''}
+                >{confirmModal.confirmLabel || 'Confirmă'}</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

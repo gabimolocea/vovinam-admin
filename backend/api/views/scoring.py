@@ -392,7 +392,7 @@ class CategoryRefereeScoreEventViewSet(viewsets.ViewSet):
 
     def list(self, request):
         queryset = CategoryRefereeScoreEvent.objects.select_related(
-            'athlete_score__athlete', 'athlete_score__category', 'referee', 'recording_session'
+            'athlete_score__athlete', 'athlete_score__category', 'referee', 'recording_session', 'created_by'
         )
 
         athlete_score_id = request.query_params.get('athlete_score')

@@ -1,4 +1,5 @@
 import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Wifi, WifiOff } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -9,7 +10,7 @@ import {
   matchRefereeAssignmentAPI, groupAPI, categoryAPI, enrollmentAPI,
   competitionRefereeAPI, refereePresenceAPI, recordingAPI, scoreTimelineAPI,
 } from '@shared/lib/api';
-import { formatGroupBadgeLabel } from '../components/ui';
+import { formatGroupBadgeLabel, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '../components/ui';
 import { GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 
@@ -117,8 +118,10 @@ export default function LiveFullscreenPage() {
   const [showResetCategoryConfirm, setShowResetCategoryConfirm] = useState(false);
   const [showStopCategoryConfirm, setShowStopCategoryConfirm] = useState(false);
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
+  const [showAllDoneModal, setShowAllDoneModal] = useState(false);
   const pollRef = useRef(null);
   const pollInFlightRef = useRef(false);
+  const exportExcelRef = useRef(null);
 
   const arr = r => r.data?.results || r.data || [];
 
@@ -663,6 +666,9 @@ export default function LiveFullscreenPage() {
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
             <button onClick={() => setShowResetCategoryConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Reset</button>
           )}
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
+            <button onClick={() => exportExcelRef.current?.()} disabled={busy} className={TOPNAV_SECONDARY_BUTTON} title="Exportă în Excel">⬇ Excel</button>
+          )}
           {/* START / ÎNCHEIE for categories */}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
             <button
@@ -755,6 +761,20 @@ export default function LiveFullscreenPage() {
         />
       )}
 
+      {/* All athletes done - nudge towards ÎNCHEIE PROBA, in case the pulsing button goes unnoticed */}
+      {showAllDoneModal && (
+        <FullscreenModal
+          onClose={() => setShowAllDoneModal(false)}
+          title="Toți sportivii au terminat"
+          description="Toți sportivii au fie un scor complet, fie sunt descalificați. Apasă butonul ÎNCHEIE PROBA din bara de sus pentru a finaliza această probă."
+          icon="✓"
+          actions={[
+            <button key="ok" onClick={() => setShowAllDoneModal(false)} className={MODAL_SECONDARY_BUTTON}>Am înțeles</button>,
+            <button key="finish" onClick={() => { setShowAllDoneModal(false); setShowFinishConfirm(true); }} disabled={busy} className={MODAL_SUCCESS_BUTTON}>Încheie proba acum</button>,
+          ]}
+        />
+      )}
+
       {/* Reset category confirm */}
       {showResetCategoryConfirm && currentCat && (
         <FullscreenModal
@@ -833,6 +853,7 @@ export default function LiveFullscreenPage() {
             refAssignment={currentCategoryRefAssignment}
             athleteScores={currentCategoryAthleteScores}
             refScores={refScores}
+            scoreEvents={categoryScoreEvents}
             refPresence={refPresence.filter(rp => rp.category === currentCat.id)}
             competitionReferees={competitionReferees}
             recordingSession={currentFieldRecordingSession}
@@ -843,6 +864,9 @@ export default function LiveFullscreenPage() {
             revealScores={revealScores}
             onRefresh={fetchMatchState}
             refreshCategories={refreshCategories}
+            isCategoryCompleted={isCurrentCategoryCompleted}
+            onLastAthleteStopped={() => setShowAllDoneModal(true)}
+            exportExcelRef={exportExcelRef}
           />
         ) : panelType === 'match' && currentMatch ? (
           <FullscreenMatchPanel
@@ -901,7 +925,7 @@ export default function LiveFullscreenPage() {
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
-function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, refPresence, competitionReferees, recordingSession, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories }) {
+function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, recordingSession, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, exportExcelRef }) {
   const isTeamCategory = cat.type === 'team';
   const enrolled = isTeamCategory ? (cat.enrolled_teams || []) : (cat.enrolled_athletes || []);
 
@@ -911,9 +935,9 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   const [finishedAthletes, setFinishedAthletes] = useState(new Set());
   const [resetConfirmData, setResetConfirmData] = useState(null);
   const [dqConfirmData, setDqConfirmData] = useState(null);
-  const [revealConfirmData, setRevealConfirmData] = useState(null); // { athleteId, athleteName, row }
   const [replaceRefData, setReplaceRefData] = useState(null); // { pos, id, name }
   const [replacementRefId, setReplacementRefId] = useState('');
+  const autoRevealInFlightRef = useRef(false);
 
   // Build referee list from category referee assignment
   const referees = [];
@@ -942,6 +966,17 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     });
   };
 
+  // Group score-audit events per (athlete_score, referee) pair, oldest
+  // first, so a manually-overridden score can show both the referee's
+  // original value and who changed it.
+  const scoreEventsByKey = new Map();
+  (scoreEvents || []).forEach(ev => {
+    const key = `${ev.athlete_score}_${ev.referee}`;
+    if (!scoreEventsByKey.has(key)) scoreEventsByKey.set(key, []);
+    scoreEventsByKey.get(key).push(ev);
+  });
+  scoreEventsByKey.forEach(list => list.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)));
+
   // Build rows with scores per referee
   const rows = enrolled.map(ea => {
     const athleteId = isTeamCategory ? (ea.members?.[0]?.id ?? ea.team) : ea.athlete;
@@ -962,6 +997,19 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     for (const rs of rScores) { scoreByRef[rs.referee] = rs.score; scoreIdByRef[rs.referee] = rs.id; }
     const vals = refCols.map(r => r.id ? scoreByRef[r.id] : undefined);
     const scoreIds = refCols.map(r => r.id ? scoreIdByRef[r.id] : undefined);
+    const audits = refCols.map(r => {
+      if (!r.id || !catScoreId) return null;
+      const events = scoreEventsByKey.get(`${catScoreId}_${r.id}`);
+      if (!events || events.length === 0) return null;
+      const latest = events[events.length - 1];
+      if (latest.source !== 'competition_admin') return null;
+      const firstEvent = events[0];
+      return {
+        manualBy: latest.created_by_name,
+        manualAt: latest.timestamp,
+        originalScore: firstEvent.source === 'referee_app' ? firstEvent.score_value : null,
+      };
+    });
     const numericVals = vals.filter(v => v != null).map(Number);
     const totalRefCount = referees.length || 5;
     let marks = vals.map(() => 'mid');
@@ -976,7 +1024,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     const allScoresIn = numericVals.length >= totalRefCount;
     const isActive = session?.current_athlete === athleteId;
     const isRevealed = isActive && session?.status === 'scores_revealed';
-    return { athleteId, athleteName, clubName, detailText, vals, marks, total, allScoresIn, scoreCount: numericVals.length, isActive, isRevealed, scoreIds, catScoreId, enrollmentId: ea.id, isDisqualified: ea.disqualified || false, teamId: isTeamCategory ? ea.team : null };
+    return { athleteId, athleteName, clubName, detailText, vals, marks, audits, total, allScoresIn, scoreCount: numericVals.length, isActive, isRevealed, scoreIds, catScoreId, enrollmentId: ea.id, isDisqualified: ea.disqualified || false, teamId: isTeamCategory ? ea.team : null };
   });
 
   // Sort by total descending for ranking
@@ -985,6 +1033,23 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
   // Check if active athlete has all scores
   const activeRow = rows.find(r => r.isActive);
+
+  // Auto-reveal: once every referee has scored the athlete currently on
+  // screen, show the total automatically instead of waiting for the
+  // operator to click a "reveal" button.
+  useEffect(() => {
+    if (!activeRow || !activeRow.allScoresIn || activeRow.isRevealed) {
+      autoRevealInFlightRef.current = false;
+      return;
+    }
+    if (autoRevealInFlightRef.current || busy) return;
+    autoRevealInFlightRef.current = true;
+    Promise.resolve(revealScores()).finally(() => { autoRevealInFlightRef.current = false; });
+    // `rows` (and therefore activeRow) is rebuilt every render, so depending
+    // on the object itself would re-run this effect on every render instead
+    // of only when the athlete or its reveal-readiness actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRow?.athleteId, activeRow?.allScoresIn, activeRow?.isRevealed, busy, revealScores]);
 
   // ── Smart highlight: determine which athlete/action to suggest ──
   // Priority 1: active athlete → highlight their row & stop button
@@ -1011,7 +1076,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       highlightAction = 'reveal';
     } else {
       // No pending reveal → suggest next athlete to present
-      const nextCandidate = rows.find(r => !r.isDisqualified && !finishedAthletes.has(r.athleteId) && !r.isActive && !r.isRevealed);
+      const nextCandidate = rows.find(r => !r.isDisqualified && !r.allScoresIn && !finishedAthletes.has(r.athleteId) && !r.isActive && !r.isRevealed);
       if (nextCandidate) {
         highlightAthleteId = nextCandidate.athleteId;
         highlightAction = 'present';
@@ -1026,6 +1091,13 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         if (sid) { try { await refereeAPI.categoryScores.delete(sid); } catch {} }
       }
       setFinishedAthletes(prev => { const s = new Set(prev); s.delete(row.athleteId); return s; });
+      // Resetting an already-revealed athlete's scores doesn't clear the
+      // public screen's "revealed" flag on its own - without this, the TV
+      // keeps showing the old (now wrong/incomplete) total while the
+      // referees re-score, instead of hiding it until auto-reveal fires again.
+      if (row.isActive && row.isRevealed) {
+        await switchDisplay(cat.id, null, row.athleteId, 'displaying');
+      }
       await onRefresh();
     } catch(e) { console.error(e); }
   };
@@ -1116,7 +1188,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     // Sheet 1 — SCORURI
     // ─────────────────────────────────────────────
     const ws = wb.addWorksheet('Scoruri');
-    const totalCols = 3 + refSlots.length + 3; // #, name, club, A1-A5, total, loc, DQ
+    const totalCols = 3 + refSlots.length + 4; // #, name, club, A1-A5, total, loc, DQ, note
 
     // Row 1 — category title banner: "Grupă | Categorie  –  Gen"
     const groupLabel = cat.groupName ? `${cat.groupName}  –  ` : '';
@@ -1137,7 +1209,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
     // Row 3 — column headers (dark background)
     const refHeaders = refSlots.map(r => r.name ? `A${r.pos}\n${r.name}` : `A${r.pos}`);
-    ws.addRow(['#', 'ECHIPĂ / SPORTIV', 'CLUB', ...refHeaders, 'TOTAL', 'LOC', 'DQ']);
+    ws.addRow(['#', 'ECHIPĂ / SPORTIV', 'CLUB', ...refHeaders, 'TOTAL', 'LOC', 'DQ', 'NOTE']);
     const hdrRow = ws.getRow(3);
     hdrRow.height = 42;
     hdrRow.eachCell(cell => {
@@ -1155,10 +1227,22 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     ws.getColumn(3 + refSlots.length + 1).width = 13;
     ws.getColumn(3 + refSlots.length + 2).width = 8;
     ws.getColumn(3 + refSlots.length + 3).width = 8;
+    ws.getColumn(3 + refSlots.length + 4).width = 45;
 
     // Data rows
     rows.forEach((row, idx) => {
       const rank = row.isDisqualified ? '' : (getRank(row.athleteId) ?? '');
+      const noteParts = refSlots
+        .map((r, ri) => ({ r, audit: row.audits[ri], value: row.vals[ri] }))
+        .filter(({ audit }) => audit)
+        .map(({ r, audit, value }) => {
+          const who = audit.manualBy || 'un admin';
+          const current = value != null ? Math.round(Number(value)) : '—';
+          return audit.originalScore != null
+            ? `A${r.pos}: modificat manual de ${who} (arbitru: ${Math.round(audit.originalScore)} → ${current})`
+            : `A${r.pos}: introdus manual de ${who} (${current}, fără scor de arbitru)`;
+        });
+      const noteText = noteParts.join('; ');
       ws.addRow([
         idx + 1,
         row.athleteName,
@@ -1167,6 +1251,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         row.total != null ? Number(Number(row.total).toFixed(2)) : null,
         rank || null,
         row.isDisqualified ? 'DQ' : null,
+        noteText || null,
       ]);
       const dr = ws.getRow(3 + 1 + idx);
       dr.height = 28;
@@ -1232,6 +1317,12 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       if (row.isDisqualified) {
         dqCell.font = boldF(12, 'DC2626');
       }
+
+      // NOTE — left-aligned, muted, wraps; flags manually-edited scores
+      const noteCell = dr.getCell(3 + refSlots.length + 4);
+      noteCell.alignment = { ...LC, wrapText: true };
+      noteCell.font = normF(10, 'B45309');
+      if (noteText) dr.height = Math.max(dr.height, 20 * noteParts.length);
     });
 
     // ─────────────────────────────────────────────
@@ -1294,6 +1385,13 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     URL.revokeObjectURL(url);
   };
 
+  // Hand the latest exportToExcel closure up to the parent so the top-nav
+  // Excel button (moved there from this panel's own header) can call it.
+  useEffect(() => {
+    if (exportExcelRef) exportExcelRef.current = exportToExcel;
+    return () => { if (exportExcelRef) exportExcelRef.current = null; };
+  });
+
   const availableReplacementRefs = (competitionReferees || []).filter(cr => {
     const athleteId = cr.athlete;
     if (!athleteId) return false;
@@ -1311,59 +1409,57 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     const buttonBase = compact
       ? 'flex-1 min-w-[130px] px-3 py-2 text-xs'
       : 'px-4 py-2 text-sm';
+    // Prezintă/Oprește swap in and out of the same slot - give them an
+    // explicit shared width so the row doesn't shift when it toggles.
+    const presentButtonWidth = compact ? '' : 'w-[110px]';
 
     return (
       <div className={`flex items-center ${compact ? 'justify-stretch' : 'justify-center'} gap-1.5 flex-wrap`}>
         {row.isActive ? (
-          <button onClick={() => { switchDisplay(cat.id, null, null); setFinishedAthletes(prev => new Set(prev).add(row.athleteId)); }} disabled={busy}
-            className={`${buttonBase} border border-border font-bold disabled:opacity-40 bg-orange-500 text-white hover:bg-orange-600 whitespace-nowrap ${
-              highlightAthleteId === row.athleteId && highlightAction === 'active' ? 'ring-2 ring-orange-400 ring-offset-1' : ''
+          <button
+            onClick={() => {
+              switchDisplay(cat.id, null, null);
+              setFinishedAthletes(prev => new Set(prev).add(row.athleteId));
+              if (isCategoryCompleted) onLastAthleteStopped?.();
+            }}
+            disabled={busy}
+            className={`${buttonBase} ${presentButtonWidth} rounded-md border border-amber-500 font-bold transition disabled:opacity-40 bg-amber-400 text-amber-950 hover:bg-amber-300 whitespace-nowrap ${
+              highlightAthleteId === row.athleteId && highlightAction === 'active' ? 'ring-2 ring-amber-600 ring-offset-1' : ''
             }`}>
             Oprește
           </button>
         ) : (
-          <button onClick={() => switchDisplay(cat.id, null, row.athleteId)} disabled={busy}
-            className={`${buttonBase} border border-border font-bold disabled:opacity-40 whitespace-nowrap ${
-              highlightAthleteId === row.athleteId && highlightAction === 'present'
-                ? 'bg-emerald-600 text-white hover:bg-emerald-700 ring-2 ring-emerald-400 ring-offset-1 animate-pulse'
-                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+          <button
+            onClick={() => switchDisplay(cat.id, null, row.athleteId)}
+            disabled={busy || row.isDisqualified || row.allScoresIn}
+            title={row.isDisqualified ? 'Sportiv descalificat' : row.allScoresIn ? 'A prezentat deja - toate notele au fost introduse' : undefined}
+            className={`${buttonBase} ${presentButtonWidth} rounded-md border font-bold transition disabled:opacity-40 whitespace-nowrap ${
+              row.isDisqualified || row.allScoresIn
+                ? 'border-border bg-muted text-muted-foreground'
+                : highlightAthleteId === row.athleteId && highlightAction === 'present'
+                  ? 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 ring-2 ring-emerald-400 ring-offset-1 animate-pulse'
+                  : 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
             }`}>
             Prezintă
           </button>
         )}
-        {row.allScoresIn && (
-          <button
-            onClick={() => {
-              if (row.isRevealed) return;
-              setRevealConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row });
-            }}
-            disabled={busy || row.isRevealed}
-            className={`${buttonBase} border border-border font-bold disabled:opacity-40 whitespace-nowrap ${
-              row.isRevealed
-                ? 'bg-amber-400 text-amber-950 cursor-default'
-                : highlightAthleteId === row.athleteId && highlightAction === 'reveal'
-                  ? 'bg-amber-400 text-amber-950 hover:bg-amber-500 ring-2 ring-amber-500 ring-offset-1 animate-pulse'
-                  : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-            }`}
-          >
-            {row.isRevealed ? '✓ Scor afișat' : 'Afișează scorul'}
-          </button>
-        )}
-        {row.scoreCount > 0 && (
-          <button
-            onClick={() => setResetConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row })}
-            disabled={busy}
-            className={`${buttonBase} border border-border font-bold bg-card text-red-700 hover:bg-red-100 disabled:opacity-40 whitespace-nowrap`}
-          >
-            Resetează
-          </button>
-        )}
+        <button
+          onClick={() => setResetConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row })}
+          disabled={busy || row.scoreCount === 0}
+          title={row.scoreCount === 0 ? 'Nicio notă introdusă încă' : undefined}
+          className={`${buttonBase} rounded-md border font-bold transition disabled:opacity-40 whitespace-nowrap ${
+            row.scoreCount === 0 ? 'border-border bg-muted text-muted-foreground cursor-not-allowed' : 'border-border bg-card text-red-700 hover:bg-red-100'
+          }`}
+        >
+          Resetează
+        </button>
         <button
           onClick={() => setDqConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row, isDisqualified: row.isDisqualified })}
           disabled={busy}
-          className={`${buttonBase} border border-border font-bold disabled:opacity-40 whitespace-nowrap ${row.isDisqualified ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
+          title={row.isDisqualified ? 'Recalifică participantul' : undefined}
+          className={`${buttonBase} rounded-md border border-destructive font-bold transition disabled:opacity-40 whitespace-nowrap bg-destructive text-destructive-foreground hover:bg-destructive/90`}
         >
-          {row.isDisqualified ? 'Recalifică' : 'DQ'}
+          DQ
         </button>
       </div>
     );
@@ -1398,16 +1494,16 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     <div className="flex w-full flex-col gap-4">
       {/* ── Category info header (like match info tags) ── */}
       <div className="bg-card">
-        <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
+        <div className="flex flex-col gap-2 p-2 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-4 xl:p-3">
           <div className="hidden xl:block" aria-hidden="true" />
           <div className="min-w-0 xl:col-start-2">
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="w-full max-w-3xl px-4 py-5">
-                <h1 className="mt-2 break-words text-3xl font-black leading-tight text-foreground sm:text-4xl">{cat.name}</h1>
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                  <span className={`inline-flex px-2 py-1 text-xs font-bold uppercase ${typeBadge.bg}`}>{typeBadge.label}</span>
-                  {cat.gender && <span className={`inline-flex border border-border px-2 py-1 text-xs font-bold text-foreground ${GENDER_BG[cat.gender] || 'bg-muted'}`}>{GENDER_LABELS[cat.gender] || cat.gender}</span>}
-                  {cat.groupName && <span className="inline-flex border border-border bg-card px-2 py-1 text-xs font-medium text-foreground/80">{cat.groupName}</span>}
+            <div className="flex flex-col items-center gap-2 text-center">
+              <div className="w-full max-w-3xl px-2 py-1">
+                <h1 className="break-words text-xl font-black leading-tight text-foreground sm:text-2xl">{cat.name}</h1>
+                <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1.5">
+                  <span className={`inline-flex px-2 py-0.5 text-xs font-bold uppercase ${typeBadge.bg}`}>{typeBadge.label}</span>
+                  {cat.gender && <span className={`inline-flex border border-border px-2 py-0.5 text-xs font-bold text-foreground ${GENDER_BG[cat.gender] || 'bg-muted'}`}>{GENDER_LABELS[cat.gender] || cat.gender}</span>}
+                  {cat.groupName && <span className="inline-flex border border-border bg-card px-2 py-0.5 text-xs font-medium text-foreground/80">{cat.groupName}</span>}
                 </div>
               </div>
             </div>
@@ -1415,8 +1511,8 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 
           <div className="w-full xl:col-start-3 xl:justify-self-end xl:max-w-md">
             <>
-              <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</span>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</span>
+              <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 xl:grid-cols-1">
                 {refSlots.map(r => {
                   const isConnected = r.id ? connectedRefIds.has(r.id) : false;
                   const isEmpty = !r.id;
@@ -1428,12 +1524,22 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         setReplaceRefData(r);
                         setReplacementRefId(r.id ? String(r.id) : '');
                       }}
-                      className={`flex w-full items-center gap-2 border px-3 py-2 text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : isConnected ? 'border-border bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
-                      title={isEmpty ? 'Adaugă arbitru' : 'Înlocuiește arbitrul'}
+                      className={`flex w-full items-stretch overflow-hidden rounded-md border text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : isConnected ? 'border-border bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
+                      title={isEmpty ? 'Adaugă arbitru' : isConnected ? 'Arbitru conectat' : 'Arbitru neconectat'}
                     >
-                      <span className={`inline-block h-2.5 w-2.5 shrink-0 ${isEmpty ? 'bg-muted' : isConnected ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`}></span>
-                      <span className="font-black text-foreground">A{r.pos}</span>
-                      <span className="min-w-0 flex-1 truncate font-semibold">{r.name || 'Adaugă arbitru'}</span>
+                      <span className={`flex w-6 shrink-0 items-center justify-center ${isEmpty ? 'bg-muted' : isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                        {isEmpty ? (
+                          <Wifi className="h-3.5 w-3.5 text-muted-foreground/70" strokeWidth={3} />
+                        ) : isConnected ? (
+                          <Wifi className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                        ) : (
+                          <WifiOff className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                        )}
+                      </span>
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1">
+                        <span className="font-black text-foreground">A{r.pos}</span>
+                        <span className="min-w-0 flex-1 truncate font-semibold">{r.name || 'Adaugă arbitru'}</span>
+                      </span>
                     </button>
                   );
                 })}
@@ -1478,7 +1584,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           onClose={() => { setCatRefModalData(null); setCatScoreInput(''); }}
           title={`A${catRefModalData.refPos} — ${catRefModalData.refName}`}
           description={`Scor pentru ${catRefModalData.athleteName}`}
-          maxWidth="max-w-sm"
           actions={[
             <button key="close" onClick={() => { setCatRefModalData(null); setCatScoreInput(''); }} className={MODAL_SECONDARY_BUTTON}>Închide</button>,
             catRefModalData.existingScoreId ? <button key="delete" onClick={deleteCatRefScore} className={MODAL_DANGER_BUTTON}>Șterge</button> : null,
@@ -1531,32 +1636,8 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         />
       )}
 
-      {/* ── Reveal scores confirmation modal ── */}
-      {revealConfirmData && (
-        <FullscreenModal
-          onClose={() => setRevealConfirmData(null)}
-          title="Afișează scorurile public?"
-          description={`Scorurile pentru ${revealConfirmData.athleteName} vor fi afișate pe ecranul public pentru spectatori.`}
-          icon="?"
-          actions={[
-            <button key="cancel" onClick={() => setRevealConfirmData(null)} className={MODAL_SECONDARY_BUTTON}>Nu, anulează</button>,
-            <button key="confirm" onClick={() => { switchDisplay(cat.id, null, revealConfirmData.athleteId, 'scores_revealed'); setRevealConfirmData(null); }} className={MODAL_WARNING_BUTTON}>Da, afișează</button>,
-          ]}
-        />
-      )}
-
       {/* ── Athletes table — all participants ── */}
       <div className="overflow-hidden border-2 border-border bg-card shadow-sm">
-        <div className="flex items-center justify-between border-b-2 border-border bg-muted px-4 py-3">
-          <p className="text-sm font-bold uppercase tracking-wide text-foreground/80">{isTeamCategory ? `Toate echipele (${enrolled.length})` : `Toți sportivii (${enrolled.length})`}</p>
-          <button
-            onClick={() => exportToExcel()}
-            className="flex items-center gap-1.5 border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground/80 transition hover:bg-amber-100"
-            title="Exportă în Excel"
-          >
-            ⬇ Excel
-          </button>
-        </div>
         <div className="space-y-3 p-3 lg:hidden">
           {rows.map((row, idx) => {
             const rank = getRank(row.athleteId);
@@ -1570,9 +1651,11 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                       ? 'border-amber-400 bg-amber-50'
                       : row.isActive
                         ? 'border-emerald-500 bg-emerald-50'
-                        : highlightAthleteId === row.athleteId && highlightAction === 'present'
-                          ? 'border-emerald-300 bg-emerald-50/60'
-                          : 'border-border bg-card'
+                        : finishedAthletes.has(row.athleteId)
+                          ? 'border-border bg-card opacity-50'
+                          : highlightAthleteId === row.athleteId && highlightAction === 'present'
+                            ? 'border-emerald-300 bg-emerald-50/60'
+                            : 'border-border bg-card'
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1604,6 +1687,10 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                     const value = row.vals[ri];
                     const mark = row.marks[ri];
                     const isCancelled = mark === 'low' || mark === 'high';
+                    const audit = row.audits[ri];
+                    const auditTitle = audit
+                      ? `Modificat manual de ${audit.manualBy || 'un admin'}${audit.originalScore != null ? ` — scor arbitru: ${Math.round(audit.originalScore)}` : ' — fără scor de la arbitru'}`
+                      : undefined;
                     return (
                       <button
                         key={`${row.athleteId}-${r.pos}`}
@@ -1621,10 +1708,19 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                           setCatScoreInput(value != null ? Number(value).toString() : '');
                         }}
                         disabled={!r.id}
-                        className={`rounded border px-3 py-2 text-left transition ${!r.id ? 'cursor-not-allowed border-border bg-muted/40 text-muted-foreground/40' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''}`}
+                        title={auditTitle}
+                        className={`relative overflow-hidden rounded-md border px-3 py-2 text-left transition ${!r.id ? 'cursor-not-allowed border-border bg-muted/40 text-muted-foreground/40' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''}`}
                       >
+                        {audit && (
+                          <span className="absolute right-0 top-0 h-0 w-0 border-t-[16px] border-l-[16px] border-t-red-600 border-l-transparent" />
+                        )}
                         <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">A{r.pos}</p>
                         <p className={`mt-1 text-lg font-black tabular-nums ${value != null ? (isCancelled ? 'text-red-400' : 'text-foreground') : 'text-muted-foreground/40'}`}>{value != null ? Math.round(Number(value)) : '—'}</p>
+                        {audit && audit.originalScore != null && (
+                          <p className="mt-0.5 text-[10px] font-normal normal-case text-muted-foreground">
+                            arbitru: {Math.round(audit.originalScore)}
+                          </p>
+                        )}
                       </button>
                     );
                   })}
@@ -1643,7 +1739,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <tr>
                 <th className="w-10 border border-border bg-muted px-3 py-2.5 text-left font-bold uppercase tracking-wide text-foreground/80">#</th>
                 <th className="border border-border bg-muted px-3 py-2.5 text-left font-bold uppercase tracking-wide text-foreground/80">{isTeamCategory ? 'Echipă' : 'Sportiv'}</th>
-                <th className="w-48 border border-border bg-muted px-3 py-2.5 text-left font-bold uppercase tracking-wide text-foreground/80">Club</th>
                 {refCols.map(r => (<th key={r.pos} className="w-16 border border-border bg-muted px-2 py-2.5 text-center font-bold uppercase tracking-wide text-foreground/80">A{r.pos}</th>))}
                 <th className="w-20 border border-border bg-muted px-3 py-2.5 text-center font-bold uppercase tracking-wide text-foreground/80">Total</th>
                 <th className="w-16 border border-border bg-muted px-2 py-2.5 text-center font-bold uppercase tracking-wide text-foreground/80">Loc</th>
@@ -1655,25 +1750,25 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                 const rank = getRank(row.athleteId);
                 return (
                   <tr key={row.athleteId} className={`${
-                    row.isDisqualified ? 'bg-red-50 opacity-60' : row.isRevealed ? 'bg-amber-50 ring-2 ring-amber-300 ring-inset' : row.isActive ? 'bg-emerald-50 ring-2 ring-emerald-500 ring-inset border-l-4 border-l-emerald-600' : highlightAthleteId === row.athleteId && highlightAction === 'present' ? 'bg-emerald-50/50 ring-1 ring-emerald-200 ring-inset' : idx % 2 === 0 ? 'bg-card' : 'bg-muted/40'
+                    row.isDisqualified ? 'bg-red-50 opacity-60' : row.isRevealed ? 'bg-amber-50 ring-2 ring-amber-300 ring-inset' : row.isActive ? 'bg-emerald-50 ring-2 ring-emerald-500 ring-inset border-l-4 border-l-emerald-600' : finishedAthletes.has(row.athleteId) ? 'opacity-50' : highlightAthleteId === row.athleteId && highlightAction === 'present' ? 'bg-emerald-50/50 ring-1 ring-emerald-200 ring-inset' : idx % 2 === 0 ? 'bg-card' : 'bg-muted/40'
                   } hover:bg-amber-50/50 transition`}>
                     <td className="border border-border/20 px-3 py-2.5 text-muted-foreground/60 text-xs">{idx + 1}</td>
                     <td className="border border-border/20 px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`font-semibold ${row.isDisqualified ? 'text-red-400 line-through' : 'text-foreground'}`}>{row.athleteName}</span>
+                        <span className={`font-semibold ${row.isDisqualified ? 'text-red-400 line-through' : 'text-foreground'}`}>{row.athleteName}{row.clubName ? ` (${row.clubName})` : ''}</span>
                         {row.isDisqualified && <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider bg-red-600 text-white px-2 py-0.5">DESCALIFICAT</span>}
                         {!row.isDisqualified && finishedAthletes.has(row.athleteId) && !row.isActive && <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider bg-muted text-muted-foreground px-2 py-0.5">✓ Terminat</span>}
                         {row.isActive && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500 text-white px-2 py-0.5 animate-pulse">● Prezintă acum</span>}
-                        {row.isRevealed && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-amber-950 px-2 py-0.5">✓ Scor afișat</span>}
                       </div>
                       {row.detailText && row.detailText !== row.athleteName && <div className="mt-1 text-xs text-muted-foreground/60">{row.detailText}</div>}
-                    </td>
-                    <td className="border border-border/20 px-3 py-2.5 text-sm text-foreground/80">
-                      {row.clubName || '—'}
                     </td>
                     {row.vals.map((v, ri) => {
                       const r = refCols[ri];
                       const mark = row.marks[ri]; const isCancelled = mark === 'low' || mark === 'high';
+                      const audit = row.audits[ri];
+                      const auditTitle = audit
+                        ? `Modificat manual de ${audit.manualBy || 'un admin'}${audit.originalScore != null ? ` — scor arbitru: ${Math.round(audit.originalScore)}` : ' — fără scor de la arbitru'}`
+                        : undefined;
                       return (
                         <td key={ri}
                           onClick={() => {
@@ -1688,9 +1783,20 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                             });
                             setCatScoreInput(v != null ? Number(v).toString() : '');
                           }}
-                          className={`border border-border/20 text-center px-2 py-2.5 tabular-nums text-sm cursor-pointer hover:bg-indigo-50 ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-foreground font-medium' : 'text-muted-foreground/40'}`}
+                          title={auditTitle}
+                          className={`relative overflow-hidden border border-border/20 text-center px-2 py-2.5 tabular-nums text-sm cursor-pointer hover:bg-indigo-50 ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-foreground font-medium' : 'text-muted-foreground/40'}`}
                         >
-                          {v != null ? Math.round(Number(v)) : '—'}
+                          {audit && (
+                            <span className="absolute right-0 top-0 h-0 w-0 border-t-[14px] border-l-[14px] border-t-red-600 border-l-transparent" />
+                          )}
+                          <div className="flex items-center justify-center gap-1">
+                            <span>{v != null ? Math.round(Number(v)) : '—'}</span>
+                          </div>
+                          {audit && audit.originalScore != null && (
+                            <div className="mt-0.5 text-[10px] font-normal normal-case text-muted-foreground">
+                              arbitru: {Math.round(audit.originalScore)}
+                            </div>
+                          )}
                         </td>
                       );
                     })}
@@ -2355,7 +2461,6 @@ function FullscreenMatchPanel({
           <FullscreenModal
             onClose={() => setRefModalData(null)}
             title={`${ref.name} — scoruri pe reprize`}
-            maxWidth="max-w-lg"
             actions={[
               <button key="close" onClick={() => setRefModalData(null)} className={MODAL_SECONDARY_BUTTON}>Închide</button>,
             ]}
@@ -3092,24 +3197,18 @@ function FullscreenMatchPanel({
   );
 }
 
-function FullscreenModal({ onClose, title, description, maxWidth = 'max-w-md', actions, children }) {
+function FullscreenModal({ onClose, title, description, actions, children }) {
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="fullscreen-modal-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className={`w-full ${maxWidth} overflow-hidden rounded-lg border border-border bg-card shadow-2xl`} onClick={e => e.stopPropagation()}>
-        <div className="border-b border-border bg-primary px-5 py-4 text-primary-foreground">
-          <div>
-            <h3 id="fullscreen-modal-title" className="font-display text-xl font-semibold">{title}</h3>
-            {description ? <p className="mt-1 text-sm text-primary-foreground/80">{description}</p> : null}
-          </div>
-        </div>
-        {children ? <div className="space-y-4 px-5 py-4">{children}</div> : null}
-        {actions ? (
-          <div className="flex flex-col-reverse gap-2 border-t border-border bg-muted px-5 py-4 sm:flex-row sm:justify-end">
-            {actions}
-          </div>
-        ) : null}
-      </div>
-    </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose?.(); }}>
+      <DialogContent fullScreen>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description ? <DialogDescription>{description}</DialogDescription> : null}
+        </DialogHeader>
+        {children ? <div className="flex-1 space-y-4">{children}</div> : null}
+        {actions ? <DialogFooter>{actions}</DialogFooter> : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 

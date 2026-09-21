@@ -105,7 +105,7 @@ export default function AdminCentralizatorMatrix({ ctx }) {
         <thead className="sticky top-0 z-20">
             <tr>
               <th
-                className="sticky left-0 z-40 min-w-[130px] border border-sidebar-border bg-muted px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-wide lg:min-w-[170px]"
+                className="sticky left-0 z-40 min-w-[130px] border border-sidebar-border bg-sidebar px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-wide text-sidebar-foreground lg:min-w-[170px]"
                 rowSpan={3}
               >
                 Club
@@ -118,7 +118,7 @@ export default function AdminCentralizatorMatrix({ ctx }) {
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); openGroupModal(ci); }}
-                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-sidebar-border bg-card px-2.5 py-1.5 text-[10px] font-semibold opacity-0 shadow-sm transition-all hover:bg-accent group-hover/insert:opacity-100"
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary bg-primary px-2.5 py-1.5 text-[10px] font-bold text-primary-foreground opacity-0 shadow-sm transition-all hover:bg-primary/90 group-hover/insert:opacity-100"
                           aria-label="Adaugă grupă aici"
                         >
                           <Plus className="h-3.5 w-3.5" /> Grupă
@@ -134,7 +134,7 @@ export default function AdminCentralizatorMatrix({ ctx }) {
                     onDragOver={(e) => isAdminUser && handleGroupDragOver(e, col.group.id)}
                     onDrop={(e) => isAdminUser && handleGroupDrop(e, col.group.id)}
                     onDragEnd={handleDragEnd}
-                    className={`relative whitespace-nowrap border border-sidebar-border bg-amber-100 px-2 py-1 text-center text-xs font-bold transition-all dark:bg-amber-950 ${isAdminUser ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                    className={`relative whitespace-nowrap border border-sidebar-border bg-sidebar-accent px-2 py-1 text-center text-xs font-bold text-sidebar-accent-foreground transition-all ${isAdminUser ? 'cursor-grab active:cursor-grabbing' : ''} ${
                       dragType === 'group' && dragId === col.group.id ? 'scale-95 opacity-40' : ''
                     } ${dragType === 'group' && dragOverId === col.group.id ? 'ring-2 ring-primary ring-inset' : ''}`}
                   >
@@ -215,7 +215,7 @@ export default function AdminCentralizatorMatrix({ ctx }) {
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); openGroupModal(columnStructure.length); }}
-                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-sidebar-border bg-card px-2.5 py-1.5 text-[10px] font-semibold opacity-0 shadow-sm transition-all hover:bg-accent group-hover/insert:opacity-100"
+                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary bg-primary px-2.5 py-1.5 text-[10px] font-bold text-primary-foreground opacity-0 shadow-sm transition-all hover:bg-primary/90 group-hover/insert:opacity-100"
                     aria-label="Adaugă grupă"
                   >
                     <Plus className="h-3.5 w-3.5" /> Grupă

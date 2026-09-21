@@ -540,25 +540,30 @@ export default function useCentralizator() {
 
   const handleGenerateStandardStructure = async () => {
     if (!eventId || generatingDefaults) return;
-    const shouldContinue = window.confirm(
-      'Generez grupele și categoriile standard lipsă pentru această competiție? Elementele existente nu vor fi duplicate.'
-    );
-    if (!shouldContinue) return;
-
-    setGeneratingDefaults(true);
-    try {
-      const { data } = await competitionAPI.generateStandardGroupsCategories(eventId);
-      await refreshStructureData();
-      const result = data?.result || {};
-      dismissStandardStructureBanner();
-      window.alert(
-        `Sincronizare finalizată. Grupe create: ${result.groups_created || 0}, actualizate: ${result.groups_updated || 0}; categorii create: ${result.categories_created || 0}, actualizate: ${result.categories_updated || 0}.`
-      );
-    } catch (err) {
-      window.alert(err.response?.data?.detail || 'Nu s-au putut genera grupele și categoriile standard.');
-    } finally {
-      setGeneratingDefaults(false);
-    }
+    setConfirmModal({
+      title: 'Generează structura standard',
+      message: 'Generez grupele și categoriile standard lipsă pentru această competiție? Elementele existente nu vor fi duplicate.',
+      icon: '⚙️',
+      color: 'orange',
+      confirmLabel: 'Generează',
+      onConfirm: async () => {
+        setGeneratingDefaults(true);
+        try {
+          const { data } = await competitionAPI.generateStandardGroupsCategories(eventId);
+          await refreshStructureData();
+          const result = data?.result || {};
+          dismissStandardStructureBanner();
+          window.alert(
+            `Sincronizare finalizată. Grupe create: ${result.groups_created || 0}, actualizate: ${result.groups_updated || 0}; categorii create: ${result.categories_created || 0}, actualizate: ${result.categories_updated || 0}.`
+          );
+        } catch (err) {
+          window.alert(err.response?.data?.detail || 'Nu s-au putut genera grupele și categoriile standard.');
+        } finally {
+          setGeneratingDefaults(false);
+          setConfirmModal(null);
+        }
+      },
+    });
   };
 
   /* ── close menus on outside click ── */

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { competitionAPI, offlineAPI, systemAPI } from '@shared/lib/api';
 import { getSyncLockMeta, getSyncModeMeta, getSyncStatusMeta } from '@shared/lib/syncStatus';
-import { PageHeader, Card, Spinner, Button, Badge } from '../components/ui';
+import { PageHeader, Card, Spinner, Button, Badge, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui';
 import { cn } from '../lib/utils';
 import LocalBackupPanel from '../components/LocalBackupPanel';
 
@@ -62,6 +62,7 @@ export default function SyncCenterPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [isLocalServer, setIsLocalServer] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
 
   const loadCompetition = async () => {
     const { data } = await competitionAPI.get(id);
@@ -199,26 +200,31 @@ export default function SyncCenterPage() {
     }
   }
 
-  async function handlePullEventPackFromCloud() {
-    const confirmed = window.confirm(
-      'Se va prelua un event pack proaspăt direct din cloud (ex. cu un sportiv sau ' +
-      'o categorie adăugată acolo de curând) și se va importa aici.\n\n' +
-      'Înainte de import se salvează automat un backup de siguranță, deci poți ' +
-      'oricând reveni dacă ceva nu e cum trebuie.\n\nContinui?'
-    );
-    if (!confirmed) return;
-
-    setBusy(true);
-    setMessage('');
-    try {
-      await offlineAPI.pullEventPackFromCloud(id);
-      await loadCompetition();
-      setMessage('Resincronizare reușită: event pack-ul din cloud a fost importat aici.');
-    } catch (error) {
-      setMessage(error.response?.data?.detail || error.message || 'Resincronizarea din cloud a eșuat.');
-    } finally {
-      setBusy(false);
-    }
+  function handlePullEventPackFromCloud() {
+    setConfirmModal({
+      title: 'Resincronizează din cloud',
+      message: 'Se va prelua un event pack proaspăt direct din cloud (ex. cu un sportiv sau ' +
+        'o categorie adăugată acolo de curând) și se va importa aici. Continui?',
+      detail: 'Înainte de import se salvează automat un backup de siguranță, deci poți ' +
+        'oricând reveni dacă ceva nu e cum trebuie.',
+      icon: '☁️',
+      color: 'orange',
+      confirmLabel: 'Resincronizează',
+      onConfirm: async () => {
+        setBusy(true);
+        setMessage('');
+        try {
+          await offlineAPI.pullEventPackFromCloud(id);
+          await loadCompetition();
+          setMessage('Resincronizare reușită: event pack-ul din cloud a fost importat aici.');
+        } catch (error) {
+          setMessage(error.response?.data?.detail || error.message || 'Resincronizarea din cloud a eșuat.');
+        } finally {
+          setBusy(false);
+          setConfirmModal(null);
+        }
+      },
+    });
   }
 
   async function handleImportResults(event) {
@@ -610,6 +616,33 @@ export default function SyncCenterPage() {
 
       <LocalBackupPanel />
       </div>
+
+      <Dialog open={!!confirmModal} onOpenChange={(open) => { if (!open) setConfirmModal(null); }}>
+        <DialogContent className="max-w-md">
+          {confirmModal && (
+            <>
+              <DialogHeader><DialogTitle>{confirmModal.title}</DialogTitle></DialogHeader>
+              <div>
+                <p className="text-sm leading-relaxed text-foreground">{confirmModal.message}</p>
+                {confirmModal.detail && (
+                  <p className="mt-3 max-h-24 overflow-y-auto rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                    {confirmModal.detail}
+                  </p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setConfirmModal(null)}>Anulează</Button>
+                <Button
+                  onClick={confirmModal.onConfirm}
+                  disabled={busy}
+                  variant="destructive"
+                  className={confirmModal.color === 'orange' ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : ''}
+                >{confirmModal.confirmLabel || 'Confirmă'}</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

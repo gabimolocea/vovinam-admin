@@ -12,17 +12,6 @@ import { formatGroupBadgeLabel } from '../components/ui';
    LIVE PAGE — Competition Management during the event
    ═══════════════════════════════════════════════════════ */
 
-const PUBLIC_DISPLAY_PORT = 5177;
-
-// Same-host, different-port - not hardcoded to localhost, since this admin
-// app and public-display may be opened from different devices on the venue
-// LAN (e.g. admin laptop vs. the machine driving the scoreboard TV).
-function publicDisplayOrigin() {
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
-  return `${protocol}//${host}:${PUBLIC_DISPLAY_PORT}`;
-}
-
 const STATUS_CFG = {
   not_started:  { label: 'Neînceput',      dot: 'bg-muted-foreground/40',  bg: 'bg-card',  border: 'border-border', badge: 'rounded-md border border-border bg-muted text-muted-foreground' },
   in_progress:  { label: 'În desfășurare', dot: 'bg-emerald-500 animate-pulse', bg: 'bg-emerald-50 dark:bg-emerald-950/20', border: 'border-emerald-300 dark:border-emerald-800', badge: 'rounded-md border border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' },
@@ -236,8 +225,7 @@ function FieldPanel({
   fieldBreaks, catAssignments, matchAssignments, onRefresh, singleView,
   navigate, eventId,
 }) {
-  const [busy, setBusy] = useState(false);
-  const [statusConfirmData, setStatusConfirmData] = useState(null); // { item, newStatus }
+  const [scheduleTab, setScheduleTab] = useState('active'); // 'active' | 'completed'
 
   const isIdle = !session || session.status === 'idle';
   const currentCat = fieldCats.find(c => c.id === session?.current_category);
@@ -256,31 +244,9 @@ function FieldPanel({
     }
   }, [matches, matchAssignments, field.id]);
 
-  // ── API helpers ──
-  const wrap = fn => async (...a) => {
-    setBusy(true);
-    try { await fn(...a); onRefresh(); } catch(e) { console.error(e); }
-    setBusy(false);
-  };
-
-  const switchDisplay = wrap(async (catId, matchId, athleteId, status = 'displaying') => {
-    const data = { current_category: catId || null, current_match: matchId || null, current_athlete: athleteId || null, status };
-    if (session) await monitorAPI.sessions.update(session.id, data);
-    else await monitorAPI.sessions.create({ field: field.id, ...data });
-  });
-
-  const setIdle = () => switchDisplay(null, null, null, 'idle');
-
-  const updateAssignmentStatus = wrap(async (assignmentId, newStatus) => {
-    await fieldAPI.assignments.update(assignmentId, { status: newStatus });
-  });
-
   const goFullscreen = (panelType, itemId) => {
     navigate(`/competitions/${eventId}/live-fullscreen?field=${field.id}&panel=${panelType}${itemId ? `&id=${itemId}` : ''}`);
   };
-
-  // Public display URL
-  const displayUrl = `${publicDisplayOrigin()}/display/${field.id}`;
 
   // Build sorted schedule items (categories + matches + breaks)
   const scheduleItems = (() => {
@@ -302,6 +268,11 @@ function FieldPanel({
       .map(b => ({ type: 'break', id: b.id, assignmentId: null, data: b, order: b.order, status: 'break' }));
     return [...catItems, ...matchItems, ...breakItems].sort((a, b) => a.order - b.order);
   })();
+  // Breaks aren't a real per-item status - keep them visible alongside
+  // whatever's still ahead rather than stranding them in "Finalizate".
+  const activeScheduleItems = scheduleItems.filter(i => i.status !== 'completed');
+  const completedScheduleItems = scheduleItems.filter(i => i.status === 'completed');
+  const visibleScheduleItems = scheduleTab === 'completed' ? completedScheduleItems : activeScheduleItems;
 
   const matchTypeLabels = { 'qualifications': 'Calificări', 'quarter-finals': 'Sferturi', 'semi-finals': 'Semi-finală', 'finals': 'Finală', 'bronze': 'Bronz' };
   const genderLabels = { 'male': 'Masculin', 'female': 'Feminin', 'mixt': 'Mixt' };
@@ -322,44 +293,54 @@ function FieldPanel({
     }
     return -1;
   })();
-
-  // ── Match assignment status update ──
-  const updateMatchAssignmentStatus = wrap(async (assignmentId, newStatus) => {
-    await matchFieldAssignmentAPI.update(assignmentId, { status: newStatus });
-  });
+  // `nextItemIndex` is an index into the full `scheduleItems` array, but the
+  // list now renders `visibleScheduleItems` (filtered by tab) - compare by
+  // identity instead of index so "next up" highlighting still lines up.
+  const nextItem = nextItemIndex >= 0 ? scheduleItems[nextItemIndex] : null;
 
   return (
     <div className={`overflow-hidden rounded-lg border-2 border-border bg-card shadow-sm ${singleView ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
       {/* ═══ HEADER ═══ */}
-      <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-bold uppercase tracking-wide text-foreground">{field.name}</span>
-          <span className={`h-3.5 w-3.5 rounded-full ${isIdle ? 'bg-muted-foreground/40' : 'bg-emerald-500 animate-pulse'}`} />
-          <span className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            {isIdle ? 'Inactiv' : session?.status === 'scores_revealed' ? 'Scoruri afișate' : 'În desfășurare'}
+      <div className="flex items-center gap-3 border-b border-border bg-card px-3 py-2 shrink-0">
+        <span className="text-sm font-bold uppercase tracking-wide text-foreground">{field.name}</span>
+        {!isIdle && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {session?.status === 'scores_revealed' ? 'Scoruri afișate' : 'În desfășurare'}
+            </span>
           </span>
-        </div>
-        <button
-          onClick={() => window.open(displayUrl, '_blank')}
-          className="flex items-center gap-2 rounded-md border border-input bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80"
-        >
-          Afisare TV
-        </button>
+        )}
       </div>
 
       {/* ═══ BODY: Schedule / Programa (full width) ═══ */}
       <div className={`${singleView ? 'flex-1 min-h-0 overflow-y-auto' : ''} bg-muted/30`}>
-          <div className="sticky top-0 z-10 border-b-2 border-border bg-card px-4 py-3">
-            <p className="text-sm font-bold uppercase tracking-wide text-foreground">Programa ({scheduleItems.length})</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Statusul de aici controlează programarea pe teren. Pentru meciuri, butonul de start din ecranul live mai ține cont și de statusul logic al meciului.
-              </p>
+          <div className="sticky top-0 z-10 flex border-b-2 border-border bg-card">
+            {[
+              { key: 'active', label: 'În curs', count: activeScheduleItems.length },
+              { key: 'completed', label: 'Finalizate', count: completedScheduleItems.length },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setScheduleTab(tab.key)}
+                className={`flex-1 border-b-2 px-3 py-2 text-xs font-bold uppercase tracking-wide transition ${
+                  scheduleTab === tab.key
+                    ? 'border-primary text-primary'
+                    : '-mb-0.5 border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            ))}
           </div>
-          <div className="p-3 space-y-2">
-            {scheduleItems.length === 0 && (
-              <p className="text-sm text-muted-foreground italic text-center py-6">Nicio probă alocată.<br/>Mergi la Programare.</p>
+          <div className="p-2 space-y-1.5">
+            {visibleScheduleItems.length === 0 && (
+              <p className="text-sm text-muted-foreground italic text-center py-6">
+                {scheduleTab === 'completed' ? 'Nicio probă finalizată.' : <>Nicio probă alocată.<br/>Mergi la Programare.</>}
+              </p>
             )}
-            {scheduleItems.map((item, idx) => {
+            {visibleScheduleItems.map((item) => {
               const isActiveItem = (item.type === 'category' && session?.current_category === item.id && !session?.current_match)
                 || (item.type === 'match' && session?.current_match === item.id);
               const st = STATUS_CFG[item.status] || STATUS_CFG.not_started;
@@ -368,19 +349,24 @@ function FieldPanel({
                 <React.Fragment key={`${item.type}-${item.id}`}>
                   {item.type === 'break' ? (
                     /* ─── Break item ─── */
-                    <div className="flex items-center gap-2 rounded-md border-2 border-dashed border-border bg-card px-4 py-3 text-sm text-foreground">
+                    <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-2 text-sm text-foreground">
                       <span className="text-base font-medium text-muted-foreground">&bull;</span>
                       <span className="flex-1 font-semibold">{item.data?.label || 'Pauză'}</span>
                       <span className="text-xs text-muted-foreground">{item.data?.duration || 60}s</span>
                     </div>
                   ) : (
                     /* ─── Category / Match item ─── */
-                    <div className={`flex flex-wrap items-center gap-2 rounded-md border px-3 py-2.5 transition sm:gap-2.5 sm:px-4 sm:py-3 ${
+                    <div
+                      onClick={() => goFullscreen(item.type, item.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goFullscreen(item.type, item.id); } }}
+                      className={`flex cursor-pointer flex-wrap items-center gap-2 rounded-md border px-3 py-2 transition hover:shadow-md ${
                       item.status === 'completed'
-                        ? 'border-border bg-muted opacity-60 cursor-default'
+                        ? 'border-border bg-muted opacity-60'
                         : isActiveItem
                           ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-300 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/20'
-                          : idx === nextItemIndex
+                          : item === nextItem
                             ? st.border + ' bg-card shadow-sm'
                             : st.border + ' ' + st.bg + ' hover:shadow-sm'
                     }`}
@@ -397,7 +383,15 @@ function FieldPanel({
                             <div className="flex flex-wrap gap-1 mt-0.5">
                               {item.data.groupName && <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{item.data.groupName}</span>}
                               {item.data.gender && <span className={`rounded border border-border px-1.5 py-0.5 text-xs text-foreground/80 ${GENDER_BG[item.data.gender] || 'bg-muted'}`}>{String(genderLabels[item.data.gender] || item.data.gender).toUpperCase()}</span>}
-                              <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{item.data.enrolled_athletes?.length || 0} sportiv{(item.data.enrolled_athletes?.length || 0) !== 1 ? 'i' : ''}</span>
+                              {(() => {
+                                const isTeamCat = item.data.type === 'team';
+                                const count = isTeamCat ? (item.data.enrolled_teams?.length || 0) : (item.data.enrolled_athletes?.length || 0);
+                                return (
+                                  <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+                                    {count} {isTeamCat ? `echip${count === 1 ? 'ă' : 'e'}` : `sportiv${count !== 1 ? 'i' : ''}`}
+                                  </span>
+                                );
+                              })()}
                             </div>
                           </>
                         ) : (
@@ -430,70 +424,6 @@ function FieldPanel({
                           </>
                         )}
                       </div>
-
-                      <div className="flex w-full flex-wrap items-center gap-2 pt-1">
-                        {/* URMEAZĂ badge */}
-                        {idx === nextItemIndex && !isActiveItem && item.status !== 'completed' && (
-                          <span className="shrink-0 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">Urmează</span>
-                        )}
-
-                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                          Programare teren
-                        </span>
-
-                        {/* Status dropdown */}
-                        <select
-                          value={item.status || 'not_started'}
-                          onChange={async e => {
-                            const newStatus = e.target.value;
-                            // If changing FROM completed, ask for confirmation
-                            if (item.status === 'completed' && newStatus !== 'completed') {
-                              setStatusConfirmData({ item, newStatus });
-                              e.target.value = 'completed'; // reset select visually
-                              return;
-                            }
-                            // If setting to in_progress, also start the session on this field
-                            if (newStatus === 'in_progress') {
-                              for (const si of scheduleItems) {
-                                if (si === item || si.type === 'break' || si.status !== 'in_progress') continue;
-                                try {
-                                  if (si.type === 'category') await fieldAPI.assignments.update(si.assignmentId, { status: 'not_started' });
-                                  else await matchFieldAssignmentAPI.update(si.assignmentId, { status: 'not_started' });
-                                } catch {}
-                              }
-                              // Sync session — start displaying this item
-                              const catId = item.type === 'category' ? item.id : null;
-                              const matchId = item.type === 'match' ? item.id : null;
-                              await switchDisplay(catId, matchId, null);
-                            }
-                            // If setting to not_started and this item was active, idle the session
-                            if (newStatus === 'not_started' && isActiveItem) {
-                              await setIdle();
-                            }
-                            if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
-                            else updateMatchAssignmentStatus(item.assignmentId, newStatus);
-                          }}
-                          disabled={busy}
-                          className={`w-full cursor-pointer px-2.5 py-1.5 text-xs font-bold uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto ${st.badge}`}
-                          onClick={e => e.stopPropagation()}
-                          title="Statusul de programare pentru teren: nu schimbă singur toate datele interne ale meciului."
-                          aria-label="Status programare teren"
-                        >
-                          <option value="not_started">Neînceput</option>
-                          <option value="in_progress">Activ</option>
-                          <option value="completed">Finalizat</option>
-                        </select>
-
-                        {/* VEZI DETALII — always shown */}
-                        <button
-                          onClick={() => goFullscreen(item.type === 'category' ? 'category' : 'match', item.id)}
-                          className={`w-full rounded-md border px-4 py-2 text-sm font-bold sm:w-auto ${
-                            item.status === 'completed'
-                              ? 'border-border bg-card text-muted-foreground/60 hover:bg-muted'
-                              : 'border-input bg-secondary/60 text-secondary-foreground hover:bg-secondary'
-                          }`}
-                        >VEZI DETALII</button>
-                      </div>
                     </div>
                   )}
                 </React.Fragment>
@@ -501,41 +431,6 @@ function FieldPanel({
             })}
           </div>
       </div>
-
-      {/* ── Status change from Finalizat confirmation modal ── */}
-      {statusConfirmData && (
-        <div role="dialog" aria-modal="true" aria-labelledby="status-confirm-title" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setStatusConfirmData(null)}>
-          <div className="w-full max-w-sm overflow-hidden rounded-lg border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="border-b border-border bg-primary px-5 py-4 text-center text-primary-foreground">
-              <h3 id="status-confirm-title" className="font-display text-lg font-semibold">Schimbi statusul?</h3>
-            </div>
-            <div className="px-5 py-4 text-center">
-              <p className="text-sm text-foreground/80">
-                Status nou: <span className="font-bold text-foreground">{statusConfirmData.newStatus === 'not_started' ? 'Neînceput' : 'Activ'}</span>
-              </p>
-            </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-border bg-muted px-5 py-4 sm:flex-row">
-              <button
-                onClick={() => setStatusConfirmData(null)}
-                className="flex-1 rounded-md border border-input bg-background px-4 py-3 text-base font-bold text-foreground transition hover:bg-accent"
-              >
-                Anulează
-              </button>
-              <button
-                onClick={async () => {
-                  const { item, newStatus } = statusConfirmData;
-                  setStatusConfirmData(null);
-                  if (item.type === 'category') updateAssignmentStatus(item.assignmentId, newStatus);
-                  else updateMatchAssignmentStatus(item.assignmentId, newStatus);
-                }}
-                className="flex-1 rounded-md bg-primary px-4 py-3 text-base font-bold text-primary-foreground transition hover:bg-primary/90"
-              >
-                Schimbă
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

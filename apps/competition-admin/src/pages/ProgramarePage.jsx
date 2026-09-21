@@ -700,7 +700,7 @@ export default function ProgramarePage() {
                 setRefPickerOpen({ type: itemType, id: itemId, slot, refId: refId || null, refName: refName || null, fieldId, startMin, endMin });
                 setReplacementRefId(refId ? String(refId) : '');
               }}
-              className={`flex min-w-0 flex-1 items-center gap-2 border px-2.5 py-2 text-left text-xs font-medium transition hover:shadow-sm ${
+              className={`flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-medium transition hover:shadow-sm ${
                 conflict
                   ? 'border-amber-400 bg-amber-100 text-amber-900 hover:bg-amber-200'
                   : isEmpty
@@ -735,14 +735,15 @@ export default function ProgramarePage() {
     const matchTypeLabel = !isCat ? (ROUND_LABELS[data.match_type] || data.match_type || '') : '';
     const duration = item.assignment?.estimated_duration || (isCat ? 15 : 10);
     const isEditingThis = editingDuration?.type === item.type && editingDuration?.id === item.id;
-    const enrolledCount = data.enrolled_athletes?.length || 0;
+    const isTeamCat = isCat && data.type === 'team';
+    const enrolledCount = isTeamCat ? (data.enrolled_teams?.length || 0) : (data.enrolled_athletes?.length || 0);
 
     return (
       <div
         draggable
         onDragStart={(e) => handleDragStart(e, item.type, item.id, item.assignment?.field)}
         onDragEnd={handleDragEnd}
-        className="group mb-2 cursor-grab border-2 border-border bg-card p-2.5 shadow-sm transition-all active:cursor-grabbing hover:bg-accent hover:shadow-md"
+        className="group mb-2 cursor-grab rounded-md border border-border bg-card p-2.5 shadow-sm transition-all active:cursor-grabbing hover:bg-accent hover:shadow-md"
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -780,7 +781,7 @@ export default function ProgramarePage() {
               {!isCat && matchTypeLabel && (
                 <span className="border border-border bg-accent px-1.5 py-0.5 text-xs font-semibold text-accent-foreground">{matchTypeLabel}</span>
               )}
-              {isCat && <Badge variant="outline">{enrolledCount} sportiv{enrolledCount !== 1 ? 'i' : ''}</Badge>}
+              {isCat && <Badge variant="outline">{enrolledCount} {isTeamCat ? `echip${enrolledCount === 1 ? 'ă' : 'e'}` : `sportiv${enrolledCount !== 1 ? 'i' : ''}`}</Badge>}
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -798,7 +799,7 @@ export default function ProgramarePage() {
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); setEditingDuration({ type: item.type, id: item.id, value: String(duration) }); }}
-                  className="border border-border bg-accent px-1.5 py-0.5 text-sm text-accent-foreground transition hover:bg-accent/70"
+                  className="rounded border border-border bg-accent px-1.5 py-0.5 text-sm text-accent-foreground transition hover:bg-accent/70"
                   title="Click pentru a edita durata"
                 >
                   {duration}′
@@ -809,7 +810,7 @@ export default function ProgramarePage() {
             {isCat && item.assignment && (
               <button
                 onClick={(e) => { e.stopPropagation(); openCategoryDetail(item.id); }}
-                className="hidden h-5 w-5 items-center justify-center border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent group-hover:inline-flex"
+                className="hidden h-5 w-5 items-center justify-center rounded border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent group-hover:inline-flex"
                 title="Detalii categorie"
               >ℹ</button>
             )}
@@ -818,7 +819,7 @@ export default function ProgramarePage() {
               <button
                 onClick={(e) => { e.stopPropagation(); isCat ? unassignCat(item.id) : unassignMatch(item.id); }}
                 disabled={busy}
-                className="hidden h-5 w-5 items-center justify-center border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent disabled:opacity-40 group-hover:inline-flex"
+                className="hidden h-5 w-5 items-center justify-center rounded border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent disabled:opacity-40 group-hover:inline-flex"
                 title="Scoate din tatami"
               >×</button>
             )}
@@ -837,7 +838,8 @@ export default function ProgramarePage() {
 
     if (type === 'category') {
       // Solo / Team category
-      const enrolled = data.enrolled_athletes || [];
+      const isTeamCat = data.type === 'team';
+      const enrolled = isTeamCat ? (data.enrolled_teams || []) : (data.enrolled_athletes || []);
       const enrolledCount = enrolled.length;
       const genderLabel = GENDER_LABELS[data.gender] || '';
       const genderBg = GENDER_BG[data.gender] || 'bg-muted';
@@ -846,7 +848,7 @@ export default function ProgramarePage() {
           draggable={draggable}
           onDragStart={draggable ? (e) => handleDragStart(e, type, id) : undefined}
           onDragEnd={draggable ? handleDragEnd : undefined}
-          className={`mb-2 border-2 border-border bg-card p-2.5 transition hover:bg-accent hover:shadow-sm ${
+          className={`mb-2 rounded-md border border-border bg-card p-2.5 transition hover:bg-accent hover:shadow-sm ${
             draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-default opacity-75'
           }`}
         >
@@ -862,7 +864,7 @@ export default function ProgramarePage() {
                 {String(genderLabel).toUpperCase()}
               </span>
             )}
-            <Badge variant="outline">{enrolledCount} sportiv{enrolledCount !== 1 ? 'i' : ''}</Badge>
+            <Badge variant="outline">{enrolledCount} {isTeamCat ? `echip${enrolledCount === 1 ? 'ă' : 'e'}` : `sportiv${enrolledCount !== 1 ? 'i' : ''}`}</Badge>
           </div>
         </div>
       );
@@ -879,7 +881,7 @@ export default function ProgramarePage() {
         draggable={draggable}
         onDragStart={draggable ? (e) => handleDragStart(e, type, id) : undefined}
         onDragEnd={draggable ? handleDragEnd : undefined}
-        className={`mb-2 border-2 border-border bg-card p-2.5 transition hover:bg-accent hover:shadow-sm ${
+        className={`mb-2 rounded-md border border-border bg-card p-2.5 transition hover:bg-accent hover:shadow-sm ${
           draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-default opacity-75'
         }`}
       >
@@ -960,7 +962,7 @@ export default function ProgramarePage() {
             ) : (
               <button
                 onClick={(e) => { e.stopPropagation(); setEditingBreak({ id: brk.id, label: brk.label, duration: brk.duration, focus: 'duration' }); }}
-                className="border border-border bg-accent px-1.5 py-0.5 text-sm font-medium text-accent-foreground transition hover:bg-accent/70"
+                className="rounded border border-border bg-accent px-1.5 py-0.5 text-sm font-medium text-accent-foreground transition hover:bg-accent/70"
                 title="Click pentru a edita durata"
               >
                 {brk.duration}′
@@ -969,7 +971,7 @@ export default function ProgramarePage() {
             <button
               onClick={() => removeBreak(brk.id)}
               disabled={busy}
-              className="hidden h-5 w-5 items-center justify-center border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent disabled:opacity-40 group-hover:inline-flex"
+              className="hidden h-5 w-5 items-center justify-center rounded border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent disabled:opacity-40 group-hover:inline-flex"
               title="Șterge pauza"
             >×</button>
           </div>
@@ -1156,7 +1158,7 @@ export default function ProgramarePage() {
                   ) : (
                     <button
                       onClick={() => setEditingStartTime({ fieldId: field.id, value: field.start_time || '09:00' })}
-                      className="border border-transparent px-1.5 py-0.5 text-sm text-accent-foreground transition hover:border-border hover:bg-accent/70"
+                      className="rounded border border-transparent px-1.5 py-0.5 text-sm text-accent-foreground transition hover:border-border hover:bg-accent/70"
                       title="Click pentru a seta ora de start"
                     >
                       {field.start_time ? formatTime(...field.start_time.split(':').map(Number)) : 'Setează ora'}
@@ -1507,12 +1509,12 @@ export default function ProgramarePage() {
                     <div className="flex min-w-max gap-4">
                       {rounds.map((round) => (
                         <div key={round} className="w-72 shrink-0">
-                          <div className="mb-3 border-2 border-border bg-accent px-3 py-2 text-sm font-bold text-accent-foreground">
+                          <div className="mb-3 rounded-md border border-border bg-accent px-3 py-2 text-sm font-bold text-accent-foreground">
                             {ROUND_LABELS[byRound[round]?.[0]?.match_type] || `Runda ${round}`}
                           </div>
                           <div className="space-y-3">
                             {byRound[round].map((match) => (
-                              <div key={match.id} className="border-2 border-border bg-card p-3 shadow-sm">
+                              <div key={match.id} className="rounded-md border border-border bg-card p-3 shadow-sm">
                                 <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                                   <span className="font-mono">ID {match.id}</span>
                                   {match.bracket_position != null ? <span>Poziția {match.bracket_position}</span> : null}

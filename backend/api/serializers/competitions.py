@@ -50,7 +50,7 @@ class FightAthleteWeightSerializer(serializers.ModelSerializer):
             'pre_weight_kg', 'current_weight_kg',
             'weight_loss_percentage',
             'is_disqualified', 'disqualification_reason',
-            'place', 'recorded_at',
+            'place', 'is_weight_locked', 'recorded_at',
             'athlete_details', 'weight_loss_display',
         )
         read_only_fields = ('id', 'weight_loss_percentage', 'recorded_at', 'athlete_details', 'weight_loss_display')
