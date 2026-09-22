@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import LoginPage from './pages/LoginPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import EventPickerPage from './pages/EventPickerPage.jsx';
@@ -19,10 +19,11 @@ export default function App() {
   const [event, setEvent] = useState(null);
   const [localInfo, setLocalInfo] = useState(null); // { lanIp, urls }
   const [activeApp, setActiveApp] = useState(null); // { id, url, title }
-  // Latest ControlPanelPage.handleResync closure, set by that page itself -
-  // lets the native Sync menu's "Web → Local" item trigger it without
-  // routing the click through a prop chain.
-  const resyncRef = useRef(null);
+  // Set (with setActiveApp(null)) by the native Sync menu's "Web → Local"
+  // item, consumed by ControlPanelPage's own mount effect once it's back
+  // on screen - see that effect's comment for why a ref alone doesn't
+  // work here.
+  const [pendingResync, setPendingResync] = useState(false);
 
   useEffect(() => {
     // Triggered from the "Account > Deconectare" native menu item. The
@@ -39,14 +40,25 @@ export default function App() {
   // Native "Sync" menu (main.js) - both items only make sense once the
   // local stack is up and running (the 'control' screen), so they're
   // quietly ignored otherwise rather than needing the menu itself to know
-  // the renderer's navigation state.
+  // the renderer's navigation state. Both also have to close an open
+  // embedded app first: activeApp renders on top of *everything* below
+  // (see the `if (activeApp)` return just below this component), so
+  // without this the screen switch/resync still happens underneath but
+  // the operator - who normally has an app open, that being the whole
+  // point of the control panel - never sees anything change at all.
   useEffect(() => {
     if (!window.launcher) return undefined;
     const offWebToLocal = window.launcher.onSyncMenuWebToLocal(() => {
-      if (screen === 'control') resyncRef.current?.();
+      if (screen === 'control') {
+        setActiveApp(null);
+        setPendingResync(true);
+      }
     });
     const offLocalToWeb = window.launcher.onSyncMenuLocalToWeb(() => {
-      if (screen === 'control') setScreen('sync-cloud');
+      if (screen === 'control') {
+        setActiveApp(null);
+        setScreen('sync-cloud');
+      }
     });
     return () => {
       offWebToLocal();
@@ -90,7 +102,8 @@ export default function App() {
           event={event}
           localInfo={localInfo}
           onOpenApp={(id, url, title) => setActiveApp({ id, url, title })}
-          resyncRef={resyncRef}
+          triggerResync={pendingResync}
+          onResyncTriggered={() => setPendingResync(false)}
         />
       )}
 

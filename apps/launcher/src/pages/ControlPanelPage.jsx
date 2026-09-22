@@ -7,7 +7,7 @@ const APP_LABELS = {
   'public-display': 'Ecran Public',
 };
 
-export default function ControlPanelPage({ event, localInfo, onOpenApp, resyncRef }) {
+export default function ControlPanelPage({ event, localInfo, onOpenApp, triggerResync, onResyncTriggered }) {
   const [statuses, setStatuses] = useState({});
   const [lines, setLines] = useState([]);
   const [resyncing, setResyncing] = useState(false);
@@ -48,14 +48,21 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, resyncRe
     }
   }
 
-  // "Web → Local" moved to the native Sync menu (main.js) - hand the
-  // latest closure up to App.jsx so its menu-event listener can call it,
-  // the same exportExcelRef pattern LiveFullscreenPage uses for its own
-  // top-nav Excel button.
+  // "Web → Local" lives in the native Sync menu (main.js). Triggering it
+  // needs this component mounted (the progress log below is how the
+  // operator sees it happen), but this component is unmounted while an
+  // app is open embedded (App.jsx renders AppViewPage instead, covering
+  // this entirely) - which App.jsx's own menu-event listener already
+  // closes before setting triggerResync, so by the time this effect runs
+  // here, mount is guaranteed to be fresh and this fires reliably instead
+  // of racing a ref that a moment ago belonged to an unmounted instance.
   useEffect(() => {
-    if (resyncRef) resyncRef.current = handleResync;
-    return () => { if (resyncRef) resyncRef.current = null; };
-  });
+    if (triggerResync) {
+      handleResync();
+      onResyncTriggered?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerResync]);
 
   const appIds = Object.keys(localInfo?.urls || {});
 
