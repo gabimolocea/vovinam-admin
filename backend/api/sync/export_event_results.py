@@ -8,6 +8,8 @@ from django.utils import timezone
 from api.models import (
     Category,
     CategoryAthlete,
+    CategoryAthleteScore,
+    CategoryRefereeScore,
     CategoryTeam,
     FightAthleteWeight,
     Match,
@@ -40,7 +42,26 @@ class EventResultsManifest:
 SCHEMA_VERSION = 1
 
 
-def _category_result_dict(category: Category) -> dict[str, Any]:
+def _category_result_dict(
+    category: Category,
+    athlete_places: dict[int, dict[int, int]] | None = None,
+    team_places: dict[int, dict[int, int]] | None = None,
+) -> dict[str, Any]:
+    """athlete_places/team_places map category_id -> {place: athlete_id/team_id},
+    derived from CategoryAthlete.place / CategoryTeam.place.
+
+    Those per-enrollment `place` values are what the local competition
+    actually writes: advance_match_winner -> _set_category_place (see
+    api/views/matches.py) only ever sets CategoryAthlete.place, and never
+    the category's own first_place/second_place/third_place FKs. Since
+    import_event_results writes those FKs on cloud unconditionally, a pack
+    built straight off the (locally always-empty) FKs would actively blank
+    out whatever cloud had. Fall back to the derived value so a push
+    carries the real podium instead of erasing it - an explicitly set FK
+    still wins, since that's a deliberate admin decision.
+    """
+    category_id = category.id
+
     if category.type == 'solo':
         category = category.solocategory
     elif category.type in {'team', 'teams'}:
@@ -54,23 +75,42 @@ def _category_result_dict(category: Category) -> dict[str, Any]:
     }
 
     if category.type in {'solo', 'fight'}:
+        derived = (athlete_places or {}).get(category_id, {})
         payload.update(
             {
-                'first_place_id': getattr(category, 'first_place_id', None),
-                'second_place_id': getattr(category, 'second_place_id', None),
-                'third_place_id': getattr(category, 'third_place_id', None),
+                'first_place_id': getattr(category, 'first_place_id', None) or derived.get(1),
+                'second_place_id': getattr(category, 'second_place_id', None) or derived.get(2),
+                'third_place_id': getattr(category, 'third_place_id', None) or derived.get(3),
             }
         )
     elif category.type in {'team', 'teams'}:
+        derived = (team_places or {}).get(category_id, {})
         payload.update(
             {
-                'first_place_team_id': getattr(category, 'first_place_team_id', None),
-                'second_place_team_id': getattr(category, 'second_place_team_id', None),
-                'third_place_team_id': getattr(category, 'third_place_team_id', None),
+                'first_place_team_id': getattr(category, 'first_place_team_id', None) or derived.get(1),
+                'second_place_team_id': getattr(category, 'second_place_team_id', None) or derived.get(2),
+                'third_place_team_id': getattr(category, 'third_place_team_id', None) or derived.get(3),
             }
         )
 
     return payload
+
+
+def _places_by_category(entries, member_attr: str) -> dict[int, dict[int, int]]:
+    """{category_id: {place: member_id}} from CategoryAthlete/CategoryTeam rows.
+
+    Joint 3rd place (both semi-final losers, the federation's rule when a
+    category has no bronze match) means `place` is not unique per category -
+    a category only has one third_place slot, so the first row in the
+    caller's stable ordering wins and the other keeps its own
+    CategoryAthlete.place, which is what the bracket and standings screens
+    actually read anyway.
+    """
+    places: dict[int, dict[int, int]] = {}
+    for entry in entries:
+        if entry.place in (1, 2, 3):
+            places.setdefault(entry.category_id, {}).setdefault(entry.place, getattr(entry, member_attr))
+    return places
 
 
 def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
@@ -112,6 +152,29 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
         .order_by('category_id', 'athlete_id')
     )
 
+    # Technique (solo/team) scoring, as the referee app actually records it.
+    # CategoryAthleteScore/CategoryRefereeScore are the only place a
+    # referee's per-criterion deductions and resulting score live - the
+    # CategoryAthlete.ref1_score..ref5_score columns carried above are a
+    # separate, admin-typed store that nothing copies back into. Without
+    # these two sections everything the five technique referees entered
+    # stays on the venue laptop.
+    athlete_scores = list(
+        CategoryAthleteScore.objects.filter(category_id__in=category_ids)
+        .prefetch_related('team_members')
+        .order_by('category_id', 'athlete_id', 'referee_id', 'id')
+    )
+    referee_scores_by_athlete_score: dict[int, list[CategoryRefereeScore]] = {}
+    for referee_score in (
+        CategoryRefereeScore.objects
+        .filter(athlete_score_id__in=[score.id for score in athlete_scores])
+        .order_by('athlete_score_id', 'referee_id')
+    ):
+        referee_scores_by_athlete_score.setdefault(referee_score.athlete_score_id, []).append(referee_score)
+
+    athlete_places = _places_by_category(category_athletes, 'athlete_id')
+    team_places = _places_by_category(category_teams, 'team_id')
+
     manifest = EventResultsManifest(
         schema_version=SCHEMA_VERSION,
         event_id=event.id,
@@ -127,7 +190,10 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
             'local_sync_status': event.local_sync_status,
             'exported_to_local_at': event.exported_to_local_at,
         },
-        'category_results': [_category_result_dict(category) for category in categories],
+        'category_results': [
+            _category_result_dict(category, athlete_places, team_places)
+            for category in categories
+        ],
         'category_athletes': [
             {
                 'category_id': entry.category_id,
@@ -242,5 +308,40 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
                 'is_weight_locked': entry.is_weight_locked,
             }
             for entry in fight_athlete_weights
+        ],
+        # Keyed on (category, athlete, referee) - CategoryAthleteScore's own
+        # unique_together - since pks diverge between the two instances.
+        # Each referee's scores are nested under their result rather than
+        # sent as a flat section, so the importer never has to re-resolve a
+        # parent whose pk it doesn't know.
+        'category_athlete_scores': [
+            {
+                'category_id': score.category_id,
+                'athlete_id': score.athlete_id,
+                'referee_id': score.referee_id,
+                'score': score.score,
+                'type': score.type,
+                'group_id': score.group_id,
+                'team_name': score.team_name,
+                'team_member_ids': [athlete.id for athlete in score.team_members.all()],
+                'submitted_by_athlete': score.submitted_by_athlete,
+                'placement_claimed': score.placement_claimed,
+                'notes': score.notes,
+                'status': score.status,
+                'submitted_date': score.submitted_date,
+                'reviewed_date': score.reviewed_date,
+                'admin_notes': score.admin_notes,
+                'referee_scores': [
+                    {
+                        'referee_id': referee_score.referee_id,
+                        'deductions': referee_score.deductions,
+                        'score': referee_score.score,
+                        'submitted_date': referee_score.submitted_date,
+                        'notes': referee_score.notes,
+                    }
+                    for referee_score in referee_scores_by_athlete_score.get(score.id, [])
+                ],
+            }
+            for score in athlete_scores
         ],
     }

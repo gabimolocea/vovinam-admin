@@ -15,6 +15,8 @@ from rest_framework.test import APIClient
 from api.models import (
     Athlete,
     CategoryAthlete,
+    CategoryAthleteScore,
+    CategoryRefereeScore,
     City,
     Club,
     CompetitionField,
@@ -26,7 +28,10 @@ from api.models import (
     MatchRefereeScore,
     MatchRound,
     RefereePointEvent,
+    SoloCategory,
 )
+from api.sync.export_event_results import build_event_results_pack
+from api.sync.import_event_results import import_event_results
 from landing.models import Event
 
 User = get_user_model()
@@ -374,6 +379,102 @@ class OfflineEventResultsTests(TestCase):
         self.assertEqual(RefereePointEvent.objects.filter(match=self.match).count(), 1)
         self.assertEqual(MatchRefereeScore.objects.filter(match=self.match).count(), 1)
         self.assertIn(f'Imported event results for event {self.event.id}', stdout.getvalue())
+
+    def test_event_results_export_derives_category_awards_from_enrollment_places(self):
+        """A locally-run competition only ever writes CategoryAthlete.place
+        (advance_match_winner -> _set_category_place); the category's own
+        first/second/third_place FKs stay empty. Since the importer writes
+        those FKs unconditionally, exporting them as-is would blank out
+        cloud's podium on every push instead of filling it in."""
+        bare_category = FightCategory.objects.create(
+            name='Fight B',
+            event=self.event,
+            group=self.group,
+            display_order=2,
+        )
+        CategoryAthlete.objects.create(category=bare_category, athlete=self.red_corner, place=2)
+        CategoryAthlete.objects.create(category=bare_category, athlete=self.blue_corner, place=1)
+        self.assertIsNone(bare_category.first_place_id)
+
+        payload = build_event_results_pack(event_id=self.event.id)
+        entry = next(item for item in payload['category_results'] if item['id'] == bare_category.id)
+
+        self.assertEqual(entry['first_place_id'], self.blue_corner.id)
+        self.assertEqual(entry['second_place_id'], self.red_corner.id)
+        self.assertIsNone(entry['third_place_id'])
+
+    def test_event_results_export_keeps_explicitly_set_category_awards(self):
+        payload = build_event_results_pack(event_id=self.event.id)
+        entry = next(item for item in payload['category_results'] if item['id'] == self.category.id)
+
+        self.assertEqual(entry['first_place_id'], self.red_corner.id)
+        self.assertEqual(entry['second_place_id'], self.blue_corner.id)
+
+    def test_event_results_round_trip_carries_technique_scores(self):
+        """CategoryAthleteScore/CategoryRefereeScore are what the referee app
+        writes for solo/team categories - without them in the pack, every
+        technique result stays on the venue laptop."""
+        solo_category = SoloCategory.objects.create(
+            name='Solo A',
+            event=self.event,
+            group=self.group,
+            display_order=3,
+        )
+        athlete_score = CategoryAthleteScore.objects.create(
+            category=solo_category,
+            athlete=self.red_corner,
+            referee=self.referee,
+            type='solo',
+            status='approved',
+        )
+        CategoryRefereeScore.objects.create(
+            athlete_score=athlete_score,
+            referee=self.referee,
+            score=Decimal('93.50'),
+            deductions={'stamina': 6.5},
+        )
+        # Saving a referee score reopens an approved result for review, so
+        # the fixture has to re-approve before exporting - the import is
+        # expected to preserve that approval, not re-trip the same rule.
+        CategoryAthleteScore.objects.filter(pk=athlete_score.pk).update(status='approved')
+
+        payload = build_event_results_pack(event_id=self.event.id)
+        self.assertEqual(len(payload['category_athlete_scores']), 1)
+        self.assertEqual(len(payload['category_athlete_scores'][0]['referee_scores']), 1)
+
+        CategoryRefereeScore.objects.all().delete()
+        CategoryAthleteScore.objects.all().delete()
+
+        result = import_event_results(payload)
+
+        self.assertEqual(result['imported']['category_athlete_scores'], 1)
+        self.assertEqual(result['imported']['category_referee_scores'], 1)
+        self.assertEqual(result['skipped'], [])
+
+        restored = CategoryAthleteScore.objects.get(category=solo_category, athlete=self.red_corner)
+        self.assertEqual(restored.status, 'approved')
+        self.assertEqual(restored.referee_scores.count(), 1)
+        self.assertEqual(restored.referee_scores.first().score, Decimal('93.50'))
+        self.assertEqual(restored.referee_scores.first().deductions, {'stamina': 6.5})
+
+    def test_event_results_import_skips_technique_score_for_unknown_referee(self):
+        """One referee missing in cloud must not roll back the whole day's
+        results - the row is skipped and reported instead."""
+        payload = build_event_results_pack(event_id=self.event.id)
+        payload['category_athlete_scores'] = [{
+            'category_id': self.category.id,
+            'athlete_id': self.red_corner.id,
+            'referee_id': 9_999_999,
+            'type': 'solo',
+            'status': 'approved',
+            'referee_scores': [],
+        }]
+
+        result = import_event_results(payload)
+
+        self.assertEqual(result['imported']['category_athlete_scores'], 0)
+        self.assertEqual(len(result['skipped']), 1)
+        self.assertIn('9999999', result['skipped'][0])
 
 
 class EventAdminImportResultsViewTests(TestCase):

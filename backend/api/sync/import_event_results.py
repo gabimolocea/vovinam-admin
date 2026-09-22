@@ -9,9 +9,12 @@ from api.models import (
     Athlete,
     Category,
     CategoryAthlete,
+    CategoryAthleteScore,
+    CategoryRefereeScore,
     CategoryTeam,
     FightAthleteWeight,
     FightCategory,
+    Group,
     Match,
     MatchEvent,
     MatchFieldAssignment,
@@ -130,6 +133,88 @@ def _upsert_fight_athlete_weight(entry: dict[str, Any], category_id: int):
         },
     )
     return obj
+
+
+def _upsert_category_athlete_score(entry: dict[str, Any], skipped: list[str]):
+    """Technique (solo/team) scoring, keyed on CategoryAthleteScore's own
+    unique_together (category, athlete, referee) - pks diverge between the
+    two instances. Team results carry athlete=None, where that tuple stops
+    being unique (SQL treats NULLs as distinct), so team_name joins the key
+    for those.
+
+    An unknown athlete/referee skips just that row instead of raising:
+    this whole import is one transaction, and losing an entire day of
+    results because one referee was never synced down is far worse than
+    landing everything else and reporting the gap (see the returned
+    `skipped` list, surfaced to the operator).
+    """
+    category_id = entry['category_id']
+    athlete_id = entry.get('athlete_id')
+    referee_id = entry.get('referee_id')
+
+    for label, pk in (('Sportivul', athlete_id), ('Arbitrul', referee_id)):
+        if pk is not None and not Athlete.objects.filter(pk=pk).exists():
+            skipped.append(f'{label} {pk} lipsește din cloud (rezultat tehnică, categoria {category_id}).')
+            return None
+
+    lookup = {'category_id': category_id, 'athlete_id': athlete_id, 'referee_id': referee_id}
+    if athlete_id is None:
+        lookup['team_name'] = entry.get('team_name')
+
+    group_id = entry.get('group_id')
+    obj, _created = CategoryAthleteScore.objects.update_or_create(
+        **lookup,
+        defaults={
+            'score': entry.get('score'),
+            'type': entry.get('type', 'solo'),
+            'group_id': group_id if Group.objects.filter(pk=group_id).exists() else None,
+            'team_name': entry.get('team_name'),
+            'submitted_by_athlete': entry.get('submitted_by_athlete', False),
+            'placement_claimed': entry.get('placement_claimed'),
+            'notes': entry.get('notes'),
+            'admin_notes': entry.get('admin_notes'),
+        },
+    )
+
+    member_ids = [
+        pk for pk in (entry.get('team_member_ids') or [])
+        if Athlete.objects.filter(pk=pk).exists()
+    ]
+    obj.team_members.set(member_ids)
+
+    referee_score_count = 0
+    for referee_score in entry.get('referee_scores') or []:
+        score_referee_id = referee_score.get('referee_id')
+        if not Athlete.objects.filter(pk=score_referee_id).exists():
+            skipped.append(f'Arbitrul {score_referee_id} lipsește din cloud (scor tehnică, categoria {category_id}).')
+            continue
+        score_obj, _ = CategoryRefereeScore.objects.update_or_create(
+            athlete_score=obj,
+            referee_id=score_referee_id,
+            defaults={
+                'deductions': referee_score.get('deductions') or {},
+                'score': referee_score.get('score', 100),
+                'notes': referee_score.get('notes'),
+            },
+        )
+        _set_preserved_fields(CategoryRefereeScore, score_obj.pk, {'submitted_date': referee_score.get('submitted_date')})
+        referee_score_count += 1
+
+    # Written last, and through the queryset so CategoryRefereeScore.save()'s
+    # "a scoring change reopens an approved result" rule (api/models/
+    # scoring.py) can't demote what the local server already approved -
+    # every referee score above would otherwise flip this back to pending.
+    _set_preserved_fields(
+        CategoryAthleteScore,
+        obj.pk,
+        {
+            'status': entry.get('status'),
+            'submitted_date': entry.get('submitted_date'),
+            'reviewed_date': entry.get('reviewed_date'),
+        },
+    )
+
+    return referee_score_count
 
 
 def _upsert_category_team(entry: dict[str, Any]):
@@ -358,6 +443,7 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
     point_events_payload = _section(payload, 'point_events')
     match_referee_scores_payload = _section(payload, 'match_referee_scores')
     fight_athlete_weights_payload = _section(payload, 'fight_athlete_weights')
+    category_athlete_scores_payload = _section(payload, 'category_athlete_scores')
 
     existing_category_ids = _existing_event_category_ids(event.id)
     existing_match_ids = _existing_event_match_ids(event.id)
@@ -370,10 +456,13 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
         if entry['id'] not in existing_category_ids:
             raise ValidationError({'category_results': f"Category {entry['id']} does not exist in cloud. Creating new local categories is not supported by result sync."})
 
+    skipped: list[str] = []
     imported = {
         'category_results': 0,
         'category_athletes': 0,
         'category_teams': 0,
+        'category_athlete_scores': 0,
+        'category_referee_scores': 0,
         'matches': 0,
         'match_rounds': 0,
         'match_events': 0,
@@ -433,6 +522,20 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
         _upsert_category_team(entry)
         imported['category_teams'] += 1
 
+    # After category_teams on purpose: saving a CategoryTeam fires
+    # sync_admin_scores_to_referee_scores (api/signals.py), which deletes
+    # and recreates that result's CategoryRefereeScore rows from the
+    # admin-typed ref1..5_score columns - running this first would hand it
+    # the referee app's real scores to wipe.
+    for entry in category_athlete_scores_payload:
+        if entry['category_id'] not in existing_category_ids:
+            raise ValidationError({'category_athlete_scores': f"Category {entry['category_id']} does not exist in cloud."})
+        referee_score_count = _upsert_category_athlete_score(entry, skipped)
+        if referee_score_count is None:
+            continue
+        imported['category_athlete_scores'] += 1
+        imported['category_referee_scores'] += referee_score_count
+
     for entry in matches_payload:
         _upsert_match(entry, existing_category_ids)
         # A match created locally (e.g. a bronze match added after the
@@ -482,6 +585,7 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         'event_id': event.id,
         'imported': imported,
+        'skipped': skipped,
         'local_sync_status': event.local_sync_status,
         'sync_locked': event.sync_locked,
     }
