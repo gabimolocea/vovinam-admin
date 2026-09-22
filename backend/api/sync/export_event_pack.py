@@ -16,6 +16,7 @@ from api.models import (
     CompetitionField,
     CompetitionReferee,
     DisplayMonitorSession,
+    FightAthleteWeight,
     FightGroupEnrollment,
     Group,
     Match,
@@ -204,6 +205,18 @@ def build_event_pack(*, event_id: int) -> dict[str, Any]:
     )
     athlete_ids.update(entry.athlete_id for entry in fight_group_enrollments if entry.athlete_id)
 
+    # The actual weigh-in record for fight categories (declared weight,
+    # official competition-day weight, disqualification, lock state) - an
+    # admin can enter/correct this directly (e.g. via Django admin) before
+    # an event is ever synced down, and without this it's invisible on the
+    # local venue machine even though the athlete/category themselves are.
+    fight_athlete_weights = list(
+        FightAthleteWeight.objects.filter(category_id__in=category_ids)
+        .select_related('athlete')
+        .order_by('category_id', 'athlete__last_name', 'athlete__first_name')
+    )
+    athlete_ids.update(entry.athlete_id for entry in fight_athlete_weights if entry.athlete_id)
+
     athletes = list(
         Athlete.objects.filter(id__in=athlete_ids)
         .select_related('club', 'city', 'current_grade', 'federation_role', 'title')
@@ -363,6 +376,20 @@ def build_event_pack(*, event_id: int) -> dict[str, Any]:
                 'notes': entry.notes,
             }
             for entry in fight_group_enrollments
+        ],
+        'fight_athlete_weights': [
+            {
+                'id': entry.id,
+                'category_id': entry.category_id,
+                'athlete_id': entry.athlete_id,
+                'pre_weight_kg': entry.pre_weight_kg,
+                'current_weight_kg': entry.current_weight_kg,
+                'is_disqualified': entry.is_disqualified,
+                'disqualification_reason': entry.disqualification_reason,
+                'place': entry.place,
+                'is_weight_locked': entry.is_weight_locked,
+            }
+            for entry in fight_athlete_weights
         ],
         'competition_referees': [
             {

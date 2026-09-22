@@ -17,6 +17,7 @@ from api.models import (
     CompetitionField,
     CompetitionReferee,
     DisplayMonitorSession,
+    FightAthleteWeight,
     FightCategory,
     FightGroupEnrollment,
     Group,
@@ -158,6 +159,7 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
     competition_referees_payload = _section(payload, 'competition_referees')
     event_enrollments_payload = _section(payload, 'event_enrollments')
     fight_group_enrollments_payload = _section(payload, 'fight_group_enrollments')
+    fight_athlete_weights_payload = _section(payload, 'fight_athlete_weights')
     category_field_assignments_payload = _section(payload, 'category_field_assignments')
     match_field_assignments_payload = _section(payload, 'match_field_assignments')
     category_referee_assignments_payload = _section(payload, 'category_referee_assignments')
@@ -254,13 +256,23 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
             },
         )
 
+    fight_category_ids = {category['id'] for category in categories_payload if category.get('type') == 'fight'}
+    # An athlete's current fight bracket, as this loop resolves it - see
+    # the fight_athlete_weights loop below for why entries there must
+    # follow this instead of their own category_id.
+    current_fight_category_by_athlete: dict[int, int] = {}
+
     for category_athlete in category_athletes_payload:
+        category_id = _safe_fk_id(Category, category_athlete.get('category_id'))
+        athlete_id = _safe_fk_id(Athlete, category_athlete.get('athlete_id'))
+        if category_id in fight_category_ids and athlete_id is not None:
+            current_fight_category_by_athlete[athlete_id] = category_id
         _upsert(
             CategoryAthlete,
             category_athlete['id'],
             {
-                'category_id': _safe_fk_id(Category, category_athlete.get('category_id')),
-                'athlete_id': _safe_fk_id(Athlete, category_athlete.get('athlete_id')),
+                'category_id': category_id,
+                'athlete_id': athlete_id,
                 'weight': category_athlete.get('weight'),
                 'place': category_athlete.get('place'),
                 'disqualified': category_athlete.get('disqualified', False),
@@ -396,6 +408,76 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
             },
         )
 
+    # The actual weigh-in record - an admin may have entered/corrected this
+    # directly (e.g. via Django admin) before the event was ever synced
+    # down, so it needs to travel with the pack just like everything else.
+    #
+    # Upserted by (category, athlete), not by the pack's raw id: creating a
+    # CategoryAthlete for a fight category above already auto-creates an
+    # empty FightAthleteWeight for the same pair via
+    # sync_fight_weight_to_category_athlete (see api/signals.py), with a
+    # freshly-assigned local pk that never matches the pack's id. A pk-keyed
+    # upsert-then-delete-stale-ids pass would delete that phantom row before
+    # creating "our" one - and deleting a FightAthleteWeight cascades via
+    # delete_category_athlete_on_fight_weight_remove into deleting the
+    # CategoryAthlete we just created too. Keying on the natural
+    # (category, athlete) pair finds and fills in that same phantom row
+    # instead, sidestepping the cascade and the unique_together conflict a
+    # duplicate create() would otherwise hit. No separate stale-row cleanup
+    # is needed either: removing a stale CategoryAthlete above already
+    # cascades into removing its FightAthleteWeight via that same signal.
+    #
+    # category_id follows current_fight_category_by_athlete (the athlete's
+    # CategoryAthlete-resolved bracket) rather than entry['category_id']
+    # directly: if the two sections of a payload ever disagreed about which
+    # bracket an athlete is in, trusting this section's own value could
+    # create a FightAthleteWeight in a bracket CategoryAthlete just moved
+    # them out of - which would resurrect a CategoryAthlete there via the
+    # same signal, undoing the move.
+    for entry in fight_athlete_weights_payload:
+        athlete_id = _safe_fk_id(Athlete, entry.get('athlete_id'))
+        if athlete_id is None:
+            continue
+        category_id = current_fight_category_by_athlete.get(
+            athlete_id, _safe_fk_id(FightCategory, entry.get('category_id'))
+        )
+        if category_id is None:
+            continue
+        FightAthleteWeight.objects.update_or_create(
+            category_id=category_id,
+            athlete_id=athlete_id,
+            defaults={
+                'pre_weight_kg': entry.get('pre_weight_kg'),
+                'current_weight_kg': entry.get('current_weight_kg'),
+                'is_disqualified': entry.get('is_disqualified', False),
+                'disqualification_reason': entry.get('disqualification_reason', ''),
+                'place': entry.get('place'),
+                'is_weight_locked': entry.get('is_weight_locked', False),
+            },
+        )
+
+    # Unlike category_athletes_payload's own upsert above (an in-place
+    # field update on the same row/pk, not a delete-then-recreate), moving
+    # an athlete to a different bracket doesn't naturally cascade-clean the
+    # FightAthleteWeight left behind in their old one. Prune it explicitly,
+    # scoped to siblings within the SAME bracket group (same group+gender)
+    # so this can't touch a genuinely different fight category the athlete
+    # is separately enrolled in (e.g. a different group).
+    fight_bracket_by_category_id: dict[int, tuple[int, str]] = {
+        row['id']: (row['group_id'], row['gender'])
+        for row in FightCategory.objects.filter(event_id=event.id).values('id', 'group_id', 'gender')
+    }
+    for athlete_id, category_id in current_fight_category_by_athlete.items():
+        bracket = fight_bracket_by_category_id.get(category_id)
+        if bracket is None:
+            continue
+        sibling_category_ids = [
+            cid for cid, other_bracket in fight_bracket_by_category_id.items()
+            if other_bracket == bracket and cid != category_id
+        ]
+        if sibling_category_ids:
+            FightAthleteWeight.objects.filter(athlete_id=athlete_id, category_id__in=sibling_category_ids).delete()
+
     for assignment in category_field_assignments_payload:
         _upsert(
             CategoryFieldAssignment,
@@ -517,6 +599,7 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
             'competition_referees': len(competition_referees_payload),
             'event_enrollments': len(event_enrollments_payload),
             'fight_group_enrollments': len(fight_group_enrollments_payload),
+            'fight_athlete_weights': len(fight_athlete_weights_payload),
             'category_field_assignments': len(category_field_assignments_payload),
             'match_field_assignments': len(match_field_assignments_payload),
             'category_referee_assignments': len(category_referee_assignments_payload),

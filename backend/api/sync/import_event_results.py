@@ -10,6 +10,7 @@ from api.models import (
     Category,
     CategoryAthlete,
     CategoryTeam,
+    FightAthleteWeight,
     FightCategory,
     Match,
     MatchEvent,
@@ -94,6 +95,37 @@ def _upsert_category_athlete(entry: dict[str, Any], fight_bracket_by_category_id
             'ref3_score': entry.get('ref3_score'),
             'ref4_score': entry.get('ref4_score'),
             'ref5_score': entry.get('ref5_score'),
+        },
+    )
+    return obj
+
+
+def _upsert_fight_athlete_weight(entry: dict[str, Any], category_id: int):
+    """category_id is the athlete's CURRENT bracket as _upsert_category_athlete
+    just resolved it, deliberately NOT entry['category_id'] - the caller may
+    have only updated the category_athletes section of a payload (e.g. a
+    LAN bracket reassignment) without also updating this section, and
+    trusting a stale bracket here would create a FightAthleteWeight there.
+    Because creating one auto-creates a CategoryAthlete for the same pair
+    (see sync_fight_weight_to_category_athlete in api/signals.py), that
+    would resurrect the athlete's enrollment in the bracket they were just
+    moved out of. Always following CategoryAthlete's resolved bracket
+    keeps the two in agreement by construction, so no separate stale-
+    sibling cleanup is needed either - moving CategoryAthlete already
+    cascades into removing the old bracket's FightAthleteWeight via
+    delete_fight_weight_on_unenroll."""
+    athlete_id = entry['athlete_id']
+
+    obj, _created = FightAthleteWeight.objects.update_or_create(
+        category_id=category_id,
+        athlete_id=athlete_id,
+        defaults={
+            'pre_weight_kg': entry.get('pre_weight_kg'),
+            'current_weight_kg': entry.get('current_weight_kg'),
+            'is_disqualified': entry.get('is_disqualified', False),
+            'disqualification_reason': entry.get('disqualification_reason', ''),
+            'place': entry.get('place'),
+            'is_weight_locked': entry.get('is_weight_locked', False),
         },
     )
     return obj
@@ -279,6 +311,7 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
     match_events_payload = _section(payload, 'match_events')
     point_events_payload = _section(payload, 'point_events')
     match_referee_scores_payload = _section(payload, 'match_referee_scores')
+    fight_athlete_weights_payload = _section(payload, 'fight_athlete_weights')
 
     existing_category_ids = _existing_event_category_ids(event.id)
     existing_match_ids = _existing_event_match_ids(event.id)
@@ -304,6 +337,7 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
         'match_events': 0,
         'point_events': 0,
         'match_referee_scores': 0,
+        'fight_athlete_weights': 0,
     }
 
     for entry in category_results_payload:
@@ -324,6 +358,12 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
         category.save()
         imported['category_results'] += 1
 
+    # An athlete's current fight bracket, as category_athletes just
+    # resolved it (post any LAN bracket reassignment) - see
+    # _upsert_fight_athlete_weight's docstring for why fight_athlete_weights
+    # entries must follow this instead of their own category_id.
+    current_fight_category_by_athlete: dict[int, int] = {}
+
     for entry in category_athletes_payload:
         if entry['category_id'] not in existing_category_ids:
             raise ValidationError({'category_athletes': f"Category {entry['category_id']} does not exist in cloud. Creating new local categories is not supported by result sync."})
@@ -331,6 +371,17 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValidationError({'category_athletes': f"Athlete {entry['athlete_id']} does not exist in cloud. Creating new local athletes is not supported by result sync."})
         _upsert_category_athlete(entry, fight_bracket_by_category_id)
         imported['category_athletes'] += 1
+        if entry['category_id'] in fight_bracket_by_category_id:
+            current_fight_category_by_athlete[entry['athlete_id']] = entry['category_id']
+
+    for entry in fight_athlete_weights_payload:
+        category_id = current_fight_category_by_athlete.get(entry['athlete_id'], entry['category_id'])
+        if category_id not in existing_category_ids:
+            raise ValidationError({'fight_athlete_weights': f"Category {category_id} does not exist in cloud. Creating new local categories is not supported by result sync."})
+        if not Athlete.objects.filter(pk=entry['athlete_id']).exists():
+            raise ValidationError({'fight_athlete_weights': f"Athlete {entry['athlete_id']} does not exist in cloud. Creating new local athletes is not supported by result sync."})
+        _upsert_fight_athlete_weight(entry, category_id)
+        imported['fight_athlete_weights'] += 1
 
     for entry in category_teams_payload:
         if entry['category_id'] not in existing_category_ids:

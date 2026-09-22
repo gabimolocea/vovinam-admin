@@ -18,6 +18,7 @@ from api.models import (
     CompetitionField,
     CompetitionReferee,
     DisplayMonitorSession,
+    FightAthleteWeight,
     FightCategory,
     FightGroupEnrollment,
     Group,
@@ -281,6 +282,78 @@ class OfflineEventPackTests(TestCase):
         )
         self.assertEqual(str(restored.registered_weight_kg), '57.40')
         self.assertEqual(restored.notes, 'cantarire preliminara')
+
+    def test_event_pack_roundtrips_fight_athlete_weight(self):
+        """An admin-entered weigh-in (e.g. directly via Django admin, before
+        the event was ever synced down) must survive an export/import round
+        trip - the actual bug this locks in."""
+        # Enrolling blue_corner in setUp already auto-created an empty
+        # FightAthleteWeight for this pair (sync_category_athlete_to_fight_weight
+        # in api/signals.py) - update it rather than creating a duplicate.
+        weight, _created = FightAthleteWeight.objects.update_or_create(
+            category=self.category,
+            athlete=self.blue_corner,
+            defaults={'pre_weight_kg': '58.30'},
+        )
+
+        export_response = self.client.get(f'/api/offline/event-pack/?event_id={self.event.id}')
+        self.assertEqual(export_response.status_code, 200)
+        payload = export_response.json()
+        # red_corner's own setUp enrollment auto-creates a FightAthleteWeight
+        # too, so this asserts blue_corner's specific entry, not the count.
+        blue_entry = next(e for e in payload['fight_athlete_weights'] if e['athlete_id'] == self.blue_corner.id)
+        self.assertEqual(blue_entry['pre_weight_kg'], 58.3)
+
+        FightAthleteWeight.objects.filter(pk=weight.id).delete()
+
+        import_response = self.client.post('/api/offline/event-pack/import/', payload, format='json')
+        self.assertEqual(import_response.status_code, 200)
+        # red_corner's entry is in the payload too (see above), so both get
+        # (re-)upserted, not just the one whose row we deleted.
+        self.assertEqual(import_response.json()['imported']['fight_athlete_weights'], len(payload['fight_athlete_weights']))
+
+        restored = FightAthleteWeight.objects.get(category=self.category, athlete=self.blue_corner)
+        self.assertEqual(str(restored.pre_weight_kg), '58.30')
+
+    def test_event_pack_import_follows_category_athletes_bracket_not_stale_weight_entry(self):
+        """If a payload's category_athletes section moved an athlete to a
+        different weight bracket but its fight_athlete_weights section still
+        names the old one (e.g. hand-edited, or a client that only updates
+        one section), the import must not let the stale entry resurrect the
+        athlete's enrollment in the bracket they were just moved out of -
+        the exact cascade this regression test reproduces:
+        creating a FightAthleteWeight for a fight category auto-creates a
+        CategoryAthlete for the same pair (sync_fight_weight_to_category_athlete
+        in api/signals.py)."""
+        heavier_bracket = FightCategory.objects.create(
+            name='Fight Heavier',
+            event=self.event,
+            group=self.group,
+            display_order=2,
+        )
+        FightAthleteWeight.objects.update_or_create(
+            category=self.category,
+            athlete=self.blue_corner,
+            defaults={'pre_weight_kg': '58.30'},
+        )
+
+        export_response = self.client.get(f'/api/offline/event-pack/?event_id={self.event.id}')
+        payload = export_response.json()
+
+        # Move the athlete's enrollment to the new bracket, but deliberately
+        # leave fight_athlete_weights pointing at the old one.
+        moved_entry = next(e for e in payload['category_athletes'] if e['athlete_id'] == self.blue_corner.id)
+        moved_entry['category_id'] = heavier_bracket.id
+        self.assertEqual(payload['fight_athlete_weights'][0]['category_id'], self.category.id)
+
+        import_response = self.client.post('/api/offline/event-pack/import/', payload, format='json')
+        self.assertEqual(import_response.status_code, 200)
+
+        remaining = CategoryAthlete.objects.filter(athlete=self.blue_corner)
+        self.assertEqual(remaining.count(), 1)
+        self.assertEqual(remaining.first().category_id, heavier_bracket.id)
+        self.assertFalse(FightAthleteWeight.objects.filter(category=self.category, athlete=self.blue_corner).exists())
+        self.assertTrue(FightAthleteWeight.objects.filter(category=heavier_bracket, athlete=self.blue_corner).exists())
 
     def test_event_pack_import_requires_event_section(self):
         response = self.client.post('/api/offline/event-pack/import/', {'manifest': {}}, format='json')

@@ -9,6 +9,7 @@ from api.models import (
     Category,
     CategoryAthlete,
     CategoryTeam,
+    FightAthleteWeight,
     Match,
     MatchEvent,
     MatchRefereeScore,
@@ -105,6 +106,10 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
     referee_scores = list(
         MatchRefereeScore.objects.filter(match_id__in=match_ids)
         .order_by('match_id', 'referee_id', 'round_id', 'id')
+    )
+    fight_athlete_weights = list(
+        FightAthleteWeight.objects.filter(category_id__in=category_ids)
+        .order_by('category_id', 'athlete_id')
     )
 
     manifest = EventResultsManifest(
@@ -221,5 +226,18 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
                 'notes': score.notes,
             }
             for score in referee_scores
+        ],
+        'fight_athlete_weights': [
+            {
+                'category_id': entry.category_id,
+                'athlete_id': entry.athlete_id,
+                'pre_weight_kg': entry.pre_weight_kg,
+                'current_weight_kg': entry.current_weight_kg,
+                'is_disqualified': entry.is_disqualified,
+                'disqualification_reason': entry.disqualification_reason,
+                'place': entry.place,
+                'is_weight_locked': entry.is_weight_locked,
+            }
+            for entry in fight_athlete_weights
         ],
     }
