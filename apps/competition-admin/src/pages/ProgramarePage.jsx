@@ -1,14 +1,16 @@
 import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CentralizatorContext, GENDER_LABELS, GENDER_BG } from './CategoriesLayout';
 import {
-  fieldAPI, matchAPI,
+  fieldAPI, matchAPI, roundAPI,
   matchFieldAssignmentAPI,
-  categoryRefereeAssignmentAPI, matchRefereeAssignmentAPI,
+  categoryRefereeAssignmentAPI, matchRefereeAssignmentAPI, matchRefereeScoreAPI,
   competitionRefereeAPI,
   fieldBreakAPI,
   scoreAPI, refereeAPI,
   schedulingAPI,
+  matchEventAPI,
 } from '@shared/lib/api';
+import { exportMatchExcel } from '../lib/exportMatchExcel';
 import {
   formatGroupBadgeLabel,
   Button,
@@ -82,6 +84,7 @@ export default function ProgramarePage() {
   const [editingStartTime, setEditingStartTime] = useState(null); // { fieldId, value }
   const [editingBreak, setEditingBreak] = useState(null); // { id, field, label, duration, focus }
   const [detailModal, setDetailModal] = useState(null); // { catId } — category detail modal
+  const [matchDetailModal, setMatchDetailModal] = useState(null); // { matchId } — match detail modal
   const [bracketPreviewCatId, setBracketPreviewCatId] = useState(null);
   const [detailScores, setDetailScores] = useState([]); // CategoryAthleteScore[] for modal
   const [detailRefScores, setDetailRefScores] = useState([]); // CategoryRefereeScore[] for modal
@@ -336,6 +339,46 @@ export default function ProgramarePage() {
       setCatAssignments(prev => prev.filter(x => x.id !== a.id));
     } catch (err) { console.error(err); }
     setBusy(false);
+  };
+
+  // ── Per-match Excel export — reuses the exact same export (referee
+  // scores, event log, points timeline, scoring chart) as the live
+  // scoring screen's "⬇ Export Excel" button, via lib/exportMatchExcel,
+  // so the two never drift into two different-looking exports for the
+  // same match. Fetches the raw data it needs (not already loaded on
+  // this page) fresh each time, since it's only reachable once a match
+  // is finalized, from its detail modal. ──
+  const [exportingMatchExcel, setExportingMatchExcel] = useState(false);
+  const handleExportMatchExcel = async (m) => {
+    setExportingMatchExcel(true);
+    try {
+      const [roundsRes, refScoresRes, eventsRes, pointEventsRes] = await Promise.all([
+        roundAPI.list({ match_id: m.id }),
+        matchRefereeScoreAPI.list({ match_id: m.id }),
+        matchEventAPI.list({ match_id: m.id }),
+        refereeAPI.pointEvents.list(m.id),
+      ]);
+      const asArray = (res) => Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      const refAss = matchRefMap[m.id];
+      const matchRefSlots = [1, 2, 3, 4, 5].map(i => ({
+        pos: i,
+        id: refAss?.[`referee_${i}`] || null,
+        name: refAss?.[`referee_${i}_name`] || getRefereeNameById(refAss?.[`referee_${i}`]) || null,
+      }));
+
+      await exportMatchExcel({
+        match: m,
+        matchRounds: asArray(roundsRes),
+        matchRefScores: asArray(refScoresRes),
+        matchEvents: asArray(eventsRes),
+        pointEvents: asArray(pointEventsRes),
+        matchRefSlots,
+      });
+    } catch (err) {
+      console.error('Export match Excel failed', err);
+      window.alert('Export Excel a eșuat: ' + err.message);
+    }
+    setExportingMatchExcel(false);
   };
 
   const unassignMatch = async (matchId) => {
@@ -797,13 +840,24 @@ export default function ProgramarePage() {
 
     return (
       <div
-        draggable
-        onDragStart={(e) => handleDragStart(e, item.type, item.id, item.assignment?.field)}
+        draggable={!isFinishedMatch}
+        onDragStart={isFinishedMatch ? undefined : (e) => handleDragStart(e, item.type, item.id, item.assignment?.field)}
         onDragEnd={handleDragEnd}
-        className={`group mb-2 cursor-grab rounded-md border border-border p-2.5 shadow-sm transition-all active:cursor-grabbing hover:shadow-md ${
-          isFinishedMatch ? 'bg-muted/50 opacity-60 hover:opacity-100' : 'bg-card hover:bg-accent'
+        onClick={!isCat ? () => setMatchDetailModal({ matchId: item.id }) : undefined}
+        title={isFinishedMatch ? 'Meci finalizat - nu mai poate fi mutat' : !isCat ? 'Click pentru detalii meci' : undefined}
+        className={`group relative mb-2 rounded-md border border-border p-2.5 shadow-sm transition-all hover:shadow-md ${
+          isFinishedMatch
+            ? 'cursor-not-allowed bg-muted/50 opacity-60 hover:opacity-100'
+            : !isCat
+              ? 'cursor-pointer bg-card hover:bg-accent'
+              : 'cursor-grab bg-card hover:bg-accent active:cursor-grabbing'
         }`}
       >
+        {isFinishedMatch && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <span className="-rotate-6 text-2xl font-black uppercase tracking-wider text-green-700/70">Finalizat</span>
+          </div>
+        )}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
@@ -840,9 +894,6 @@ export default function ProgramarePage() {
               {!isCat && matchTypeLabel && (
                 <span className="border border-border bg-accent px-1.5 py-0.5 text-xs font-semibold text-accent-foreground">{matchTypeLabel}</span>
               )}
-              {isFinishedMatch && (
-                <span className="border border-green-300 bg-green-100 px-1.5 py-0.5 text-xs font-bold text-green-700">Finalizat</span>
-              )}
               {isCat && <Badge variant="outline">{enrolledCount} {isTeamCat ? `echip${enrolledCount === 1 ? 'ă' : 'e'}` : `sportiv${enrolledCount !== 1 ? 'i' : ''}`}</Badge>}
             </div>
           </div>
@@ -876,10 +927,12 @@ export default function ProgramarePage() {
                 title="Detalii categorie"
               >ℹ</button>
             )}
-            {/* Remove button */}
-            {showRemove && item.assignment && (
+            {/* Remove button — categories only; matches are removed from a
+                tatami via their detail modal, keeping the card itself
+                compact and click-to-info like the bracket view. */}
+            {showRemove && item.assignment && isCat && (
               <button
-                onClick={(e) => { e.stopPropagation(); isCat ? unassignCat(item.id) : unassignMatch(item.id); }}
+                onClick={(e) => { e.stopPropagation(); unassignCat(item.id); }}
                 disabled={busy}
                 className="hidden h-5 w-5 items-center justify-center rounded border border-border bg-card text-xs font-bold text-muted-foreground transition hover:bg-accent disabled:opacity-40 group-hover:inline-flex"
                 title="Scoate din tatami"
@@ -887,8 +940,9 @@ export default function ProgramarePage() {
             )}
           </div>
         </div>
-        {/* Referee slots — only when assigned to a field */}
-        {item.assignment && <RefSlots itemType={item.type} itemId={item.id}
+        {/* Referee slots — categories only now; a match's referees are
+            assigned from its detail modal instead, to keep the card compact. */}
+        {item.assignment && isCat && <RefSlots itemType={item.type} itemId={item.id}
           fieldId={item.assignment?.field} startMin={item.startMin} endMin={item.startMin != null ? item.startMin + duration : null} />}
       </div>
     );
@@ -1479,6 +1533,108 @@ export default function ProgramarePage() {
                   </div>
 
                 </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Match detail modal — replaces the referee slots/remove button that
+          used to live directly on the (now compact) match card. */}
+      <Dialog open={!!matchDetailModal} onOpenChange={(open) => { if (!open) setMatchDetailModal(null); }}>
+        <DialogContent className="max-w-lg">
+          {matchDetailModal && (() => {
+            const m = matchMap.get(matchDetailModal.matchId);
+            if (!m) return null;
+            const matchCat = categoryMap.get(m.category);
+            const isFinished = m.status === 'completed';
+            const hasWinner = !!m.winner;
+            const redWon = hasWinner && m.winner === m.red_corner;
+            const blueWon = hasWinner && m.winner === m.blue_corner;
+            const assignment = matchAssignmentMap[m.id];
+            const field = assignment ? fields.find(f => f.id === assignment.field) : null;
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Meci #{m.id}</DialogTitle>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {matchCat?.name && <Badge variant="outline">{matchCat.name}</Badge>}
+                    {matchCat?.groupName && <Badge variant="outline">{matchCat.groupName}</Badge>}
+                    {matchCat?.gender && (
+                      <span className={`inline-block rounded px-1.5 py-0.5 text-sm font-medium ${GENDER_BG[matchCat.gender] || 'bg-muted'} text-foreground`}>
+                        {GENDER_LABELS[matchCat.gender]}
+                      </span>
+                    )}
+                    {(ROUND_LABELS[m.match_type] || m.match_type) && (
+                      <span className="border border-border bg-accent px-1.5 py-0.5 text-sm font-semibold text-accent-foreground">
+                        {ROUND_LABELS[m.match_type] || m.match_type}
+                      </span>
+                    )}
+                    {isFinished && (
+                      <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-sm font-semibold text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        ✅ Finalizat
+                      </span>
+                    )}
+                  </div>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div className="border border-border overflow-hidden">
+                    <div className={`flex items-center justify-between px-3 py-2 ${redWon ? 'bg-green-100 font-bold' : ''}`}>
+                      <span className="font-semibold text-red-600">
+                        {m.red_corner_full_name || 'TBD'}
+                        {m.red_corner_club_name && <span className="ml-1 font-normal text-muted-foreground">({m.red_corner_club_name})</span>}
+                      </span>
+                      {redWon && <span className="text-sm font-bold text-emerald-700">Câștigător</span>}
+                    </div>
+                    <div className={`flex items-center justify-between border-t border-border px-3 py-2 ${blueWon ? 'bg-green-100 font-bold' : ''}`}>
+                      <span className="font-semibold text-blue-600">
+                        {m.blue_corner_full_name || 'TBD'}
+                        {m.blue_corner_club_name && <span className="ml-1 font-normal text-muted-foreground">({m.blue_corner_club_name})</span>}
+                      </span>
+                      {blueWon && <span className="text-sm font-bold text-emerald-700">Câștigător</span>}
+                    </div>
+                  </div>
+
+                  {field && (
+                    <p className="text-sm text-muted-foreground">Programat pe <span className="font-semibold text-foreground">{formatFieldLabel(field.name) || `Tatami ${field.id}`}</span></p>
+                  )}
+
+                  <div>
+                    <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">Arbitri</h3>
+                    <RefSlots itemType="match" itemId={m.id}
+                      fieldId={assignment?.field} startMin={null} endMin={null} />
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  {isFinished && (
+                    <button
+                      onClick={() => handleExportMatchExcel(m)}
+                      disabled={exportingMatchExcel}
+                      className="rounded border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-40"
+                      title="Arbitri asignați, punctaj arbitri, evenimente"
+                    >
+                      {exportingMatchExcel ? 'Se generează...' : '⬇ Descarcă Excel'}
+                    </button>
+                  )}
+                  {assignment && !isFinished && (
+                    <button
+                      onClick={() => { unassignMatch(m.id); setMatchDetailModal(null); }}
+                      disabled={busy}
+                      className="rounded border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:bg-accent disabled:opacity-40"
+                    >
+                      Scoate din tatami
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setMatchDetailModal(null)}
+                    className="rounded border border-border bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground transition hover:bg-accent/70"
+                  >
+                    Închide
+                  </button>
+                </DialogFooter>
               </>
             );
           })()}
