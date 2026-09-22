@@ -155,6 +155,26 @@ function buildMenu() {
       ],
     },
     {
+      // Moved out of the control panel's own body (where it was two large
+      // buttons with a paragraph of explanation each) into the menu bar -
+      // both just forward to the renderer, which decides whether the
+      // action actually makes sense right now (e.g. a local stack has to
+      // be running first).
+      label: 'Sync',
+      submenu: [
+        {
+          label: 'Web → Local',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => sendToWindow('sync-menu:web-to-local'),
+        },
+        {
+          label: 'Local → Web',
+          accelerator: 'CmdOrCtrl+Shift+U',
+          click: () => sendToWindow('sync-menu:local-to-web'),
+        },
+      ],
+    },
+    {
       label: 'Window',
       submenu: [
         ...(isMac ? [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }, { type: 'separator' }] : [{ role: 'minimize' }, { type: 'separator' }]),

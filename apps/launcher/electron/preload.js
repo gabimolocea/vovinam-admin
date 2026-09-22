@@ -36,4 +36,14 @@ contextBridge.exposeInMainWorld('launcher', {
     ipcRenderer.on('auth:logged-out', listener);
     return () => ipcRenderer.removeListener('auth:logged-out', listener);
   },
+  onSyncMenuWebToLocal: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('sync-menu:web-to-local', listener);
+    return () => ipcRenderer.removeListener('sync-menu:web-to-local', listener);
+  },
+  onSyncMenuLocalToWeb: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('sync-menu:local-to-web', listener);
+    return () => ipcRenderer.removeListener('sync-menu:local-to-web', listener);
+  },
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import LoginPage from './pages/LoginPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import EventPickerPage from './pages/EventPickerPage.jsx';
@@ -19,6 +19,10 @@ export default function App() {
   const [event, setEvent] = useState(null);
   const [localInfo, setLocalInfo] = useState(null); // { lanIp, urls }
   const [activeApp, setActiveApp] = useState(null); // { id, url, title }
+  // Latest ControlPanelPage.handleResync closure, set by that page itself -
+  // lets the native Sync menu's "Web → Local" item trigger it without
+  // routing the click through a prop chain.
+  const resyncRef = useRef(null);
 
   useEffect(() => {
     // Triggered from the "Account > Deconectare" native menu item. The
@@ -31,6 +35,24 @@ export default function App() {
       setScreen('login');
     });
   }, []);
+
+  // Native "Sync" menu (main.js) - both items only make sense once the
+  // local stack is up and running (the 'control' screen), so they're
+  // quietly ignored otherwise rather than needing the menu itself to know
+  // the renderer's navigation state.
+  useEffect(() => {
+    if (!window.launcher) return undefined;
+    const offWebToLocal = window.launcher.onSyncMenuWebToLocal(() => {
+      if (screen === 'control') resyncRef.current?.();
+    });
+    const offLocalToWeb = window.launcher.onSyncMenuLocalToWeb(() => {
+      if (screen === 'control') setScreen('sync-cloud');
+    });
+    return () => {
+      offWebToLocal();
+      offLocalToWeb();
+    };
+  }, [screen]);
 
   if (activeApp) {
     return <AppViewPage app={activeApp} onBack={() => setActiveApp(null)} />;
@@ -68,7 +90,7 @@ export default function App() {
           event={event}
           localInfo={localInfo}
           onOpenApp={(id, url, title) => setActiveApp({ id, url, title })}
-          onSyncToCloud={() => setScreen('sync-cloud')}
+          resyncRef={resyncRef}
         />
       )}
 

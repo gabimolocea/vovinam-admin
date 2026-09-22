@@ -7,7 +7,7 @@ const APP_LABELS = {
   'public-display': 'Ecran Public',
 };
 
-export default function ControlPanelPage({ event, localInfo, onOpenApp, onSyncToCloud }) {
+export default function ControlPanelPage({ event, localInfo, onOpenApp, resyncRef }) {
   const [statuses, setStatuses] = useState({});
   const [lines, setLines] = useState([]);
   const [resyncing, setResyncing] = useState(false);
@@ -48,6 +48,15 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, onSyncTo
     }
   }
 
+  // "Web → Local" moved to the native Sync menu (main.js) - hand the
+  // latest closure up to App.jsx so its menu-event listener can call it,
+  // the same exportExcelRef pattern LiveFullscreenPage uses for its own
+  // top-nav Excel button.
+  useEffect(() => {
+    if (resyncRef) resyncRef.current = handleResync;
+    return () => { if (resyncRef) resyncRef.current = null; };
+  });
+
   const appIds = Object.keys(localInfo?.urls || {});
 
   return (
@@ -82,22 +91,11 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, onSyncTo
         {lines.join('\n')}
       </div>
 
+      {resyncing && <div className="footer-note" style={{ marginTop: 16 }}>Se resincronizează…</div>}
       {resyncError && <div className="error-box" style={{ marginTop: 16 }}>{resyncError}</div>}
 
-      <div className="row" style={{ marginTop: 16 }}>
-        <button className="btn-secondary" onClick={handleResync} type="button" disabled={resyncing}>
-          {resyncing ? 'Se resincronizează…' : 'Resincronizează din cloud'}
-        </button>
-        <button className="btn-primary" onClick={onSyncToCloud} type="button">
-          Sincronizează rezultatele în cloud
-        </button>
-      </div>
-      <p className="footer-note" style={{ marginTop: 8 }}>
-        Folosește „Resincronizează” dacă au apărut sportivi sau modificări noi în cloud de la ultima sincronizare.
-      </p>
-
-      <p className="footer-note">
-        Folosește acest buton doar la finalul competiției — trimite rezultatele înapoi în cloud.
+      <p className="footer-note" style={{ marginTop: 16 }}>
+        Sincronizarea (Web → Local, Local → Web) e acum în meniul <strong>Sync</strong> din bara de sus.
       </p>
     </div>
   );
