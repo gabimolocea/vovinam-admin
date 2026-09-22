@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { diplomaTemplateAPI, matchAPI, matchRefereeScoreAPI } from '@shared/lib/api';
+import { diplomaTemplateAPI } from '@shared/lib/api';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import {
   formatValueWithClub,
@@ -18,138 +18,31 @@ const PODIUM_STYLES = {
   3: 'border-transparent bg-amber-100 text-amber-900',
 };
 
+const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
 function normalizeListPayload(data) {
   return Array.isArray(data) ? data : data?.results ?? [];
 }
 
-function uniqueCompetitors(items) {
-  const seen = new Set();
-  return items.filter(item => {
-    if (!item?.label) return false;
-    const key = item.id ?? item.label;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function getCornerCompetitor(match, corner) {
-  if (!match) return null;
-
-  const athleteId = match[`${corner}_corner`];
-  const label = match[`${corner}_corner_full_name`] || '—';
-  const club = match[`${corner}_corner_club_name`] || '';
-
-  if (!athleteId && !label) return null;
-
-  return {
-    id: athleteId ?? `${corner}-${match.id}`,
-    label,
-    club,
-  };
-}
-
-function getWinnerCompetitor(match) {
-  if (!match?.resolvedWinnerCorner) return null;
-  if (match.resolvedWinnerCorner === 'red') return getCornerCompetitor(match, 'red');
-  if (match.resolvedWinnerCorner === 'blue') return getCornerCompetitor(match, 'blue');
-  return null;
-}
-
-function getLoserCompetitor(match) {
-  if (!match?.resolvedWinnerCorner) return null;
-  if (match.resolvedWinnerCorner === 'red') return getCornerCompetitor(match, 'blue');
-  if (match.resolvedWinnerCorner === 'blue') return getCornerCompetitor(match, 'red');
-  return null;
-}
-
-function resolveWinnerCorner(match, refereeScores) {
-  if (match?.winner && match.winner === match.red_corner) return 'red';
-  if (match?.winner && match.winner === match.blue_corner) return 'blue';
-
-  const decisions = (refereeScores || []).filter(score => score.round == null);
-  const redVotes = decisions.filter(score => Number(score.red_corner_score) > Number(score.blue_corner_score)).length;
-  const blueVotes = decisions.filter(score => Number(score.blue_corner_score) > Number(score.red_corner_score)).length;
-
-  if (redVotes > blueVotes) return 'red';
-  if (blueVotes > redVotes) return 'blue';
-  return null;
-}
-
-function getIncomingWinnerMatches(matches, targetMatchId) {
-  return matches.filter(match => match.next_match === targetMatchId);
-}
-
-function getIncomingLoserMatches(matches, targetMatchId) {
-  return matches.filter(match => match.loser_next_match === targetMatchId);
-}
-
-function getFinalMatch(matches) {
-  const explicitFinals = matches
-    .filter(match => match.match_type === 'finals')
-    .sort((a, b) => (b.round_number || 0) - (a.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0));
-
-  if (explicitFinals.length > 0) return explicitFinals[0];
-
-  const graphFinals = matches
-    .filter(match => match.match_type !== 'bronze' && !match.next_match)
-    .sort((a, b) => (b.round_number || 0) - (a.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0));
-
-  return graphFinals[0] || null;
-}
-
-function getBronzeMatch(matches) {
-  const explicitBronze = matches
-    .filter(match => match.match_type === 'bronze')
-    .sort((a, b) => (b.round_number || 0) - (a.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0));
-
-  if (explicitBronze.length > 0) return explicitBronze[0];
-
-  const loserDriven = matches
-    .filter(match => getIncomingLoserMatches(matches, match.id).length > 0)
-    .sort((a, b) => (b.round_number || 0) - (a.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0));
-
-  return loserDriven[0] || null;
-}
-
-function buildPodiumFromBracket(categoryMatches) {
+// Reads the same persisted CategoryAthlete.place BracketPage's medal
+// display already trusts (set server-side by _set_category_place on
+// match advance - see backend/api/views/matches.py), instead of
+// independently re-walking the match tree and re-deriving a winner from
+// match.winner/referee scores. That re-derivation could silently come up
+// empty (e.g. a match imported/marked completed without the referee-score
+// rows that back match.winner) even though the real placement was already
+// recorded and the bracket page shows it correctly - which is exactly
+// what produced an empty podium here while the pyramid showed a medal.
+function buildPodiumFromEnrollment(category) {
   const podium = { 1: [], 2: [], 3: [] };
-  const finalMatch = getFinalMatch(categoryMatches);
-  const bronzeMatch = getBronzeMatch(categoryMatches);
-
-  const firstPlace = getWinnerCompetitor(finalMatch);
-  const secondPlace = getLoserCompetitor(finalMatch);
-
-  if (firstPlace) podium[1] = [firstPlace];
-  if (secondPlace) podium[2] = [secondPlace];
-
-  const semifinalMatches = finalMatch
-    ? getIncomingWinnerMatches(categoryMatches, finalMatch.id)
-    : categoryMatches.filter(match => match.match_type === 'semi-finals');
-
-  const semifinalLosers = uniqueCompetitors(
-    semifinalMatches
-      .map(getLoserCompetitor)
-      .filter(Boolean)
-      .filter(item => item.id !== firstPlace?.id && item.id !== secondPlace?.id)
-  );
-
-  const bronzeWinner = getWinnerCompetitor(bronzeMatch);
-  const bronzeParticipants = uniqueCompetitors(
-    bronzeMatch
-      ? [getCornerCompetitor(bronzeMatch, 'red'), getCornerCompetitor(bronzeMatch, 'blue')].filter(Boolean)
-      : []
-  );
-
-  const bronzeIsStandard = bronzeParticipants.length >= 2
-    && bronzeParticipants.every(item => semifinalLosers.some(semiLoser => semiLoser.id === item.id));
-
-  if (bronzeWinner && bronzeWinner.id !== firstPlace?.id && bronzeWinner.id !== secondPlace?.id && bronzeIsStandard) {
-    podium[3] = [bronzeWinner];
-  } else if (semifinalLosers.length > 0) {
-    podium[3] = semifinalLosers.slice(0, 2);
-  }
-
+  (category.enrolled_athletes || []).forEach(enrollment => {
+    const place = enrollment.place;
+    if (place !== 1 && place !== 2 && place !== 3) return;
+    const details = enrollment.athlete_details || {};
+    const label = `${details.first_name || ''} ${details.last_name || ''}`.trim() || '—';
+    const club = details.club?.name || details.club_name || '';
+    podium[place].push({ id: enrollment.athlete, label, club });
+  });
   return podium;
 }
 
@@ -181,41 +74,28 @@ function GroupHeader({ group }) {
 export default function ClasamenteLuptaPage() {
   const { id: eventId } = useParams();
   const ctx = useContext(CentralizatorContext);
-  const [matches, setMatches] = useState([]);
-  const [matchRefereeScores, setMatchRefereeScores] = useState([]);
   const [diplomaTemplates, setDiplomaTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const columnStructure = ctx?.columnStructure ?? [];
+  const categories = ctx?.categories ?? [];
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadMatches = async () => {
+    const loadDiplomaTemplates = async () => {
       setLoading(true);
       try {
-        const [{ data: matchData }, { data: scoreData }, { data: diplomaData }] = await Promise.all([
-          matchAPI.list({ event_id: eventId }),
-          matchRefereeScoreAPI.list({ event_id: eventId }),
-          diplomaTemplateAPI.list({ event: eventId }).catch(() => ({ data: [] })),
-        ]);
-        if (isMounted) {
-          setMatches(normalizeListPayload(matchData));
-          setMatchRefereeScores(normalizeListPayload(scoreData));
-          setDiplomaTemplates(normalizeListPayload(diplomaData));
-        }
+        const { data: diplomaData } = await diplomaTemplateAPI.list({ event: eventId }).catch(() => ({ data: [] }));
+        if (isMounted) setDiplomaTemplates(normalizeListPayload(diplomaData));
       } catch (error) {
-        console.error('Failed to load fight rankings:', error);
-        if (isMounted) {
-          setMatches([]);
-          setMatchRefereeScores([]);
-          setDiplomaTemplates([]);
-        }
+        console.error('Failed to load diploma templates:', error);
+        if (isMounted) setDiplomaTemplates([]);
       } finally {
         if (isMounted) setLoading(false);
       }
     };
 
-    loadMatches();
+    loadDiplomaTemplates();
     return () => {
       isMounted = false;
     };
@@ -237,29 +117,13 @@ export default function ClasamenteLuptaPage() {
   }, [columnStructure]);
 
   const podiumByCategory = useMemo(() => {
-    const groupedMatches = new Map();
-    const scoresByMatch = new Map();
-
-    matchRefereeScores.forEach(score => {
-      if (!scoresByMatch.has(score.match)) scoresByMatch.set(score.match, []);
-      scoresByMatch.get(score.match).push(score);
-    });
-
-    matches.forEach(match => {
-      const resolvedWinnerCorner = resolveWinnerCorner(match, scoresByMatch.get(match.id) || []);
-      const enrichedMatch = { ...match, resolvedWinnerCorner };
-      if (!groupedMatches.has(match.category)) groupedMatches.set(match.category, []);
-      groupedMatches.get(match.category).push(enrichedMatch);
-    });
-
     const podiumMap = new Map();
-
-    groupedMatches.forEach((categoryMatches, categoryId) => {
-      podiumMap.set(categoryId, buildPodiumFromBracket(categoryMatches));
+    categories.forEach(category => {
+      if (category.type !== 'fight') return;
+      podiumMap.set(category.id, buildPodiumFromEnrollment(category));
     });
-
     return podiumMap;
-  }, [matches, matchRefereeScores]);
+  }, [categories]);
 
   const handleGenerateDiploma = async ({ category, group, place, athletes }) => {
     let template = resolveDiplomaTemplate(diplomaTemplates, { place, scope: 'fight' });
@@ -379,7 +243,7 @@ export default function ClasamenteLuptaPage() {
                       <TableRow key={`${cat.id}-${place}`}>
                         <TableCell className="text-center align-top">
                           <Badge className={PODIUM_STYLES[place]}>
-                            Locul {place}
+                            {MEDALS[place]} Locul {place}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm text-foreground">

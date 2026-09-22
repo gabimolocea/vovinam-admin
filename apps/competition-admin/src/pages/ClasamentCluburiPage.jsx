@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { matchAPI, matchRefereeScoreAPI, scoreAPI } from '@shared/lib/api';
+import { scoreAPI } from '@shared/lib/api';
 import { CentralizatorContext } from './CategoriesLayout';
 import { Badge, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 
@@ -9,6 +9,8 @@ const PODIUM_STYLES = {
   2: 'border-transparent bg-gray-100 text-gray-800',
   3: 'border-transparent bg-amber-100 text-amber-900',
 };
+
+const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
 function normalizeListPayload(data) {
   return Array.isArray(data) ? data : data?.results ?? [];
@@ -35,105 +37,21 @@ function uniqueByKey(items, getKey) {
   });
 }
 
-function resolveWinnerCorner(match, refereeScores) {
-  if (match?.winner && match.winner === match.red_corner) return 'red';
-  if (match?.winner && match.winner === match.blue_corner) return 'blue';
-  const decisions = (refereeScores || []).filter(score => score.round == null);
-  const redVotes = decisions.filter(score => Number(score.red_corner_score) > Number(score.blue_corner_score)).length;
-  const blueVotes = decisions.filter(score => Number(score.blue_corner_score) > Number(score.red_corner_score)).length;
-  if (redVotes > blueVotes) return 'red';
-  if (blueVotes > redVotes) return 'blue';
-  return null;
-}
-
-function getIncomingWinnerMatches(matches, targetMatchId) {
-  return matches.filter(match => match.next_match === targetMatchId);
-}
-
-function getIncomingLoserMatches(matches, targetMatchId) {
-  return matches.filter(match => match.loser_next_match === targetMatchId);
-}
-
-function getFinalMatch(matches) {
-  const explicitFinals = matches
-    .filter(match => match.match_type === 'finals')
-    .sort((a, b) => (b.round_number || 0) - (a.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0));
-  if (explicitFinals.length > 0) return explicitFinals[0];
-  return matches
-    .filter(match => match.match_type !== 'bronze' && !match.next_match)
-    .sort((a, b) => (b.round_number || 0) - (a.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0))[0] || null;
-}
-
-function getBronzeMatch(matches) {
-  const explicitBronze = matches
-    .filter(match => match.match_type === 'bronze')
-    .sort((a, b) => (b.round_number || 0) - (a.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0));
-  if (explicitBronze.length > 0) return explicitBronze[0];
-  return matches
-    .filter(match => getIncomingLoserMatches(matches, match.id).length > 0)
-    .sort((a, b) => (b.round_number || 0) - (a.round_number || 0) || (a.bracket_position || 0) - (b.bracket_position || 0))[0] || null;
-}
-
-function getCornerCompetitor(match, corner, athleteClubMap) {
-  if (!match) return null;
-  const athleteId = match[`${corner}_corner`];
-  const clubFromAthlete = athleteClubMap.get(athleteId);
-  const clubName = clubFromAthlete?.name || match[`${corner}_corner_club_name`] || '';
-  return athleteId || clubName ? {
-    id: athleteId ?? `${corner}-${match.id}`,
-    clubId: clubFromAthlete?.id ?? clubName,
-    clubName,
-  } : null;
-}
-
-function getWinnerCompetitor(match, athleteClubMap) {
-  if (!match?.resolvedWinnerCorner) return null;
-  return getCornerCompetitor(match, match.resolvedWinnerCorner, athleteClubMap);
-}
-
-function getLoserCompetitor(match, athleteClubMap) {
-  if (!match?.resolvedWinnerCorner) return null;
-  return getCornerCompetitor(match, match.resolvedWinnerCorner === 'red' ? 'blue' : 'red', athleteClubMap);
-}
-
-function buildFightPodiumFromBracket(categoryMatches, athleteClubMap) {
+// Reads the same persisted CategoryAthlete.place the bracket page's own
+// medal display already trusts (set server-side by _set_category_place on
+// match advance), instead of independently re-walking the match tree and
+// re-deriving a winner from match.winner/referee scores - see the
+// matching comment in ClasamenteLuptaPage.jsx for why that re-derivation
+// can silently come up empty even when the real placement was recorded.
+function buildFightPodiumFromEnrollment(category, athleteClubMap) {
   const podium = { 1: [], 2: [], 3: [] };
-  const finalMatch = getFinalMatch(categoryMatches);
-  const bronzeMatch = getBronzeMatch(categoryMatches);
-  const firstPlace = getWinnerCompetitor(finalMatch, athleteClubMap);
-  const secondPlace = getLoserCompetitor(finalMatch, athleteClubMap);
-  if (firstPlace) podium[1] = [firstPlace];
-  if (secondPlace) podium[2] = [secondPlace];
-
-  const semifinalMatches = finalMatch
-    ? getIncomingWinnerMatches(categoryMatches, finalMatch.id)
-    : categoryMatches.filter(match => match.match_type === 'semi-finals');
-
-  const semifinalLosers = uniqueByKey(
-    semifinalMatches
-      .map(match => getLoserCompetitor(match, athleteClubMap))
-      .filter(Boolean)
-      .filter(item => item.id !== firstPlace?.id && item.id !== secondPlace?.id),
-    item => item.id,
-  );
-
-  const bronzeWinner = getWinnerCompetitor(bronzeMatch, athleteClubMap);
-  const bronzeParticipants = uniqueByKey(
-    bronzeMatch
-      ? [getCornerCompetitor(bronzeMatch, 'red', athleteClubMap), getCornerCompetitor(bronzeMatch, 'blue', athleteClubMap)].filter(Boolean)
-      : [],
-    item => item.id,
-  );
-
-  const bronzeIsStandard = bronzeParticipants.length >= 2
-    && bronzeParticipants.every(item => semifinalLosers.some(semiLoser => semiLoser.id === item.id));
-
-  if (bronzeWinner && bronzeWinner.id !== firstPlace?.id && bronzeWinner.id !== secondPlace?.id && bronzeIsStandard) {
-    podium[3] = [bronzeWinner];
-  } else if (semifinalLosers.length > 0) {
-    podium[3] = semifinalLosers.slice(0, 2);
-  }
-
+  (category.enrolled_athletes || []).forEach(enrollment => {
+    const place = enrollment.place;
+    if (place !== 1 && place !== 2 && place !== 3) return;
+    const club = athleteClubMap.get(enrollment.athlete);
+    if (!club) return;
+    podium[place].push({ id: enrollment.athlete, clubId: club.id, clubName: club.name });
+  });
   return podium;
 }
 
@@ -145,8 +63,6 @@ export default function ClasamentCluburiPage() {
   const { id: eventId } = useParams();
   const ctx = useContext(CentralizatorContext);
   const [scores, setScores] = useState([]);
-  const [matches, setMatches] = useState([]);
-  const [matchRefereeScores, setMatchRefereeScores] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const categories = ctx?.categories ?? [];
@@ -157,24 +73,11 @@ export default function ClasamentCluburiPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [{ data: scoreData }, { data: matchData }, { data: matchScoreData }] = await Promise.all([
-          scoreAPI.list({ event_id: eventId }),
-          matchAPI.list({ event_id: eventId }),
-          matchRefereeScoreAPI.list({ event_id: eventId }),
-        ]);
-
-        if (isMounted) {
-          setScores(normalizeListPayload(scoreData));
-          setMatches(normalizeListPayload(matchData));
-          setMatchRefereeScores(normalizeListPayload(matchScoreData));
-        }
+        const { data: scoreData } = await scoreAPI.list({ event_id: eventId });
+        if (isMounted) setScores(normalizeListPayload(scoreData));
       } catch (error) {
         console.error('Failed to load club standings:', error);
-        if (isMounted) {
-          setScores([]);
-          setMatches([]);
-          setMatchRefereeScores([]);
-        }
+        if (isMounted) setScores([]);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -250,24 +153,9 @@ export default function ClasamentCluburiPage() {
       });
     });
 
-    const scoresByMatch = new Map();
-    matchRefereeScores.forEach(score => {
-      if (!scoresByMatch.has(score.match)) scoresByMatch.set(score.match, []);
-      scoresByMatch.get(score.match).push(score);
-    });
-
-    const fightByCategory = new Map();
-    matches.forEach(match => {
-      const enrichedMatch = {
-        ...match,
-        resolvedWinnerCorner: resolveWinnerCorner(match, scoresByMatch.get(match.id) || []),
-      };
-      if (!fightByCategory.has(match.category)) fightByCategory.set(match.category, []);
-      fightByCategory.get(match.category).push(enrichedMatch);
-    });
-
-    fightByCategory.forEach(categoryMatches => {
-      const podium = buildFightPodiumFromBracket(categoryMatches, athleteClubMap);
+    categories.forEach(category => {
+      if (category.type !== 'fight') return;
+      const podium = buildFightPodiumFromEnrollment(category, athleteClubMap);
       [1, 2, 3].forEach(place => {
         (podium[place] || []).forEach(item => addClubMedal(item.clubId, item.clubName, place));
       });
@@ -276,8 +164,8 @@ export default function ClasamentCluburiPage() {
     return [...medalMap.values()]
       .filter(club => club.total > 0)
       .sort((a, b) => b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze || a.clubName.localeCompare(b.clubName));
-      
-  }, [scores, matches, matchRefereeScores, athleteClubMap]);
+
+  }, [scores, categories, athleteClubMap]);
 
   if (!ctx) return null;
 
@@ -317,7 +205,7 @@ export default function ClasamentCluburiPage() {
               <TableRow key={club.clubId}>
                 <TableCell className="text-center">
                   <Badge className={PODIUM_STYLES[index + 1] || 'border-transparent bg-secondary text-secondary-foreground'}>
-                    Locul {index + 1}
+                    {MEDALS[index + 1] ? `${MEDALS[index + 1]} ` : ''}Locul {index + 1}
                   </Badge>
                 </TableCell>
                 <TableCell className="font-medium text-foreground">{club.clubName}</TableCell>

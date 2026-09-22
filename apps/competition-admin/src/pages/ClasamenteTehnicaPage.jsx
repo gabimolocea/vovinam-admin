@@ -18,6 +18,8 @@ const PODIUM_STYLES = {
   3: 'border-transparent bg-amber-100 text-amber-900',
 };
 
+const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
 function normalizeListPayload(data) {
   return Array.isArray(data) ? data : data?.results ?? [];
 }
@@ -322,7 +324,7 @@ export default function ClasamenteTehnicaPage() {
                       <TableRow key={`${cat.id}-${place}`}>
                         <TableCell className="text-center">
                           <Badge className={PODIUM_STYLES[place]}>
-                            Locul {place}
+                            {MEDALS[place]} Locul {place}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm text-foreground">
