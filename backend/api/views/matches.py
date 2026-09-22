@@ -63,6 +63,11 @@ class MatchViewSet(viewsets.ViewSet):
                 queryset=RefereeScore.objects.select_related('referee'),
                 to_attr='_prefetched_legacy_scores',
             ),
+            Prefetch(
+                'events',
+                queryset=MatchEvent.objects.only('id', 'match_id', 'event_type', 'value'),
+                to_attr='_prefetched_match_events',
+            ),
         )
 
     def list(self, request):

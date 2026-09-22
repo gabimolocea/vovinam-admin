@@ -76,7 +76,7 @@ class Match(models.Model):
         winner = self.calculate_winner_simplified()
         if winner:
             return winner
-        
+
         # Fall back to complex scoring system
         try:
             from ..scoring import compute_match_results
@@ -84,10 +84,54 @@ class Match(models.Model):
                 self,
                 events=getattr(self, '_prefetched_point_events', None),
             )
-            return results.get('match_winner')
+            winner = results.get('match_winner')
         except Exception:
-            # Fallback to old calculation if scoring system unavailable
-            return self._calculate_winner_legacy()
+            winner = None
+        if winner:
+            return winner
+
+        # Last resort: no referee data exists at all (e.g. a match run
+        # entirely from the admin panel with no referees assigned) - use
+        # the admin's own live point adjustments instead of refusing to
+        # ever declare a winner.
+        winner = self._calculate_winner_from_admin_points()
+        if winner:
+            return winner
+
+        # Fallback to old calculation if scoring system unavailable
+        return self._calculate_winner_legacy()
+
+    def _calculate_winner_from_admin_points(self):
+        """Sums MatchEvent bonus/penalty/warning adjustments per corner,
+        exactly like the live admin UI's "Puncte" display (see
+        LiveFullscreenPage.jsx's totalPenalty/totalBonus/warningPenalty).
+        Deliberately the last fallback, after both referee-backed paths:
+        those reflect actual refereeing and should win whenever they have
+        anything to say, since they're what the competition rules are
+        actually based on."""
+        relevant_types = {'penalty_red', 'penalty_blue', 'bonus_red', 'bonus_blue', 'warning_red', 'warning_blue'}
+        prefetched_events = getattr(self, '_prefetched_match_events', None)
+        if prefetched_events is not None:
+            events = [e for e in prefetched_events if e.event_type in relevant_types]
+        else:
+            events = list(self.events.filter(event_type__in=relevant_types))
+        if not events:
+            return None
+
+        red_total = sum(
+            (e.value or 0) if e.event_type in ('penalty_red', 'bonus_red') else (-2 if e.event_type == 'warning_red' else 0)
+            for e in events
+        )
+        blue_total = sum(
+            (e.value or 0) if e.event_type in ('penalty_blue', 'bonus_blue') else (-2 if e.event_type == 'warning_blue' else 0)
+            for e in events
+        )
+
+        if red_total > blue_total:
+            return self.red_corner
+        if blue_total > red_total:
+            return self.blue_corner
+        return None
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
