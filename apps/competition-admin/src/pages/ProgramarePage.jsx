@@ -277,8 +277,11 @@ export default function ProgramarePage() {
     return byField;
   }, [catAssignments, matchAssignments, fieldBreaks, categoryMap, matchMap]);
 
-  // Unassigned matches (fight matches not assigned to a field)
-  const unassignedMatches = matches.filter(m => !matchAssignmentMap[m.id]);
+  // Unassigned matches (fight matches not assigned to a field) - a match
+  // with either corner still TBD can't actually be fought yet (its
+  // opponent hasn't been decided by an earlier bracket round), so it has
+  // no business being offered up for field assignment.
+  const unassignedMatches = matches.filter(m => !matchAssignmentMap[m.id] && m.red_corner && m.blue_corner);
 
   // Items per field — sorted by order (includes categories, matches, and breaks)
   const fieldItems = (fieldId) => {
