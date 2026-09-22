@@ -10,6 +10,7 @@ import {
   categoryRefereeAssignmentAPI, matchEventAPI, fieldBreakAPI,
   matchRefereeAssignmentAPI, groupAPI, categoryAPI, enrollmentAPI,
   competitionRefereeAPI, refereePresenceAPI, refereeQrLoginAPI, recordingAPI, scoreTimelineAPI,
+  systemAPI,
 } from '@shared/lib/api';
 import { formatGroupBadgeLabel, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '../components/ui';
 import { GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
@@ -122,6 +123,7 @@ export default function LiveFullscreenPage() {
   const [categoryScoreEvents, setCategoryScoreEvents] = useState([]);
   const [matchPointEvents, setMatchPointEvents] = useState([]);
   const [eventState, setEventState] = useState(null);
+  const [isLocalServer, setIsLocalServer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -133,6 +135,25 @@ export default function LiveFullscreenPage() {
   const pollRef = useRef(null);
   const pollInFlightRef = useRef(false);
   const exportExcelRef = useRef(null);
+
+  // The operational lock exists to stop the CLOUD instance from accepting
+  // live edits once an event is exported to a local venue machine - on the
+  // local machine itself (the new authority at that point, see
+  // api/views/_common.py's IS_LOCAL_EVENT_SERVER exemption), the exact same
+  // banner/alert-blocking behavior below must not apply, same pattern as
+  // SyncCenterPage/LocalBackupPanel.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await systemAPI.info();
+        if (!cancelled) setIsLocalServer(Boolean(data.is_local_event_server));
+      } catch {
+        if (!cancelled) setIsLocalServer(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const arr = r => r.data?.results || r.data || [];
 
@@ -389,7 +410,7 @@ export default function LiveFullscreenPage() {
     && (currentMatch.status === 'completed' || currentAssignment?.status === 'completed');
   const isCurrentCategoryFinalized = !!currentCat
     && currentAssignment?.status === 'completed';
-  const operationalLockActive = Boolean(eventState?.operational_lock_active);
+  const operationalLockActive = !isLocalServer && Boolean(eventState?.operational_lock_active);
   const operationalLockMessage = eventState?.operational_lock_active
     ? 'Evenimentul este blocat pentru operare locală. Pentru modificări live, lucrează din copia locală/LAN a competiției sau finalizează sincronizarea în cloud.'
     : '';
