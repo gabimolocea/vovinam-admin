@@ -252,6 +252,51 @@ class OfflineEventPackTests(TestCase):
         self.assertEqual(CategoryFieldAssignment.objects.filter(category__event_id=self.event.id).count(), 1)
         self.assertEqual(DisplayMonitorSession.objects.filter(field__event_id=self.event.id).count(), 1)
 
+    def test_event_pack_import_reuses_match_field_assignment_created_under_a_different_pk(self):
+        """import_event_results.py can create/update a MatchFieldAssignment
+        on its own (deriving its status from Match.status on results
+        sync), independently of any event pack, landing it on a different
+        pk than the one a previously-exported pack still remembers for
+        that same match. Re-importing that pack (e.g. "Web → Local"
+        resync to pick up a newly-added athlete) must reuse the existing
+        row - found via match_id, a OneToOneField - instead of trying to
+        INSERT a second one and violating the unique constraint with a
+        500 (this exact crash happened in production)."""
+        export_response = self.client.get(f'/api/offline/event-pack/?event_id={self.event.id}')
+        payload = export_response.json()
+        old_assignment_id = self.match_assignment.id
+
+        self.match_assignment.delete()
+        new_assignment = MatchFieldAssignment.objects.create(
+            match=self.match, field=self.field, status='completed', order=1, estimated_duration=10,
+        )
+        self.assertNotEqual(new_assignment.id, old_assignment_id)
+
+        import_response = self.client.post('/api/offline/event-pack/import/', payload, format='json')
+
+        self.assertEqual(import_response.status_code, 200, import_response.content)
+        self.assertEqual(MatchFieldAssignment.objects.filter(match_id=self.match.id).count(), 1)
+        self.assertEqual(MatchFieldAssignment.objects.get(match_id=self.match.id).id, new_assignment.id)
+
+    def test_event_pack_import_reuses_category_field_assignment_created_under_a_different_pk(self):
+        """Same fix, for CategoryFieldAssignment.category - also a
+        OneToOneField."""
+        export_response = self.client.get(f'/api/offline/event-pack/?event_id={self.event.id}')
+        payload = export_response.json()
+        old_assignment_id = self.category_assignment.id
+
+        self.category_assignment.delete()
+        new_assignment = CategoryFieldAssignment.objects.create(
+            category=self.category, field=self.field, status='completed', order=1, estimated_duration=20,
+        )
+        self.assertNotEqual(new_assignment.id, old_assignment_id)
+
+        import_response = self.client.post('/api/offline/event-pack/import/', payload, format='json')
+
+        self.assertEqual(import_response.status_code, 200, import_response.content)
+        self.assertEqual(CategoryFieldAssignment.objects.filter(category_id=self.category.id).count(), 1)
+        self.assertEqual(CategoryFieldAssignment.objects.get(category_id=self.category.id).id, new_assignment.id)
+
     def test_event_pack_roundtrips_fight_group_enrollments(self):
         """A coach's pre-registration weight (submitted before the athlete
         is drawn into a specific fight category) must survive an

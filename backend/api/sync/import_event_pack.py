@@ -74,9 +74,28 @@ def _normalize_defaults(model, defaults: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _upsert(model, record_id: int, defaults: dict[str, Any]):
+def _upsert(model, record_id: int, defaults: dict[str, Any], natural_key_field: str | None = None):
+    """natural_key_field names a field with its own DB-level unique
+    constraint (e.g. MatchFieldAssignment.match, a OneToOneField) that can
+    already hold a row for this record under a *different* pk than
+    record_id - this happens whenever the cloud side creates that row
+    itself (e.g. import_event_results.py deriving MatchFieldAssignment.
+    status from Match.status on results sync) rather than it only ever
+    being created here from an event pack. Without checking this first,
+    a plain pk-based upsert tries to INSERT a second row for the same
+    match/category and violates the unique constraint, permanently
+    blocking every later "Web → Local" resync for that event with a 500.
+    """
     defaults = _normalize_defaults(model, defaults)
-    existing = model.objects.filter(pk=record_id).first()
+
+    existing = None
+    if natural_key_field is not None:
+        natural_key_value = defaults.get(natural_key_field)
+        if natural_key_value is not None:
+            existing = model.objects.filter(**{natural_key_field: natural_key_value}).first()
+    if existing is None:
+        existing = model.objects.filter(pk=record_id).first()
+
     if existing is not None:
         for key, value in defaults.items():
             setattr(existing, key, value)
@@ -478,8 +497,14 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
         if sibling_category_ids:
             FightAthleteWeight.objects.filter(athlete_id=athlete_id, category_id__in=sibling_category_ids).delete()
 
+    # _upsert's natural_key_field can reuse an existing row under a pk
+    # *different* from assignment['id'] (see _upsert's own docstring) - the
+    # stale-cleanup pass below has to exclude by whatever pk was actually
+    # kept, not the payload's original id, or it deletes the row it was
+    # just told to keep.
+    resolved_category_field_assignment_ids = set()
     for assignment in category_field_assignments_payload:
-        _upsert(
+        obj = _upsert(
             CategoryFieldAssignment,
             assignment['id'],
             {
@@ -492,10 +517,13 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
                 'order': assignment.get('order', 0),
                 'estimated_duration': assignment.get('estimated_duration', 15),
             },
+            natural_key_field='category_id',
         )
+        resolved_category_field_assignment_ids.add(obj.id)
 
+    resolved_match_field_assignment_ids = set()
     for assignment in match_field_assignments_payload:
-        _upsert(
+        obj = _upsert(
             MatchFieldAssignment,
             assignment['id'],
             {
@@ -508,7 +536,9 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
                 'order': assignment.get('order', 0),
                 'estimated_duration': assignment.get('estimated_duration', 10),
             },
+            natural_key_field='match_id',
         )
+        resolved_match_field_assignment_ids.add(obj.id)
 
     for assignment in category_referee_assignments_payload:
         _upsert(
@@ -557,8 +587,8 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
     match_ids = {entry['id'] for entry in matches_payload}
     match_round_ids = {entry['id'] for entry in match_rounds_payload}
     competition_referee_ids = {entry['id'] for entry in competition_referees_payload}
-    category_field_assignment_ids = {entry['id'] for entry in category_field_assignments_payload}
-    match_field_assignment_ids = {entry['id'] for entry in match_field_assignments_payload}
+    category_field_assignment_ids = resolved_category_field_assignment_ids
+    match_field_assignment_ids = resolved_match_field_assignment_ids
     category_referee_assignment_ids = {entry['id'] for entry in category_referee_assignments_payload}
     match_referee_assignment_ids = {entry['id'] for entry in match_referee_assignments_payload}
     monitor_session_ids = {entry['id'] for entry in monitor_sessions_payload}
