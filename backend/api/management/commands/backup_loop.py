@@ -18,6 +18,15 @@ from api.local_backup import BackupError, TRIGGER_SCHEDULED, create_backup
 class Command(BaseCommand):
     help = 'Continuously take scheduled backups of the local event database every LOCAL_BACKUP_INTERVAL_MINUTES.'
 
+    # The backup-scheduler container (docker-compose.local.yml) runs this
+    # command directly as its entrypoint, skipping entrypoint.local.sh's
+    # `collectstatic` step - so the static manifest never exists there, and
+    # Django's default system checks (which resolve urls.py, including the
+    # ManifestStaticFilesStorage-backed favicon route) would fail every
+    # startup. This command never serves HTTP/URLs, so those checks don't
+    # apply to it.
+    requires_system_checks = []
+
     def add_arguments(self, parser):
         parser.add_argument(
             '--interval-minutes', type=int, default=None,

@@ -28,7 +28,12 @@ wheels/
 db.sqlite3
 *.log
 media/
-static/
+# NOT static/ - unlike staticfiles/ (collectstatic's generated output,
+# already excluded via .gitignore and never present at build time), this
+# is the committed SOURCE dir (favicon.svg, admin/api overrides, CKEditor
+# dist) that collectstatic itself reads from - excluding it here left the
+# built manifest missing entries the app references directly at import
+# time (crud/urls.py's favicon route), crash-looping the container.
 .git/
 .gitignore
 *.md
