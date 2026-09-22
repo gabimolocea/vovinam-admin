@@ -25,6 +25,55 @@ function formatDateTime(value) {
   return parsed.toLocaleString('ro-RO');
 }
 
+// Human labels for the per-section counts import_event_results returns -
+// see backend/api/sync/import_event_results.py's `imported` dict.
+const IMPORTED_SECTION_LABELS = {
+  category_results: 'Rezultate categorii',
+  category_athletes: 'Sportivi (loc/greutate)',
+  category_teams: 'Echipe',
+  matches: 'Meciuri',
+  match_rounds: 'Reprize',
+  match_events: 'Evenimente meci',
+  point_events: 'Puncte arbitri',
+  match_referee_scores: 'Scoruri arbitri',
+  fight_athlete_weights: 'Cântăriri',
+};
+
+function SyncLogPanel({ entries }) {
+  if (entries.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nu există încă acțiuni de sincronizare în această sesiune.</p>;
+  }
+  return (
+    <div className="space-y-3">
+      {entries.map((entry) => (
+        <div key={entry.id} className={cn(
+          'rounded-lg border px-4 py-3',
+          entry.ok ? 'border-border bg-card' : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/10',
+        )}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-foreground">{entry.title}</span>
+            <span className="text-xs text-muted-foreground">{formatDateTime(entry.time)}</span>
+          </div>
+          {entry.counts ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {Object.entries(entry.counts).filter(([, n]) => n > 0).map(([key, n]) => (
+                <span key={key} className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
+                  {IMPORTED_SECTION_LABELS[key] || key}: {n}
+                </span>
+              ))}
+              {Object.values(entry.counts).every((n) => !n) && (
+                <span className="text-xs text-muted-foreground">Nimic nou de sincronizat.</span>
+              )}
+            </div>
+          ) : entry.detail ? (
+            <p className="mt-1 text-sm text-muted-foreground">{entry.detail}</p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SyncStep({ title, description, done, active }) {
   return (
     <div className={cn(
@@ -63,6 +112,13 @@ export default function SyncCenterPage() {
   const [message, setMessage] = useState('');
   const [isLocalServer, setIsLocalServer] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
+  // What actually got synced this session - most useful right after
+  // uploading local results, so it's obvious at a glance whether matches/
+  // placements/weights really landed in cloud instead of silently failing.
+  const [syncLog, setSyncLog] = useState([]);
+  const logSync = (title, { counts, detail, ok = true } = {}) => {
+    setSyncLog((prev) => [{ id: `${Date.now()}-${Math.random()}`, title, time: new Date().toISOString(), counts, detail, ok }, ...prev]);
+  };
 
   const loadCompetition = async () => {
     const { data } = await competitionAPI.get(id);
@@ -228,11 +284,17 @@ export default function SyncCenterPage() {
     try {
       const text = await file.text();
       const payload = JSON.parse(text);
-      await offlineAPI.importEventResults(payload);
+      const { data } = await offlineAPI.importEventResults(payload);
       await loadCompetition();
       setMessage('Rezultatele locale au fost importate în cloud.');
+      logSync('Rezultate importate în cloud', { counts: data?.imported });
     } catch (error) {
-      setMessage(error.response?.data?.detail || error.message || 'Importul rezultatelor a eșuat.');
+      const detail = error.response?.data?.detail
+        || (error.response?.data && JSON.stringify(error.response.data))
+        || error.message
+        || 'Importul rezultatelor a eșuat.';
+      setMessage(detail);
+      logSync('Import rezultate eșuat', { detail, ok: false });
     } finally {
       setBusy(false);
     }
@@ -245,8 +307,11 @@ export default function SyncCenterPage() {
       await competitionAPI.completeLocalSync(id);
       await loadCompetition();
       setMessage('Sincronizarea locală a fost finalizată. Dacă mai vrei modificări locale, pornește un ciclu nou printr-un export nou de event pack.');
+      logSync('Sincronizare finalizată', { detail: 'Evenimentul a revenit în modul cloud.' });
     } catch (error) {
-      setMessage(error.response?.data?.detail || 'Finalizarea sincronizării a eșuat.');
+      const detail = error.response?.data?.detail || 'Finalizarea sincronizării a eșuat.';
+      setMessage(detail);
+      logSync('Finalizare eșuată', { detail, ok: false });
     } finally {
       setBusy(false);
     }
@@ -570,6 +635,12 @@ export default function SyncCenterPage() {
           </Card>
         </div>
       </div>
+
+      <Card className="p-5">
+        <h2 className="mb-1 text-lg font-semibold text-foreground">Jurnal sincronizare</h2>
+        <p className="mb-4 text-sm text-muted-foreground">Ce s-a sincronizat efectiv pe cloud, în această sesiune - util pentru a confirma că meciurile, locurile și greutățile au ajuns cu adevărat.</p>
+        <SyncLogPanel entries={syncLog} />
+      </Card>
 
       <LocalBackupPanel />
       </div>
