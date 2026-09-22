@@ -114,7 +114,14 @@ class EventAdmin(admin.ModelAdmin):
     search_fields = ['title', 'description', 'city__name', 'tags']
     autocomplete_fields = ['city']
     prepopulated_fields = {'slug': ('title',)}
-    readonly_fields = ['status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at', 'import_results_action']
+    # sync_mode/sync_locked/local_sync_status are deliberately readonly here
+    # (via the *_display wrappers below, for human-readable labels instead
+    # of raw enum values) - they're a small state machine, and editing them
+    # as three separate raw fields let an admin desync them from each other
+    # by changing just one. The changelist actions below (Blochează /
+    # Marchează / Finalizează / Deblochează) are the only supported way to
+    # transition state, since each one updates every affected field together.
+    readonly_fields = ['status', 'sync_mode_display', 'sync_locked_display', 'local_sync_status_display', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at', 'import_results_action']
     actions = ['lock_for_local_event', 'mark_local_in_progress', 'mark_local_results_uploaded', 'complete_local_sync', 'unlock_local_event']
     # Removed inline editing for `is_featured` to avoid the changelist-wide
     # "Save" button. Use the object change form or admin actions to toggle
@@ -132,8 +139,11 @@ class EventAdmin(admin.ModelAdmin):
             'fields': ('is_featured', 'is_publicly_visible')
         }),
         (_('Sincronizare eveniment local'), {
-            'fields': ('sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at', 'import_results_action'),
-            'description': _('Controlează blocarea datelor operaționale după exportul către serverul local al competiției.')
+            'fields': ('sync_mode_display', 'sync_locked_display', 'local_sync_status_display', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at', 'import_results_action'),
+            'description': _(
+                'Stare doar-informativă - foloseşte acţiunile din lista de evenimente '
+                '(Blochează / Marchează / Finalizează / Deblochează) pentru a schimba starea.'
+            )
         }),
         (_('Setări SEO'), {
             'fields': ('meta_title', 'meta_description', 'meta_keywords', 'canonical_url', 'robots_index', 'robots_follow'),
@@ -146,6 +156,18 @@ class EventAdmin(admin.ModelAdmin):
         labels = dict(Event.EVENT_TYPE_CHOICES)
         return ', '.join(labels.get(t, t) for t in (obj.event_types or [])) or '—'
     event_types_display.short_description = _('Tip eveniment')
+
+    def sync_mode_display(self, obj):
+        return obj.get_sync_mode_display()
+    sync_mode_display.short_description = _('Mod sincronizare')
+
+    def sync_locked_display(self, obj):
+        return 'Da' if obj.sync_locked else 'Nu'
+    sync_locked_display.short_description = _('Blocat pentru operare locală')
+
+    def local_sync_status_display(self, obj):
+        return obj.get_local_sync_status_display()
+    local_sync_status_display.short_description = _('Stare sincronizare')
 
     def event_status(self, obj):
         if obj.is_past:
