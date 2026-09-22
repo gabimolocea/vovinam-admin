@@ -37,7 +37,8 @@
     },
     "mac": {
       "category": "public.app-category.sports",
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/icon.icns"
     }
   }
 }

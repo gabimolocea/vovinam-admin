@@ -35,6 +35,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 760,
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -178,6 +179,13 @@ async function waitForBackend(baseUrl, { timeoutMs = 30000, intervalMs = 500 } =
 }
 
 app.whenReady().then(() => {
+  // The packaged .app already carries the federation logo as its bundle
+  // icon (build/icon.icns, wired into electron-builder's mac config) -
+  // this only matters for `npm run dev`, which runs unpackaged and would
+  // otherwise show Electron's own default icon in the dock.
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
+  }
   createWindow();
   buildMenu();
 });
