@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { CentralizatorContext, GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
-import { api, MEDIA_BASE_URL, fieldAPI, matchFieldAssignmentAPI } from '@shared';
+import { api, MEDIA_BASE_URL, fieldAPI, matchFieldAssignmentAPI, matchEventAPI } from '@shared';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, formatGroupBadgeLabel } from '../components/ui';
 import ExcelJS from 'exceljs';
 
@@ -593,6 +593,19 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
       wb.creator = 'FRVV Admin';
       wb.created = new Date();
 
+      // Admin-given points (bonus/penalty/warning) per match, for the
+      // "Detalii meciuri" sheet - not included on the Match objects
+      // themselves, so fetched separately, one call per match.
+      const matchEventsByMatchId = {};
+      await Promise.all(matches.map(async (m) => {
+        try {
+          const res = await matchEventAPI.list({ match_id: m.id });
+          matchEventsByMatchId[m.id] = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+        } catch {
+          matchEventsByMatchId[m.id] = [];
+        }
+      }));
+
       const catTitle = (shortLabel || category.name) + (category.groupName ? ` — ${category.groupName}` : '');
       const DARK_HDR  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
       const YELLOW_HD = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFBBF24' } };
@@ -613,6 +626,12 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
       for (const fw of fwArr) {
         if (fw.category === category.id) weightMap[fw.athlete] = fw.current_weight_kg || fw.pre_weight_kg || null;
       }
+      const xlsPlaceByAthleteId = {};
+      for (const ea of (category.enrolled_athletes || [])) {
+        const aid = ea.athlete_details?.id || ea.athlete;
+        if (ea.place) xlsPlaceByAthleteId[aid] = ea.place;
+      }
+      const medalSuffix = (athleteId) => (xlsPlaceByAthleteId[athleteId] && MEDALS[xlsPlaceByAthleteId[athleteId]]) ? ` ${MEDALS[xlsPlaceByAthleteId[athleteId]]}` : '';
 
       // ─── Sheet 1: Sportivi ───
       const ws1 = wb.addWorksheet('Sportivi');
@@ -625,10 +644,10 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
       ws1.mergeCells(1, 1, 1, 6);
       ws1.addRow([]); ws1.getRow(2).height = 4;
       // Header
-      ws1.addRow(['#', 'Nume', 'Club', 'Greutate (kg)', 'Gen', 'Plasat în bracket']);
+      ws1.addRow(['#', 'Nume', 'Club', 'Greutate (kg)', 'Gen', 'Plasat în bracket', 'Medalie']);
       ws1.getRow(3).height = 34;
       ws1.getRow(3).eachCell(c => { c.font = boldF(15, 'FFFFFF'); c.fill = DARK_HDR; c.alignment = CC; c.border = allB(); });
-      [7, 44, 32, 20, 16, 22].forEach((w, i) => { ws1.getColumn(i + 1).width = w; });
+      [7, 44, 32, 20, 16, 22, 16].forEach((w, i) => { ws1.getColumn(i + 1).width = w; });
 
       const placedIds = new Set(matches.flatMap(m => [m.red_corner, m.blue_corner].filter(Boolean)));
       const enrolled = category.enrolled_athletes || [];
@@ -643,8 +662,16 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
           weight: weightMap[id] || '',
           gender: GENDER_LABELS[category.gender] || '',
           placed: placedIds.has(id),
+          place: xlsPlaceByAthleteId[id] || null,
         };
-      }).sort((a, b) => a.name.localeCompare(b.name));
+      }).sort((a, b) => {
+        // Medal winners first (1st, 2nd, 3rd), everyone else after -
+        // alphabetically within each group.
+        if (a.place && b.place) return a.place - b.place;
+        if (a.place && !b.place) return -1;
+        if (!a.place && b.place) return 1;
+        return a.name.localeCompare(b.name);
+      });
 
       // Tracks each athlete's row in this sheet, so the Bracket sheet's match
       // cells can link straight back to them - and vice versa, see
@@ -653,12 +680,13 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
       athList.forEach((ath, ri) => {
         const rowNumber = 3 + 1 + ri;
         athleteRowInSportivi[ath.id] = rowNumber;
-        ws1.addRow([ri + 1, ath.name, ath.club, ath.weight || '', ath.gender, ath.placed ? 'Da' : '—']);
+        ws1.addRow([ri + 1, ath.name, ath.club, ath.weight || '', ath.gender, ath.placed ? 'Da' : '—', xlsPlaceByAthleteId[ath.id] ? `Locul ${xlsPlaceByAthleteId[ath.id]} ${MEDALS[xlsPlaceByAthleteId[ath.id]] || ''}` : '']);
         const dr = ws1.getRow(rowNumber); dr.height = 26;
         dr.eachCell(c => { c.alignment = CC; c.border = allB(GRAY_B); c.font = normF(13); });
         dr.getCell(2).alignment = LC; dr.getCell(2).font = boldF(14);
         dr.getCell(3).alignment = LC; dr.getCell(3).font = normF(13, '4B5563');
         if (ath.placed) dr.getCell(6).font = boldF(14, '059669');
+        if (xlsPlaceByAthleteId[ath.id]) dr.getCell(7).font = boldF(13, 'B45309');
         if (ri % 2 === 1) dr.eachCell(c => { if (!c.fill?.fgColor) c.fill = GRAY_BG; });
       });
 
@@ -761,15 +789,25 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
             const botRow = topRow + 1;
             const redWon  = m.winner && m.winner === m.red_corner;
             const blueWon = m.winner && m.winner === m.blue_corner;
-            const redName  = m.red_corner_full_name  || 'TBD';
-            const blueName = m.blue_corner_full_name || 'TBD';
+            const redLost  = m.winner && !redWon && m.red_corner;
+            const blueLost = m.winner && !blueWon && m.blue_corner;
+            const isByeMatch = (m.red_corner && !m.blue_corner) || (!m.red_corner && m.blue_corner);
+            const hasAssignedField = Boolean(m.field_id || m.field_number);
+            const matchStatusSuffix = !m.red_corner && !m.blue_corner
+              ? ''
+              : m.status === 'completed' ? '  [Finalizat]'
+              : isByeMatch ? '  [BYE]'
+              : m.status === 'cancelled' ? '  [Anulat]'
+              : hasAssignedField ? '  [Programat]' : '  [Neprogramat]';
+            const redName  = (m.red_corner_full_name  || 'TBD') + (m.red_corner ? medalSuffix(m.red_corner) : '') + matchStatusSuffix;
+            const blueName = (m.blue_corner_full_name || 'TBD') + (m.blue_corner ? medalSuffix(m.blue_corner) : '');
 
             // ── Top player (red corner) ──
             const topCell = ws2.getCell(topRow, matchCol);
             const redSportiviRow = m.red_corner ? athleteRowInSportivi[m.red_corner] : null;
             topCell.value = redSportiviRow ? { text: redName, hyperlink: `#'Sportivi'!A${redSportiviRow}` } : redName;
             if (m.red_corner && !athleteFirstBracketCell[m.red_corner]) athleteFirstBracketCell[m.red_corner] = topCell.address;
-            topCell.font = boldF(14, redWon ? '059669' : m.red_corner ? '111827' : '9CA3AF');
+            topCell.font = { ...boldF(14, redWon ? '059669' : m.red_corner ? '111827' : '9CA3AF'), strike: !!redLost };
             topCell.fill = redWon ? GREEN_BG : m.red_corner ? RED_BG : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
             topCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
             topCell.border = {
@@ -785,7 +823,7 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
             const blueSportiviRow = m.blue_corner ? athleteRowInSportivi[m.blue_corner] : null;
             botCell.value = blueSportiviRow ? { text: blueName, hyperlink: `#'Sportivi'!A${blueSportiviRow}` } : blueName;
             if (m.blue_corner && !athleteFirstBracketCell[m.blue_corner]) athleteFirstBracketCell[m.blue_corner] = botCell.address;
-            botCell.font = boldF(14, blueWon ? '059669' : m.blue_corner ? '111827' : '9CA3AF');
+            botCell.font = { ...boldF(14, blueWon ? '059669' : m.blue_corner ? '111827' : '9CA3AF'), strike: !!blueLost };
             botCell.fill = blueWon ? GREEN_BG : m.blue_corner ? BLUE_BG : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
             botCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
             botCell.border = {
@@ -860,6 +898,97 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
         cell.font = boldF(14, '059669'); // Excel auto-applies its own hyperlink style otherwise
         cell.alignment = CC;
       });
+
+      // ─── Sheet 3: Detalii meciuri (referee-by-referee, round-by-round
+      //     scoring breakdown, plus admin-given points and the final
+      //     result) - one block of rows per match, sorted the same way
+      //     the bracket itself is drawn (round, then bracket position). ───
+      const ws3 = wb.addWorksheet('Detalii meciuri');
+      const DET_COLS = ['Sursă', 'Detaliu', 'Rundă', 'Roșu', 'Albastru'];
+      ws3.addRow([catTitle + ' — Detalii meciuri']);
+      ws3.getRow(1).height = 36;
+      ws3.getRow(1).getCell(1).font = boldF(18, 'FFFFFF');
+      ws3.getRow(1).getCell(1).fill = DARK_HDR;
+      ws3.getRow(1).getCell(1).alignment = LC;
+      ws3.mergeCells(1, 1, 1, DET_COLS.length);
+      ws3.addRow([]); ws3.getRow(2).height = 6;
+      [26, 30, 24, 30, 30].forEach((w, i) => { ws3.getColumn(i + 1).width = w; });
+
+      const sortedMatches = [...matches].sort((a, b) => {
+        const rd = (a.round_number || 0) - (b.round_number || 0);
+        return rd !== 0 ? rd : (a.bracket_position || 0) - (b.bracket_position || 0);
+      });
+
+      for (const m of sortedMatches) {
+        const roundLabel = ROUND_LABELS[m.match_type] || m.match_type || '';
+        const redName = m.red_corner_full_name || 'TBD';
+        const blueName = m.blue_corner_full_name || 'TBD';
+        const winnerName = m.winner_name || (m.status === 'completed' ? '—' : null);
+
+        // Match header row
+        ws3.addRow([`Meci #${m.id} · ${roundLabel}`, `${redName} vs ${blueName}`, '', '', '']);
+        const hdrRow = ws3.lastRow;
+        hdrRow.height = 24;
+        hdrRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } }; c.font = boldF(13, 'FFFFFF'); c.alignment = LC; });
+        ws3.mergeCells(hdrRow.number, 2, hdrRow.number, DET_COLS.length);
+
+        let anyDetail = false;
+
+        // Referee scores, round by round (RefereePointEvent-based path)
+        for (const rs of (m.referee_scores || [])) {
+          anyDetail = true;
+          for (const r of (rs.rounds || [])) {
+            ws3.addRow([`Arbitru: ${rs.referee_name}`, '', `Runda ${r.round}`, r.red, r.blue]);
+            const row = ws3.lastRow; row.height = 20;
+            row.eachCell(c => { c.font = normF(12); c.alignment = CC; c.border = allB(GRAY_B); });
+            row.getCell(1).alignment = LC;
+          }
+          ws3.addRow([`Arbitru: ${rs.referee_name}`, 'Total', '', rs.total_red, rs.total_blue]);
+          const totalRow = ws3.lastRow; totalRow.height = 20;
+          totalRow.eachCell(c => { c.font = boldF(12, '111827'); c.alignment = CC; c.border = allB(GRAY_B); c.fill = GRAY_BG; });
+          totalRow.getCell(1).alignment = LC; totalRow.getCell(2).alignment = LC;
+        }
+
+        // Central referee penalties
+        const centralRed = m.central_penalties_red || [];
+        const centralBlue = m.central_penalties_blue || [];
+        if (centralRed.length || centralBlue.length) {
+          anyDetail = true;
+          const n = Math.max(centralRed.length, centralBlue.length);
+          for (let i = 0; i < n; i++) {
+            ws3.addRow(['Arbitru central', 'Penalizare', '', centralRed[i]?.points ?? '', centralBlue[i]?.points ?? '']);
+            const row = ws3.lastRow; row.height = 20;
+            row.eachCell(c => { c.font = normF(12, 'B91C1C'); c.alignment = CC; c.border = allB(GRAY_B); });
+            row.getCell(1).alignment = LC; row.getCell(2).alignment = LC;
+          }
+        }
+
+        // Admin-given points (bonus/penalty/warning from the live scoring panel)
+        for (const ev of (matchEventsByMatchId[m.id] || [])) {
+          if (!['warning_red', 'warning_blue', 'penalty_red', 'penalty_blue', 'bonus_red', 'bonus_blue', 'infraction_red', 'infraction_blue', 'disqualify_red', 'disqualify_blue'].includes(ev.event_type)) continue;
+          anyDetail = true;
+          const isRed = ev.corner === 'red';
+          ws3.addRow(['Admin', ev.event_type_display || ev.event_type, '', isRed ? ev.value : '', !isRed ? ev.value : '']);
+          const row = ws3.lastRow; row.height = 20;
+          row.eachCell(c => { c.font = normF(12, '92400E'); c.alignment = CC; c.border = allB(GRAY_B); });
+          row.getCell(1).alignment = LC; row.getCell(2).alignment = LC;
+        }
+
+        if (!anyDetail) {
+          ws3.addRow(['—', 'Niciun punctaj înregistrat', '', '', '']);
+          const row = ws3.lastRow; row.height = 20;
+          row.eachCell(c => { c.font = normF(12, '9CA3AF'); c.alignment = CC; c.border = allB(GRAY_B); });
+          row.getCell(1).alignment = LC; row.getCell(2).alignment = LC;
+        }
+
+        // Result row
+        ws3.addRow(['REZULTAT', winnerName ? `Câștigător: ${winnerName}` : 'Fără câștigător încă', '', '', '']);
+        const resRow = ws3.lastRow; resRow.height = 22;
+        resRow.eachCell(c => { c.font = boldF(13, '059669'); c.fill = GREEN_BG; c.alignment = LC; c.border = allB(GRAY_B); });
+        ws3.mergeCells(resRow.number, 2, resRow.number, DET_COLS.length);
+
+        ws3.addRow([]); ws3.lastRow.height = 8;
+      }
 
       // Download
       const buf = await wb.xlsx.writeBuffer();
@@ -1275,7 +1404,7 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
    ═══════════════════════════════════════════════════════════════════ */
 function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, placeByAthleteId }) {
   /* layout constants */
-  const CARD_W = 220;
+  const CARD_W = 260;
   const CARD_H = 138;  // tallest real case: header + 2 corner rows + advance button
   const COL_GAP = 90;  // horizontal gap between rounds (for connectors)
   const BASE_GAP = 12;  // vertical gap in round 1
@@ -1403,6 +1532,15 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
   const redLost = hasWinner && !redWon && !!m.red_corner;
   const blueLost = hasWinner && !blueWon && !!m.blue_corner;
   const isBye = (m.red_corner && !m.blue_corner) || (!m.red_corner && m.blue_corner);
+  // Medals are a final-placement thing - showing them on early rounds
+  // (qualifications/quarters) is noisy and premature-looking, so only the
+  // rounds that actually decide a medal get the badge. An athlete who wins
+  // their semifinal also appears in the final (also shown) - their medal
+  // is 1st/2nd, decided there, so the semifinal only shows a medal for
+  // 3rd place (the semifinal loser, who has no later round of their own)
+  // to avoid the same medal appearing on two cards.
+  const showRedMedal = m.match_type === 'finals' || (m.match_type === 'semi-finals' && placeByAthleteId?.[m.red_corner] === 3);
+  const showBlueMedal = m.match_type === 'finals' || (m.match_type === 'semi-finals' && placeByAthleteId?.[m.blue_corner] === 3);
   const assignedFieldId = m.field_id || m.field || null;
   const hasAssignedField = Boolean(assignedFieldId || m.field_number || m.field_name);
   const fullscreenHref = assignedFieldId
@@ -1500,10 +1638,10 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
         <div className="min-w-0 flex-1">
           {m.red_corner_full_name ? (
             <>
-              <span className="block truncate font-bold text-foreground">
-                {m.red_corner_full_name}
-                {placeByAthleteId?.[m.red_corner] && MEDALS[placeByAthleteId[m.red_corner]] && (
-                  <span className="ml-1" title={`Locul ${placeByAthleteId[m.red_corner]}`}>{MEDALS[placeByAthleteId[m.red_corner]]}</span>
+              <span className="flex items-center gap-1">
+                <span className="min-w-0 truncate font-bold text-foreground">{m.red_corner_full_name}</span>
+                {showRedMedal && placeByAthleteId?.[m.red_corner] && MEDALS[placeByAthleteId[m.red_corner]] && (
+                  <span className="shrink-0" title={`Locul ${placeByAthleteId[m.red_corner]}`}>{MEDALS[placeByAthleteId[m.red_corner]]}</span>
                 )}
               </span>
               {m.red_corner_club_name && <span className="block truncate text-xs text-muted-foreground">{m.red_corner_club_name}</span>}
@@ -1543,10 +1681,10 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
         <div className="min-w-0 flex-1">
           {m.blue_corner_full_name ? (
             <>
-              <span className="block truncate font-bold text-foreground">
-                {m.blue_corner_full_name}
-                {placeByAthleteId?.[m.blue_corner] && MEDALS[placeByAthleteId[m.blue_corner]] && (
-                  <span className="ml-1" title={`Locul ${placeByAthleteId[m.blue_corner]}`}>{MEDALS[placeByAthleteId[m.blue_corner]]}</span>
+              <span className="flex items-center gap-1">
+                <span className="min-w-0 truncate font-bold text-foreground">{m.blue_corner_full_name}</span>
+                {showBlueMedal && placeByAthleteId?.[m.blue_corner] && MEDALS[placeByAthleteId[m.blue_corner]] && (
+                  <span className="shrink-0" title={`Locul ${placeByAthleteId[m.blue_corner]}`}>{MEDALS[placeByAthleteId[m.blue_corner]]}</span>
                 )}
               </span>
               {m.blue_corner_club_name && <span className="block truncate text-xs text-muted-foreground">{m.blue_corner_club_name}</span>}
