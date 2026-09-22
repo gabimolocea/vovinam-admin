@@ -148,14 +148,32 @@ def _upsert_category_team(entry: dict[str, Any]):
     return obj
 
 
-def _upsert_match(entry: dict[str, Any]):
+def _upsert_match(entry: dict[str, Any], existing_category_ids: set[int]):
+    """A match created locally after the event pack was exported (e.g. via
+    "Adaugă meci de bronz", added mid-competition once semifinals were
+    already decided) has no matching row in cloud yet - unlike every match
+    that came from the original bracket, which was created in both places
+    with the same pk when the event pack was first imported. Previously
+    this was rejected outright, which - since this whole import runs in
+    one transaction - silently rolled back the ENTIRE results sync (medal
+    placements included) the moment any single match like this was in the
+    payload, with only a generic, easy-to-miss error surfaced to the admin.
+
+    next_match/loser_next_match are deliberately left unset here - they
+    point at other matches in this same payload, which may not exist yet
+    this pass. See the second pass in import_event_results.
+    """
     obj = Match.objects.filter(pk=entry['id']).first()
     if obj is None:
-        raise ValidationError({'matches': f"Match {entry['id']} does not exist in cloud. Creating new local matches is not supported by result sync."})
+        category_id = entry.get('category_id')
+        if category_id not in existing_category_ids:
+            raise ValidationError({'matches': f"Match {entry['id']}: category {category_id} does not exist in cloud."})
+        obj = Match(id=entry['id'], category_id=category_id, match_type=entry.get('match_type') or 'qualifications')
 
     obj.field_id = entry.get('field_id')
     obj.status = entry.get('status') or obj.status
     obj.display_mode = entry.get('display_mode') or obj.display_mode
+    obj.match_type = entry.get('match_type') or obj.match_type
     obj.round_number = entry.get('round_number', obj.round_number)
     obj.bracket_position = entry.get('bracket_position', obj.bracket_position)
     obj.red_corner_id = entry.get('red_corner_id')
@@ -165,6 +183,18 @@ def _upsert_match(entry: dict[str, Any]):
     obj.name = entry.get('name') or obj.name
     obj.save()
     return obj
+
+
+def _link_match_bracket_pointers(entry: dict[str, Any]):
+    """Second pass: set next_match/loser_next_match now that every match in
+    this payload is guaranteed to already exist (see _upsert_match)."""
+    updates = {}
+    if entry.get('next_match_id') is not None:
+        updates['next_match_id'] = entry['next_match_id']
+    if entry.get('loser_next_match_id') is not None:
+        updates['loser_next_match_id'] = entry['loser_next_match_id']
+    if updates:
+        Match.objects.filter(pk=entry['id']).update(**updates)
 
 
 def _upsert_match_round(entry: dict[str, Any]):
@@ -324,10 +354,6 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
         if entry['id'] not in existing_category_ids:
             raise ValidationError({'category_results': f"Category {entry['id']} does not exist in cloud. Creating new local categories is not supported by result sync."})
 
-    for entry in matches_payload:
-        if entry['id'] not in existing_match_ids:
-            raise ValidationError({'matches': f"Match {entry['id']} does not exist in cloud. Creating new local matches is not supported by result sync."})
-
     imported = {
         'category_results': 0,
         'category_athletes': 0,
@@ -392,8 +418,19 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
         imported['category_teams'] += 1
 
     for entry in matches_payload:
-        _upsert_match(entry)
+        _upsert_match(entry, existing_category_ids)
+        # A match created locally (e.g. a bronze match added after the
+        # event pack export) is now guaranteed to exist - later loops in
+        # this function (rounds/events/point events/referee scores) that
+        # check membership in this set must see it too, or they'd reject
+        # its own child rows even though the match itself just succeeded.
+        existing_match_ids.add(entry['id'])
         imported['matches'] += 1
+
+    # Second pass: link next_match/loser_next_match now that every match
+    # referenced by this payload is guaranteed to exist (see _upsert_match).
+    for entry in matches_payload:
+        _link_match_bracket_pointers(entry)
 
     for entry in match_rounds_payload:
         if entry['match_id'] not in existing_match_ids:

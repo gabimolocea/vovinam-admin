@@ -253,6 +253,56 @@ class OfflineEventResultsTests(TestCase):
         self.assertEqual(remaining.first().weight, Decimal('60.00'))
         self.assertFalse(CategoryAthlete.objects.filter(category=self.category, athlete=self.red_corner).exists())
 
+    def test_event_results_import_creates_match_added_locally_after_export(self):
+        """A match created on the LAN server after the event pack was
+        already exported (e.g. "Adaugă meci de bronz", added once the
+        semifinals were decided) has no matching row in cloud yet. Before
+        this was fixed, _upsert_match rejected it outright, and since the
+        whole import runs in one transaction, that silently rolled back
+        the ENTIRE results sync - not just the new match, but every other
+        athlete's place/weight/scores in the same payload too."""
+        third_place = Athlete.objects.create(
+            first_name='Third', last_name='Place', club=self.club, city=self.city, status='approved',
+        )
+        bronze_field = CompetitionField.objects.get(event=self.event, field_number=2)
+        bronze_match = Match.objects.create(
+            category=self.category,
+            field=bronze_field,
+            match_type='bronze',
+            status='completed',
+            red_corner=third_place,
+            blue_corner=self.blue_corner,
+            next_match=None,
+            loser_next_match=None,
+        )
+        CategoryAthlete.objects.create(category=self.category, athlete=third_place, place=3)
+
+        export_response = self.client.get(f'/api/offline/event-results/?event_id={self.event.id}')
+        payload = export_response.json()
+        self.assertEqual(len(payload['matches']), 2)
+
+        # Simulate cloud never having seen this match - it was created on
+        # the LAN server after the event pack export.
+        bronze_match_id = bronze_match.id
+        bronze_match.delete()
+        self.assertFalse(Match.objects.filter(id=bronze_match_id).exists())
+
+        import_response = self.client.post('/api/offline/event-results/import/', payload, format='json')
+
+        self.assertEqual(import_response.status_code, 200)
+        result = import_response.json()
+        self.assertEqual(result['imported']['matches'], 2)
+
+        recreated = Match.objects.get(id=bronze_match_id)
+        self.assertEqual(recreated.match_type, 'bronze')
+        self.assertEqual(recreated.category_id, self.category.id)
+        self.assertEqual(recreated.red_corner_id, third_place.id)
+        self.assertEqual(recreated.blue_corner_id, self.blue_corner.id)
+        self.assertEqual(recreated.status, 'completed')
+        # The other athlete's place from the SAME payload must have landed
+        # too - this is exactly what silently rolled back before the fix.
+        self.assertEqual(CategoryAthlete.objects.get(category=self.category, athlete=third_place).place, 3)
+
     def test_event_results_import_rejects_new_local_category(self):
         export_response = self.client.get(f'/api/offline/event-results/?event_id={self.event.id}')
         payload = export_response.json()
