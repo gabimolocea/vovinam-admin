@@ -7,7 +7,9 @@
 #
 # See docker-compose.local.yml and docs/GHID_COMPETITIE_LOCALA.md.
 
-FROM python:3.11-slim
+# Django 6.1 requires Python >=3.12 - matches production's own Dockerfile
+# (repo root, Stage 2) exactly, since requirements.txt is shared with it.
+FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
