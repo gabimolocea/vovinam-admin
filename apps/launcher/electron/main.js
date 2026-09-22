@@ -25,6 +25,12 @@ let session = {
 let mainWindow;
 let serviceManager;
 
+// Tracks whichever embedded <webview> (competition-admin, referee-scoring,
+// public-display...) was attached most recently, so the "Consolă" menu
+// item can open DevTools for the app the admin is actually looking at
+// instead of always the launcher's own (empty) renderer.
+let activeWebviewContents = null;
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -40,6 +46,12 @@ function createWindow() {
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+  mainWindow.webContents.on('did-attach-webview', (_event, contents) => {
+    activeWebviewContents = contents;
+    contents.on('destroyed', () => {
+      if (activeWebviewContents === contents) activeWebviewContents = null;
+    });
   });
 
   const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '..', 'dist', 'index.html')}`;
@@ -68,6 +80,42 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [isMac ? { role: 'close' } : { role: 'quit' }],
+    },
+    // Without an explicit Edit menu, Electron has no Cut/Copy/Paste
+    // accelerators at all - not in the launcher's own inputs (login form)
+    // nor inside the embedded <webview> apps, since those native OS-level
+    // shortcuts are wired up by the app's menu, not by the browser engine
+    // itself.
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Consolă (DevTools)',
+          accelerator: 'CmdOrCtrl+Alt+I',
+          click: () => {
+            // Prefer the currently embedded local app (competition-admin /
+            // referee-scoring / public-display) so errors from that app
+            // show up, not the launcher's own near-empty shell page.
+            const target =
+              activeWebviewContents && !activeWebviewContents.isDestroyed()
+                ? activeWebviewContents
+                : mainWindow?.webContents;
+            target?.openDevTools({ mode: 'detach' });
+          },
+        },
+      ],
     },
     {
       label: 'Account',
