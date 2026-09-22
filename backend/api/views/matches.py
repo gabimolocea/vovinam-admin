@@ -962,8 +962,13 @@ def generate_brackets(request, category_id):
 
     # ── Consolation / Bronze match ──
     if bracket_type == 'consolation':
-        # Find semi-final matches
-        semi_matches = [m for m in all_matches.values() if m.match_type == 'semi-finals']
+        # Find semi-final matches. A semi-final slot with an empty corner
+        # is a bye (nobody plays it, so it can never produce a loser) - a
+        # 3-athlete bracket always creates 2 semi-final rows (1 real + 1
+        # bye feeding the final), so without this filter it's mistaken for
+        # a real "2 semis" bracket and the bye's non-existent loser is
+        # wired into the bronze match instead of the final's real loser.
+        semi_matches = [m for m in all_matches.values() if m.match_type == 'semi-finals' and m.red_corner and m.blue_corner]
         finals_match = [m for m in all_matches.values() if m.match_type == 'finals']
 
         if len(semi_matches) >= 2:
@@ -1051,10 +1056,16 @@ def add_bronze_match(request, category_id):
 
     semi_matches = list(matches.filter(match_type='semi-finals'))
     finals_matches = list(matches.filter(match_type='finals'))
+    # A semi-final slot with an empty corner is a bye, not a real match -
+    # nobody ever plays it, so it never has a loser. A 3-athlete bracket
+    # always creates 2 semi-final rows (1 real + 1 bye feeding the final),
+    # which without this filter looks identical to a real "2 semis" bracket
+    # and incorrectly demands a loser out of a match that was never played.
+    real_semi_matches = [m for m in semi_matches if m.red_corner_id and m.blue_corner_id]
 
     with transaction.atomic():
-        if len(semi_matches) >= 2:
-            losers = [_loser_of(m) for m in semi_matches[:2]]
+        if len(real_semi_matches) >= 2:
+            losers = [_loser_of(m) for m in real_semi_matches[:2]]
             if not all(losers):
                 return Response({'error': 'Ambele semifinale trebuie să aibă un câștigător înainte de a adăuga meciul de bronz.'}, status=400)
             # Takes over the final's round_number (its own column, right before
@@ -1073,13 +1084,13 @@ def add_bronze_match(request, category_id):
                 bracket_position=0, match_number='BRONZE',
                 red_corner=losers[0], blue_corner=losers[1],
             )
-            for sm in semi_matches[:2]:
+            for sm in real_semi_matches[:2]:
                 sm.loser_next_match = bronze
                 sm.save(update_fields=['loser_next_match'])
             CategoryAthlete.objects.filter(category=category, athlete__in=losers, place=3).update(place=None)
 
-        elif len(semi_matches) == 1 and finals_matches:
-            semi, final = semi_matches[0], finals_matches[0]
+        elif len(real_semi_matches) == 1 and finals_matches:
+            semi, final = real_semi_matches[0], finals_matches[0]
             loser_semi = _loser_of(semi)
             loser_final = _loser_of(final)
             if not loser_semi or not loser_final:
