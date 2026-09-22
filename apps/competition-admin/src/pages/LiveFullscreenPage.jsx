@@ -534,6 +534,14 @@ export default function LiveFullscreenPage() {
           await matchAPI.update(currentMatchId, { status: 'completed' });
           await matchAPI.advanceWinner(currentMatchId).catch((e) => {
             console.error('Advance winner error:', e);
+            // Silently swallowing this left the operator with no idea the
+            // match never actually advanced in the bracket - surface the
+            // backend's real reason (e.g. "Nu exista un castigator pentru
+            // acest meci." when too few referees have a recorded decision).
+            window.alert(
+              e.response?.data?.error
+                || 'Sportivul nu a putut fi avansat în piramidă. Verifică dacă există suficiente decizii ale arbitrilor.'
+            );
           });
           await fetchMatchState();
         } catch (e) { console.error('Auto-finalize error:', e); }
