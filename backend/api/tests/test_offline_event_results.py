@@ -7,7 +7,7 @@ from io import StringIO
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -20,6 +20,7 @@ from api.models import (
     City,
     Club,
     CompetitionField,
+    FightAthleteWeight,
     FightCategory,
     Group,
     Match,
@@ -379,6 +380,31 @@ class OfflineEventResultsTests(TestCase):
         self.assertEqual(RefereePointEvent.objects.filter(match=self.match).count(), 1)
         self.assertEqual(MatchRefereeScore.objects.filter(match=self.match).count(), 1)
         self.assertIn(f'Imported event results for event {self.event.id}', stdout.getvalue())
+
+    @override_settings(IS_LOCAL_EVENT_SERVER=True)
+    def test_advance_winner_records_place_on_both_stores(self):
+        """A fight category's own admin page reads FightAthleteWeight.place,
+        not CategoryAthlete.place, so a decided bracket used to still show
+        "- Select an option -" there - and push that empty value to cloud,
+        since the results pack carries it."""
+        # Enrolling in a fight category auto-creates the weigh-in row
+        # (sync_category_athlete_to_fight_weight in api/signals.py).
+        self.assertEqual(FightAthleteWeight.objects.filter(category=self.category).count(), 2)
+        CategoryAthlete.objects.filter(category=self.category).update(place=None)
+        FightAthleteWeight.objects.filter(category=self.category).update(place=None)
+
+        response = self.client.post(f'/api/matches/{self.match.id}/advance-winner/')
+        self.assertEqual(response.status_code, 200, response.content)
+
+        for model in (CategoryAthlete, FightAthleteWeight):
+            self.assertEqual(
+                model.objects.get(category=self.category, athlete=self.red_corner).place, 1,
+                f'{model.__name__} should record the winner as 1st',
+            )
+            self.assertEqual(
+                model.objects.get(category=self.category, athlete=self.blue_corner).place, 2,
+                f'{model.__name__} should record the loser as 2nd',
+            )
 
     def test_event_results_export_derives_category_awards_from_enrollment_places(self):
         """A locally-run competition only ever writes CategoryAthlete.place

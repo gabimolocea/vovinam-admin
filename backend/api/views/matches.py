@@ -1099,7 +1099,7 @@ def add_bronze_match(request, category_id):
             for sm in real_semi_matches[:2]:
                 sm.loser_next_match = bronze
                 sm.save(update_fields=['loser_next_match'])
-            CategoryAthlete.objects.filter(category=category, athlete__in=losers, place=3).update(place=None)
+            _clear_category_place(category, losers)
 
         elif len(real_semi_matches) == 1 and finals_matches:
             semi, final = real_semi_matches[0], finals_matches[0]
@@ -1116,7 +1116,7 @@ def add_bronze_match(request, category_id):
             semi.save(update_fields=['loser_next_match'])
             final.loser_next_match = bronze
             final.save(update_fields=['loser_next_match'])
-            CategoryAthlete.objects.filter(category=category, athlete__in=[loser_semi, loser_final], place=3).update(place=None)
+            _clear_category_place(category, [loser_semi, loser_final])
 
         else:
             return Response({'error': 'Acest bracket nu are semifinale din care să se formeze un meci de bronz.'}, status=400)
@@ -1172,9 +1172,7 @@ def remove_bronze_match(request, category_id):
 
         # Clear whatever place the bronze match itself decided, then let
         # the no-bronze-playoff fallback below recompute it from scratch.
-        CategoryAthlete.objects.filter(
-            category=category, athlete_id__in=[bronze.red_corner_id, bronze.blue_corner_id], place=3,
-        ).update(place=None)
+        _clear_category_place(category, [bronze.red_corner_id, bronze.blue_corner_id])
 
         bronze.delete()
 
@@ -1186,7 +1184,7 @@ def remove_bronze_match(request, category_id):
                 continue
             loser = m.blue_corner if winner == m.red_corner else m.red_corner
             if loser:
-                CategoryAthlete.objects.filter(category=category, athlete=loser).update(place=3)
+                _set_category_place(category, loser, 3)
 
     return Response(status=204)
 
@@ -1200,14 +1198,36 @@ def _advance_to_next(next_match, from_match, athlete):
     next_match.save()
 
 
+def _clear_category_place(category, athletes):
+    """Drops a previously-recorded placement for these athletes, in both
+    stores - see _set_category_place for why there are two."""
+    athlete_ids = [athlete.id if hasattr(athlete, 'id') else athlete for athlete in athletes if athlete]
+    if not athlete_ids:
+        return
+    CategoryAthlete.objects.filter(category=category, athlete_id__in=athlete_ids, place=3).update(place=None)
+    FightAthleteWeight.objects.filter(category=category, athlete_id__in=athlete_ids, place=3).update(place=None)
+
+
 def _set_category_place(category, athlete, place):
     """Record an athlete's final placement for a category. CategoryAthlete.place
     is per-athlete (not unique per category), so two athletes can both hold
     place=3 - that's how joint bronze (both semi-final losers, when there's
-    no separate bronze match) is represented."""
+    no separate bronze match) is represented.
+
+    FightAthleteWeight carries its own parallel `place` for the same
+    (category, athlete) pair, and that - not CategoryAthlete.place - is
+    what a fight category's own admin page shows in its "Sportivi
+    înscriși" inline. Nothing in the competition flow used to write it, so
+    a fully decided bracket still read "- Select an option -" there (and
+    pushed that empty value to cloud, since the results pack carries it),
+    while the bracket and standings screens, which read CategoryAthlete,
+    showed the medals correctly. Keep both in step at the one place that
+    decides a placement.
+    """
     if not athlete:
         return
     CategoryAthlete.objects.filter(category=category, athlete=athlete).update(place=place)
+    FightAthleteWeight.objects.filter(category=category, athlete=athlete).update(place=place)
 
 
 @api_view(['POST'])
