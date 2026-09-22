@@ -1206,7 +1206,15 @@ def advance_match_winner(request, match_id):
     """
     with transaction.atomic():
         try:
-            match = Match.objects.select_for_update().select_related(
+            # of=('self',) restricts the row lock to api_match itself - on
+            # PostgreSQL, FOR UPDATE can't be applied through the LEFT OUTER
+            # JOINs select_related() generates for these nullable FKs
+            # (red_corner/blue_corner/next_match/loser_next_match can all be
+            # null), which raised "FOR UPDATE cannot be applied to the
+            # nullable side of an outer join" on every advance-winner call
+            # once the local venue stack moved to Postgres. SQLite has no
+            # such restriction, so this never surfaced there.
+            match = Match.objects.select_for_update(of=('self',)).select_related(
                 'red_corner', 'blue_corner', 'next_match', 'loser_next_match'
             ).get(pk=match_id)
         except Match.DoesNotExist:
