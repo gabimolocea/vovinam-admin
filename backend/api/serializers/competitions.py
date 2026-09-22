@@ -18,8 +18,8 @@ class CategoryAthleteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CategoryAthlete
-        fields = ('id', 'athlete', 'category', 'weight', 'disqualified', 'athlete_details')
-        read_only_fields = ('id', 'athlete_details')
+        fields = ('id', 'athlete', 'category', 'weight', 'disqualified', 'place', 'athlete_details')
+        read_only_fields = ('id', 'place', 'athlete_details')
 
 
 class FightGroupEnrollmentSerializer(serializers.ModelSerializer):

@@ -16,6 +16,9 @@ const ROUND_LABELS = {
 
 const ADMIN_BASE = MEDIA_BASE_URL;
 
+/* Medal shown next to an athlete's name once CategoryAthlete/FightAthleteWeight.place is set. */
+const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
 /* Shared bracket-tree layout math, used by both the on-screen BracketTree
    and the standalone print/PDF export - so the two never drift apart.
    Round 1 is evenly spaced; every later round is positioned from whoever
@@ -1062,6 +1065,10 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
       weight: fw?.current_weight_kg || fw?.pre_weight_kg || ea.weight || '',
       isPlaced: placedAthleteIds.has(athleteId),
       isDQ: fw?.is_disqualified || false,
+      // Set server-side by advance_match_winner (CategoryAthlete.place) once
+      // the athlete's final position in the bracket is known - not on
+      // FightAthleteWeight, which only tracks the weigh-in.
+      place: ea.place || null,
     };
   }).sort((a, b) => {
     // DQ last, then placed, then alphabetically
@@ -1210,6 +1217,9 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
                       <div className="flex-1 min-w-0">
                         <div className="truncate font-bold text-foreground">
                           {ath.name}
+                          {ath.place && MEDALS[ath.place] && (
+                            <span className="ml-1" title={`Locul ${ath.place}`}>{MEDALS[ath.place]}</span>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           {ath.club && <span className="truncate">{ath.club}</span>}
