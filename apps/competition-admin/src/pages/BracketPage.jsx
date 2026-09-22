@@ -1078,6 +1078,8 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
   });
 
   const unplacedCount = athleteList.filter(a => !a.isPlaced && !a.isDQ).length;
+  const placeByAthleteId = {};
+  for (const a of athleteList) if (a.place) placeByAthleteId[a.id] = a.place;
 
   const catLabel = shortLabel || category.name
     .replace(/ - (Masculin|Feminin|Mixt)/i, '')
@@ -1256,6 +1258,7 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
                     onDropOnSlot={handleDropOnSlot}
                     onRemoveFromSlot={handleRemoveFromSlot}
                     onMatchClick={onMatchClick}
+                    placeByAthleteId={placeByAthleteId}
                   />
                 )}
               </div>
@@ -1270,7 +1273,7 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
    BRACKET TREE  –  horizontal single-elimination bracket layout
    Renders rounds left-to-right with SVG connector lines between them
    ═══════════════════════════════════════════════════════════════════ */
-function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick }) {
+function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, placeByAthleteId }) {
   /* layout constants */
   const CARD_W = 220;
   const CARD_H = 138;  // tallest real case: header + 2 corner rows + advance button
@@ -1378,6 +1381,7 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
               onRemoveFromSlot={onRemoveFromSlot}
               onMatchClick={onMatchClick}
               alreadyAdvanced={alreadyAdvanced}
+              placeByAthleteId={placeByAthleteId}
             />
           </div>
         );
@@ -1389,7 +1393,7 @@ function BracketTree({ matches, eventId, onAdvance, draggedAthlete, dragOverSlot
 /* ═══════════════════════════════════════════════════════════════════
    MATCH CARD  –  with drop zones for red & blue corners
    ═══════════════════════════════════════════════════════════════════ */
-function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, alreadyAdvanced }) {
+function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, setDragOverSlot, onDropOnSlot, onRemoveFromSlot, onMatchClick, alreadyAdvanced, placeByAthleteId }) {
   const ctx = useContext(CentralizatorContext);
   const hasWinner = !!m.winner;
   // hasWinner-gated so a still-open BYE slot (both m.winner and the empty
@@ -1496,7 +1500,12 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
         <div className="min-w-0 flex-1">
           {m.red_corner_full_name ? (
             <>
-              <span className="block truncate font-bold text-foreground">{m.red_corner_full_name}</span>
+              <span className="block truncate font-bold text-foreground">
+                {m.red_corner_full_name}
+                {placeByAthleteId?.[m.red_corner] && MEDALS[placeByAthleteId[m.red_corner]] && (
+                  <span className="ml-1" title={`Locul ${placeByAthleteId[m.red_corner]}`}>{MEDALS[placeByAthleteId[m.red_corner]]}</span>
+                )}
+              </span>
               {m.red_corner_club_name && <span className="block truncate text-xs text-muted-foreground">{m.red_corner_club_name}</span>}
             </>
           ) : (
@@ -1534,7 +1543,12 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
         <div className="min-w-0 flex-1">
           {m.blue_corner_full_name ? (
             <>
-              <span className="block truncate font-bold text-foreground">{m.blue_corner_full_name}</span>
+              <span className="block truncate font-bold text-foreground">
+                {m.blue_corner_full_name}
+                {placeByAthleteId?.[m.blue_corner] && MEDALS[placeByAthleteId[m.blue_corner]] && (
+                  <span className="ml-1" title={`Locul ${placeByAthleteId[m.blue_corner]}`}>{MEDALS[placeByAthleteId[m.blue_corner]]}</span>
+                )}
+              </span>
               {m.blue_corner_club_name && <span className="block truncate text-xs text-muted-foreground">{m.blue_corner_club_name}</span>}
             </>
           ) : (
