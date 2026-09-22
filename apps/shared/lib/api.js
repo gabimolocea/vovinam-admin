@@ -31,11 +31,55 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 globally
+// On a competition day, a tab stays open far longer than the 60-minute
+// access token lifetime (SIMPLE_JWT.ACCESS_TOKEN_LIFETIME) - every page
+// used to just go dark with a wall of unrelated 401s the moment it
+// expired, with nothing telling the operator to log back in. The refresh
+// token (SIMPLE_JWT.REFRESH_TOKEN_LIFETIME, 1 day) was already being
+// stored on login but never actually used. On a 401, try it silently via
+// /auth/token/refresh/ and replay the request - only fall back to
+// clearing storage (forcing a real re-login) if the refresh token itself
+// is gone or rejected.
+let refreshPromise = null;
+
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) throw new Error('No refresh token stored.');
+  // Deliberately a plain axios call, not `api` - going through `api`
+  // would route a failure back into this same response interceptor and
+  // recurse.
+  const { data } = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, { refresh: refreshToken });
+  localStorage.setItem('authToken', data.access);
+  if (data.refresh) localStorage.setItem('refreshToken', data.refresh);
+  return data.access;
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
+  async (err) => {
+    const { config, response } = err;
+    const isAuthEndpoint = config?.url?.includes('/auth/login/') || config?.url?.includes('/auth/token/refresh/');
+
+    if (response?.status === 401 && config && !config._retriedAfterRefresh && !isAuthEndpoint) {
+      config._retriedAfterRefresh = true;
+      try {
+        // Concurrent 401s (several requests expiring around the same
+        // moment) share one in-flight refresh instead of each rotating
+        // the refresh token themselves - REFRESH_TOKEN's ROTATE_REFRESH_
+        // TOKENS+BLACKLIST_AFTER_ROTATION would make every refresh after
+        // the first fail, since the token it's sending was already
+        // blacklisted by the one before it.
+        refreshPromise = refreshPromise || refreshAccessToken().finally(() => { refreshPromise = null; });
+        await refreshPromise;
+        return api(config);
+      } catch {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('refreshToken');
+        return Promise.reject(err);
+      }
+    }
+
+    if (response?.status === 401) {
       localStorage.removeItem('authToken');
       localStorage.removeItem('refreshToken');
     }
