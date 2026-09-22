@@ -5,8 +5,10 @@ from decimal import Decimal
 from io import StringIO
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import Client, TestCase
+from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -347,3 +349,78 @@ class OfflineEventResultsTests(TestCase):
         self.assertEqual(RefereePointEvent.objects.filter(match=self.match).count(), 1)
         self.assertEqual(MatchRefereeScore.objects.filter(match=self.match).count(), 1)
         self.assertIn(f'Imported event results for event {self.event.id}', stdout.getvalue())
+
+
+class EventAdminImportResultsViewTests(TestCase):
+    """The Django admin's own "Încarcă rezultate din local (JSON)" button
+    (landing.admin.EventAdmin.import_results_view) - lets an admin push a
+    results JSON straight from the event's admin page, without going
+    through the separate React Sync Center."""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='admin-results-import', email='admin-results-import@example.com', password='testpass123',
+        )
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+        now = timezone.now()
+        self.event = Event.objects.create(
+            title='Admin Import Results Event',
+            slug='admin-import-results-event',
+            start_date=now,
+            end_date=now + timedelta(days=1),
+            event_type='competition',
+            sync_mode='local_event',
+            sync_locked=True,
+            local_sync_status='exported',
+            exported_to_local_at=now,
+        )
+        self.group = Group.objects.create(
+            name='Cadets', event=self.event, birth_year_start=2010, birth_year_end=2012, display_order=1,
+        )
+        self.category = FightCategory.objects.create(name='Fight A', event=self.event, group=self.group, display_order=1)
+        self.red_corner = Athlete.objects.create(first_name='Red', last_name='Corner', status='approved')
+        self.category_red = CategoryAthlete.objects.create(category=self.category, athlete=self.red_corner, place=None)
+
+        self.import_url = reverse('admin:landing_event_import_results', args=[self.event.id])
+
+    def _valid_payload(self):
+        return {
+            'manifest': {'schema_version': 1, 'event_id': self.event.id},
+            'event': {'id': self.event.id},
+            'category_athletes': [
+                {'category_id': self.category.id, 'athlete_id': self.red_corner.id, 'place': 1, 'weight': '55.00'},
+            ],
+        }
+
+    def test_get_renders_upload_form(self):
+        response = self.client.get(self.import_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'results_file')
+
+    def test_post_valid_file_imports_and_redirects(self):
+        payload_bytes = json.dumps(self._valid_payload()).encode('utf-8')
+        upload = SimpleUploadedFile('results.json', payload_bytes, content_type='application/json')
+
+        response = self.client.post(self.import_url, {'results_file': upload}, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.category_red.refresh_from_db()
+        self.assertEqual(self.category_red.place, 1)
+        messages = [str(m) for m in response.context['messages']]
+        self.assertTrue(any('importate cu succes' in m for m in messages))
+
+    def test_post_invalid_json_shows_error_without_crashing(self):
+        upload = SimpleUploadedFile('results.json', b'not valid json', content_type='application/json')
+
+        response = self.client.post(self.import_url, {'results_file': upload}, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        messages = [str(m) for m in response.context['messages']]
+        self.assertTrue(any('nu este un JSON valid' in m for m in messages))
+
+    def test_requires_staff_login(self):
+        anon_client = Client()
+        response = anon_client.get(self.import_url)
+        self.assertEqual(response.status_code, 302)

@@ -1,5 +1,10 @@
+import json
+
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import path, reverse
 from django.utils.html import format_html
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -109,7 +114,7 @@ class EventAdmin(admin.ModelAdmin):
     search_fields = ['title', 'description', 'city__name', 'tags']
     autocomplete_fields = ['city']
     prepopulated_fields = {'slug': ('title',)}
-    readonly_fields = ['status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at']
+    readonly_fields = ['status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at', 'import_results_action']
     actions = ['lock_for_local_event', 'mark_local_in_progress', 'mark_local_results_uploaded', 'complete_local_sync', 'unlock_local_event']
     # Removed inline editing for `is_featured` to avoid the changelist-wide
     # "Save" button. Use the object change form or admin actions to toggle
@@ -127,7 +132,7 @@ class EventAdmin(admin.ModelAdmin):
             'fields': ('is_featured', 'is_publicly_visible')
         }),
         (_('Sincronizare eveniment local'), {
-            'fields': ('sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at'),
+            'fields': ('sync_mode', 'sync_locked', 'local_sync_status', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at', 'import_results_action'),
             'description': _('Controlează blocarea datelor operaționale după exportul către serverul local al competiției.')
         }),
         (_('Setări SEO'), {
@@ -197,6 +202,79 @@ class EventAdmin(admin.ModelAdmin):
             updated += 1
         self.message_user(request, f'{updated} eveniment(e) au fost finalizate și deblocate pentru cloud.')
     complete_local_sync.short_description = _('Finalizează sincronizarea locală')
+
+    def import_results_action(self, obj):
+        """Link to the upload-results-JSON view, next to this event's sync
+        fields - lets an admin push a local venue's results JSON into
+        cloud straight from Django admin, without needing the separate
+        React Sync Center page."""
+        if not obj or not obj.pk:
+            return '—'
+        url = reverse('admin:landing_event_import_results', args=[obj.pk])
+        return format_html('<a href="{}" class="button">Încarcă rezultate din local (JSON)</a>', url)
+    import_results_action.short_description = _('Import rezultate')
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('<int:object_id>/import-results/', self.admin_site.admin_view(self.import_results_view), name='landing_event_import_results'),
+        ]
+        return custom_urls + urls
+
+    def import_results_view(self, request, object_id):
+        """Mirrors POST /api/offline/event-results/import/ (see
+        api.sync.import_event_results) - same function, same validation,
+        just reachable directly from this event's admin page instead of
+        the React Sync Center.
+
+        Event is normally administered through an `api.Event` proxy (see
+        api/admin/_common.py's CustomEventAdmin, which subclasses this
+        EventAdmin so it inherits this whole view) purely so it groups
+        under "Api" in the sidebar - self.model reflects whichever of the
+        two is actually registered, so the "change"/"changelist" URL names
+        (which Django derives from the model's own app_label) are built
+        from it instead of hardcoded, or they 404 under the proxy.
+        """
+        from api.sync.import_event_results import import_event_results
+
+        event = get_object_or_404(self.model, pk=object_id)
+        opts = self.model._meta
+        change_url = reverse(f'admin:{opts.app_label}_{opts.model_name}_change', args=[object_id])
+        changelist_url = reverse(f'admin:{opts.app_label}_{opts.model_name}_changelist')
+
+        if request.method == 'POST':
+            results_file = request.FILES.get('results_file')
+            if not results_file:
+                messages.error(request, 'Selectează fișierul JSON de rezultate.')
+                return redirect(request.path)
+
+            try:
+                payload = json.loads(results_file.read().decode('utf-8'))
+            except (ValueError, UnicodeDecodeError) as exc:
+                messages.error(request, f'Fișierul nu este un JSON valid: {exc}')
+                return redirect(request.path)
+
+            try:
+                result = import_event_results(payload)
+            except ValidationError as exc:
+                messages.error(request, f'Importul rezultatelor a eșuat: {exc.message_dict if hasattr(exc, "message_dict") else exc}')
+                return redirect(request.path)
+            except Exception as exc:
+                messages.error(request, f'Importul rezultatelor a eșuat: {exc}')
+                return redirect(request.path)
+
+            imported = result.get('imported', {})
+            messages.success(request, 'Rezultatele au fost importate cu succes în cloud.')
+            summary = ' · '.join(f'{k}: {v}' for k, v in imported.items() if v)
+            messages.info(request, summary or 'Nimic nou de sincronizat în acest fișier.')
+            return redirect(change_url)
+
+        return render(request, 'admin/landing/event_import_results.html', {
+            'title': f'Importă rezultate din local — {event.title}',
+            'event': event,
+            'change_url': change_url,
+            'changelist_url': changelist_url,
+        })
 
 class AboutSectionAdmin(admin.ModelAdmin):
     list_display = ['section_title', 'order', 'is_active', 'created_at']

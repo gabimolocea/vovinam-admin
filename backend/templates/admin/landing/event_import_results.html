@@ -1,0 +1,40 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Administrare FRVV') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{{ changelist_url }}">Evenimente</a>
+&rsaquo; <a href="{{ change_url }}">{{ event.title }}</a>
+&rsaquo; Importă rezultate
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="module aligned">
+    <h2>Încarcă fișierul JSON de rezultate</h2>
+    <p>Fișierul exportat din aplicația locală (sau descărcat din pagina Sync Center) cu meciurile, locurile obținute și greutățile din ziua competiției.</p>
+    {% if not event.sync_locked %}
+    <p class="errornote">Evenimentul nu e blocat pentru operare locală - importul va fi respins până când e exportat/blocat mai întâi.</p>
+    {% endif %}
+</div>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="module aligned">
+        <div class="form-row">
+            <label for="id_results_file"><strong>Fișier rezultate (JSON):</strong></label>
+            <input type="file" name="results_file" id="id_results_file" accept="application/json,.json" required>
+        </div>
+    </div>
+
+    <div class="submit-row">
+        <input type="submit" value="Importă rezultatele" class="default">
+        <a href="{{ change_url }}" class="button">Anulează</a>
+    </div>
+</form>
+{% endblock %}
