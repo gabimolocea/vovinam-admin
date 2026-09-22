@@ -83,9 +83,14 @@ async function syncEventLocal({ cloudBaseUrl, cloudToken, localBaseUrl, localTok
   return pack;
 }
 
-// Local -> cloud: export results from local, import them into cloud
-// (which marks results_uploaded on the cloud's copy of the event), then
-// finalize the sync there.
+// Local -> cloud: export results from local and import them into cloud
+// (which marks results_uploaded on the cloud's copy of the event).
+// Deliberately does NOT finalize the sync (see completeSyncOnCloud below) -
+// import_event_results requires the cloud event to still be sync_locked,
+// so this needs to stay safely repeatable throughout the competition day
+// (push again after more matches finish) without permanently unlocking
+// the event and blocking every subsequent push with "Event must be
+// locked for local operation before results can be imported."
 async function syncEventToCloud({ cloudBaseUrl, cloudToken, localBaseUrl, localToken, eventId, onProgress }) {
   const report = onProgress || (() => {});
 
@@ -95,11 +100,21 @@ async function syncEventToCloud({ cloudBaseUrl, cloudToken, localBaseUrl, localT
   report('Se trimit rezultatele în cloud…');
   await apiCall(cloudBaseUrl, '/api/offline/event-results/import/', { method: 'POST', token: cloudToken, body: results });
 
+  report('Rezultatele au fost trimise în cloud.');
+  return results;
+}
+
+// Separate, deliberate action - unlocks the event on cloud (sync_mode
+// reverts to 'cloud', sync_locked=False) and ends local operation for
+// good. Only call this once the operator is sure no more results need to
+// be pushed from this machine for this event.
+async function completeSyncOnCloud({ cloudBaseUrl, cloudToken, eventId, onProgress }) {
+  const report = onProgress || (() => {});
+
   report('Se finalizează sincronizarea în cloud…');
   await apiCall(cloudBaseUrl, `/api/competitions/${eventId}/complete-local-sync/`, { method: 'POST', token: cloudToken });
 
   report('Sincronizare în cloud completă.');
-  return results;
 }
 
-module.exports = { login, listCompetitionEvents, getOverview, syncEventLocal, syncEventToCloud };
+module.exports = { login, listCompetitionEvents, getOverview, syncEventLocal, syncEventToCloud, completeSyncOnCloud };

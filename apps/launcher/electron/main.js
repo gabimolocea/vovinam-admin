@@ -164,12 +164,30 @@ function buildMenu() {
       label: 'Sync',
       submenu: [
         {
-          label: 'Web → Local',
+          // Re-pulls the whole event pack from cloud and re-imports it here
+          // - the same one-time "bring the competition down" step used to
+          // start the local stack, not a safe incremental refresh. Once
+          // matches are underway, this overwrites their live status/scores
+          // with cloud's stale pre-event snapshot, so it needs an explicit,
+          // scary confirmation - it must never fire from a stray keystroke.
+          label: 'Web → Local (re-descarcă tot din cloud)',
           accelerator: 'CmdOrCtrl+Shift+D',
-          click: () => sendToWindow('sync-menu:web-to-local'),
+          click: () => {
+            if (!mainWindow) return;
+            const response = dialog.showMessageBoxSync(mainWindow, {
+              type: 'warning',
+              buttons: ['Anulează', 'Da, re-descarcă tot'],
+              defaultId: 0,
+              cancelId: 0,
+              title: 'Re-descarcă din cloud?',
+              message: 'Asta suprascrie datele locale (meciuri, scoruri, locuri obținute) cu ce e în cloud, care e probabil vechi de dinainte de concurs.',
+              detail: 'Folosește asta doar dacă stiva locală chiar trebuie repornită de la zero pentru acest eveniment. Pentru sportivi/categorii noi adăugate în cloud în timpul zilei, folosește "Resincronizează din cloud" din Sync Center în schimb.',
+            });
+            if (response === 1) sendToWindow('sync-menu:web-to-local');
+          },
         },
         {
-          label: 'Local → Web',
+          label: 'Local → Web (trimite rezultate)',
           accelerator: 'CmdOrCtrl+Shift+U',
           click: () => sendToWindow('sync-menu:local-to-web'),
         },
@@ -354,6 +372,18 @@ ipcMain.handle('sync:to-cloud', async (_event, { eventId }) => {
     cloudToken: session.cloudToken,
     localBaseUrl: session.localBaseUrl,
     localToken: session.localToken,
+    eventId,
+    onProgress: (message) => sendToWindow('sync:progress', { direction: 'cloud', message }),
+  });
+});
+
+// Separate from sync:to-cloud on purpose - see cloudSync.js#completeSyncOnCloud.
+ipcMain.handle('sync:complete', async (_event, { eventId }) => {
+  if (!session.cloudBaseUrl || !session.cloudToken) throw new Error('Neautentificat în cloud.');
+
+  return cloudSync.completeSyncOnCloud({
+    cloudBaseUrl: session.cloudBaseUrl,
+    cloudToken: session.cloudToken,
     eventId,
     onProgress: (message) => sendToWindow('sync:progress', { direction: 'cloud', message }),
   });

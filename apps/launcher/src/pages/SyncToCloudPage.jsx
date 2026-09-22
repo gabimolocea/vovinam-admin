@@ -6,6 +6,8 @@ export default function SyncToCloudPage({ event, onBack, onDone }) {
   const [error, setError] = useState('');
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState('');
   const started = useRef(false);
   const logRef = useRef(null);
 
@@ -24,12 +26,15 @@ export default function SyncToCloudPage({ event, onBack, onDone }) {
     return () => offProgress();
   }, []);
 
+  // Just pushes results - safe to run again later in the day (another
+  // batch of matches finished, a correction was made) without touching
+  // the event's lock. Finalizing (below) is a deliberate, separate step.
   async function runSync() {
     setError('');
     setRunning(true);
     try {
       await window.launcher.syncToCloud(event.id);
-      appendLine('Gata! Rezultatele sunt în cloud, sincronizarea a fost finalizată.');
+      appendLine('Gata! Rezultatele au fost trimise în cloud.');
       setFinished(true);
     } catch (err) {
       setError(cleanErrorMessage(err, 'Sincronizarea în cloud a eșuat.'));
@@ -45,9 +50,23 @@ export default function SyncToCloudPage({ event, onBack, onDone }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function finish() {
-    await window.launcher.stopServices();
-    onDone();
+  // The actual one-way, one-time step: unlocks the event on cloud
+  // (landing.models.Event.complete_local_sync) so it goes back to normal
+  // cloud operation. After this, no more results can be pushed from this
+  // machine for this event - only do it once the competition is truly over.
+  async function completeAndFinish() {
+    setCompleteError('');
+    setCompleting(true);
+    try {
+      await window.launcher.completeSync(event.id);
+      appendLine('Sincronizarea a fost finalizată - evenimentul a revenit în modul cloud.');
+      await window.launcher.stopServices();
+      onDone();
+    } catch (err) {
+      setCompleteError(cleanErrorMessage(err, 'Finalizarea sincronizării a eșuat.'));
+    } finally {
+      setCompleting(false);
+    }
   }
 
   return (
@@ -58,26 +77,42 @@ export default function SyncToCloudPage({ event, onBack, onDone }) {
       </p>
 
       {error && <div className="error-box">{error}</div>}
+      {completeError && <div className="error-box">{completeError}</div>}
 
       <div className="progress-log" ref={logRef}>
         {lines.join('\n')}
       </div>
 
       <div className="row" style={{ marginTop: 16 }}>
-        <button className="btn-secondary" onClick={onBack} type="button" disabled={running}>
+        <button className="btn-secondary" onClick={onBack} type="button" disabled={running || completing}>
           Înapoi
         </button>
-        {error && !finished && (
-          <button className="btn-primary" onClick={runSync} type="button">
+        {error && (
+          <button className="btn-primary" onClick={runSync} type="button" disabled={running}>
             Reîncearcă
           </button>
         )}
-        {finished && (
-          <button className="btn-primary" onClick={finish} type="button">
-            Oprește stiva locală și încheie
+        {finished && !error && (
+          <button className="btn-secondary" onClick={runSync} type="button" disabled={running}>
+            Retrimite rezultatele
           </button>
         )}
       </div>
+
+      {finished && (
+        <>
+          <p className="footer-note" style={{ marginTop: 16 }}>
+            Poți retrimite rezultatele oricând mai apoi (ex. după alte meciuri terminate), fără riscuri.
+            Apasă „Finalizează” <strong>doar</strong> când competiția s-a încheiat de tot - după aceea nu
+            mai poți trimite rezultate pentru acest eveniment de pe acest calculator.
+          </p>
+          <div className="row">
+            <button className="btn-primary" onClick={completeAndFinish} type="button" disabled={completing}>
+              {completing ? 'Se finalizează…' : 'Finalizează și oprește stiva locală'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
