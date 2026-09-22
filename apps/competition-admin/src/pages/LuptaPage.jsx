@@ -405,8 +405,14 @@ export default function LuptaPage() {
           const key = `${group.id}-${athleteId}`;
           const existing = map.get(key);
           const athleteDetails = enrollment.athlete_details || existing?.athlete_details || null;
-          const submittedWeight = enrollment.weight ?? groupEnrollmentWeightByKey.get(key) ?? existing?.submitted_weight ?? '';
           const fw = findWeight(cat.id, athleteId);
+          // fw.pre_weight_kg ("Greutate declarată" in Django admin) is the
+          // same declared-weight concept as FightGroupEnrollment's own
+          // registered_weight_kg, just entered directly on
+          // FightAthleteWeight (e.g. by an admin, bypassing the normal
+          // coach-submission flow) - without it here, that weight was
+          // invisible on this table even though it's sitting right there.
+          const submittedWeight = enrollment.weight ?? groupEnrollmentWeightByKey.get(key) ?? fw?.pre_weight_kg ?? existing?.submitted_weight ?? '';
           const row = {
             key,
             group_id: group.id,
