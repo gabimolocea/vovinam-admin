@@ -1,7 +1,7 @@
 import React, { useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Lock, Plus, X } from 'lucide-react';
 import { CentralizatorContext, GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
-import { fightWeightAPI, athleteAPI, enrollmentAPI, categoryAPI } from '@shared/lib/api';
+import { fightWeightAPI, athleteAPI, enrollmentAPI, categoryAPI, systemAPI } from '@shared/lib/api';
 import {
   formatGroupBadgeLabel, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Input, Label,
 } from '../components/ui';
@@ -49,6 +49,24 @@ export default function LuptaPage() {
   // athlete from the list is otherwise a one-way action here.
   const [undoNotice, setUndoNotice] = useState(null);
   const [athleteDrawer, setAthleteDrawer] = useState(null);
+
+  // Greutatea declarată (pre_weight_kg) comes from the athlete/coach's own
+  // submission in the cloud, days before the competition - it has no
+  // business being edited from the venue's LAN server, only the day-of
+  // official scale reading (current_weight_kg) does.
+  const [isLocalServer, setIsLocalServer] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await systemAPI.info();
+        if (!cancelled) setIsLocalServer(Boolean(data.is_local_event_server));
+      } catch {
+        if (!cancelled) setIsLocalServer(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   /* ── enrollment picker state (local to Lupta page) ── */
   const [pickerCatId, setPickerCatId] = useState(null);
@@ -1399,7 +1417,7 @@ export default function LuptaPage() {
                                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                                     <span
                                       className="text-muted-foreground"
-                                      onDoubleClick={() => athleteId && setEditingCell({ categoryId: cat.id, athleteId, field: 'pre_weight_kg', value: preW.toString() })}
+                                      onDoubleClick={() => athleteId && !isLocalServer && setEditingCell({ categoryId: cat.id, athleteId, field: 'pre_weight_kg', value: preW.toString() })}
                                     >
                                       Greutate trimisă:{' '}
                                       {isEditingPre ? (
@@ -1409,6 +1427,8 @@ export default function LuptaPage() {
                                           onSave={handleSaveEdit}
                                           onCancel={() => setEditingCell(null)}
                                         />
+                                      ) : isLocalServer ? (
+                                        <span className="rounded px-1 font-medium text-foreground" title="Greutatea declarată vine din cloud (trimisă de antrenor/sportiv) - nu se editează local, doar greutatea din ziua competiției.">{preW || '–'}</span>
                                       ) : (
                                         <span className="cursor-pointer rounded px-1 font-medium text-foreground hover:bg-blue-50" title="Dublu-click pentru a edita">{preW || '–'}</span>
                                       )}

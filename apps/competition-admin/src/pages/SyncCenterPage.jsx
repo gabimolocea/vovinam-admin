@@ -124,15 +124,6 @@ export default function SyncCenterPage() {
     ];
   }, [comp]);
 
-  const history = useMemo(() => {
-    if (!comp) return [];
-    return [
-      { label: 'Event pack exportat', value: comp.exported_to_local_at },
-      { label: 'Rezultate importate în cloud', value: comp.results_uploaded_at },
-      { label: 'Sync finalizat', value: comp.sync_completed_at },
-    ].filter((entry) => entry.value);
-  }, [comp]);
-
   const syncStatusMeta = useMemo(() => getSyncStatusMeta(comp), [comp]);
   const syncModeMeta = useMemo(() => getSyncModeMeta(comp), [comp]);
   const syncLockMeta = useMemo(() => getSyncLockMeta(comp), [comp]);
@@ -322,33 +313,29 @@ export default function SyncCenterPage() {
     };
   }, [busy, comp, currentStage]);
 
-  const quickGuide = [
-    '1. Exportă event pack din cloud înainte de competiție.',
-    '2. Rulează competiția local, în sală, pe LAN.',
-    '3. Exportă rezultatele din local în format JSON.',
-    '4. Încarcă JSON-ul aici și finalizează sincronizarea.',
-  ];
-
+  // Only actions NOT already offered as the big primary-action button above
+  // belong here - showing the exact same button twice on one page is the
+  // opposite of simple.
   const visibleActions = useMemo(() => {
     if (currentStage === 'idle') {
       return {
-        showExportPack: true,
+        showExportPack: false,
         showMarkLocal: false,
         showExportResults: false,
         showImportResults: false,
         showComplete: false,
-        helperText: 'Momentan ai nevoie doar de exportul event pack.',
+        helperText: 'Momentan ai nevoie doar de exportul event pack, mai sus.',
       };
     }
 
     if (currentStage === 'exported') {
       return {
         showExportPack: true,
-        showMarkLocal: true,
+        showMarkLocal: false,
         showExportResults: false,
         showImportResults: false,
         showComplete: false,
-        helperText: 'După export, poți confirma că ai început operarea locală.',
+        helperText: 'Dacă trebuie să re-exporți pachetul (ex. a mai apărut un sportiv nou), fă-o aici.',
       };
     }
 
@@ -369,18 +356,18 @@ export default function SyncCenterPage() {
         showMarkLocal: false,
         showExportResults: false,
         showImportResults: true,
-        showComplete: true,
-        helperText: 'Poți reîncărca JSON-ul dacă ai o variantă corectată sau poți finaliza sync-ul.',
+        showComplete: false,
+        helperText: 'Poți reîncărca JSON-ul dacă ai o variantă corectată, înainte de a finaliza sync-ul mai sus.',
       };
     }
 
     return {
-      showExportPack: true,
+      showExportPack: false,
       showMarkLocal: false,
       showExportResults: false,
       showImportResults: false,
       showComplete: false,
-      helperText: 'Sincronizarea este închisă. Dacă mai vrei modificări locale, începi un ciclu nou printr-un export nou de event pack.',
+      helperText: 'Sincronizarea este închisă. Dacă mai vrei modificări locale, pornește un ciclu nou mai sus.',
     };
   }, [currentStage]);
 
@@ -597,22 +584,6 @@ export default function SyncCenterPage() {
           </Card>
         </div>
       </div>
-
-      <Card className="p-5">
-        <h2 className="mb-4 text-lg font-semibold text-foreground">Istoric sincronizare</h2>
-        {history.length ? (
-          <div className="grid gap-3 md:grid-cols-3">
-            {history.map((item) => (
-              <div key={item.label} className="rounded-lg border border-border px-4 py-3">
-                <div className="text-sm font-semibold text-foreground">{item.label}</div>
-                <div className="mt-1 text-sm text-muted-foreground">{formatDateTime(item.value)}</div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">Nu există încă evenimente în istoricul de sincronizare.</p>
-        )}
-      </Card>
 
       <LocalBackupPanel />
       </div>
