@@ -2069,10 +2069,19 @@ function FullscreenMatchPanel({
     }
   }, [allRoundsCompleted, match.id, matchDisplayMode, revealDecisions, session, switchDisplay]);
 
-  // Determine winner corner from referee decisions
+  // Determine winner corner from referee decisions (live preview before the
+  // match is finalized - vote counts only exist while referees are voting).
   const redVotes = decisionsSubmitted.filter(s => s.winner_choice === 'red').length;
   const blueVotes = decisionsSubmitted.filter(s => s.winner_choice === 'blue').length;
-  const matchWinner = disqualifiedRed ? 'blue' : disqualifiedBlue ? 'red' : redVotes > blueVotes ? 'red' : blueVotes > redVotes ? 'blue' : null;
+  const voteBasedWinner = disqualifiedRed ? 'blue' : disqualifiedBlue ? 'red' : redVotes > blueVotes ? 'red' : blueVotes > redVotes ? 'blue' : null;
+  // Once the match is finalized, trust the backend's own `winner` field
+  // instead - it also covers matches decided purely from admin-given
+  // points (no referees assigned at all), which have no votes to count
+  // here and would otherwise never get circled as the winner.
+  const backendWinnerCorner = match.winner != null
+    ? (match.winner === match.red_corner ? 'red' : match.winner === match.blue_corner ? 'blue' : null)
+    : null;
+  const matchWinner = isMatchFinalized && backendWinnerCorner ? backendWinnerCorner : voteBasedWinner;
 
   // ── Infraction handler: auto-converts 3 infractions → 1 warning ──
   const handleInfraction = async (corner) => {
