@@ -22,14 +22,37 @@ const COMPOSE_FILE = path.join(REPO_ROOT, 'docker-compose.local.yml');
 const ENV_LOCAL_FILE = path.join(REPO_ROOT, '.env.local');
 const ENV_EXAMPLE_FILE = path.join(REPO_ROOT, '.env.local.example');
 
+// A GUI-launched Electron app (double-clicked, or even `npm run dev` from
+// some terminal/shell setups) doesn't reliably inherit the same PATH an
+// interactive shell has - Docker Desktop's CLI usually lives in one of
+// these, none of which are guaranteed to be on that inherited PATH, which
+// otherwise surfaces as a bare "spawn docker ENOENT" with no hint why.
+const DOCKER_PATH_CANDIDATES = [
+  '/usr/local/bin',
+  '/opt/homebrew/bin',
+  '/Applications/Docker.app/Contents/Resources/bin',
+];
+
+function spawnEnv() {
+  const existing = (process.env.PATH || '').split(path.delimiter);
+  const merged = [...new Set([...existing, ...DOCKER_PATH_CANDIDATES])];
+  return { ...process.env, PATH: merged.join(path.delimiter) };
+}
+
 function run(command, args, { onLog } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: REPO_ROOT });
+    const child = spawn(command, args, { cwd: REPO_ROOT, env: spawnEnv() });
     let stdout = '';
     let stderr = '';
     child.stdout?.on('data', (chunk) => { stdout += chunk.toString(); onLog?.(chunk.toString()); });
     child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); onLog?.(chunk.toString()); });
-    child.on('error', reject);
+    child.on('error', (err) => {
+      if (err.code === 'ENOENT') {
+        reject(new Error(`Docker nu a fost găsit (${command}). Verifică dacă Docker Desktop e instalat și pornit.`));
+      } else {
+        reject(err);
+      }
+    });
     child.on('exit', (code) => {
       if (code === 0) resolve({ stdout, stderr });
       else reject(new Error(stderr.trim() || stdout.trim() || `${command} ${args.join(' ')} a eșuat (cod ${code}).`));
@@ -85,10 +108,16 @@ async function startDockerBackend({ lanIp, onLog }) {
 // `docker compose exec` instead of a direct venv spawn.
 function ensureLocalAdminDocker({ email, password, firstName, lastName }) {
   return new Promise((resolve, reject) => {
-    const child = spawn('docker', composeArgs('exec', '-T', 'backend', 'python', 'manage.py', 'ensure_local_admin'), { cwd: REPO_ROOT });
+    const child = spawn('docker', composeArgs('exec', '-T', 'backend', 'python', 'manage.py', 'ensure_local_admin'), { cwd: REPO_ROOT, env: spawnEnv() });
     let stderr = '';
     child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', reject);
+    child.on('error', (err) => {
+      if (err.code === 'ENOENT') {
+        reject(new Error('Docker nu a fost găsit. Verifică dacă Docker Desktop e instalat și pornit.'));
+      } else {
+        reject(err);
+      }
+    });
     child.on('exit', (code) => {
       if (code === 0) resolve();
       else reject(new Error(stderr.trim() || `ensure_local_admin a eșuat (cod ${code}).`));
