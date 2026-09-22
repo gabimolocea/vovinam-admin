@@ -22,6 +22,7 @@ from api.models import (
     Group,
     Match,
     MatchEvent,
+    MatchFieldAssignment,
     MatchRefereeScore,
     MatchRound,
     RefereePointEvent,
@@ -255,6 +256,25 @@ class OfflineEventResultsTests(TestCase):
         self.assertEqual(remaining.first().weight, Decimal('60.00'))
         self.assertFalse(CategoryAthlete.objects.filter(category=self.category, athlete=self.red_corner).exists())
 
+    def test_event_results_import_syncs_field_assignment_status(self):
+        """MatchFieldAssignment.status ("Status în programare teren" in
+        admin) is a separate field from Match.status, normally kept in
+        step by the live scoring screen as a match is actually played -
+        a match whose result only ever arrives through sync (never
+        played live on this server) must not stay stuck at its default
+        'not_started' once Match.status says it's completed."""
+        assignment = MatchFieldAssignment.objects.create(match=self.match, field=self.field, status='not_started')
+
+        export_response = self.client.get(f'/api/offline/event-results/?event_id={self.event.id}')
+        payload = export_response.json()
+        self.assertEqual(payload['matches'][0]['status'], 'completed')
+
+        import_response = self.client.post('/api/offline/event-results/import/', payload, format='json')
+
+        self.assertEqual(import_response.status_code, 200)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, 'completed')
+
     def test_event_results_import_creates_match_added_locally_after_export(self):
         """A match created on the LAN server after the event pack was
         already exported (e.g. "Adaugă meci de bronz", added once the
@@ -304,6 +324,11 @@ class OfflineEventResultsTests(TestCase):
         # The other athlete's place from the SAME payload must have landed
         # too - this is exactly what silently rolled back before the fix.
         self.assertEqual(CategoryAthlete.objects.get(category=self.category, athlete=third_place).place, 3)
+        # A match created fresh through sync never went through
+        # MatchFieldAssignmentInline's normal live-play status updates -
+        # it should still end up 'completed', not stuck without a row at all.
+        recreated_assignment = MatchFieldAssignment.objects.get(match=recreated)
+        self.assertEqual(recreated_assignment.status, 'completed')
 
     def test_event_results_import_rejects_new_local_category(self):
         export_response = self.client.get(f'/api/offline/event-results/?event_id={self.event.id}')

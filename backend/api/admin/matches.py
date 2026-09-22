@@ -439,23 +439,20 @@ class MatchAdmin(admin.ModelAdmin):
     def winner_display(self, obj):
         """Computed winner display for the change form.
 
-        Uses the shared scoring helper to determine the match winner based on
-        referee scores and central penalties. Returns the athlete's full name
-        or 'TBD' when no winner can be determined.
+        Uses Match.winner - the single source of truth, which already
+        cascades through every scoring path in priority order (simplified
+        referee decisions, then RefereePointEvent-based scoring, then
+        admin-given points as a last resort, then the legacy calculation).
+        This used to call compute_match_results() directly instead, which
+        is only the second of those four tiers - a match decided by
+        referee decisions, or by admin points with no referees assigned at
+        all, showed "De stabilit" here even though it correctly had a
+        winner and had already advanced in the bracket.
         """
         try:
-            from api.scoring import compute_match_results
-            results = compute_match_results(obj)
-            mw = results.get('match_winner')
-            if mw:
-                return f"{mw.first_name} {mw.last_name}"
-            return 'De stabilit'
+            return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else 'De stabilit'
         except Exception:
-            # Fall back to stored winner if compute fails
-            try:
-                return f"{obj.winner.first_name} {obj.winner.last_name}" if obj.winner else 'De stabilit'
-            except Exception:
-                return 'De stabilit'
+            return 'De stabilit'
     winner_display.short_description = _('Câștigător')
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):

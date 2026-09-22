@@ -14,6 +14,7 @@ from api.models import (
     FightCategory,
     Match,
     MatchEvent,
+    MatchFieldAssignment,
     MatchRefereeScore,
     MatchRound,
     SoloCategory,
@@ -182,6 +183,21 @@ def _upsert_match(entry: dict[str, Any], existing_category_ids: set[int]):
     obj.match_number = entry.get('match_number') or obj.match_number
     obj.name = entry.get('name') or obj.name
     obj.save()
+
+    # MatchFieldAssignment.status ("Status în programare teren" in admin)
+    # is a *separate* row/field from Match.status, normally kept in step
+    # by LiveFullscreenPage.jsx as a match is played live on this server -
+    # and MatchFieldAssignment isn't part of this results pack at all
+    # (only import_event_pack.py, the pre-competition side, creates it).
+    # A match whose result only ever arrives through sync - either it was
+    # created fresh here (see above) with no assignment row yet, or it
+    # already had one from the original event-pack import that was simply
+    # never updated - must not be left stuck at its default 'not_started'
+    # once Match.status says it's actually completed.
+    field_status = {'scheduled': 'not_started', 'active': 'in_progress', 'completed': 'completed'}.get(obj.status)
+    if field_status and obj.field_id:
+        MatchFieldAssignment.objects.update_or_create(match=obj, defaults={'field_id': obj.field_id, 'status': field_status})
+
     return obj
 
 
