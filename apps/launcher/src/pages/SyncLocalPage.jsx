@@ -6,7 +6,18 @@ import { cleanErrorMessage } from '../lib/cleanError.js';
 // account to match the cloud login, then pull the event down. No separate
 // local password to enter - see services.js#ensureLocalAdmin.
 export default function SyncLocalPage({ event, onBack, onDone }) {
-  const [lines, setLines] = useState(['Se pregătește sincronizarea locală…']);
+  // See EventPickerPage's own reconnectOnly - an event already this far
+  // along has real local competition data (live scores, completed
+  // matches) that a fresh cloud pull would overwrite with a stale
+  // pre-event snapshot. Reconnecting just restarts the local apps against
+  // whatever's already on this machine, without touching cloud or local
+  // data at all.
+  const reconnectOnly = event?.local_sync_status === 'local_in_progress'
+    || event?.local_sync_status === 'results_uploaded';
+
+  const [lines, setLines] = useState([
+    reconnectOnly ? 'Se repornesc aplicațiile locale…' : 'Se pregătește sincronizarea locală…',
+  ]);
   const [error, setError] = useState('');
   const [running, setRunning] = useState(false);
   const started = useRef(false);
@@ -58,8 +69,12 @@ export default function SyncLocalPage({ event, onBack, onDone }) {
     setRunning(true);
     try {
       const info = await window.launcher.startLocalStack(useDocker);
-      appendLine('Se descarcă evenimentul din cloud…');
-      await window.launcher.startLocalSync(event.id);
+      if (reconnectOnly) {
+        appendLine('Evenimentul rulează deja local — se sare peste descărcare și import, ca să nu se suprascrie ce e deja pe acest calculator.');
+      } else {
+        appendLine('Se descarcă evenimentul din cloud…');
+        await window.launcher.startLocalSync(event.id);
+      }
       appendLine('Gata! Stiva locală rulează cu datele evenimentului.');
       onDone(info);
     } catch (err) {
@@ -107,6 +122,13 @@ export default function SyncLocalPage({ event, onBack, onDone }) {
         <p className="subtitle">
           Docker e disponibil pe acest calculator. Alege ce bază de date folosește serverul local pentru „{event?.name}”.
         </p>
+        {reconnectOnly && (
+          <div className="error-box" style={{ marginBottom: 16 }}>
+            Alege aceeași opțiune pe care ai folosit-o prima dată pentru acest eveniment pe acest calculator — dacă
+            aplicațiile locale rulează deja, alegerea de aici nu contează (se reconectează la ce rulează); dacă nu
+            mai rulează (ex. calculatorul a repornit), alegerea greșită pornește un server gol, fără datele evenimentului.
+          </div>
+        )}
 
         <div className="db-choice">
           <label className={`db-choice-option ${useDocker ? 'selected' : ''}`}>
@@ -139,9 +161,11 @@ export default function SyncLocalPage({ event, onBack, onDone }) {
 
   return (
     <div className="card card--wide">
-      <h1>Sincronizare locală</h1>
+      <h1>{reconnectOnly ? 'Reconectare' : 'Sincronizare locală'}</h1>
       <p className="subtitle">
-        Se descarcă „{event?.name}” din cloud și se pornesc aplicațiile pe acest calculator
+        {reconnectOnly
+          ? `Se repornesc aplicațiile pentru „${event?.name}” pe acest calculator, fără să se descarce sau suprascrie nimic`
+          : `Se descarcă „${event?.name}” din cloud și se pornesc aplicațiile pe acest calculator`}
         {useDocker ? ' (PostgreSQL, prin Docker)' : ' (SQLite)'}.
       </p>
 

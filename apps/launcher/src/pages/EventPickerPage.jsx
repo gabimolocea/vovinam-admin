@@ -35,6 +35,15 @@ export default function EventPickerPage({ onBack, onSelect }) {
 
   const selected = events.find((ev) => ev.id === selectedId) || null;
   const alreadyLocked = selected?.sync_locked;
+  // These two statuses mean a local machine (this one, most likely, if the
+  // operator is back here after the launcher crashed/closed mid-event) has
+  // real competition data - live scores, completed matches - that a fresh
+  // cloud pull would overwrite with a stale pre-event snapshot. Only
+  // 'exported' (locked, but the import never actually completed - e.g. an
+  // earlier attempt failed before mark-local-in-progress ran) has nothing
+  // local at risk yet, so a full sync stays the right, safe action there.
+  const reconnectOnly = selected?.local_sync_status === 'local_in_progress'
+    || selected?.local_sync_status === 'results_uploaded';
 
   return (
     <div className="card card--wide">
@@ -69,8 +78,19 @@ export default function EventPickerPage({ onBack, onSelect }) {
 
       {selected?.sync_locked && (
         <div className="error-box" style={{ marginTop: 16 }}>
-          Acest eveniment este deja blocat pentru sincronizare locală (status: {SYNC_LABELS[selected.local_sync_status]}).
-          Dacă a fost deja exportat pe alt calculator, continuă acolo — nu-l importa din nou aici.
+          {reconnectOnly ? (
+            <>
+              Acest eveniment rulează deja local (status: {SYNC_LABELS[selected.local_sync_status]}) - probabil
+              aplicația a fost închisă sau a crăpat. „Reconectează-te” repornește aplicațiile pe acest calculator
+              fără să descarce sau să suprascrie ceva din ce s-a înregistrat deja. Dacă evenimentul a fost de fapt
+              exportat pe <strong>alt</strong> calculator, nu continua aici — mergi la acela.
+            </>
+          ) : (
+            <>
+              Acest eveniment este deja blocat pentru sincronizare locală (status: {SYNC_LABELS[selected.local_sync_status]}).
+              Dacă a fost deja exportat pe alt calculator, continuă acolo — nu-l importa din nou aici.
+            </>
+          )}
         </div>
       )}
 
@@ -84,7 +104,7 @@ export default function EventPickerPage({ onBack, onSelect }) {
           onClick={() => onSelect(selected)}
           type="button"
         >
-          {alreadyLocked ? 'Continuă oricum' : 'Sincronizează local'}
+          {reconnectOnly ? 'Reconectează-te' : alreadyLocked ? 'Continuă oricum' : 'Sincronizează local'}
         </button>
       </div>
     </div>

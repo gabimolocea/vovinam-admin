@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.core.management.color import no_style
+from django.db import connection, transaction
 from django.utils.dateparse import parse_datetime
 
 from api.models import (
@@ -110,6 +111,32 @@ def _upsert(model, record_id: int, defaults: dict[str, Any], natural_key_field: 
         return instance
 
     return model.objects.create(pk=record_id, **defaults)
+
+
+def _reset_auto_pk_sequences(*models):
+    """A handful of models here are populated two ways in the same import:
+    explicitly, from the pack, with pks matching the cloud's own ids
+    (via _upsert above); and implicitly, via a post_save signal that
+    auto-provisions defaults with a DB-assigned pk the moment their parent
+    is created (e.g. create_default_competition_fields/_groups on Event,
+    create_default_match_rounds on Match, _ensure_event_participation_for_
+    category on CategoryAthlete/CategoryTeam - see api/signals.py).
+    SQLite's rowid allocator naturally accounts for explicit-pk inserts, so
+    this never showed up there, but a PostgreSQL SERIAL sequence only ever
+    advances via nextval() - it has no idea those signal-assigned ids were
+    ever taken, and (being non-transactional) an id it hands out isn't
+    freed by a later delete or a rolled-back import either. Left alone, it
+    eventually hands out an id that collides with a real cloud pk this
+    same import just inserted explicitly, aborting with a bare
+    IntegrityError. Realign every affected sequence to the actual max(id)
+    once, at the end, rather than trying to keep it consistent through
+    every intermediate create/delete above. No-op on SQLite.
+    """
+    if connection.vendor != 'postgresql':
+        return
+    with connection.cursor() as cursor:
+        for statement in connection.ops.sequence_reset_sql(no_style(), models):
+            cursor.execute(statement)
 
 
 def _category_model(category_type: str):
@@ -611,6 +638,8 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
     CategoryAthlete.objects.filter(category_id__in=category_ids).exclude(pk__in=category_athlete_ids).delete()
     CategoryTeam.objects.filter(category_id__in=category_ids).exclude(pk__in=category_team_ids).delete()
     TeamMember.objects.filter(team_id__in=team_ids).exclude(pk__in=team_member_ids).delete()
+
+    _reset_auto_pk_sequences(CompetitionField, Group, Category, MatchRound, TrainingSeminarParticipation)
 
     return {
         'event_id': event.id,
