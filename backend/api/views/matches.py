@@ -1112,6 +1112,69 @@ def add_bronze_match(request, category_id):
     return Response(MatchSerializer(bronze).data, status=201)
 
 
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def remove_bronze_match(request, category_id):
+    """
+    Reverses add_bronze_match: deletes the bronze match, unlinks it from
+    whichever semis/final fed into it, and restores the "no bronze
+    playoff" fallback - both semi-final losers (or the single real semi's
+    loser, for a 3-athlete bracket) automatically share 3rd place again,
+    exactly as advance_match_winner already does for a bracket that never
+    had a bronze match at all. For admins who add a bronze match by
+    mistake.
+    """
+    try:
+        category = Category.objects.get(pk=category_id)
+    except Category.DoesNotExist:
+        return Response({'error': 'Categoria nu a fost gasita.'}, status=404)
+
+    bronze = Match.objects.filter(category=category, match_type='bronze').first()
+    if not bronze:
+        return Response({'error': 'Această categorie nu are un meci de bronz.'}, status=400)
+
+    with transaction.atomic():
+        feeders = list(Match.objects.filter(category=category, loser_next_match=bronze))
+        for m in feeders:
+            m.loser_next_match = None
+            m.save(update_fields=['loser_next_match'])
+
+        # The final only ends up in `feeders` (loser_next_match == bronze)
+        # for the "1 real semi + final" 3-athlete branch - the "2+ real
+        # semis" branch links only the two semis that way and bumps the
+        # final's round_number directly, so it has to be looked up
+        # separately here regardless of which branch actually created it.
+        final = Match.objects.filter(category=category, match_type='finals').first()
+        if final and final.round_number == bronze.round_number + 1:
+            # add_bronze_match's "2+ real semis" branch bumped the final's
+            # round_number out of bronze's own column - put it back
+            # exactly where bronze's round_number says it was. The "1 real
+            # semi + final" branch never touches the final's round_number
+            # at all, so there's nothing to revert in that case.
+            final.round_number = bronze.round_number
+            final.save(update_fields=['round_number'])
+
+        # Clear whatever place the bronze match itself decided, then let
+        # the no-bronze-playoff fallback below recompute it from scratch.
+        CategoryAthlete.objects.filter(
+            category=category, athlete_id__in=[bronze.red_corner_id, bronze.blue_corner_id], place=3,
+        ).update(place=None)
+
+        bronze.delete()
+
+        for m in feeders:
+            if m.match_type != 'semi-finals':
+                continue
+            winner = m.winner
+            if not winner:
+                continue
+            loser = m.blue_corner if winner == m.red_corner else m.red_corner
+            if loser:
+                CategoryAthlete.objects.filter(category=category, athlete=loser).update(place=3)
+
+    return Response(status=204)
+
+
 def _advance_to_next(next_match, from_match, athlete):
     """Place an athlete into the correct slot of the next match."""
     if from_match.bracket_position % 2 == 0:

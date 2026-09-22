@@ -565,6 +565,32 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
     });
   };
 
+  /* ── Undo an "Adaugă meci de bronz" added by mistake - removes it and
+     restores joint-3rd-place for whichever semi-final loser(s) no longer
+     have a bronze playoff to decide it. ── */
+  const handleRemoveBronzeMatch = () => {
+    ctx?.setConfirmModal({
+      title: 'Șterge meciul de bronz',
+      message: 'Se șterge meciul de bronz. Locul 3 revine automat pierzătorului semifinalei (fără meci de departajare). Continui?',
+      icon: '🗑️',
+      color: 'red',
+      confirmLabel: 'Șterge',
+      onConfirm: async () => {
+        try {
+          setAddingBronze(true);
+          setError(null);
+          await api.post(`/categories/${category.id}/remove-bronze-match/`);
+          await fetchMatches();
+        } catch (err) {
+          setError(err.response?.data?.error || 'Nu s-a putut șterge meciul de bronz.');
+        } finally {
+          setAddingBronze(false);
+          ctx?.setConfirmModal(null);
+        }
+      },
+    });
+  };
+
   const handleDeleteBracket = () => {
     ctx?.setConfirmModal({
       title: 'Șterge bracket',
@@ -1267,6 +1293,16 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
               title="Adaugă un meci pentru locul 3, fără să regenerezi tot bracket-ul"
             >
               {addingBronze ? 'Se adaugă...' : '🥉 Adaugă meci de bronz'}
+            </button>
+          )}
+          {matches.some(m => m.match_type === 'bronze') && (
+            <button
+              onClick={handleRemoveBronzeMatch}
+              disabled={addingBronze}
+              className="rounded border border-border bg-background px-2 py-1.5 text-sm font-semibold text-muted-foreground transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Șterge meciul de bronz (ex. dacă a fost adăugat din greșeală)"
+            >
+              {addingBronze ? 'Se șterge...' : '🥉 Șterge meci de bronz'}
             </button>
           )}
           {/* Export buttons */}

@@ -117,3 +117,71 @@ class ThreeAthleteBronzeMatchTests(TestCase):
         final = Match.objects.get(category=self.category, match_type='finals')
         self.assertEqual(real_semi.loser_next_match_id, bronze.id)
         self.assertEqual(final.loser_next_match_id, bronze.id)
+
+    def test_remove_bronze_match_restores_no_bronze_playoff_fallback(self):
+        """An admin who added a bronze match by mistake needs a way back -
+        removing it must unlink it from the semi/final that fed it and put
+        the athlete who'd have gotten joint-3rd (per the federation's own
+        no-bronze-playoff rule) back where they belong, exactly as if a
+        bronze match had never been added at all."""
+        self.test_add_bronze_match_after_playing_semi_and_final()
+        final = Match.objects.get(category=self.category, match_type='finals')
+        real_semi = Match.objects.get(
+            category=self.category, match_type='semi-finals', red_corner__isnull=False, blue_corner__isnull=False,
+        )
+        final_round_before = final.round_number
+
+        resp = self.client.post(f'/api/categories/{self.category.id}/remove-bronze-match/')
+        self.assertEqual(resp.status_code, 204, resp.content)
+
+        self.assertFalse(Match.objects.filter(category=self.category, match_type='bronze').exists())
+        real_semi.refresh_from_db()
+        final.refresh_from_db()
+        self.assertIsNone(real_semi.loser_next_match_id)
+        self.assertIsNone(final.loser_next_match_id)
+        # The "1 real semi + final" branch never bumps the final's
+        # round_number when adding bronze, so removing it shouldn't touch
+        # it either.
+        self.assertEqual(final.round_number, final_round_before)
+        # Prisacariu lost the real semi-final to Molocea - with no bronze
+        # match, they should automatically share 3rd place again.
+        self.assertEqual(CategoryAthlete.objects.get(category=self.category, athlete=self.prisacariu).place, 3)
+
+    def test_remove_bronze_match_reverts_bumped_final_round_for_four_athletes(self):
+        """The "2+ real semis" branch (4+ athletes) bumps the final's
+        round_number to make room for bronze in its own column - removing
+        bronze must put the final back exactly where it was."""
+        fourth = Athlete.objects.create(first_name='Fourth', last_name='Athlete')
+        CategoryAthlete.objects.create(category=self.category, athlete=fourth)
+        self._generate('single_elimination')
+
+        semis = list(Match.objects.filter(category=self.category, match_type='semi-finals'))
+        self.assertEqual(len(semis), 2)
+        final = Match.objects.get(category=self.category, match_type='finals')
+        final_round_before = final.round_number
+
+        for semi in semis:
+            self._decide(semi, winner_is_red=True)
+            semi.status = 'completed'
+            semi.save(update_fields=['status'])
+        winners = [semi.red_corner for semi in semis]
+        final.red_corner, final.blue_corner = winners
+        final.save(update_fields=['red_corner', 'blue_corner'])
+        self._decide(final, winner_is_red=True)
+        final.status = 'completed'
+        final.save(update_fields=['status'])
+
+        resp = self.client.post(f'/api/categories/{self.category.id}/add-bronze-match/')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        final.refresh_from_db()
+        self.assertEqual(final.round_number, final_round_before + 1)
+
+        resp = self.client.post(f'/api/categories/{self.category.id}/remove-bronze-match/')
+        self.assertEqual(resp.status_code, 204, resp.content)
+        final.refresh_from_db()
+        self.assertEqual(final.round_number, final_round_before)
+        for semi in semis:
+            semi.refresh_from_db()
+            self.assertIsNone(semi.loser_next_match_id)
+            loser = semi.blue_corner if semi.winner == semi.red_corner else semi.red_corner
+            self.assertEqual(CategoryAthlete.objects.get(category=self.category, athlete=loser).place, 3)
