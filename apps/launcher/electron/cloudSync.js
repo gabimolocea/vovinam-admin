@@ -193,6 +193,39 @@ function diffResultPacks(local, cloud) {
   return { ok: differences.length === 0, differences, counts };
 }
 
+// Answers "does this machine already hold a competition in progress for
+// this event?" by looking at the local server itself.
+//
+// The cloud event's local_sync_status can't answer this: every event-pack
+// pull resets it to 'exported' on the cloud side, so an event being
+// actively run here - matches played, medals recorded - still shows up as
+// a fresh, never-imported event in the picker. Deciding whether a
+// destructive re-import is safe from that badge is how a full day of
+// results gets overwritten by a pre-event snapshot.
+async function inspectLocalEvent({ localBaseUrl, localToken, eventId }) {
+  let pack;
+  try {
+    pack = await apiCall(localBaseUrl, `/api/offline/event-results/?event_id=${eventId}`, { token: localToken });
+  } catch {
+    // Not on this machine yet (404) - nothing to protect.
+    return { hasLiveResults: false, summary: {} };
+  }
+
+  const summary = {
+    matches_started: (pack.matches || []).filter((match) => match.status && match.status !== 'scheduled').length,
+    places_recorded: (pack.category_athletes || []).filter((entry) => entry.place).length,
+    technique_results: (pack.category_athlete_scores || []).length,
+    match_events: (pack.match_events || []).length,
+    point_events: (pack.point_events || []).length,
+    referee_scores: (pack.match_referee_scores || []).length,
+  };
+
+  return {
+    hasLiveResults: Object.values(summary).some((count) => count > 0),
+    summary,
+  };
+}
+
 // Usable on its own, not just after a push - answers "is the web up to
 // date with this machine right now?" without changing anything.
 async function verifyEventSync({ cloudBaseUrl, cloudToken, localBaseUrl, localToken, eventId, localResults }) {
@@ -218,5 +251,6 @@ async function completeSyncOnCloud({ cloudBaseUrl, cloudToken, eventId, onProgre
 module.exports = {
   login, listCompetitionEvents, getOverview,
   syncEventLocal, syncEventToCloud, completeSyncOnCloud, verifyEventSync,
+  inspectLocalEvent,
   diffResultPacks, // exported for testing - pure, no I/O
 };

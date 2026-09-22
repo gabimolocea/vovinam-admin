@@ -73,7 +73,19 @@ export default function SyncLocalPage({ event, onBack, onDone }) {
         appendLine('Evenimentul rulează deja local — se sare peste descărcare și import, ca să nu se suprascrie ce e deja pe acest calculator.');
       } else {
         appendLine('Se descarcă evenimentul din cloud…');
-        await window.launcher.startLocalSync(event.id);
+        const outcome = await window.launcher.startLocalSync(event.id);
+        // The cloud event's status said this was a fresh import, but the
+        // local server reports a competition already under way here - the
+        // import was refused rather than overwriting it.
+        if (outcome?.status === 'skipped_local_results') {
+          const details = Object.entries(outcome.summary || {})
+            .filter(([, count]) => count)
+            .map(([key, count]) => `${key}: ${count}`)
+            .join(' · ');
+          appendLine('Importul a fost oprit: acest calculator are deja rezultate pentru acest eveniment.');
+          if (details) appendLine(`Găsit local: ${details}`);
+          appendLine('S-a făcut reconectare la datele locale existente, fără să se suprascrie nimic.');
+        }
       }
       appendLine('Gata! Stiva locală rulează cu datele evenimentului.');
       onDone(info);

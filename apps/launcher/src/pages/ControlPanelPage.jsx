@@ -40,7 +40,11 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, triggerR
     setResyncError('');
     setResyncing(true);
     try {
-      await window.launcher.startLocalSync(event.id);
+      // force: the native Sync menu already made the operator confirm that
+      // this overwrites local data (see main.js's "Web → Local" item), so
+      // the "you already have results here" guard would only be asking the
+      // same question twice.
+      await window.launcher.startLocalSync(event.id, true);
     } catch (err) {
       setResyncError(cleanErrorMessage(err, 'Resincronizarea a eșuat.'));
     } finally {

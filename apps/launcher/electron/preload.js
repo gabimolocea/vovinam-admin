@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('launcher', {
   isDockerAvailable: () => ipcRenderer.invoke('docker:is-available'),
   startLocalStack: (useDocker) => ipcRenderer.invoke('services:start-local-stack', { useDocker }),
   stopServices: () => ipcRenderer.invoke('services:stop'),
-  startLocalSync: (eventId) => ipcRenderer.invoke('sync:start-local', { eventId }),
+  startLocalSync: (eventId, force = false) => ipcRenderer.invoke('sync:start-local', { eventId, force }),
   syncToCloud: (eventId) => ipcRenderer.invoke('sync:to-cloud', { eventId }),
   verifySync: (eventId) => ipcRenderer.invoke('sync:verify', { eventId }),
   completeSync: (eventId) => ipcRenderer.invoke('sync:complete', { eventId }),

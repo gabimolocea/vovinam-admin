@@ -349,9 +349,25 @@ ipcMain.handle('services:start-local-stack', async (_event, { useDocker = false 
   return { lanIp, urls };
 });
 
-ipcMain.handle('sync:start-local', async (_event, { eventId }) => {
+// force=true is the deliberate "wipe and re-pull" path, and is only ever
+// passed after the operator confirmed the Sync menu's own warning dialog.
+// Without it, this refuses to overwrite a competition already under way on
+// this machine - the cloud event's own status can't be trusted for that
+// call (see cloudSync.js#inspectLocalEvent), so ask the local server.
+ipcMain.handle('sync:start-local', async (_event, { eventId, force = false }) => {
   if (!session.cloudBaseUrl || !session.cloudToken) throw new Error('Neautentificat în cloud.');
   if (!session.localBaseUrl || !session.localToken) throw new Error('Stiva locală nu este pornită.');
+
+  if (!force) {
+    const local = await cloudSync.inspectLocalEvent({
+      localBaseUrl: session.localBaseUrl,
+      localToken: session.localToken,
+      eventId,
+    });
+    if (local.hasLiveResults) {
+      return { status: 'skipped_local_results', summary: local.summary };
+    }
+  }
 
   await cloudSync.syncEventLocal({
     cloudBaseUrl: session.cloudBaseUrl,
@@ -361,6 +377,8 @@ ipcMain.handle('sync:start-local', async (_event, { eventId }) => {
     eventId,
     onProgress: (message) => sendToWindow('sync:progress', { direction: 'local', message }),
   });
+
+  return { status: 'imported' };
 });
 
 ipcMain.handle('sync:to-cloud', async (_event, { eventId }) => {
