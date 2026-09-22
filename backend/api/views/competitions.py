@@ -334,6 +334,10 @@ class CompetitionViewSet(viewsets.ViewSet):
         if 'status' in d:
             ev.status = d['status']
         if 'is_publicly_visible' in d:
+            # The local venue server has no public-facing site of its own -
+            # this only makes sense as a cloud-side decision.
+            if getattr(settings, 'IS_LOCAL_EVENT_SERVER', False):
+                return Response({'is_publicly_visible': ['Vizibilitatea publică nu poate fi modificată de pe serverul local.']}, status=400)
             ev.is_publicly_visible = _coerce_bool(d.get('is_publicly_visible'), default=ev.is_publicly_visible)
         if 'sync_mode' in d:
             ev.sync_mode = d.get('sync_mode') or ev.sync_mode

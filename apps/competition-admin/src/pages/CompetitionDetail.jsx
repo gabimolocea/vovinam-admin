@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { competitionAPI, offlineAPI } from '@shared/lib/api';
+import { competitionAPI, offlineAPI, systemAPI } from '@shared/lib/api';
 import { getSyncLockMeta, getSyncModeMeta, getSyncStatusMeta } from '@shared/lib/syncStatus';
 import { PageHeader, Card, StatusBadge, Spinner, Badge, Button, Switch } from '../components/ui';
 import { cn } from '../lib/utils';
@@ -25,6 +25,22 @@ export default function CompetitionDetail() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+
+  // The local venue server has no public-facing site of its own, so this
+  // toggle isn't editable (or even shown) from there - see CompetitionList.
+  const [isLocalServer, setIsLocalServer] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await systemAPI.info();
+        if (!cancelled) setIsLocalServer(Boolean(data.is_local_event_server));
+      } catch {
+        if (!cancelled) setIsLocalServer(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const syncStatusMeta = getSyncStatusMeta(comp);
   const syncModeMeta = getSyncModeMeta(comp);
@@ -166,17 +182,19 @@ export default function CompetitionDetail() {
           {comp.description && (
             <p className="mt-4 text-sm text-muted-foreground">{comp.description}</p>
           )}
-          <div className="mt-4 flex items-center justify-between rounded-md border border-border px-3 py-2.5">
-            <div>
-              <span className="block text-sm font-medium text-foreground">Vizibil public</span>
-              <span className="text-xs text-muted-foreground">Afișează acest eveniment pe site-ul public.</span>
+          {!isLocalServer && (
+            <div className="mt-4 flex items-center justify-between rounded-md border border-border px-3 py-2.5">
+              <div>
+                <span className="block text-sm font-medium text-foreground">Vizibil public</span>
+                <span className="text-xs text-muted-foreground">Afișează acest eveniment pe site-ul public.</span>
+              </div>
+              <Switch
+                checked={comp.is_publicly_visible}
+                disabled={busy}
+                onCheckedChange={handleTogglePublicVisibility}
+              />
             </div>
-            <Switch
-              checked={comp.is_publicly_visible}
-              disabled={busy}
-              onCheckedChange={handleTogglePublicVisibility}
-            />
-          </div>
+          )}
         </Card>
 
         {/* Stats card */}

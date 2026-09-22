@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { competitionAPI } from '@shared/lib/api';
+import { competitionAPI, systemAPI } from '@shared/lib/api';
 import { getSyncStatusMeta } from '@shared/lib/syncStatus';
 import { Badge, Button, Card, Spinner, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 import { Plus } from 'lucide-react';
@@ -25,6 +25,23 @@ export default function CompetitionList() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  // Whether an event shows up on the public site is a cloud-only concern -
+  // the local venue server has no public-facing site of its own, so this
+  // toggle has no business being editable (or even shown) from there.
+  const [isLocalServer, setIsLocalServer] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await systemAPI.info();
+        if (!cancelled) setIsLocalServer(Boolean(data.is_local_event_server));
+      } catch {
+        if (!cancelled) setIsLocalServer(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     competitionAPI.list().then(({ data }) => {
@@ -138,13 +155,15 @@ export default function CompetitionList() {
               </div>
 
               <div className="mt-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
-                  <Switch
-                    checked={ev.is_publicly_visible}
-                    onCheckedChange={(checked) => handleToggleVisibility(ev, checked)}
-                  />
-                  <span className="text-xs font-medium text-muted-foreground">Public</span>
-                </div>
+                {isLocalServer ? <div /> : (
+                  <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                    <Switch
+                      checked={ev.is_publicly_visible}
+                      onCheckedChange={(checked) => handleToggleVisibility(ev, checked)}
+                    />
+                    <span className="text-xs font-medium text-muted-foreground">Public</span>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -173,7 +192,7 @@ export default function CompetitionList() {
               <TableHead>Perioadă</TableHead>
               <TableHead>Oraș</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Public</TableHead>
+              {!isLocalServer && <TableHead>Public</TableHead>}
               <TableHead className="text-right">Acțiune</TableHead>
             </TableRow>
           </TableHeader>
@@ -198,12 +217,14 @@ export default function CompetitionList() {
                   <TableCell className="align-top">
                     <Badge className={status.className}>{status.label}</Badge>
                   </TableCell>
-                  <TableCell className="align-top">
-                    <Switch
-                      checked={ev.is_publicly_visible}
-                      onCheckedChange={(checked) => handleToggleVisibility(ev, checked)}
-                    />
-                  </TableCell>
+                  {!isLocalServer && (
+                    <TableCell className="align-top">
+                      <Switch
+                        checked={ev.is_publicly_visible}
+                        onCheckedChange={(checked) => handleToggleVisibility(ev, checked)}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="text-right align-top">
                     <div className="flex justify-end gap-2">
                       <Button
