@@ -865,6 +865,14 @@ def generate_brackets(request, category_id):
     except Category.DoesNotExist:
         return Response({'error': 'Categoria nu a fost gasita.'}, status=404)
 
+    # This wipes and recreates every match in the category, so it must
+    # respect the same operational lock as the rest of this module once
+    # the event has been handed to a venue machine (the local server is
+    # exempt from its own lock - see _event_operational_lock_response).
+    locked = _event_operational_lock_response(getattr(category, 'event', None))
+    if locked:
+        return locked
+
     bracket_type = request.data.get('bracket_type', 'single_elimination')
 
     # Get enrolled athletes for this category
@@ -1050,6 +1058,10 @@ def add_bronze_match(request, category_id):
     except Category.DoesNotExist:
         return Response({'error': 'Categoria nu a fost gasita.'}, status=404)
 
+    locked = _event_operational_lock_response(getattr(category, 'event', None))
+    if locked:
+        return locked
+
     matches = Match.objects.filter(category=category).select_related('red_corner', 'blue_corner')
     if matches.filter(match_type='bronze').exists():
         return Response({'error': 'Această categorie are deja un meci de bronz.'}, status=400)
@@ -1128,6 +1140,10 @@ def remove_bronze_match(request, category_id):
         category = Category.objects.get(pk=category_id)
     except Category.DoesNotExist:
         return Response({'error': 'Categoria nu a fost gasita.'}, status=404)
+
+    locked = _event_operational_lock_response(getattr(category, 'event', None))
+    if locked:
+        return locked
 
     bronze = Match.objects.filter(category=category, match_type='bronze').first()
     if not bronze:
@@ -1219,6 +1235,10 @@ def advance_match_winner(request, match_id):
             ).get(pk=match_id)
         except Match.DoesNotExist:
             return Response({'error': 'Meciul nu a fost gasit.'}, status=404)
+
+        locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
+        if locked:
+            return locked
 
         if match.status == 'cancelled':
             return Response({'error': 'Meciul a fost anulat si nu poate fi avansat.'}, status=400)
