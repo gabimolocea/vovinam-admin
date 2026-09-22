@@ -426,14 +426,6 @@ button {
   color: var(--gold);
 }
 
-.app-view-bar .btn-link {
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.app-view-bar .btn-link:hover {
-  color: var(--gold);
-}
-
 .app-view-title {
   flex: 1;
   font-family: 'Roboto Condensed', sans-serif;

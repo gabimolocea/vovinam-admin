@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('launcher', {
   startLocalSync: (eventId) => ipcRenderer.invoke('sync:start-local', { eventId }),
   syncToCloud: (eventId) => ipcRenderer.invoke('sync:to-cloud', { eventId }),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  setActiveAppUrl: (url) => ipcRenderer.send('app-view:set-active-url', url),
 
   onServiceLog: (callback) => {
     const listener = (_event, payload) => callback(payload);

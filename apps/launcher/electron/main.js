@@ -31,6 +31,11 @@ let serviceManager;
 // instead of always the launcher's own (empty) renderer.
 let activeWebviewContents = null;
 
+// The URL of whichever embedded local app is currently on screen, or null
+// when the admin is back on the launcher's own control panel - drives the
+// Window menu's "Deschide în browser extern" item, set by AppViewPage.jsx.
+let activeAppUrl = null;
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -149,7 +154,22 @@ function buildMenu() {
         },
       ],
     },
-    ...(isMac ? [{ role: 'windowMenu' }] : []),
+    {
+      label: 'Window',
+      submenu: [
+        ...(isMac ? [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }, { type: 'separator' }] : [{ role: 'minimize' }, { type: 'separator' }]),
+        {
+          label: 'Deschide în browser extern',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          // activeAppUrl is only set while an embedded local app
+          // (competition-admin/referee-scoring/public-display) is on
+          // screen - see the app-view:set-active-url handler below.
+          click: () => {
+            if (activeAppUrl) shell.openExternal(activeAppUrl);
+          },
+        },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -290,7 +310,13 @@ ipcMain.handle('sync:to-cloud', async (_event, { eventId }) => {
 });
 
 // Fallback for opening a URL in the system browser instead of embedding it
-// (used by the "Deschide în browser extern" link in the embedded app view).
+// (used by the Window menu's "Deschide în browser extern" item).
 ipcMain.handle('shell:open-external', async (_event, url) => {
   await shell.openExternal(url);
+});
+
+// AppViewPage.jsx reports which local app's URL is currently on screen (or
+// null once it's closed), so the Window menu item above knows what to open.
+ipcMain.on('app-view:set-active-url', (_event, url) => {
+  activeAppUrl = url || null;
 });
