@@ -406,37 +406,6 @@ button {
   background: #fff;
 }
 
-.app-view-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--navy);
-}
-
-.app-view-bar .btn-secondary {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.app-view-bar .btn-secondary:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-}
-
-.app-view-title {
-  flex: 1;
-  font-family: 'Roboto Condensed', sans-serif;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  font-size: 13px;
-  color: #fff;
-  text-align: center;
-}
-
 .app-view-webview {
   display: flex;
   flex: 1;

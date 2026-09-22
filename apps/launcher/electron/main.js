@@ -179,6 +179,15 @@ function buildMenu() {
       submenu: [
         ...(isMac ? [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }, { type: 'separator' }] : [{ role: 'minimize' }, { type: 'separator' }]),
         {
+          label: 'Înapoi la panou',
+          accelerator: 'CmdOrCtrl+Shift+B',
+          // Same activeAppUrl guard as the item below - only relevant
+          // while an embedded local app is actually on screen.
+          click: () => {
+            if (activeAppUrl) sendToWindow('app-view:go-back');
+          },
+        },
+        {
           label: 'Deschide în browser extern',
           accelerator: 'CmdOrCtrl+Shift+O',
           // activeAppUrl is only set while an embedded local app

@@ -46,4 +46,9 @@ contextBridge.exposeInMainWorld('launcher', {
     ipcRenderer.on('sync-menu:local-to-web', listener);
     return () => ipcRenderer.removeListener('sync-menu:local-to-web', listener);
   },
+  onGoBackToPanel: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('app-view:go-back', listener);
+    return () => ipcRenderer.removeListener('app-view:go-back', listener);
+  },
 });

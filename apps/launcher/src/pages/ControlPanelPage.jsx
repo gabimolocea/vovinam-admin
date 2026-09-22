@@ -59,6 +59,16 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, resyncRe
 
   const appIds = Object.keys(localInfo?.urls || {});
 
+  // competition-admin's own root shows its "Competition Manager" (every
+  // competition on this server) - since only one event is ever synced
+  // down to a given LAN server at a time, jump straight into that one
+  // instead of making the operator pick it again from a list of one.
+  const appOpenUrl = (id) => {
+    const base = localInfo.urls[id];
+    if (id === 'competition-admin' && event?.id) return `${base}/competitions/${event.id}/categories`;
+    return base;
+  };
+
   return (
     <div className="card card--wide">
       <h1>{event?.name}</h1>
@@ -79,7 +89,7 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, resyncRe
             <button
               className="btn-secondary"
               type="button"
-              onClick={() => onOpenApp(id, localInfo.urls[id], APP_LABELS[id] || id)}
+              onClick={() => onOpenApp(id, appOpenUrl(id), APP_LABELS[id] || id)}
             >
               Deschide
             </button>
