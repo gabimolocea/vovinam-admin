@@ -380,35 +380,21 @@ export default function SyncCenterPage() {
       <PageHeader title={`Sync Center · ${comp.name}`} subtitle="Ghid simplificat pentru mutarea competiției din cloud în local și înapoi" />
 
       <Card className="border-blue-200 bg-blue-50 p-5 dark:border-blue-900/40 dark:bg-blue-950/10">
-        <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
-          <div>
-            <h2 className="text-lg font-semibold text-blue-950 dark:text-blue-200">Cum procedezi, pe scurt</h2>
-            <div className="mt-3 space-y-2">
-              {quickGuide.map((item) => (
-                <div key={item} className="rounded-lg bg-white/80 px-3 py-2 text-sm text-blue-950 ring-1 ring-blue-100 dark:bg-white/5 dark:text-blue-100 dark:ring-blue-900/40">
-                  {item}
-                </div>
-              ))}
-            </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
+            <div className="text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">Stare curentă</div>
+            <Badge className={cn('mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide', syncStatusMeta.className)}>
+              {syncStatusMeta.label}
+            </Badge>
+            <p className="mt-3 text-sm text-muted-foreground">{syncStatusMeta.description}</p>
           </div>
-          <div className="space-y-3">
-            <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
-              <div className="text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">Stare curentă</div>
-              <Badge className={cn('mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide', syncStatusMeta.className)}>
-                {syncStatusMeta.label}
-              </Badge>
-              <p className="mt-3 text-sm text-muted-foreground">{syncStatusMeta.description}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
-                <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Mod</div>
-                <div className="mt-2 text-sm font-semibold text-foreground">{syncModeMeta.label}</div>
-              </div>
-              <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
-                <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Blocare</div>
-                <div className="mt-2 text-sm font-semibold text-foreground">{syncLockMeta.label}</div>
-              </div>
-            </div>
+          <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
+            <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Mod</div>
+            <div className="mt-2 text-sm font-semibold text-foreground">{syncModeMeta.label}</div>
+          </div>
+          <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
+            <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Blocare</div>
+            <div className="mt-2 text-sm font-semibold text-foreground">{syncLockMeta.label}</div>
           </div>
         </div>
       </Card>
