@@ -8,6 +8,7 @@ export default function SyncToCloudPage({ event, onBack, onDone }) {
   const [finished, setFinished] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState('');
+  const [report, setReport] = useState(null); // { imported, skipped, verification }
   const started = useRef(false);
   const logRef = useRef(null);
 
@@ -33,11 +34,34 @@ export default function SyncToCloudPage({ event, onBack, onDone }) {
     setError('');
     setRunning(true);
     try {
-      await window.launcher.syncToCloud(event.id);
-      appendLine('Gata! Rezultatele au fost trimise în cloud.');
+      const outcome = await window.launcher.syncToCloud(event.id);
+      setReport(outcome || null);
+
+      const counts = Object.entries(outcome?.imported || {}).filter(([, value]) => value);
+      if (counts.length) {
+        appendLine(`Importate în cloud: ${counts.map(([key, value]) => `${key}: ${value}`).join(' · ')}`);
+      }
+      for (const note of outcome?.skipped || []) appendLine(`Sărit: ${note}`);
+
       setFinished(true);
     } catch (err) {
       setError(cleanErrorMessage(err, 'Sincronizarea în cloud a eșuat.'));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function runVerify() {
+    setError('');
+    setRunning(true);
+    try {
+      const verification = await window.launcher.verifySync(event.id);
+      setReport((prev) => ({ ...(prev || {}), verification }));
+      appendLine(verification.ok
+        ? 'Verificat din nou: cloud-ul are aceleași rezultate.'
+        : `Verificat din nou: ${verification.differences.length} nepotriviri.`);
+    } catch (err) {
+      setError(cleanErrorMessage(err, 'Verificarea a eșuat.'));
     } finally {
       setRunning(false);
     }
@@ -98,6 +122,38 @@ export default function SyncToCloudPage({ event, onBack, onDone }) {
           </button>
         )}
       </div>
+
+      {report?.verification && (
+        <div className={report.verification.ok ? 'verify-box verify-box--ok' : 'verify-box verify-box--warn'}>
+          <strong>
+            {report.verification.ok
+              ? '✓ Verificat: cloud-ul are aceleași rezultate ca acest calculator.'
+              : `⚠ ${report.verification.differences.length} nepotriviri între acest calculator și cloud:`}
+          </strong>
+          {!report.verification.ok && (
+            <ul>
+              {report.verification.differences.map((difference) => (
+                <li key={difference}>{difference}</li>
+              ))}
+            </ul>
+          )}
+          <table className="verify-counts">
+            <thead>
+              <tr><th>Secțiune</th><th>Local</th><th>Cloud</th></tr>
+            </thead>
+            <tbody>
+              {Object.entries(report.verification.counts || {}).map(([section, { local, cloud }]) => (
+                <tr key={section} className={cloud < local ? 'verify-row--short' : undefined}>
+                  <td>{section}</td><td>{local}</td><td>{cloud}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button className="btn-link" onClick={runVerify} type="button" disabled={running}>
+            Verifică din nou
+          </button>
+        </div>
+      )}
 
       {finished && (
         <>

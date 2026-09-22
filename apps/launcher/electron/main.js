@@ -377,6 +377,21 @@ ipcMain.handle('sync:to-cloud', async (_event, { eventId }) => {
   });
 });
 
+// Read-only: compares cloud's own results pack against this machine's and
+// reports what doesn't match. Safe to run any time.
+ipcMain.handle('sync:verify', async (_event, { eventId }) => {
+  if (!session.localBaseUrl || !session.localToken) throw new Error('Stiva locală nu este pornită.');
+  if (!session.cloudBaseUrl || !session.cloudToken) throw new Error('Neautentificat în cloud.');
+
+  return cloudSync.verifyEventSync({
+    cloudBaseUrl: session.cloudBaseUrl,
+    cloudToken: session.cloudToken,
+    localBaseUrl: session.localBaseUrl,
+    localToken: session.localToken,
+    eventId,
+  });
+});
+
 // Separate from sync:to-cloud on purpose - see cloudSync.js#completeSyncOnCloud.
 ipcMain.handle('sync:complete', async (_event, { eventId }) => {
   if (!session.cloudBaseUrl || !session.cloudToken) throw new Error('Neautentificat în cloud.');

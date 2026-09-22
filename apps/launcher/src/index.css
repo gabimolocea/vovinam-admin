@@ -339,6 +339,66 @@ button {
   font-weight: 400;
 }
 
+.verify-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.verify-box--ok {
+  background: #eef7f0;
+  border-color: #b7dcc2;
+  color: #1c5a30;
+}
+
+.verify-box--warn {
+  background: #fdf4e6;
+  border-color: #e9c98f;
+  color: #7a4d06;
+}
+
+.verify-box ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.verify-box li {
+  margin-bottom: 3px;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+}
+
+.verify-counts {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 11px;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+
+.verify-counts th,
+.verify-counts td {
+  text-align: left;
+  padding: 2px 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.verify-counts th {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.verify-row--short td {
+  color: var(--red);
+  font-weight: 700;
+}
+
 .stat-row {
   display: flex;
   gap: 12px;

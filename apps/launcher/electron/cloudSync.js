@@ -98,10 +98,108 @@ async function syncEventToCloud({ cloudBaseUrl, cloudToken, localBaseUrl, localT
   const results = await apiCall(localBaseUrl, `/api/offline/event-results/?event_id=${eventId}`, { token: localToken });
 
   report('Se trimit rezultatele în cloud…');
-  await apiCall(cloudBaseUrl, '/api/offline/event-results/import/', { method: 'POST', token: cloudToken, body: results });
+  const importReport = await apiCall(cloudBaseUrl, '/api/offline/event-results/import/', { method: 'POST', token: cloudToken, body: results });
 
-  report('Rezultatele au fost trimise în cloud.');
-  return results;
+  // Reading cloud's own results pack back and diffing it against what we
+  // just sent is the only thing that actually answers "did it land?".
+  // Every layer here reports success on its own terms - the HTTP call
+  // succeeded, the importer counted rows - while the *content* can still
+  // be wrong (a push made while local had no places recorded writes a
+  // perfectly successful pack full of nulls).
+  report('Se verifică ce a ajuns efectiv în cloud…');
+  const verification = await verifyEventSync({
+    cloudBaseUrl, cloudToken, localBaseUrl, localToken, eventId, localResults: results,
+  });
+
+  report(verification.ok
+    ? 'Verificat: cloud-ul are aceleași rezultate ca acest calculator.'
+    : `Atenție: ${verification.differences.length} nepotriviri între local și cloud (vezi lista de mai jos).`);
+
+  return { results, imported: importReport?.imported || {}, skipped: importReport?.skipped || [], verification };
+}
+
+const COUNTED_SECTIONS = [
+  'matches', 'match_rounds', 'match_events', 'point_events', 'match_referee_scores',
+  'category_athletes', 'category_teams', 'fight_athlete_weights', 'category_athlete_scores',
+];
+
+const AWARD_KEYS = [
+  'first_place_id', 'second_place_id', 'third_place_id',
+  'first_place_team_id', 'second_place_team_id', 'third_place_team_id',
+];
+
+const MAX_REPORTED_DIFFERENCES = 50;
+
+function diffResultPacks(local, cloud) {
+  const differences = [];
+  const add = (message) => {
+    if (differences.length < MAX_REPORTED_DIFFERENCES) differences.push(message);
+  };
+
+  const cloudCategories = new Map((cloud.category_results || []).map((entry) => [entry.id, entry]));
+  for (const entry of local.category_results || []) {
+    const counterpart = cloudCategories.get(entry.id);
+    if (!counterpart) {
+      add(`Categoria ${entry.id} lipsește în cloud.`);
+      continue;
+    }
+    for (const key of AWARD_KEYS) {
+      if ((entry[key] ?? null) !== (counterpart[key] ?? null)) {
+        add(`Categoria ${entry.id}: ${key} local=${entry[key] ?? '—'}, cloud=${counterpart[key] ?? '—'}`);
+      }
+    }
+  }
+
+  const cloudPlaces = new Map(
+    (cloud.category_athletes || []).map((entry) => [`${entry.category_id}:${entry.athlete_id}`, entry.place ?? null]),
+  );
+  for (const entry of local.category_athletes || []) {
+    const key = `${entry.category_id}:${entry.athlete_id}`;
+    if (!cloudPlaces.has(key)) {
+      add(`Sportivul ${entry.athlete_id} (categoria ${entry.category_id}) lipsește în cloud.`);
+    } else if ((entry.place ?? null) !== cloudPlaces.get(key)) {
+      add(`Loc diferit — sportiv ${entry.athlete_id}, categoria ${entry.category_id}: local=${entry.place ?? '—'}, cloud=${cloudPlaces.get(key) ?? '—'}`);
+    }
+  }
+
+  const cloudMatches = new Map((cloud.matches || []).map((entry) => [entry.id, entry]));
+  for (const entry of local.matches || []) {
+    const counterpart = cloudMatches.get(entry.id);
+    if (!counterpart) add(`Meciul ${entry.id} lipsește în cloud.`);
+    else if (entry.status !== counterpart.status) {
+      add(`Meciul ${entry.id}: status local=${entry.status}, cloud=${counterpart.status}`);
+    }
+  }
+
+  const counts = {};
+  for (const section of COUNTED_SECTIONS) {
+    const localCount = (local[section] || []).length;
+    const cloudCount = (cloud[section] || []).length;
+    counts[section] = { local: localCount, cloud: cloudCount };
+    // Cloud legitimately holds data this venue never had, so only a
+    // shortfall means something of ours failed to land.
+    if (cloudCount < localCount) add(`${section}: local ${localCount}, cloud ${cloudCount}`);
+  }
+
+  const localRefereeScores = (local.category_athlete_scores || [])
+    .reduce((total, entry) => total + (entry.referee_scores || []).length, 0);
+  const cloudRefereeScores = (cloud.category_athlete_scores || [])
+    .reduce((total, entry) => total + (entry.referee_scores || []).length, 0);
+  counts.category_referee_scores = { local: localRefereeScores, cloud: cloudRefereeScores };
+  if (cloudRefereeScores < localRefereeScores) {
+    add(`category_referee_scores: local ${localRefereeScores}, cloud ${cloudRefereeScores}`);
+  }
+
+  return { ok: differences.length === 0, differences, counts };
+}
+
+// Usable on its own, not just after a push - answers "is the web up to
+// date with this machine right now?" without changing anything.
+async function verifyEventSync({ cloudBaseUrl, cloudToken, localBaseUrl, localToken, eventId, localResults }) {
+  const local = localResults
+    || await apiCall(localBaseUrl, `/api/offline/event-results/?event_id=${eventId}`, { token: localToken });
+  const cloud = await apiCall(cloudBaseUrl, `/api/offline/event-results/?event_id=${eventId}`, { token: cloudToken });
+  return diffResultPacks(local, cloud);
 }
 
 // Separate, deliberate action - unlocks the event on cloud (sync_mode
@@ -117,4 +215,8 @@ async function completeSyncOnCloud({ cloudBaseUrl, cloudToken, eventId, onProgre
   report('Sincronizare în cloud completă.');
 }
 
-module.exports = { login, listCompetitionEvents, getOverview, syncEventLocal, syncEventToCloud, completeSyncOnCloud };
+module.exports = {
+  login, listCompetitionEvents, getOverview,
+  syncEventLocal, syncEventToCloud, completeSyncOnCloud, verifyEventSync,
+  diffResultPacks, // exported for testing - pure, no I/O
+};
