@@ -3,6 +3,7 @@ const path = require('path');
 
 const { getLanIp } = require('./network');
 const { ServiceManager, buildServiceDefs, ensureLocalAdmin } = require('./services');
+const dockerBackend = require('./dockerBackend');
 const cloudSync = require('./cloudSync');
 
 const LOCAL_BACKEND_PORT = 8000;
@@ -274,31 +275,51 @@ ipcMain.handle('services:stop', async () => {
   session.localToken = null;
 });
 
+ipcMain.handle('docker:is-available', async () => dockerBackend.isDockerAvailable());
+
 // Starts the local stack, then provisions the local admin account to
 // match the cloud login the operator already did (see
 // services.js#ensureLocalAdmin - it runs a Django management command
 // directly on this machine, so it sidesteps needing a local token to
 // create the very account that would provide one), and logs into it. The
 // admin never has to remember or type a second, separate local password.
-ipcMain.handle('services:start-local-stack', async () => {
+//
+// useDocker routes the backend through the "official" docker-compose.local.yml
+// stack (PostgreSQL 17, matching production, plus automatic backups) instead
+// of the default SQLite `manage.py runserver` - see dockerBackend.js. Only
+// affects this initial start; a later resync just talks to whichever
+// backend is already running.
+ipcMain.handle('services:start-local-stack', async (_event, { useDocker = false } = {}) => {
   if (!session.email || !session.password) throw new Error('Neautentificat în cloud.');
 
   const lanIp = getLanIp();
   if (!lanIp) throw new Error('Nu s-a găsit o adresă IP în rețeaua locală (verifică WiFi-ul).');
   session.lanIp = lanIp;
+  session.useDocker = useDocker;
 
   const manager = getServiceManager();
-  const defs = manager.startAll(lanIp);
+
+  if (useDocker) {
+    await dockerBackend.startDockerBackend({
+      lanIp,
+      onLog: (line) => sendToWindow('service:log', { id: 'backend', line }),
+    });
+  }
+  const defs = manager.startAll(lanIp, { useDocker });
 
   const localBaseUrl = `http://localhost:${LOCAL_BACKEND_PORT}`;
   sendToWindow('sync:progress', { direction: 'local', message: 'Se pornește backend-ul local…' });
-  await waitForBackend(localBaseUrl);
+  await waitForBackend(localBaseUrl, useDocker ? { timeoutMs: 120000 } : undefined);
 
   sendToWindow('sync:progress', {
     direction: 'local',
     message: 'Se configurează contul de administrator pe acest calculator…',
   });
-  await ensureLocalAdmin({ email: session.email, password: session.password });
+  if (useDocker) {
+    await dockerBackend.ensureLocalAdminDocker({ email: session.email, password: session.password });
+  } else {
+    await ensureLocalAdmin({ email: session.email, password: session.password });
+  }
 
   const { access } = await cloudSync.login(localBaseUrl, session.email, session.password);
   session.localBaseUrl = localBaseUrl;

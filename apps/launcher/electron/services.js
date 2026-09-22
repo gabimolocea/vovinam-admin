@@ -35,22 +35,31 @@ function backendPython() {
 
 // Each service: how to start it, and the port it should end up listening
 // on (used elsewhere to know when it's actually up).
-function buildServiceDefs(lanIp) {
+//
+// useDocker: true omits the 'backend' entry entirely - it's started
+// separately by dockerBackend.js (PostgreSQL, matching production, via
+// the "official" docker-compose.local.yml stack) instead of this
+// SQLite-backed `manage.py runserver`, for real events with heavier
+// concurrent write load (multiple tatami scoring at once) than SQLite's
+// single-writer model comfortably handles.
+function buildServiceDefs(lanIp, { useDocker = false } = {}) {
+  const backendDef = {
+    id: 'backend',
+    label: 'Backend (Django)',
+    port: 8000,
+    command: backendPython(),
+    args: ['manage.py', 'runserver', '0.0.0.0:8000'],
+    cwd: BACKEND_DIR,
+    // IS_LOCAL_EVENT_SERVER exempts this instance from the operational
+    // lock a synced event carries (see api/views/_common.py) - without
+    // it, this backend is indistinguishable from the cloud instance the
+    // lock exists to protect, and nothing (weigh-ins, category
+    // assignments, scores) can be edited here once an event is synced.
+    env: { LAN_HOST: lanIp, IS_LOCAL_EVENT_SERVER: 'True' },
+  };
+
   return [
-    {
-      id: 'backend',
-      label: 'Backend (Django)',
-      port: 8000,
-      command: backendPython(),
-      args: ['manage.py', 'runserver', '0.0.0.0:8000'],
-      cwd: BACKEND_DIR,
-      // IS_LOCAL_EVENT_SERVER exempts this instance from the operational
-      // lock a synced event carries (see api/views/_common.py) - without
-      // it, this backend is indistinguishable from the cloud instance the
-      // lock exists to protect, and nothing (weigh-ins, category
-      // assignments, scores) can be edited here once an event is synced.
-      env: { LAN_HOST: lanIp, IS_LOCAL_EVENT_SERVER: 'True' },
-    },
+    ...(useDocker ? [] : [backendDef]),
     {
       id: 'competition-admin',
       label: 'Competition Admin',
@@ -89,8 +98,8 @@ class ServiceManager {
     this.processes = new Map(); // id -> { proc, def }
   }
 
-  startAll(lanIp) {
-    const defs = buildServiceDefs(lanIp);
+  startAll(lanIp, opts) {
+    const defs = buildServiceDefs(lanIp, opts);
     for (const def of defs) this.start(def);
     return defs;
   }

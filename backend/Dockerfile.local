@@ -17,10 +17,20 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# postgresql-client provides pg_dump/pg_restore, used by the backup/restore panel.
+# postgresql-client-17 provides pg_dump/pg_restore, used by the backup/
+# restore panel - pinned to 17 specifically (via the official PGDG apt
+# repo, since Debian's own repos don't reliably ship 17) to match
+# docker-compose.local.yml's postgres:17 image and production's own
+# PostgreSQL version exactly, avoiding client/server version-skew issues.
 RUN apt-get update && apt-get install -y \
     gcc \
-    postgresql-client \
+    curl \
+    gnupg \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y postgresql-client-17 \
+    && apt-get purge -y curl gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

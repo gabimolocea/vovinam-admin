@@ -298,6 +298,47 @@ button {
   margin-top: 16px;
 }
 
+.db-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.db-choice-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 400;
+  margin-bottom: 0;
+}
+
+.db-choice-option.selected {
+  border-color: var(--navy-mid);
+  background: #f2f7fb;
+}
+
+.db-choice-option input[type='radio'] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.db-choice-option strong {
+  display: block;
+  color: var(--navy);
+  font-size: 14px;
+}
+
+.db-choice-option p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #5b6472;
+  font-weight: 400;
+}
+
 .stat-row {
   display: flex;
   gap: 12px;

@@ -12,7 +12,10 @@
 
 services:
   db:
-    image: postgres:16
+    # Matches production's PostgreSQL version exactly (confirmed via
+    # `doctl databases list` against the production app's managed DB) -
+    # keeps local-event data and any manual restores compatible with it.
+    image: postgres:17
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-frvv_local}
