@@ -790,13 +790,19 @@ export default function ProgramarePage() {
     const isEditingThis = editingDuration?.type === item.type && editingDuration?.id === item.id;
     const isTeamCat = isCat && data.type === 'team';
     const enrolledCount = isTeamCat ? (data.enrolled_teams?.length || 0) : (data.enrolled_athletes?.length || 0);
+    // A finished match stays assigned to its field (it was actually played
+    // there), but shouldn't look like it's still pending on that tatami -
+    // dim the card and label it so it's obvious at a glance.
+    const isFinishedMatch = !isCat && data.status === 'completed';
 
     return (
       <div
         draggable
         onDragStart={(e) => handleDragStart(e, item.type, item.id, item.assignment?.field)}
         onDragEnd={handleDragEnd}
-        className="group mb-2 cursor-grab rounded-md border border-border bg-card p-2.5 shadow-sm transition-all active:cursor-grabbing hover:bg-accent hover:shadow-md"
+        className={`group mb-2 cursor-grab rounded-md border border-border p-2.5 shadow-sm transition-all active:cursor-grabbing hover:shadow-md ${
+          isFinishedMatch ? 'bg-muted/50 opacity-60 hover:opacity-100' : 'bg-card hover:bg-accent'
+        }`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -833,6 +839,9 @@ export default function ProgramarePage() {
               )}
               {!isCat && matchTypeLabel && (
                 <span className="border border-border bg-accent px-1.5 py-0.5 text-xs font-semibold text-accent-foreground">{matchTypeLabel}</span>
+              )}
+              {isFinishedMatch && (
+                <span className="border border-green-300 bg-green-100 px-1.5 py-0.5 text-xs font-bold text-green-700">Finalizat</span>
               )}
               {isCat && <Badge variant="outline">{enrolledCount} {isTeamCat ? `echip${enrolledCount === 1 ? 'ă' : 'e'}` : `sportiv${enrolledCount !== 1 ? 'i' : ''}`}</Badge>}
             </div>
