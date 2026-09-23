@@ -23,12 +23,7 @@ const BracketPage = lazy(() => import('./pages/BracketPage'));
 const ResultsPage = lazy(() => import('./pages/ResultsPage'));
 const LivePage = lazy(() => import('./pages/LivePage'));
 const LiveFullscreenPage = lazy(() => import('./pages/LiveFullscreenPage'));
-const SyncCenterPage = lazy(() => import('./pages/SyncCenterPage'));
 const DiplomaConfiguratorPage = lazy(() => import('./pages/DiplomaConfiguratorPage'));
-
-function LegacySyncRedirect() {
-  return <Navigate to="../categories/sync" replace relative="path" />;
-}
 
 export default function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -58,7 +53,6 @@ export default function App() {
         <Route path="competitions/new" element={<CompetitionForm />} />
         <Route path="athletes/new" element={<CreateAthlete />} />
         <Route path="competitions/:id/results" element={<ResultsPage />} />
-        <Route path="competitions/:id/sync" element={<LegacySyncRedirect />} />
       </Route>
 
       {/* Categories pages render full-screen without top bar, with bottom tab navigation */}
@@ -77,7 +71,6 @@ export default function App() {
         <Route path="programare" element={<ProgramarePage />} />
         <Route path="arbitri" element={<ArbitriPage />} />
         <Route path="live" element={<LivePage />} />
-        <Route path="sync" element={<SyncCenterPage />} />
         <Route path="clasament" element={<ClasamentLayout />}>
           <Route index element={<Navigate to="tehnica" replace />} />
           <Route path="tehnica" element={<ClasamenteTehnicaPage />} />

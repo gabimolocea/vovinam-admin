@@ -97,7 +97,6 @@ export default function CategoriesLayout() {
     { to: 'live',        label: 'Live' },
     { to: 'clasament',   label: 'Clasament' },
     { to: 'diplome',     label: 'Diplome' },
-    { to: 'sync',        label: 'Sync' },
   ];
 
   return (

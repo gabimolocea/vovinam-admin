@@ -141,8 +141,7 @@ export default function LiveFullscreenPage() {
   // live edits once an event is exported to a local venue machine - on the
   // local machine itself (the new authority at that point, see
   // api/views/_common.py's IS_LOCAL_EVENT_SERVER exemption), the exact same
-  // banner/alert-blocking behavior below must not apply, same pattern as
-  // SyncCenterPage/LocalBackupPanel.
+  // banner/alert-blocking behavior below must not apply.
   useEffect(() => {
     let cancelled = false;
     (async () => {
