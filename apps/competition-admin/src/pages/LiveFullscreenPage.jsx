@@ -1015,7 +1015,9 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   const [resetConfirmData, setResetConfirmData] = useState(null);
   const [dqConfirmData, setDqConfirmData] = useState(null);
   const [replaceRefData, setReplaceRefData] = useState(null); // { pos, id, name }
+  const [qrRefData, setQrRefData] = useState(null); // arbitrul pentru care e deschisa fereastra de conectare
   const [replacementRefId, setReplacementRefId] = useState('');
+  const { id: eventId } = useParams();
   const autoRevealInFlightRef = useRef(false);
 
   // Build referee list from category referee assignment
@@ -1596,30 +1598,43 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                   const isConnected = r.id ? connectedRefIds.has(r.id) : false;
                   const isEmpty = !r.id;
                   return (
-                    <button
-                      key={r.pos}
-                      type="button"
-                      onClick={() => {
-                        setReplaceRefData(r);
-                        setReplacementRefId(r.id ? String(r.id) : '');
-                      }}
-                      className={`flex w-full items-stretch overflow-hidden rounded-md border text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : isConnected ? 'border-border bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
-                      title={isEmpty ? 'Adaugă arbitru' : isConnected ? 'Arbitru conectat' : 'Arbitru neconectat'}
-                    >
-                      <span className={`flex w-6 shrink-0 items-center justify-center ${isEmpty ? 'bg-muted' : isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}>
-                        {isEmpty ? (
-                          <Wifi className="h-3.5 w-3.5 text-muted-foreground/70" strokeWidth={3} />
-                        ) : isConnected ? (
-                          <Wifi className="h-3.5 w-3.5 text-white" strokeWidth={3} />
-                        ) : (
-                          <WifiOff className="h-3.5 w-3.5 text-white" strokeWidth={3} />
-                        )}
-                      </span>
-                      <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1">
-                        <span className="font-black text-foreground">A{r.pos}</span>
-                        <span className="min-w-0 flex-1 truncate font-semibold">{r.name || 'Adaugă arbitru'}</span>
-                      </span>
-                    </button>
+                    <div key={r.pos} className="flex items-stretch gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReplaceRefData(r);
+                          setReplacementRefId(r.id ? String(r.id) : '');
+                        }}
+                        className={`flex min-w-0 flex-1 items-stretch overflow-hidden rounded-md border text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : isConnected ? 'border-border bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
+                        title={isEmpty ? 'Adaugă arbitru' : isConnected ? 'Arbitru conectat' : 'Arbitru neconectat'}
+                      >
+                        <span className={`flex w-6 shrink-0 items-center justify-center ${isEmpty ? 'bg-muted' : isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                          {isEmpty ? (
+                            <Wifi className="h-3.5 w-3.5 text-muted-foreground/70" strokeWidth={3} />
+                          ) : isConnected ? (
+                            <Wifi className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                          ) : (
+                            <WifiOff className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                          )}
+                        </span>
+                        <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1">
+                          <span className="font-black text-foreground">A{r.pos}</span>
+                          <span className="min-w-0 flex-1 truncate font-semibold">{r.name || 'Adaugă arbitru'}</span>
+                        </span>
+                      </button>
+                      {/* Codul QR si PIN-ul cu care intra in sesiune - la
+                          tehnica la fel ca la lupte, e acelasi arbitru. */}
+                      {!isEmpty && (
+                        <button
+                          type="button"
+                          onClick={() => setQrRefData(r)}
+                          className="flex shrink-0 items-center justify-center rounded-md border border-border bg-card px-1.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                          title="Cod QR și PIN de conectare pentru acest arbitru"
+                        >
+                          <QrCode className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -1627,6 +1642,10 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           </div>
         </div>
       </div>
+
+      {qrRefData && (
+        <RefereeAccessModal eventId={eventId} referee={qrRefData} onClose={() => setQrRefData(null)} />
+      )}
 
       {/* ── Referee replacement modal ── */}
       {replaceRefData && (
@@ -1918,10 +1937,7 @@ function FullscreenMatchPanel({
   const [refModalData, setRefModalData] = useState(null); // { ref, matchId }
   const [replaceMatchRefData, setReplaceMatchRefData] = useState(null); // { pos, id, name }
   const [replacementMatchRefId, setReplacementMatchRefId] = useState('');
-  const [qrRefData, setQrRefData] = useState(null); // { pos, id, name } - referee the QR modal is open for
-  const [qrInfo, setQrInfo] = useState(null); // { token, login_path }
-  const [qrLoading, setQrLoading] = useState(false);
-  const [qrResetting, setQrResetting] = useState(false);
+  const [qrRefData, setQrRefData] = useState(null); // arbitrul pentru care e deschisa fereastra de conectare
   const { id: eventId } = useParams();
   const [matchDisplayMode, setMatchDisplayMode] = useState(match.display_mode || 'real_time');
   const [exportingExcel, setExportingExcel] = useState(false);
@@ -1937,34 +1953,6 @@ function FullscreenMatchPanel({
   const matchReferees = [];
   matchRefSlots.forEach(ref => { if (ref.id) matchReferees.push(ref); });
   const connectedRefIds = new Set((refPresence || []).map(rp => rp.referee));
-
-  // Fetch (or create) this referee's all-day QR login whenever the QR
-  // modal opens for a slot - never rotates an existing one on its own,
-  // only the explicit "Resetează codul" button does that.
-  useEffect(() => {
-    if (!qrRefData?.id || !eventId) { setQrInfo(null); return; }
-    let cancelled = false;
-    setQrLoading(true);
-    setQrInfo(null);
-    refereeQrLoginAPI.get(eventId, qrRefData.id)
-      .then(({ data }) => { if (!cancelled) setQrInfo(data); })
-      .catch((err) => { console.error('Failed to load referee QR login', err); })
-      .finally(() => { if (!cancelled) setQrLoading(false); });
-    return () => { cancelled = true; };
-  }, [qrRefData?.id, eventId]);
-
-  const resetQrCode = async () => {
-    if (!qrRefData?.id || !eventId) return;
-    setQrResetting(true);
-    try {
-      const { data } = await refereeQrLoginAPI.reset(eventId, qrRefData.id);
-      setQrInfo(data);
-    } catch (err) {
-      console.error('Failed to reset referee QR login', err);
-      window.alert('Nu s-a putut reseta codul QR.');
-    }
-    setQrResetting(false);
-  };
 
   const availableMatchReplacementRefs = (competitionReferees || []).filter(cr => {
     const athleteId = cr.athlete;
@@ -2711,33 +2699,7 @@ function FullscreenMatchPanel({
       )}
 
       {qrRefData && (
-        <FullscreenModal
-          onClose={() => { setQrRefData(null); setQrInfo(null); }}
-          title={`Cod QR — A${qrRefData.pos} ${qrRefData.name || ''}`}
-          description="Arbitrul scanează acest cod cu telefonul pentru a se conecta direct în aplicația de arbitraj, fără email și parolă. Codul rămâne valabil toată ziua - resetează-l doar dacă a fost pierdut sau expus."
-          actions={[
-            <button key="close" onClick={() => { setQrRefData(null); setQrInfo(null); }} className={MODAL_SECONDARY_BUTTON}>Închide</button>,
-            <button key="reset" onClick={resetQrCode} disabled={qrLoading || qrResetting} className={MODAL_WARNING_BUTTON}>{qrResetting ? 'Se resetează…' : 'Resetează codul'}</button>,
-          ]}
-        >
-          <div className="flex flex-col items-center gap-3 py-2">
-            {['localhost', '127.0.0.1'].includes(window.location.hostname) && (
-              <div className="w-full border-2 border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                Ești pe <strong>localhost</strong> — codul de mai jos va trimite telefonul arbitrului tot spre "localhost al lui", nu spre acest calculator, deci nu va funcționa. Deschide această pagină folosind adresa IP din rețeaua locală (ex: <strong>http://192.168.0.129:5191</strong>) înainte să arăți codul unui arbitru.
-              </div>
-            )}
-            {qrLoading || !qrInfo ? (
-              <div className="flex h-48 w-48 items-center justify-center border-2 border-dashed border-border text-sm text-muted-foreground">
-                Se încarcă…
-              </div>
-            ) : (
-              <div className="border-2 border-border bg-white p-3">
-                <QRCodeSVG value={`${refereeScoringOrigin()}${qrInfo.login_path}`} size={192} />
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">Cod stabil pentru acest arbitru la acest eveniment - nu se schimbă între meciuri.</p>
-          </div>
-        </FullscreenModal>
+        <RefereeAccessModal eventId={eventId} referee={qrRefData} onClose={() => setQrRefData(null)} />
       )}
 
       {/* ── SCOREBOARD — no dot, no ROSU/ALBASTRU label ── */}
@@ -3232,6 +3194,89 @@ function FullscreenMatchPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+// Datele cu care un arbitru intra in sesiune: codul QR pentru telefon si
+// PIN-ul pentru dispozitivul cu buton rotativ, care nu are nici tastatura
+// nici camera. Acelasi credential in doua forme, si acelasi buton le
+// roteste pe amandoua.
+//
+// Component, nu bucata copiata in fiecare panou: exista si la tehnica si
+// la lupte, iar doua copii ar fi divergat la prima modificare.
+function RefereeAccessModal({ eventId, referee, onClose }) {
+  const [info, setInfo] = useState(null);      // { token, pin, login_path }
+  const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  // Ia (sau creeaza) codul de conectare. Nu roteste niciodata unul
+  // existent: redeschiderea ferestrei mai tarziu in zi nu are voie sa
+  // scoata din aplicatie un arbitru care s-a conectat de dimineata.
+  useEffect(() => {
+    if (!referee?.id || !eventId) { setInfo(null); return undefined; }
+    let cancelled = false;
+    setLoading(true);
+    setInfo(null);
+    refereeQrLoginAPI.get(eventId, referee.id)
+      .then(({ data }) => { if (!cancelled) setInfo(data); })
+      .catch((err) => { console.error('Nu s-a putut citi codul arbitrului', err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [referee?.id, eventId]);
+
+  const reset = async () => {
+    if (!referee?.id || !eventId) return;
+    setResetting(true);
+    try {
+      const { data } = await refereeQrLoginAPI.reset(eventId, referee.id);
+      setInfo(data);
+    } catch (err) {
+      console.error('Nu s-a putut reseta codul arbitrului', err);
+      window.alert('Nu s-a putut reseta codul.');
+    }
+    setResetting(false);
+  };
+
+  if (!referee) return null;
+
+  return (
+    <FullscreenModal
+      onClose={onClose}
+      title={`Conectare arbitru — A${referee.pos} ${referee.name || ''}`}
+      description="Pe telefon: arbitrul scanează codul și intră direct în aplicația de arbitraj, fără email și parolă. Pe dispozitivul cu buton rotativ: formează PIN-ul. Amândouă rămân valabile toată ziua - resetează-le doar dacă au fost pierdute sau expuse."
+      actions={[
+        <button key="close" onClick={onClose} className={MODAL_SECONDARY_BUTTON}>Închide</button>,
+        <button key="reset" onClick={reset} disabled={loading || resetting} className={MODAL_WARNING_BUTTON}>
+          {resetting ? 'Se resetează…' : 'Resetează codul și PIN-ul'}
+        </button>,
+      ]}
+    >
+      <div className="flex flex-col items-center gap-3 py-2">
+        {['localhost', '127.0.0.1'].includes(window.location.hostname) && (
+          <div className="w-full border-2 border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Ești pe <strong>localhost</strong> — codul QR va trimite telefonul arbitrului tot spre "localhost al lui", nu spre acest calculator, deci nu va funcționa. Deschide pagina folosind adresa IP din rețeaua locală înainte să arăți codul unui arbitru. PIN-ul nu e afectat: dispozitivul are adresa serverului scrisă în el.
+          </div>
+        )}
+        {loading || !info ? (
+          <div className="flex h-48 w-48 items-center justify-center border-2 border-dashed border-border text-sm text-muted-foreground">
+            Se încarcă…
+          </div>
+        ) : (
+          <div className="border-2 border-border bg-white p-3">
+            <QRCodeSVG value={`${refereeScoringOrigin()}${info.login_path}`} size={192} />
+          </div>
+        )}
+        {info?.pin && (
+          <div className="w-full border-2 border-border bg-muted/40 px-3 py-2 text-center">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              PIN pentru dispozitivul de arbitraj
+            </div>
+            <div className="font-mono text-3xl font-bold tracking-[0.3em] text-foreground">{info.pin}</div>
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">Cod stabil pentru acest arbitru la acest eveniment - nu se schimbă între probe.</p>
+      </div>
+    </FullscreenModal>
   );
 }
 
