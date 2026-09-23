@@ -245,21 +245,74 @@ class RefereeQRLogin(models.Model):
         related_name='qr_logins',
     )
     token = models.CharField(_('Token'), max_length=64, unique=True, db_index=True)
+    # Same credential, shorter, for hardware that has no keyboard and no
+    # camera - the ESP32 scoring device (devices/referee-esp32c3) dials
+    # this in on its rotary encoder. Unique across every event, so the
+    # device can send the PIN alone and the server knows which referee at
+    # which event it is, with nothing else to configure on it.
+    pin = models.CharField(_('PIN'), max_length=8, unique=True, db_index=True, null=True, blank=True)
     created_at = models.DateTimeField(_('Creat la'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Actualizat la'), auto_now=True)
+
+    # A PIN this short is only defensible because the login endpoint that
+    # takes it is rate-limited and the server lives on the venue LAN.
+    # Widening it costs nothing here: the device dials any length.
+    PIN_LENGTH = 5
 
     class Meta:
         unique_together = ('event', 'referee')
         verbose_name = _('Login QR arbitru')
         verbose_name_plural = _('Login-uri QR arbitri')
 
+    @classmethod
+    def generate_pin(cls):
+        """A free PIN, drawn uniformly and checked against the ones in
+        use. With a handful of referees against 100k codes a collision is
+        rare, but "rare" on competition morning still means an operator
+        staring at an error, so retry instead of hoping."""
+        span = 10 ** cls.PIN_LENGTH
+        for _attempt in range(50):
+            candidate = f'{secrets.randbelow(span):0{cls.PIN_LENGTH}d}'
+            if not cls.objects.filter(pin=candidate).exists():
+                return candidate
+        raise RuntimeError('Nu s-a putut genera un PIN liber pentru arbitru.')
+
     def save(self, *args, **kwargs):
         if not self.token:
             self.token = secrets.token_urlsafe(32)
+        if not self.pin:
+            self.pin = self.generate_pin()
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"QR login for referee {self.referee_id} on event {self.event_id}"
+
+
+class RefereePinLoginAttempt(models.Model):
+    """One row per *failed* PIN login, so the endpoint can lock out a
+    brute-force attempt. A five-digit PIN is 100,000 codes; with a few
+    dozen referees holding valid ones, an unthrottled script on the venue
+    WiFi would land on somebody's within minutes. Counting failures per
+    source address turns that into hours of very obvious traffic.
+
+    In the database rather than the cache on purpose: nothing configures
+    CACHES here, so Django falls back to per-process local memory, and
+    the venue backend runs several gunicorn workers - the limit would
+    quietly be several times looser than it reads. Successful logins are
+    not recorded; this table only ever holds misses."""
+    ip_address = models.GenericIPAddressField(_('Adresă IP'), db_index=True)
+    pin_tried = models.CharField(_('PIN încercat'), max_length=8, blank=True)
+    created_at = models.DateTimeField(_('Creat la'), auto_now_add=True, db_index=True)
+
+    WINDOW_MINUTES = 10
+    MAX_FAILURES = 10
+
+    class Meta:
+        verbose_name = _('Încercare login PIN arbitru')
+        verbose_name_plural = _('Încercări login PIN arbitru')
+
+    def __str__(self):
+        return f"Failed referee PIN login from {self.ip_address} at {self.created_at}"
 
 
 # DISABLED FEATURES (for future use):

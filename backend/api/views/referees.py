@@ -578,7 +578,11 @@ def referee_qr_login_info(request, event_id, athlete_id):
     silently invalidate a referee who already scanned in this morning."""
     athlete = get_object_or_404(Athlete, pk=athlete_id)
     qr, _ = RefereeQRLogin.objects.get_or_create(event_id=event_id, referee=athlete)
-    return Response({'token': qr.token, 'login_path': f'/qr-login/{qr.token}'})
+    if not qr.pin:
+        # Row predates the PIN column and was never re-saved.
+        qr.pin = RefereeQRLogin.generate_pin()
+        qr.save(update_fields=['pin', 'updated_at'])
+    return Response({'token': qr.token, 'pin': qr.pin, 'login_path': f'/qr-login/{qr.token}'})
 
 
 @api_view(['POST'])
@@ -589,8 +593,9 @@ def referee_qr_login_reset(request, event_id, athlete_id):
     athlete = get_object_or_404(Athlete, pk=athlete_id)
     qr, _ = RefereeQRLogin.objects.get_or_create(event_id=event_id, referee=athlete)
     qr.token = secrets.token_urlsafe(32)
-    qr.save(update_fields=['token', 'updated_at'])
-    return Response({'token': qr.token, 'login_path': f'/qr-login/{qr.token}'})
+    qr.pin = RefereeQRLogin.generate_pin()
+    qr.save(update_fields=['token', 'pin', 'updated_at'])
+    return Response({'token': qr.token, 'pin': qr.pin, 'login_path': f'/qr-login/{qr.token}'})
 
 
 @api_view(['POST'])
@@ -611,6 +616,77 @@ def referee_qr_login_exchange(request):
     refresh = RefreshToken.for_user(user)
     return Response({
         'user': UserSerializer(user).data,
+        'tokens': {'refresh': str(refresh), 'access': str(refresh.access_token)},
+    })
+
+
+def _client_ip(request):
+    """Behind the venue stack there is no proxy in front of Django, so
+    REMOTE_ADDR is the device itself. X-Forwarded-For is honoured only as
+    a fallback and only its first hop, for the cloud deployment."""
+    remote = request.META.get('REMOTE_ADDR')
+    if remote:
+        return remote
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    return forwarded.split(',')[0].strip() or '0.0.0.0'
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def referee_pin_login_exchange(request):
+    """Public: exchange a referee's numeric PIN for a JWT session.
+
+    Same credential as the QR token, in a form a device with a rotary
+    encoder and no keyboard can actually enter (see
+    devices/referee-esp32c3). The PIN is unique across events, so the
+    device sends nothing but the digits - no event to pick, no server-side
+    configuration on it beyond the address.
+
+    Five digits is 100,000 codes, which is only acceptable because this
+    endpoint refuses to be guessed at: after MAX_FAILURES misses from one
+    address inside WINDOW_MINUTES it stops answering, which turns a
+    minutes-long script into hours of traffic that is impossible to miss.
+    A correct PIN is never recorded and never counts against the limit.
+    """
+    pin = str(request.data.get('pin', '')).strip()
+    ip = _client_ip(request)
+    window_start = timezone.now() - timedelta(minutes=RefereePinLoginAttempt.WINDOW_MINUTES)
+
+    recent_failures = RefereePinLoginAttempt.objects.filter(
+        ip_address=ip, created_at__gte=window_start,
+    ).count()
+    if recent_failures >= RefereePinLoginAttempt.MAX_FAILURES:
+        return Response(
+            {'error': 'Prea multe încercări greșite. Așteaptă câteva minute.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    qr = RefereeQRLogin.objects.select_related('referee').filter(pin=pin).first() if pin else None
+    if not qr:
+        RefereePinLoginAttempt.objects.create(ip_address=ip, pin_tried=pin[:8])
+        # Old rows are only ever read through the window above, so clear
+        # them out here rather than adding a scheduled job for it.
+        RefereePinLoginAttempt.objects.filter(
+            created_at__lt=timezone.now() - timedelta(days=1),
+        ).delete()
+        remaining = RefereePinLoginAttempt.MAX_FAILURES - recent_failures - 1
+        return Response(
+            {
+                'error': 'PIN invalid. Cere unui admin PIN-ul tău.',
+                'attempts_left': max(0, remaining),
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # Clean slate on success, so a referee who mistyped a few times isn't
+    # left one fumble away from a lockout for the rest of the window.
+    RefereePinLoginAttempt.objects.filter(ip_address=ip).delete()
+
+    user = _get_or_create_referee_user(qr.referee)
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'user': UserSerializer(user).data,
+        'event_id': qr.event_id,
         'tokens': {'refresh': str(refresh), 'access': str(refresh.access_token)},
     })
 

@@ -155,6 +155,7 @@ urlpatterns = autocomplete_urlpatterns + [
     path('events/<int:event_id>/referees/<int:athlete_id>/qr-login/', views.referee_qr_login_info, name='referee-qr-login-info'),
     path('events/<int:event_id>/referees/<int:athlete_id>/qr-login/reset/', views.referee_qr_login_reset, name='referee-qr-login-reset'),
     path('referee-qr-login/', views.referee_qr_login_exchange, name='referee-qr-login-exchange'),
+    path('referee-pin-login/', views.referee_pin_login_exchange, name='referee-pin-login-exchange'),
 
     # AI chat assistant (admin/coach only - see api/assistant.py)
     path('assistant/chat/', AssistantChatView.as_view(), name='assistant-chat'),
