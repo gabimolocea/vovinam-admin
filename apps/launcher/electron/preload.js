@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('launcher', {
   startLocalSync: (eventId, force = false) => ipcRenderer.invoke('sync:start-local', { eventId, force }),
   syncToCloud: (eventId) => ipcRenderer.invoke('sync:to-cloud', { eventId }),
   verifySync: (eventId) => ipcRenderer.invoke('sync:verify', { eventId }),
+  setActiveEvent: (eventId, eventName) => ipcRenderer.send('session:set-active-event', { eventId, eventName }),
+  listBackups: () => ipcRenderer.invoke('backup:list'),
+  createBackup: (label) => ipcRenderer.invoke('backup:create', { label }),
+  restoreBackup: (filename) => ipcRenderer.invoke('backup:restore', { filename }),
   completeSync: (eventId) => ipcRenderer.invoke('sync:complete', { eventId }),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   setActiveAppUrl: (url) => ipcRenderer.send('app-view:set-active-url', url),
@@ -48,6 +52,11 @@ contextBridge.exposeInMainWorld('launcher', {
     const listener = () => callback();
     ipcRenderer.on('sync-menu:local-to-web', listener);
     return () => ipcRenderer.removeListener('sync-menu:local-to-web', listener);
+  },
+  onSyncMenuBackups: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('sync-menu:backups', listener);
+    return () => ipcRenderer.removeListener('sync-menu:backups', listener);
   },
   onGoBackToPanel: (callback) => {
     const listener = () => callback();

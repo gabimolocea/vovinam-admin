@@ -248,8 +248,42 @@ async function completeSyncOnCloud({ cloudBaseUrl, cloudToken, eventId, onProgre
   report('Sincronizare în cloud completă.');
 }
 
+// ── Manual file handoff ──────────────────────────────
+// The automated sync needs to reach cloud from the venue. A sports hall
+// with no usable internet is a normal situation, and then the only way
+// results ever leave the building is a JSON file on a memory stick,
+// uploaded from somewhere that does have a connection. These are the two
+// halves of that fallback.
+
+function fetchResultsPack({ localBaseUrl, localToken, eventId }) {
+  return apiCall(localBaseUrl, `/api/offline/event-results/?event_id=${eventId}`, { token: localToken });
+}
+
+function fetchEventPack({ cloudBaseUrl, cloudToken, eventId }) {
+  return apiCall(cloudBaseUrl, `/api/offline/event-pack/?event_id=${eventId}`, { token: cloudToken });
+}
+
+// ── Local venue backups ("time travel") ──────────────
+// Snapshots of the venue database, taken automatically every 15 minutes
+// by the backup-scheduler container and on demand here. Restoring is the
+// answer to "something just went very wrong mid-competition".
+
+function listBackups({ localBaseUrl, localToken }) {
+  return apiCall(localBaseUrl, '/api/local-backups/', { token: localToken });
+}
+
+function createBackup({ localBaseUrl, localToken, label = 'manual' }) {
+  return apiCall(localBaseUrl, '/api/local-backups/', { method: 'POST', token: localToken, body: { label } });
+}
+
+function restoreBackup({ localBaseUrl, localToken, filename }) {
+  return apiCall(localBaseUrl, '/api/local-backups/restore/', { method: 'POST', token: localToken, body: { filename } });
+}
+
 module.exports = {
   login, listCompetitionEvents, getOverview,
+  fetchResultsPack, fetchEventPack,
+  listBackups, createBackup, restoreBackup,
   syncEventLocal, syncEventToCloud, completeSyncOnCloud, verifyEventSync,
   inspectLocalEvent,
   diffResultPacks, // exported for testing - pure, no I/O

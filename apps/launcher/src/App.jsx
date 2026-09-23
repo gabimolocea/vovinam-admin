@@ -5,6 +5,7 @@ import EventPickerPage from './pages/EventPickerPage.jsx';
 import SyncLocalPage from './pages/SyncLocalPage.jsx';
 import ControlPanelPage from './pages/ControlPanelPage.jsx';
 import SyncToCloudPage from './pages/SyncToCloudPage.jsx';
+import BackupsPage from './pages/BackupsPage.jsx';
 import AppViewPage from './pages/AppViewPage.jsx';
 
 // A linear flow - no router needed, `screen` is the only navigation
@@ -60,11 +61,26 @@ export default function App() {
         setScreen('sync-cloud');
       }
     });
+    const offBackups = window.launcher.onSyncMenuBackups(() => {
+      if (screen === 'control') {
+        setActiveApp(null);
+        setScreen('backups');
+      }
+    });
     return () => {
       offWebToLocal();
       offLocalToWeb();
+      offBackups();
     };
   }, [screen]);
+
+  // The Sync menu acts on the active event straight from the main process
+  // (exports, verification), so it has to know which one that is - the
+  // sync IPCs can't be relied on, since reconnecting to an event already
+  // running here skips them entirely.
+  useEffect(() => {
+    window.launcher?.setActiveEvent?.(event?.id ?? null, event?.name ?? null);
+  }, [event]);
 
   if (activeApp) {
     return <AppViewPage app={activeApp} onBack={() => setActiveApp(null)} />;
@@ -106,6 +122,8 @@ export default function App() {
           onResyncTriggered={() => setPendingResync(false)}
         />
       )}
+
+      {screen === 'backups' && <BackupsPage onBack={() => setScreen('control')} />}
 
       {screen === 'sync-cloud' && (
         <SyncToCloudPage

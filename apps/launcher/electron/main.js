@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const fs = require('fs');
 const path = require('path');
 
 const { getLanIp } = require('./network');
@@ -21,6 +22,13 @@ let session = {
   localBaseUrl: null,
   localToken: null,
   lanIp: null,
+  // Which competition the operator is currently working on, so the Sync
+  // menu can act without routing every click through the renderer. Set by
+  // the renderer whenever it picks/resumes an event (see
+  // session:set-active-event) - the sync IPCs can't be relied on for it,
+  // since reconnecting to an event already running here skips them.
+  eventId: null,
+  eventName: null,
 };
 
 let mainWindow;
@@ -190,6 +198,64 @@ function buildMenu() {
           label: 'Local → Web (trimite rezultate)',
           accelerator: 'CmdOrCtrl+Shift+U',
           click: () => sendToWindow('sync-menu:local-to-web'),
+        },
+        {
+          label: 'Verifică ce e în cloud',
+          accelerator: 'CmdOrCtrl+Shift+V',
+          click: () => runMenuTask('Verificare', async () => {
+            if (!session.eventId) throw new Error('Niciun eveniment selectat.');
+            const report = await cloudSync.verifyEventSync({
+              cloudBaseUrl: session.cloudBaseUrl,
+              cloudToken: session.cloudToken,
+              localBaseUrl: session.localBaseUrl,
+              localToken: session.localToken,
+              eventId: session.eventId,
+            });
+            return report.ok
+              ? { message: 'Cloud-ul are aceleași rezultate ca acest calculator.' }
+              : {
+                message: `${report.differences.length} nepotriviri între acest calculator și cloud.`,
+                detail: report.differences.join('\n'),
+                warning: true,
+              };
+          }),
+        },
+        { type: 'separator' },
+        {
+          // The offline path: when the hall has no usable internet, this
+          // file is the only way results ever leave the building.
+          label: 'Exportă rezultatele (JSON)…',
+          click: () => runMenuTask('Export rezultate', async () => {
+            const { saved, filePath } = await saveJsonPack({ kind: 'results' });
+            return saved
+              ? { message: 'Rezultatele au fost salvate.', detail: `${filePath}\n\nÎncarcă fișierul în cloud din Sync Center sau din pagina evenimentului în Django admin.` }
+              : null;
+          }),
+        },
+        {
+          label: 'Exportă event pack din cloud (JSON)…',
+          click: () => runMenuTask('Export event pack', async () => {
+            const { saved, filePath } = await saveJsonPack({ kind: 'pack' });
+            return saved
+              ? { message: 'Event pack-ul a fost salvat.', detail: `${filePath}\n\nÎl poți importa pe serverul local din Sync Center.` }
+              : null;
+          }),
+        },
+        { type: 'separator' },
+        {
+          label: 'Backup acum',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => runMenuTask('Backup', async () => {
+            if (!session.localBaseUrl || !session.localToken) throw new Error('Stiva locală nu este pornită.');
+            const backup = await cloudSync.createBackup({
+              localBaseUrl: session.localBaseUrl, localToken: session.localToken, label: 'manual',
+            });
+            return { message: 'Backup creat.', detail: backup?.filename || '' };
+          }),
+        },
+        {
+          label: 'Backup-uri și restaurare…',
+          click: () => sendToWindow('sync-menu:backups'),
         },
       ],
     },
@@ -393,6 +459,91 @@ ipcMain.handle('sync:to-cloud', async (_event, { eventId }) => {
     eventId,
     onProgress: (message) => sendToWindow('sync:progress', { direction: 'cloud', message }),
   });
+});
+
+// Menu items act on their own rather than routing through the renderer,
+// so they work from any screen - including while an app is open embedded,
+// where the control panel isn't even mounted. Whatever the task returns
+// (or throws) is what the operator sees, so no action can fail silently
+// the way the old fire-and-forget menu clicks did.
+async function runMenuTask(title, task) {
+  if (!mainWindow) return;
+  try {
+    const result = await task();
+    if (!result) return; // task chose to say nothing (e.g. operator cancelled)
+    dialog.showMessageBox(mainWindow, {
+      type: result.warning ? 'warning' : 'info',
+      title,
+      message: result.message,
+      detail: result.detail || undefined,
+      buttons: ['OK'],
+    });
+  } catch (err) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title,
+      message: `${title} nu a reușit.`,
+      detail: err?.message || String(err),
+      buttons: ['OK'],
+    });
+  }
+}
+
+// Writes one of the sync packs to a file the operator picks. This is the
+// no-internet path: when the venue can't reach cloud at all, the JSON
+// goes out on a memory stick and is uploaded from somewhere that can
+// (Sync Center in the web app, or the event's Django admin page).
+async function saveJsonPack({ kind }) {
+  if (!session.eventId) throw new Error('Niciun eveniment selectat.');
+
+  const isResults = kind === 'results';
+  if (isResults && (!session.localBaseUrl || !session.localToken)) {
+    throw new Error('Stiva locală nu este pornită.');
+  }
+  if (!isResults && (!session.cloudBaseUrl || !session.cloudToken)) {
+    throw new Error('Neautentificat în cloud.');
+  }
+
+  const payload = isResults
+    ? await cloudSync.fetchResultsPack({
+      localBaseUrl: session.localBaseUrl, localToken: session.localToken, eventId: session.eventId,
+    })
+    : await cloudSync.fetchEventPack({
+      cloudBaseUrl: session.cloudBaseUrl, cloudToken: session.cloudToken, eventId: session.eventId,
+    });
+
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  const defaultName = `${isResults ? 'rezultate' : 'event-pack'}-${session.eventId}-${stamp}.json`;
+
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: isResults ? 'Salvează rezultatele (JSON)' : 'Salvează event pack-ul (JSON)',
+    defaultPath: path.join(app.getPath('downloads'), defaultName),
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (canceled || !filePath) return { saved: false };
+
+  fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  return { saved: true, filePath };
+}
+
+ipcMain.on('session:set-active-event', (_event, { eventId, eventName } = {}) => {
+  session.eventId = eventId ?? null;
+  session.eventName = eventName ?? null;
+});
+
+ipcMain.handle('backup:list', async () => {
+  if (!session.localBaseUrl || !session.localToken) throw new Error('Stiva locală nu este pornită.');
+  return cloudSync.listBackups({ localBaseUrl: session.localBaseUrl, localToken: session.localToken });
+});
+
+ipcMain.handle('backup:create', async (_event, { label } = {}) => {
+  if (!session.localBaseUrl || !session.localToken) throw new Error('Stiva locală nu este pornită.');
+  return cloudSync.createBackup({ localBaseUrl: session.localBaseUrl, localToken: session.localToken, label });
+});
+
+ipcMain.handle('backup:restore', async (_event, { filename }) => {
+  if (!session.localBaseUrl || !session.localToken) throw new Error('Stiva locală nu este pornită.');
+  return cloudSync.restoreBackup({ localBaseUrl: session.localBaseUrl, localToken: session.localToken, filename });
 });
 
 // Read-only: compares cloud's own results pack against this machine's and
