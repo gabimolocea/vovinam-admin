@@ -59,6 +59,14 @@ function createWindow() {
       webviewTag: true,
     },
   });
+  // Competition day: the operator runs the whole venue from this window,
+  // with an app embedded full-bleed inside it - so open filling the screen
+  // instead of a 1100px box they'd resize by hand every morning. Maximised,
+  // not macOS's real fullscreen: that hides the menu bar, and the Sync and
+  // Backup commands live there. The size above stays as the restore size
+  // for when they un-maximise.
+  mainWindow.maximize();
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
