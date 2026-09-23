@@ -1,4 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import robotoRegularUrl from '../assets/fonts/Roboto-Regular.ttf?url';
+import robotoBoldUrl from '../assets/fonts/Roboto-Bold.ttf?url';
 
 export const DIPLOMA_TEMPLATE_OPTIONS = [
   { value: 'first_place', label: 'Diplomă locul 1' },
@@ -303,11 +306,54 @@ async function loadTemplatePdf(url) {
   return response.arrayBuffer();
 }
 
+// pdf-lib's built-in Helvetica is WinAnsi-encoded, which has no ă, ș or ț -
+// drawing one throws ("WinAnsi cannot encode ...") and the whole diploma
+// fails. That killed every participation diploma outright, because the
+// label we generate ourselves is "DIPLOMĂ PARTICIPARE", and it would have
+// killed any diploma for an athlete, club or group written with proper
+// Romanian spelling. Roboto (Apache-2.0, committed under src/assets/fonts)
+// covers the full Romanian alphabet; it's a neutral grotesque, so diplomas
+// keep looking the way they do today. Subset on embed so we only carry the
+// glyphs actually used instead of ~330KB of font in every PDF.
+let unicodeFontBytesPromise = null;
+
+function loadUnicodeFontBytes() {
+  if (!unicodeFontBytesPromise) {
+    unicodeFontBytesPromise = Promise.all([
+      fetch(robotoRegularUrl).then((response) => response.arrayBuffer()),
+      fetch(robotoBoldUrl).then((response) => response.arrayBuffer()),
+    ]).catch((error) => {
+      // Let the next diploma retry rather than caching the failure forever.
+      unicodeFontBytesPromise = null;
+      throw error;
+    });
+  }
+  return unicodeFontBytesPromise;
+}
+
+async function embedDiplomaFonts(pdfDoc) {
+  try {
+    const [regularBytes, boldBytes] = await loadUnicodeFontBytes();
+    pdfDoc.registerFontkit(fontkit);
+    return {
+      fontRegular: await pdfDoc.embedFont(regularBytes, { subset: true }),
+      fontBold: await pdfDoc.embedFont(boldBytes, { subset: true }),
+    };
+  } catch (error) {
+    // Worst case (font asset missing from the build), fall back to the old
+    // behaviour: plain-ASCII diplomas still come out, diacritics still fail.
+    console.error('Nu s-a putut încărca fontul Unicode pentru diplome:', error);
+    return {
+      fontRegular: await pdfDoc.embedFont(StandardFonts.Helvetica),
+      fontBold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+    };
+  }
+}
+
 async function renderDiplomaPdfBytes({ template, values }) {
   const existingPdfBytes = await loadTemplatePdf(template.pdf_url);
   const pdfDoc = await PDFDocument.load(existingPdfBytes);
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const { fontRegular, fontBold } = await embedDiplomaFonts(pdfDoc);
   const pages = pdfDoc.getPages();
   const firstPage = pages[0];
   const { width: pageWidth, height: pageHeight } = firstPage.getSize();
@@ -346,16 +392,33 @@ async function renderDiplomaPdfBytes({ template, values }) {
   return pdfDoc.save();
 }
 
-function openPdfBytesInBrowser(outputBytes, previewWindow) {
+function openPdfBytesInBrowser(outputBytes, previewWindow, fileName) {
   const blob = new Blob([outputBytes], { type: 'application/pdf' });
   const objectUrl = URL.createObjectURL(blob);
 
-  if (previewWindow && !previewWindow.closed) {
-    previewWindow.location.href = objectUrl;
-    previewWindow.focus?.();
-  } else if (typeof window !== 'undefined') {
-    const fallbackWindow = window.open(objectUrl, '_blank');
-    fallbackWindow?.focus?.();
+  const preview = previewWindow && !previewWindow.closed ? previewWindow : null;
+  if (preview) {
+    preview.location.href = objectUrl;
+    preview.focus?.();
+  } else {
+    const fallbackWindow = typeof window !== 'undefined' ? window.open(objectUrl, '_blank') : null;
+    if (fallbackWindow) {
+      fallbackWindow.focus?.();
+    } else {
+      // Nowhere to preview it: the launcher runs these apps in an embedded
+      // webview, where a new window is refused outright and window.open
+      // just returns null (a browser popup blocker does the same). Both
+      // paths above used to be window.open, so the diploma was rendered
+      // and then silently dropped - pressing the button appeared to do
+      // nothing at all. Hand the file over instead, which also happens to
+      // be what you want when you're about to print a stack of them.
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `${fileName || 'diploma'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
   }
 
   setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
@@ -363,7 +426,7 @@ function openPdfBytesInBrowser(outputBytes, previewWindow) {
 
 export async function generateDiplomaPdf({ template, values, fileName, previewWindow }) {
   const outputBytes = await renderDiplomaPdfBytes({ template, values, fileName });
-  openPdfBytesInBrowser(outputBytes, previewWindow);
+  openPdfBytesInBrowser(outputBytes, previewWindow, fileName);
 }
 
 export async function generateCombinedDiplomaPdf(items, previewWindow) {
@@ -381,5 +444,5 @@ export async function generateCombinedDiplomaPdf(items, previewWindow) {
   }
 
   const outputBytes = await mergedPdf.save();
-  openPdfBytesInBrowser(outputBytes, previewWindow);
+  openPdfBytesInBrowser(outputBytes, previewWindow, 'diplome');
 }
