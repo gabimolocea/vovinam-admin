@@ -28,6 +28,8 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
+#include "frvv_logo.h"
+
 // ─────────────────────────── CONFIGURARE ───────────────────────────
 
 const char* WIFI_SSID = "Zignative2";
@@ -57,7 +59,15 @@ const char* TZ_INFO    = "EET-2EEST,M3.5.0/3,M10.5.0/4";
 // WiFi si acelasi server - doua secunde sunt destul de prompte pentru un
 // om care tocmai a intrat pe saltea.
 const unsigned long POLL_MS         = 1000;
-const unsigned long PRESENCE_MS     = 20000;
+// Serverul considera un arbitru conectat daca a semnalat in ultimele 15
+// secunde (vezi referee_presence_list). La 20 de secunde intre semnale,
+// arbitrul aparea permanent rosu in admin desi era pe dispozitiv - deci
+// intervalul trebuie sa stea comod sub fereastra, nu langa ea.
+const unsigned long PRESENCE_MS     = 6000;
+// Cate categorii anuntam cand stam in asteptare. Un arbitru de sala e
+// alocat la cateva, nu la zeci; plafonul e ca sa nu ajunga un semnal de
+// prezenta o rafala de cereri.
+const int PRESENCE_MAX_CATEGORIES   = 6;
 const unsigned long HTTP_TIMEOUT_MS = 10000;
 const int           HTTP_ATTEMPTS     = 3;
 // Interogarea mesei centrale merge pe un timeout scurt: e o cerere mica,
@@ -70,7 +80,10 @@ const int MAX_SCORE = 100;
 
 // Se vede pe ecranul de pornire. Singurul mod sigur de a sti, din sala,
 // daca placa chiar are versiunea pe care credem ca am incarcat-o.
-const char* FW_VERSION = "v14";
+const int   FW_VERSION_NUMBER = 23;
+// Se vede pe ecranul de pornire. Cand ai pe masa cinci dispozitive
+// incarcate in zile diferite, data spune mai mult decat numarul.
+const char* FW_UPDATED = "24.09.2026";
 
 // ───────────────────────────── HARDWARE ─────────────────────────────
 
@@ -93,6 +106,10 @@ const char* FW_VERSION = "v14";
 #define ORANGE    0xFD20
 #define DARKGRAY  0x2104
 #define LIGHTGRAY 0x8410
+// Culorile federatiei, aceleasi ca in aplicatii (navy #172642, auriu
+// #edb654), convertite in RGB565.
+#define NAVY      0x1128
+#define GOLD      0xEDAA
 
 Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, -1, TFT_SCLK, TFT_MOSI, -1);
 Arduino_GFX *gfx = new Arduino_ST7789(bus, TFT_RST, 0, true, 240, 240);
@@ -135,12 +152,20 @@ char liveFieldName[18]   = "";
 char liveRefPosition[4]  = "";
 bool liveIsTeam          = false;
 int  mySubmittedScore    = -1;   // nota mea pentru cine e acum, -1 = niciuna
+bool liveRevealed        = false; // masa centrala a dezvaluit scorurile
+
+// Ce s-a ales de nota mea, dupa dezvaluire. Serverul decide: prin API un
+// arbitru nu vede notele colegilor pana la dezvaluire, deci nu poate
+// calcula singur care a cazut ca extrema.
+bool revealKnown   = false;
+char revealMark[10] = "";        // low / high / counted
+int  revealTotal   = 0;
 unsigned long liveUpdatedAt = 0;  // cat de recenta e sesiunea aleasa
 
 // Ultimele note date de mine in categoria curenta, cea mai recenta prima.
 // Un arbitru nu noteaza in gol: se raporteaza la ce a dat inainte in
 // aceeasi proba, si pana acum trebuia sa tina minte.
-#define MAX_HISTORY 4
+#define MAX_HISTORY 9
 struct HistoryRow { char name[14]; int score; };
 HistoryRow history[MAX_HISTORY];
 int historyCount = 0;
@@ -470,7 +495,7 @@ bool locateServer() {
 
   if (!API_MDNS_NAME || !API_MDNS_NAME[0]) return false;
 
-  setStatus("CAUT SERVERUL", String(API_HOST) + " nu raspunde, caut dupa nume...", false);
+  drawSplash(75, "Caut serverul dupa nume...");
   if (!MDNS.begin("arbitru")) return false;
 
   IPAddress found = MDNS.queryHost(API_MDNS_NAME, 4000);
@@ -592,6 +617,15 @@ const char* myPositionIn(int categoryId) {
   return "";
 }
 
+// DRF serializeaza zecimalele ca text: scorul vine "88.00", nu 88. Citit
+// ca numar, ArduinoJson nu converteste implicit si intoarce valoarea
+// implicita - adica 0. De aici veneau notele de 0 dupa reconectare si
+// istoricul plin de zerouri.
+int scoreFromJson(JsonVariantConst value) {
+  if (value.is<const char*>()) return (int)lroundf(atof(value.as<const char*>()));
+  return (int)lroundf(value.as<float>());
+}
+
 // Notele mele din categoria curenta: cea pentru sportivul de pe saltea
 // (ca sa stiu daca am notat deja) si ultimele cateva, pentru istoric.
 void apiLoadMyScores(int categoryId, int athleteId) {
@@ -610,10 +644,17 @@ void apiLoadMyScores(int categoryId, int athleteId) {
 
   for (JsonObject item : res.as<JsonArray>()) {
     int id = item["athlete"] | 0;
-    int score = (int)roundf(item["score"] | 0.0f);
+    int score = scoreFromJson(item["score"]);
     if (id && id == athleteId) mySubmittedScore = score;
 
-    if (historyCount < MAX_HISTORY) {
+    {
+      // Lista vine de la server in ordinea inserarii, deci ultimele sunt
+      // cele recente. Cand se umple, impingem la stanga si pastram coada
+      // - altfel istoricul ar ingheta pe primii notati din proba.
+      if (historyCount == MAX_HISTORY) {
+        for (int k = 1; k < MAX_HISTORY; k++) history[k - 1] = history[k];
+        historyCount = MAX_HISTORY - 1;
+      }
       // Doar numele de familie, si scurtat: pe 240px nu incape mai mult,
       // iar arbitrul stie pe cine a notat acum doua minute.
       char full[40];
@@ -623,6 +664,36 @@ void apiLoadMyScores(int categoryId, int athleteId) {
               sizeof(history[historyCount].name));
       history[historyCount].score = score;
       historyCount++;
+    }
+  }
+}
+
+// Ce s-a ales de nota mea dupa dezvaluire: a intrat in total sau a fost
+// taiata ca extrema. Serverul raspunde doar cat timp masa centrala chiar
+// e pe "scoruri dezvaluite" - altfel intoarce revealed:false si nu avem
+// ce afisa.
+void apiLoadReveal(int categoryId) {
+  JsonDocument filter;
+  filter["revealed"] = true;
+  filter["total"]    = true;
+  JsonObject row = filter["scores"].add<JsonObject>();
+  row["mine"]  = true;
+  row["mark"]  = true;
+  row["score"] = true;
+
+  JsonDocument res;
+  if (apiRequestFast("GET", String("/category-referee-score/reveal/?category=") + categoryId, res, &filter) != 200) {
+    return;
+  }
+  if (!(res["revealed"] | false)) return;
+
+  revealTotal = (int)lroundf(res["total"] | 0.0f);
+  for (JsonObject item : res["scores"].as<JsonArray>()) {
+    if (item["mine"] | false) {
+      strlcpy(revealMark, item["mark"] | "counted", sizeof(revealMark));
+      mySubmittedScore = scoreFromJson(item["score"]);
+      revealKnown = true;
+      return;
     }
   }
 }
@@ -653,7 +724,7 @@ bool pollMonitor() {
   }
 
   int  foundCategory = 0, foundAthlete = 0, foundScoreId = 0;
-  bool foundTeam = false;
+  bool foundTeam = false, foundRevealed = false;
   const char* foundCategoryName = "";
   const char* foundName = "";
   const char* foundField = "";
@@ -675,6 +746,7 @@ bool pollMonitor() {
     bestStamp = stamp;
 
     foundCategory     = categoryId;
+    foundRevealed     = (strcmp(st, "scores_revealed") == 0);
     foundCategoryName = item["current_category_name"] | "";
     foundField        = item["field_name"] | "";
     foundScoreId      = item["current_athlete_score_id"] | 0;
@@ -697,6 +769,10 @@ bool pollMonitor() {
   liveAthleteId      = foundAthlete;
   liveAthleteScoreId = foundScoreId;
   liveIsTeam         = foundTeam;
+  if (foundRevealed != liveRevealed) {
+    liveRevealed = foundRevealed;
+    revealKnown = false;        // stare noua, cerem din nou de la server
+  }
   toAsciiName(foundCategoryName, liveCategoryName,   sizeof(liveCategoryName));
   if (foundTeam) toAsciiName(foundName, liveCompetitorName, sizeof(liveCompetitorName));
   else           toSurnameFirst(foundName, liveCompetitorName, sizeof(liveCompetitorName));
@@ -711,11 +787,21 @@ bool pollMonitor() {
   strlcpy(liveRefPosition, myPositionIn(foundCategory), sizeof(liveRefPosition));
 
   if (changed) {
-    // Sportiv nou pe saltea: pornim de la nota deja trimisa daca exista
-    // (o corectura e mai des o ajustare mica), altfel de la maxim.
     apiLoadMyScores(liveCategoryId, liveAthleteId);
-    draftScore = (mySubmittedScore >= 0) ? mySubmittedScore : MAX_SCORE;
-    submittedShown = false;   // sportiv nou, confirmarea celui dinainte nu mai are ce cauta
+
+    if (mySubmittedScore >= 0) {
+      // Am notat deja acest concurent - fie acum un minut, fie inainte de
+      // o deconectare. Nota ramane blocata: starea vine de la server, nu
+      // din memoria dispozitivului, altfel o repornire ar redeschide o
+      // nota deja data.
+      submittedScore = mySubmittedScore;
+      submittedShown = true;
+    } else {
+      submittedShown = false;
+      draftScore = MAX_SCORE;
+    }
+    revealKnown = false;
+    revealMark[0] = '\0';
   }
   return changed;
 }
@@ -729,7 +815,9 @@ void apiPingPresence(int categoryId) {
   serializeJson(body, payload);
 
   JsonDocument res;
-  apiRequest("POST", "/referee-presence/", payload, res, nullptr);
+  httpTimeoutMs = POLL_TIMEOUT_MS;
+  apiRequestOnce("POST", "/referee-presence/", payload, res, nullptr);
+  httpTimeoutMs = HTTP_TIMEOUT_MS;
 }
 
 // Acelasi apel pe care il face butonul de trimitere din aplicatia web.
@@ -806,6 +894,41 @@ void drawSignalBars(int x, int y) {
   }
 }
 
+// Scrie centrat pe latimea ecranului. Fontul are 6px pe caracter la
+// dimensiunea 1, si se scaleaza liniar.
+void printCentered(const char* text, int y, int size, uint16_t color) {
+  gfx->setTextSize(size);
+  gfx->setTextColor(color);
+  int w = strlen(text) * 6 * size;
+  gfx->setCursor((240 - w) / 2, y);
+  gfx->print(text);
+}
+
+// Ecranul de pornire. Pana acum, la alimentare aparea un ecran negru cu
+// un rand de text - arata a placa de test, nu a aparat de concurs. Si,
+// mai practic: fara o bara care avanseaza, arbitrul nu stie daca placa
+// lucreaza sau s-a blocat, iar conectarea la WiFi poate dura secunde bune.
+void drawSplash(int percent, const char* step) {
+  gfx->fillScreen(NAVY);
+
+  // Sigla e deja compusa peste acelasi navy, deci se aseaza fara contur.
+  gfx->draw16bitRGBBitmap((240 - FRVV_LOGO_W) / 2, 8, FRVV_LOGO, FRVV_LOGO_W, FRVV_LOGO_H);
+
+  printCentered("APLICATIE ARBITRI", 138, 2, GOLD);
+
+  String version = String("Versiunea ") + FW_VERSION_NUMBER + "  -  " + FW_UPDATED;
+  printCentered(version.c_str(), 160, 1, LIGHTGRAY);
+
+  // Bara de progres: fara ea, o conectare la WiFi de cateva secunde pare
+  // un aparat blocat.
+  const int barX = 30, barY = 180, barW = 180, barH = 12;
+  gfx->drawRect(barX, barY, barW, barH, LIGHTGRAY);
+  int fill = (barW - 4) * percent / 100;
+  if (fill > 0) gfx->fillRect(barX + 2, barY + 2, fill, barH - 4, GOLD);
+
+  if (step && step[0]) printCentered(step, 204, 1, WHITE);
+}
+
 void drawTopBar() {
   gfx->fillRect(0, 0, 240, 25, DARKGRAY);
   gfx->drawFastHLine(0, 25, 240, LIGHTGRAY);
@@ -880,7 +1003,8 @@ void drawWifiDiagScreen() {
   gfx->setTextSize(1);
   gfx->setTextColor(scanFoundOurs ? GREEN : RED);
   gfx->setCursor(150, 36);
-  gfx->print(FW_VERSION);
+  gfx->print("v");
+  gfx->print(FW_VERSION_NUMBER);
   gfx->print(scanFoundOurs ? " gasit" : " negasit");
 
   gfx->setTextColor(YELLOW);
@@ -1004,10 +1128,51 @@ void drawScoreScreen() {
     gfx->setCursor(30, 88);
     gfx->print("TRIMIS");
 
+    bool cut = revealKnown &&
+               ((strcmp(revealMark, "low") == 0) || (strcmp(revealMark, "high") == 0));
+
+    // Nota, la dimensiunea 6: fiecare caracter are 36px latime si 48
+    // inaltime. Le calculam ca sa putem trage linia exact peste cifre,
+    // oricate ar fi.
+    int digits   = (submittedScore >= 100) ? 3 : (submittedScore >= 10 ? 2 : 1);
+    int charW    = 36;
+    int scoreX   = (submittedScore == MAX_SCORE) ? 60 : 78;
+    int scoreY   = 142;
+    int scoreW   = digits * charW - 6;   // ultima coloana a fontului e spatiu
+    int scoreH   = 48;
+
     gfx->setTextSize(6);
     gfx->setTextColor(WHITE);
-    gfx->setCursor(submittedScore == MAX_SCORE ? 60 : 78, 142);
+    gfx->setCursor(scoreX, scoreY);
     gfx->print(submittedScore);
+
+    // Taiata inseamna taiata: o linie rosie peste nota spune asta dintr-o
+    // privire, de la distanta, fara sa fie citita. Groasa de trei pixeli,
+    // ca sa se vada peste cifre de 48px.
+    if (cut) {
+      for (int i = -1; i <= 1; i++) {
+        gfx->drawLine(scoreX - 8, scoreY + scoreH + 6 + i,
+                      scoreX + scoreW + 8, scoreY - 6 + i, RED);
+      }
+    }
+
+    // Dupa dezvaluire, arbitrul afla ce s-a ales de nota lui. Cea mai
+    // mica si cea mai mare cad din total; e diferenta dintre a fi contat
+    // si a nu fi contat, si pana acum nu o afla niciodata.
+    if (revealKnown) {
+      gfx->setTextSize(2);
+      gfx->setTextColor(cut ? RED : GREEN);
+      gfx->setCursor(8, 200);
+      if (cut) gfx->print(strcmp(revealMark, "low") == 0 ? "cea mai mica" : "cea mai mare");
+      else     gfx->print("A CONTAT");
+
+      gfx->setTextSize(1);
+      gfx->setTextColor(LIGHTGRAY);
+      gfx->setCursor(8, 228);
+      gfx->print("Total sportiv: ");
+      gfx->print(revealTotal);
+      return;
+    }
 
     gfx->setTextSize(1);
     gfx->setTextColor(DARKGRAY);
@@ -1019,30 +1184,43 @@ void drawScoreScreen() {
   // Istoricul notelor mele din proba asta, sus, peste tot restul. Un
   // arbitru nu noteaza in gol: se raporteaza la ce a dat inainte in
   // aceeasi categorie, si pana acum trebuia sa tina minte singur.
+  // Se aseaza pe mai multe randuri, cate incap: un singur rand tinea trei
+  // nume si restul probei ramanea nevazuta.
   gfx->setTextSize(1);
+  int historyBottom = 42;
   if (historyCount == 0) {
     gfx->setTextColor(DARKGRAY);
-    gfx->setCursor(8, 33);
+    gfx->setCursor(8, 31);
     gfx->print("Primul notat din aceasta proba");
   } else {
-    int x = 8;
-    for (int i = 0; i < historyCount && x < 230; i++) {
+    int x = 8, y = 31;
+    for (int i = 0; i < historyCount; i++) {
+      int nameW  = strlen(history[i].name) * 6;
+      int scoreW = (history[i].score >= 100 ? 3 : 2) * 6;
+      int entryW = nameW + 3 + scoreW + 10;
+
+      if (x + entryW > 236) {      // nu mai incape pe randul asta
+        x = 8;
+        y += 12;
+        if (y > 55) break;         // trei randuri sunt destule
+      }
+
       gfx->setTextColor(LIGHTGRAY);
-      gfx->setCursor(x, 33);
+      gfx->setCursor(x, y);
       gfx->print(history[i].name);
-      x += strlen(history[i].name) * 6 + 3;
       gfx->setTextColor(WHITE);
-      gfx->setCursor(x, 33);
+      gfx->setCursor(x + nameW + 3, y);
       gfx->print(history[i].score);
-      x += (history[i].score >= 100 ? 3 : 2) * 6 + 8;
+      x += entryW;
     }
+    historyBottom = y + 12;
   }
-  gfx->drawFastHLine(0, 45, 240, DARKGRAY);
+  gfx->drawFastHLine(0, historyBottom, 240, DARKGRAY);
 
   // Cine e pe saltea - partea care conteaza, cat de mare incape.
   gfx->setTextSize(2);
   gfx->setTextColor(liveIsTeam ? YELLOW : WHITE);
-  int afterName = drawWrapped(8, 54, 20, 19, liveCompetitorName);
+  int afterName = drawWrapped(8, historyBottom + 9, 20, 19, liveCompetitorName);
 
   if (mySubmittedScore >= 0) {
     gfx->setTextSize(1);
@@ -1055,18 +1233,8 @@ void drawScoreScreen() {
 
   gfx->setTextSize(6);
   gfx->setTextColor(draftScore >= 90 ? GREEN : (draftScore >= 70 ? YELLOW : ORANGE));
-  gfx->setCursor(draftScore == MAX_SCORE ? 60 : 78, 130);
+  gfx->setCursor(draftScore == MAX_SCORE ? 60 : 78, 168);
   gfx->print(draftScore);
-
-  gfx->drawRect(20, 194, 200, 10, DARKGRAY);
-  gfx->fillRect(21, 195, (198 * draftScore) / MAX_SCORE, 8, BLUE);
-
-  gfx->setTextSize(1);
-  gfx->setTextColor(LIGHTGRAY);
-  gfx->setCursor(8, 216);
-  gfx->println("Roteste: nota");
-  gfx->setCursor(8, 230);
-  gfx->println("Apasa: trimite   Lung: iesire");
 }
 
 void redraw() {
@@ -1164,6 +1332,13 @@ bool attemptConnect(bool reducedPower, unsigned long timeoutMs) {
   // "WPA/WPA2" pica atunci fara sa spuna de ce.
   WiFi.setMinSecurity(WIFI_AUTH_WPA_PSK);
 
+  // Latime de banda 20MHz si ratele lente din 802.11b activate: ambele
+  // fac legatura mai rezistenta la distanta, cu pretul vitezei maxime -
+  // care aici nu conteaza, cererile sunt de cateva sute de octeti.
+  esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
+  esp_wifi_set_protocol(WIFI_IF_STA,
+                        WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+
   if (reducedPower) WiFi.setTxPower(WIFI_POWER_8_5dBm);
 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -1178,7 +1353,7 @@ bool attemptConnect(bool reducedPower, unsigned long timeoutMs) {
 bool connectWifi() {
   WiFi.onEvent(onWifiEvent);
 
-  setStatus(String("CONECTARE ") + FW_VERSION, String("WiFi: ") + WIFI_SSID, false);
+  drawSplash(20, (String("Conectare la ") + WIFI_SSID).c_str());
   if (attemptConnect(false, 15000)) {
     configTzTime(TZ_INFO, NTP_SERVER);
     return true;
@@ -1186,7 +1361,7 @@ bool connectWifi() {
 
   // A doua incercare cu emisie redusa: daca asta trece iar prima nu,
   // problema e alimentarea placii, nu reteaua.
-  setStatus("REINCERC", "Cu putere de emisie redusa...", false);
+  drawSplash(35, "Reincerc, emisie redusa...");
   if (attemptConnect(true, 15000)) {
     configTzTime(TZ_INFO, NTP_SERVER);
     Serial.println("Conectat abia cu putere redusa - verifica alimentarea placii.");
@@ -1195,7 +1370,7 @@ bool connectWifi() {
 
   // A esuat de doua ori: nu spune doar "fara WiFi", arata de ce.
   wl_status_t st = WiFi.status();
-  setStatus("SE VERIFICA", "Caut retelele din jur...", false);
+  drawSplash(35, "Caut retelele din jur...");
   scanWifi();
 
   // Motivul de la radio bate orice deductie de-a noastra, cand exista.
@@ -1227,9 +1402,32 @@ void askForPin() {
   for (int i = 0; i < PIN_DIGITS; i++) pinDigits[i] = '0';
   pinDigits[PIN_DIGITS] = '\0';
   pinCursor = 0;
+
+  // Tot ce tine de arbitrul anterior pleaca odata cu el. Altfel bara de
+  // sus ramane cu numele si cu terenul cuiva care tocmai a predat
+  // dispozitivul - iar urmatorul crede ca e deja conectat.
   accessToken = "";
   refereeName = "";
+  refereeShort = "";
   myAthleteId = 0;
+  myCategoryCount = 0;
+  activeEventId = 0;
+
+  liveCategoryId = 0;
+  liveAthleteId = 0;
+  liveAthleteScoreId = 0;
+  liveCategoryName[0] = '\0';
+  liveCompetitorName[0] = '\0';
+  liveFieldName[0] = '\0';
+  liveRefPosition[0] = '\0';
+  liveIsTeam = false;
+  liveRevealed = false;
+  revealKnown = false;
+  revealMark[0] = '\0';
+  mySubmittedScore = -1;
+  historyCount = 0;
+  submittedShown = false;
+
   screen = SCREEN_PIN;
   redraw();
 }
@@ -1240,7 +1438,7 @@ void askForPin() {
 void startSession() {
   if (!connectWifi()) return;
 
-  setStatus("SE CAUTA", "Serverul din sala...", false);
+  drawSplash(65, "Caut serverul din sala...");
   if (!locateServer()) {
     setStatus(
       "FARA SERVER",
@@ -1250,6 +1448,8 @@ void startSession() {
     return;
   }
 
+  drawSplash(100, "Gata");
+  delay(400);
   askForPin();
 }
 
@@ -1310,7 +1510,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENCODER_SW),  onButtonChange, CHANGE);
 
   gfx->begin();
-  gfx->fillScreen(BLACK);
+  drawSplash(5, "Pornire...");
 
   startSession();
 }
@@ -1334,6 +1534,11 @@ void loop() {
     lastPoll = millis();
     bool changed = pollMonitor();
 
+    if (liveRevealed && !revealKnown && liveCategoryId) {
+      apiLoadReveal(liveCategoryId);
+      if (revealKnown) changed = true;
+    }
+
     Screen want = (liveCategoryId && (liveAthleteId || liveCompetitorName[0]))
                   ? SCREEN_SCORE : SCREEN_STANDBY;
     if (want != screen) {
@@ -1343,9 +1548,21 @@ void loop() {
       redraw();
     }
 
-    if (liveCategoryId && (millis() - lastPresence >= PRESENCE_MS)) {
+  }
+
+  // Prezenta, separat de interogare: un arbitru conectat trebuie sa apara
+  // verde in admin si cat asteapta, nu doar cat e cineva pe saltea. Fara
+  // asta ramanea rosu pana intra primul concurent, adica exact cand
+  // operatorul verifica daca toata lumea e pe pozitie.
+  if (screen == SCREEN_STANDBY || screen == SCREEN_SCORE) {
+    if (millis() - lastPresence >= PRESENCE_MS) {
       lastPresence = millis();
-      apiPingPresence(liveCategoryId);
+      if (liveCategoryId) {
+        apiPingPresence(liveCategoryId);
+      } else {
+        int upTo = myCategoryCount < PRESENCE_MAX_CATEGORIES ? myCategoryCount : PRESENCE_MAX_CATEGORIES;
+        for (int i = 0; i < upTo; i++) apiPingPresence(myCategoryIds[i]);
+      }
     }
   }
 
