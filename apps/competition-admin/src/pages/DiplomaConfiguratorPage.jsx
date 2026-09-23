@@ -5,8 +5,8 @@ import {
   Button, Card, Checkbox, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select,
   SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner,
 } from '../components/ui';
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
-import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import {
   createDiplomaPlacement,
   DIPLOMA_CATEGORY_SCOPE_OPTIONS,
@@ -35,7 +35,44 @@ function getPdfFileName(pdfUrl) {
   }
 }
 
+// The *legacy* build of pdf.js, deliberately - not the default one.
+// pdf.js 6 targets very recent browsers: it calls Uint8Array.toHex()
+// (Chromium 140+) on every document to build its fingerprint, and
+// Map.getOrInsertComputed() (newer still) while rendering. The launcher
+// embeds these apps in an Electron <webview> running Chromium 130, so the
+// default build could never render a diploma there - it failed on the
+// first of those, then the next. The legacy build is the same version with
+// core-js polyfills bundled in, which is pdf.js's own answer for older
+// browsers, and it covers the referee tablets and the display too.
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+
+function describePdfRenderError(error, pdfUrl) {
+  const where = pdfUrl ? ` (${pdfUrl})` : '';
+
+  // axios failures: the template never arrived.
+  const status = error?.response?.status;
+  if (status) {
+    return `Șablonul nu a putut fi descărcat${where}: eroare ${status} de la server.`;
+  }
+  if (error?.request && !error?.response) {
+    return `Șablonul nu a putut fi descărcat${where}: serverul local nu a răspuns (rețea sau CORS).`;
+  }
+
+  const message = String(error?.message || error || '').trim();
+
+  // pdf.js can't start its worker - the usual cause is the worker file
+  // being served with a MIME type the browser refuses for a module worker.
+  if (/worker/i.test(message)) {
+    return `PDF.js nu a putut porni worker-ul: ${message}`;
+  }
+  if (/InvalidPDF|structure/i.test(message)) {
+    return `Fișierul șablon nu este un PDF valid${where}.`;
+  }
+
+  return message
+    ? `PDF-ul nu a putut fi randat în canvas: ${message}`
+    : 'PDF-ul nu a putut fi randat în canvas.';
+}
 
 export default function DiplomaConfiguratorPage() {
   const { id: eventId } = useParams();
@@ -143,7 +180,14 @@ export default function DiplomaConfiguratorPage() {
         }
       } catch (error) {
         if (!cancelled) {
-          setPdfRenderError('PDF-ul nu a putut fi randat în canvas.');
+          // A bare "nu a putut fi randat" says nothing about which half
+          // failed - fetching the template over the LAN or pdf.js itself -
+          // and on competition day there's no console to go digging in.
+          // Log one flat string, not the error object: the launcher reads
+          // these through the webview's console-message event, which only
+          // carries text, so an object arrives as a useless "[object Object]".
+          console.error(`Randare PDF șablon eșuată: ${describePdfRenderError(error, selectedTemplate?.pdf_url)} | ${error?.name || 'Error'}: ${error?.message || error} | ${error?.stack || ''}`);
+          setPdfRenderError(describePdfRenderError(error, selectedTemplate?.pdf_url));
         }
       }
     };
