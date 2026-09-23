@@ -5,22 +5,6 @@ import { getSyncStatusMeta } from '@shared/lib/syncStatus';
 import { Badge, Button, Card, Spinner, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 import { Plus } from 'lucide-react';
 
-function formatDate(value) {
-  if (!value) return '—';
-  const normalized = String(value).split('T')[0];
-  const parsed = new Date(normalized);
-  if (Number.isNaN(parsed.getTime())) return normalized;
-  return parsed.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function getCompetitionStatus(ev, today) {
-  const endDate = ev.end_date || ev.start_date || '';
-  if (endDate && endDate < today) {
-    return { label: 'Încheiată', className: 'border-transparent bg-secondary/60 text-secondary-foreground' };
-  }
-  return { label: 'Activă / viitoare', className: 'border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' };
-}
-
 export default function CompetitionList() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,15 +77,6 @@ export default function CompetitionList() {
     return (b.start_date || '').localeCompare(a.start_date || '');
   });
 
-  const renderPeriod = (ev) => (
-    <>
-      {formatDate(ev.start_date)}
-      {ev.end_date && ev.end_date !== ev.start_date ? ` → ${formatDate(ev.end_date)}` : ''}
-    </>
-  );
-
-  const renderLocation = (ev) => ev.city_name || '—';
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-end gap-3">
@@ -117,7 +92,6 @@ export default function CompetitionList() {
 
       <div className="space-y-3 md:hidden">
         {sorted.map((ev) => {
-          const status = getCompetitionStatus(ev, today);
           const syncBadge = getSyncStatusMeta(ev);
           return (
             <Card
@@ -138,19 +112,7 @@ export default function CompetitionList() {
                   <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">{ev.name}</h2>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  <Badge className={status.className}>{status.label}</Badge>
                   <Badge className={syncBadge.className}>{syncBadge.label}</Badge>
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-foreground">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Perioadă</p>
-                  <p className="mt-1 font-medium">{renderPeriod(ev)}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Oraș</p>
-                  <p className="mt-1 font-medium">{renderLocation(ev)}</p>
                 </div>
               </div>
 
@@ -165,17 +127,6 @@ export default function CompetitionList() {
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      navigate(`/competitions/${ev.id}/categories/sync`);
-                    }}
-                  >
-                    Sync
-                  </Button>
                   <Button size="sm" as="span">Deschide</Button>
                 </div>
               </div>
@@ -189,17 +140,13 @@ export default function CompetitionList() {
           <TableHeader>
             <TableRow>
               <TableHead>Competiție</TableHead>
-              <TableHead>Perioadă</TableHead>
-              <TableHead>Oraș</TableHead>
-              <TableHead>Status</TableHead>
               {!isLocalServer && <TableHead>Public</TableHead>}
               <TableHead className="text-right">Acțiune</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {sorted.map((ev) => {
-              const status = getCompetitionStatus(ev, today);
-              const syncBadge = getSyncStatusMeta(ev);
+                  const syncBadge = getSyncStatusMeta(ev);
               return (
                 <TableRow key={ev.id}>
                   <TableCell className="align-top md:min-w-[320px]">
@@ -207,15 +154,6 @@ export default function CompetitionList() {
                     <div className="mt-2">
                       <Badge className={syncBadge.className}>{syncBadge.label}</Badge>
                     </div>
-                  </TableCell>
-                  <TableCell className="align-top text-muted-foreground">
-                    {renderPeriod(ev)}
-                  </TableCell>
-                  <TableCell className="align-top text-muted-foreground">
-                    {renderLocation(ev)}
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <Badge className={status.className}>{status.label}</Badge>
                   </TableCell>
                   {!isLocalServer && (
                     <TableCell className="align-top">
@@ -227,13 +165,6 @@ export default function CompetitionList() {
                   )}
                   <TableCell className="text-right align-top">
                     <div className="flex justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => navigate(`/competitions/${ev.id}/categories/sync`)}
-                      >
-                        Sync
-                      </Button>
                       <Button
                         size="sm"
                         onClick={() => navigate(`/competitions/${ev.id}/categories`)}
