@@ -12,12 +12,6 @@ import {
 } from '../lib/diplomas';
 import { Badge, Button, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 
-const PODIUM_STYLES = {
-  1: 'border-transparent bg-yellow-100 text-yellow-900',
-  2: 'border-transparent bg-gray-100 text-gray-800',
-  3: 'border-transparent bg-amber-100 text-amber-900',
-};
-
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
 function normalizeListPayload(data) {
@@ -228,7 +222,7 @@ export default function ClasamenteLuptaPage() {
                     </TableHead>
                   </TableRow>
                   <TableRow>
-                    <TableHead className="w-[72px] text-center">Loc</TableHead>
+                    <TableHead className="w-[52px] text-center">Loc</TableHead>
                     <TableHead>Sportiv</TableHead>
                     <TableHead className="w-[96px]">Club</TableHead>
                   </TableRow>
@@ -242,9 +236,9 @@ export default function ClasamenteLuptaPage() {
                     return (
                       <TableRow key={`${cat.id}-${place}`}>
                         <TableCell className="text-center align-top">
-                          <Badge className={PODIUM_STYLES[place]}>
-                            {MEDALS[place]} Locul {place}
-                          </Badge>
+                          <span className="text-xl leading-none" role="img" aria-label={`Locul ${place}`} title={`Locul ${place}`}>
+                            {MEDALS[place]}
+                          </span>
                         </TableCell>
                         <TableCell className="text-sm text-foreground">
                           <div className="font-medium">{label}</div>
