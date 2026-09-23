@@ -33,8 +33,21 @@ if settings.DEBUG:
         path('__debug__/', include(debug_toolbar.urls)),
     ] + urlpatterns
 
-# Serve media files in production (WhiteNoise handles static files)
-if not settings.DEBUG:
+# The venue server stores uploads on its own disk and has nothing in front
+# of it to serve them - no nginx, and WhiteNoise only handles static files.
+# django.conf.urls.static.static() can't do it either: it returns an empty
+# list whenever DEBUG is off, so the branch below looked like it served
+# media in production while actually adding no route at all, and every
+# upload 404'd (diploma templates, profile photos, certificates).
+# Cloud is unaffected - it keeps media in object storage, and serving it
+# through Django there would be both slower and needless exposure.
+if not settings.DEBUG and getattr(settings, 'IS_LOCAL_EVENT_SERVER', False):
+    from django.views.static import serve as serve_media
+
+    urlpatterns += [
+        re_path(r'^media/(?P<path>.*)$', serve_media, {'document_root': settings.MEDIA_ROOT}),
+    ]
+elif not settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
     # Development: serve both static and media
