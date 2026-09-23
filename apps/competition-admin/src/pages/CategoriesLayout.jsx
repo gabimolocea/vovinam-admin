@@ -22,7 +22,7 @@ import {
   DialogFooter,
 } from '../components/ui';
 import Logo from '@shared/components/Logo';
-import { enrollmentAPI, teamAPI } from '@shared/lib/api';
+import { enrollmentAPI, systemAPI, teamAPI } from '@shared/lib/api';
 import useCentralizator from '../hooks/useCentralizator';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 import EditLockButton from '../components/EditLockButton';
@@ -54,9 +54,40 @@ export default function CategoriesLayout() {
   const [teamBuilderBusy, setTeamBuilderBusy] = useState(false);
   const isDiplomeRoute = location.pathname.endsWith('/diplome');
 
+  // On the venue server there's nowhere to go "back" to - the competition
+  // list redirects straight back here (CompetitionList.jsx), so the button
+  // would just blink. Cloud keeps it: there the list is a real destination.
+  const [isLocalServer, setIsLocalServer] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await systemAPI.info();
+        if (!cancelled) setIsLocalServer(Boolean(data.is_local_event_server));
+      } catch {
+        if (!cancelled) setIsLocalServer(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Load fields for preview toggles
   useEffect(() => {
     if (eventId) preview.loadFields(eventId);
+  }, [eventId]);
+
+  // Remember which competition this machine is working on, so that landing
+  // on the app's root - via "Înapoi", a reload, or reopening the launcher's
+  // webview - goes straight back here instead of to a list of competitions
+  // (CompetitionList.jsx reads this). The launcher deep-links into the
+  // event it synced, so this gets set on the very first open.
+  useEffect(() => {
+    if (!eventId) return;
+    try {
+      window.localStorage.setItem('lastOpenedEventId', String(eventId));
+    } catch {
+      // Private mode / blocked storage: not remembering is fine.
+    }
   }, [eventId]);
 
   useEffect(() => {
@@ -107,16 +138,20 @@ export default function CategoriesLayout() {
         {!isDiplomeRoute && (
           <div className="flex min-h-[52px] shrink-0 items-center justify-between gap-2 border-b-2 border-sidebar-accent bg-sidebar px-2 py-2 text-sidebar-foreground sm:px-3">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => navigate('/')}
-                className="shrink-0 border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-white/10 hover:text-sidebar-foreground"
-              >
-                ← <span className="hidden sm:inline">Înapoi</span>
-              </Button>
-              <div className="hidden h-5 w-px bg-sidebar-accent/30 sm:block" />
+              {!isLocalServer && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/')}
+                    className="shrink-0 border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-white/10 hover:text-sidebar-foreground"
+                  >
+                    ← <span className="hidden sm:inline">Înapoi</span>
+                  </Button>
+                  <div className="hidden h-5 w-px bg-sidebar-accent/30 sm:block" />
+                </>
+              )}
               <Logo size={28} className="shrink-0 hidden sm:block" />
               <h1 className="truncate text-sm font-black uppercase tracking-wide text-sidebar-accent sm:text-base">
                 {ctx.eventData?.name || `Competiția #${eventId}`}

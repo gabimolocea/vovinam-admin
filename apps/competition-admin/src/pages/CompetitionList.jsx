@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { competitionAPI, systemAPI } from '@shared/lib/api';
 import { getSyncStatusMeta } from '@shared/lib/syncStatus';
 import { Badge, Button, Card, Spinner, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
@@ -22,10 +22,17 @@ export default function CompetitionList() {
         if (!cancelled) setIsLocalServer(Boolean(data.is_local_event_server));
       } catch {
         if (!cancelled) setIsLocalServer(false);
+      } finally {
+        if (!cancelled) setSystemChecked(true);
       }
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // systemAPI.info() hasn't answered yet on the first render, and this list
+  // is the wrong screen to show a venue operator even for a moment - so wait
+  // for both before deciding what to render.
+  const [systemChecked, setSystemChecked] = useState(false);
 
   useEffect(() => {
     competitionAPI.list().then(({ data }) => {
@@ -41,7 +48,24 @@ export default function CompetitionList() {
     });
   };
 
-  if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
+  if (loading || !systemChecked) return <div className="flex justify-center py-20"><Spinner /></div>;
+
+  // A venue server runs exactly one competition, and the operator already
+  // picked it in the launcher - so this list is a list of one thing they
+  // have to click through again. Go straight to it: the one the launcher
+  // opened (remembered by CategoriesLayout), or the only one there is.
+  // Cloud keeps the list, where choosing between competitions is the point.
+  if (isLocalServer && events.length > 0) {
+    let remembered = null;
+    try {
+      remembered = window.localStorage.getItem('lastOpenedEventId');
+    } catch {
+      remembered = null;
+    }
+    const target = events.find((ev) => String(ev.id) === String(remembered))
+      || (events.length === 1 ? events[0] : null);
+    if (target) return <Navigate to={`/competitions/${target.id}/categories`} replace />;
+  }
 
   if (events.length === 0) {
     return (
