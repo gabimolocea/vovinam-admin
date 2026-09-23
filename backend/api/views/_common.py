@@ -47,6 +47,34 @@ def _coach_deadline_locked_response(user, event):
     return None
 
 
+def _local_server_creation_blocked_response(what):
+    """Blocks creating brand-new records on the venue server.
+
+    Primary keys are assigned independently by each database, and the
+    event pack a venue machine runs on only carries the athletes taking
+    part - so anything created here takes an id that on cloud belongs to
+    an unrelated record. import_event_results refuses such a pack (it
+    compares athlete names, see api/sync/import_event_results.py), which
+    means a walk-up registered here would be discovered only at the end
+    of the day, when the results push fails. Better to say so now, while
+    there is still time to add them in cloud and pull them down.
+    """
+    if not getattr(settings, 'IS_LOCAL_EVENT_SERVER', False):
+        return None
+    return Response(
+        {
+            'error': (
+                f'{what} nu se poate face pe serverul din sală, pentru că '
+                'identificatorii creați aici nu ar corespunde cu cei din cloud, iar '
+                'trimiterea rezultatelor ar fi respinsă la final. Adaugă în cloud și '
+                'apoi folosește „Resincronizează din cloud”.'
+            ),
+            'is_local_event_server': True,
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 def _event_operational_lock_response(event):
     # The lock exists to stop the CLOUD instance from accepting operational
     # edits once an event has been exported to a local venue machine - the

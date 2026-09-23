@@ -50,16 +50,18 @@ export default function CompetitionList() {
           <div className="text-4xl mb-3">🏆</div>
           <h2 className="text-base font-semibold text-foreground mb-1">Fără competiții</h2>
           <p className="text-sm text-muted-foreground">Nu există competiții disponibile momentan.</p>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-            <Button onClick={() => navigate('/competitions/new')}>
-              <Plus className="h-4 w-4" />
-              Competiție nouă
-            </Button>
-            <Button onClick={() => navigate('/athletes/new')}>
-              <Plus className="h-4 w-4" />
-              Adaugă sportiv
-            </Button>
-          </div>
+          {!isLocalServer && (
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <Button onClick={() => navigate('/competitions/new')}>
+                <Plus className="h-4 w-4" />
+                Competiție nouă
+              </Button>
+              <Button onClick={() => navigate('/athletes/new')}>
+                <Plus className="h-4 w-4" />
+                Adaugă sportiv
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -79,16 +81,21 @@ export default function CompetitionList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end gap-3">
-        <Button variant="outline" onClick={() => navigate('/athletes/new')}>
-          <Plus className="h-4 w-4" />
-          Adaugă sportiv
-        </Button>
-        <Button onClick={() => navigate('/competitions/new')}>
-          <Plus className="h-4 w-4" />
-          Competiție nouă
-        </Button>
-      </div>
+      {/* Creating records here would take primary keys that belong to
+          different records in cloud, which the results push then refuses -
+          the backend blocks it too, this just doesn't offer it. */}
+      {!isLocalServer && (
+        <div className="flex items-center justify-end gap-3">
+          <Button variant="outline" onClick={() => navigate('/athletes/new')}>
+            <Plus className="h-4 w-4" />
+            Adaugă sportiv
+          </Button>
+          <Button onClick={() => navigate('/competitions/new')}>
+            <Plus className="h-4 w-4" />
+            Competiție nouă
+          </Button>
+        </div>
+      )}
 
       <div className="space-y-3 md:hidden">
         {sorted.map((ev) => {

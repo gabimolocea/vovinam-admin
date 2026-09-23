@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
 from django.core.files.base import ContentFile
+from ._common import _local_server_creation_blocked_response
 import logging
 from pathlib import Path
 from django.db import IntegrityError
@@ -233,6 +234,10 @@ class AthleteViewSet(viewsets.ModelViewSet):
         """
         if not request.user or not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        blocked = _local_server_creation_blocked_response('Adăugarea unui sportiv')
+        if blocked is not None:
+            return blocked
 
         # Check if this is a coach (or admin, for any club) creating an
         # athlete directly rather than someone registering their own profile.

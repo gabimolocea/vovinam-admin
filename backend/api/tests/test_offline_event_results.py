@@ -382,6 +382,33 @@ class OfflineEventResultsTests(TestCase):
         self.assertEqual(MatchRefereeScore.objects.filter(match=self.match).count(), 1)
         self.assertIn(f'Imported event results for event {self.event.id}', stdout.getvalue())
 
+    @override_settings(IS_LOCAL_EVENT_SERVER=True)
+    def test_venue_server_refuses_to_create_athletes_and_competitions(self):
+        """Ids minted here would belong to different records in cloud, and
+        the results push refuses such a pack - so say so now rather than at
+        the end of the competition day."""
+        athlete = self.client.post('/api/athletes/', {
+            'first_name': 'Walkup', 'last_name': 'Test', 'date_of_birth': '1995-01-01',
+        }, format='json')
+        self.assertEqual(athlete.status_code, 403, athlete.content)
+        self.assertTrue(athlete.json()['is_local_event_server'])
+
+        competition = self.client.post('/api/competitions/', {
+            'name': 'Local Only', 'start_date': '2026-10-01',
+        }, format='json')
+        self.assertEqual(competition.status_code, 403, competition.content)
+
+    def test_cloud_still_creates_athletes_and_competitions(self):
+        athlete = self.client.post('/api/athletes/', {
+            'first_name': 'Cloud', 'last_name': 'Allowed', 'date_of_birth': '1995-01-01',
+        }, format='json')
+        self.assertIn(athlete.status_code, (200, 201), athlete.content)
+
+        competition = self.client.post('/api/competitions/', {
+            'name': 'Cloud Allowed', 'start_date': '2026-10-01',
+        }, format='json')
+        self.assertIn(competition.status_code, (200, 201), competition.content)
+
     def test_event_results_import_refuses_an_athlete_id_that_is_someone_else(self):
         """An athlete registered on the venue machine takes the next free
         local id, which on cloud belongs to an unrelated person - importing

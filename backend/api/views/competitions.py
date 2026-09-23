@@ -22,7 +22,7 @@ import logging
 from pathlib import Path
 from django.db import IntegrityError
 
-from ._common import _coerce_bool, _event_operational_lock_response
+from ._common import _coerce_bool, _event_operational_lock_response, _local_server_creation_blocked_response
 
 
 class CompetitionViewSet(viewsets.ViewSet):
@@ -166,6 +166,11 @@ class CompetitionViewSet(viewsets.ViewSet):
         from landing.models import Event
         from ..models import City
         from django.utils.text import slugify
+
+        blocked = _local_server_creation_blocked_response('Crearea unei competiții')
+        if blocked is not None:
+            return blocked
+
         d = request.data
         title = d.get('name', '').strip()
         if not title:
