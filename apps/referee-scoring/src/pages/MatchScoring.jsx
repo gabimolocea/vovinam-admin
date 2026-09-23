@@ -6,6 +6,19 @@ import { Spinner, formatGroupBadgeLabel } from '../components/ui';
 
 const POLL_INTERVAL = 2000;
 
+// Punctele se interoghează separat, mult mai des decât restul. În modul
+// real-time un punct devine valid abia când un al doilea arbitru dă
+// același punct în 1500 ms, iar arbitrul trebuie să vadă că s-a
+// întâmplat cât încă se uită la saltea - nu peste două secunde.
+// E o singură cerere, spre deosebire de ciclul complet care face cinci,
+// deci se poate permite ritmul ăsta: pe serverul din sală înseamnă vreo
+// 2,5 cereri/secundă per arbitru, măsurat mult sub capacitate.
+const POINTS_POLL_INTERVAL = 400;
+
+// Cât timp rămâne pe ecran starea unui punct după ce a fost dat. Destul
+// cât arbitrul să apuce să o vadă, nu atât cât să acopere punctul următor.
+const POINT_FEEDBACK_MS = 6000;
+
 // Bold, high-contrast styling is deliberate here (courtside, glance-from-
 // across-the-room scoring) - only the specific colors/borders are updated
 // to the new tokens where they were arbitrary (black/yellow chrome), never
@@ -27,6 +40,8 @@ export default function MatchScoring() {
   const [busy, setBusy] = useState(false);
   const [confirmWinner, setConfirmWinner] = useState(null);
   const pollRef = useRef(null);
+  const pointsPollRef = useRef(null);
+  const [pointEvents, setPointEvents] = useState([]);
   const [draftScores, setDraftScores] = useState({});
 
   const myAthleteId = user?.athlete_id || user?.athlete?.id;
@@ -70,11 +85,29 @@ export default function MatchScoring() {
     }
   }, [matchId, myAthleteId]);
 
+  // Doar punctele, pe ritm rapid. Separat de fetchAll ca să nu tragem la
+  // fiecare 400 ms și meciul, reprizele, scorurile și prezența.
+  const fetchPointEvents = useCallback(async () => {
+    try {
+      const { data } = await refereeAPI.pointEvents.list(matchId);
+      setPointEvents(Array.isArray(data) ? data : data?.results || []);
+    } catch {
+      // Un rateu se rezolvă la următorul ciclu; nu merită un mesaj.
+    }
+  }, [matchId]);
+
   useEffect(() => {
     fetchAll();
     pollRef.current = setInterval(fetchAll, POLL_INTERVAL);
     return () => clearInterval(pollRef.current);
   }, [fetchAll]);
+
+  useEffect(() => {
+    if (match?.display_mode !== 'real_time') return undefined;
+    fetchPointEvents();
+    pointsPollRef.current = setInterval(fetchPointEvents, POINTS_POLL_INTERVAL);
+    return () => clearInterval(pointsPollRef.current);
+  }, [match?.display_mode, fetchPointEvents]);
 
   useEffect(() => {
     const handlePageHide = () => clearPresenceBeacon();
@@ -131,6 +164,7 @@ export default function MatchScoring() {
             origin: 'referee_scoring_app',
           },
         });
+        fetchPointEvents();
         fetchAll();
       } catch (err) {
         console.error('Point event error:', err);
@@ -218,6 +252,19 @@ export default function MatchScoring() {
   const activeDraftBlue = activeRoundData ? (draftScores[activeRoundData.id]?.blue ?? (getMyScoreForRound(activeRoundData.id) ? Number(getMyScoreForRound(activeRoundData.id).blue_corner_score) : 0)) : 0;
   const isRealTimeMode = match.display_mode === 'real_time';
 
+  // Punctele mele recente și ce s-a ales de ele. Un punct devine valid
+  // doar dacă un al doilea arbitru dă același punct pe aceeași parte în
+  // 1500 ms; până atunci rămâne în așteptare. Fără feedback aici,
+  // arbitrul apasă și nu află niciodată dacă a contat.
+  const myRecentPoints = (pointEvents || [])
+    .filter(e => e.referee === myAthleteId && e.event_type !== 'penalty')
+    .filter(e => {
+      const at = new Date(e.timestamp).getTime();
+      return Number.isFinite(at) && (Date.now() - at) < POINT_FEEDBACK_MS;
+    })
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, 4);
+
   if (isRealTimeMode) {
     const isInBreak = !activeRoundData && rounds.some(r => r.status === 'completed') && rounds.some(r => r.status === 'scheduled');
     const isPaused = activeRoundData?.is_paused;
@@ -251,6 +298,31 @@ export default function MatchScoring() {
           <p className={`mt-3 text-sm font-semibold uppercase tracking-[0.16em] ${isPaused ? 'text-amber-300' : isInBreak ? 'text-orange-300' : activeRoundData ? 'text-emerald-300' : 'text-sidebar-foreground/60'}`}>
             {isPaused ? 'Pauză de repriză' : isInBreak ? 'Pauză între reprize' : activeRoundData ? `Repriza ${activeRoundData.round_number} activă` : 'Aștept startul reprizei'}
           </p>
+
+          {myRecentPoints.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+              {myRecentPoints.map(point => {
+                const validated = point.validation_status === 'validated';
+                const rejected = point.validation_status === 'rejected';
+                return (
+                  <span
+                    key={point.id}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] ${
+                      validated ? 'bg-emerald-500 text-emerald-950'
+                        : rejected ? 'bg-zinc-600 text-zinc-200 line-through'
+                        : 'bg-amber-400/20 text-amber-200 ring-1 ring-amber-400/60'
+                    }`}
+                  >
+                    <span className={point.side === 'red' ? 'text-red-300' : 'text-blue-300'}>
+                      {point.side === 'red' ? 'R' : 'A'}
+                    </span>
+                    +{point.points}
+                    <span>{validated ? 'confirmat' : rejected ? 'respins' : 'se așteaptă'}</span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="grid flex-1 grid-cols-2">
