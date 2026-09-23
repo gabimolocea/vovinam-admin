@@ -474,20 +474,42 @@ def sync_category_athlete_to_fight_weight(sender, instance, created, **kwargs):
         fw.pre_weight_kg = instance.weight
         fw.save(update_fields=['pre_weight_kg'])
 
+    # The other half of the disqualification mirror - see
+    # sync_fight_weight_to_category_athlete. Ticking "Descalificat" on a
+    # CategoryAthlete (Django admin, solo-style inline) has to reach the
+    # weigh-in screen too, or the two disagree about who is still in.
+    # .update() skips post_save, so the two mirrors can't ping-pong.
+    FightAthleteWeight.objects.filter(
+        category_id=instance.category_id, athlete=instance.athlete,
+    ).exclude(is_disqualified=instance.disqualified).update(is_disqualified=instance.disqualified)
+
 
 @receiver(post_save, sender=FightAthleteWeight)
 def sync_fight_weight_to_category_athlete(sender, instance, created, **kwargs):
     """
     When a FightAthleteWeight is created (e.g. from admin inline),
-    auto-create the corresponding CategoryAthlete enrollment record.
+    auto-create the corresponding CategoryAthlete enrollment record, and
+    keep the two disqualification flags in step.
+
+    A fight athlete carries "disqualified" twice: FightAthleteWeight.
+    is_disqualified, which the weigh-in screen's DQ button writes, and
+    CategoryAthlete.disqualified, which is what generate_brackets
+    (api/views/matches.py) filters the draw on. Without mirroring it,
+    disqualifying someone at the scale left them in the bracket anyway -
+    the button looked like it did nothing at all.
     """
-    if not created:
-        return
-    # category FK points to FightCategory which inherits from Category
-    CategoryAthlete.objects.get_or_create(
-        category_id=instance.category_id,
-        athlete=instance.athlete,
-    )
+    if created:
+        # category FK points to FightCategory which inherits from Category
+        CategoryAthlete.objects.get_or_create(
+            category_id=instance.category_id,
+            athlete=instance.athlete,
+        )
+
+    # .update() deliberately: it skips post_save, so this can't bounce off
+    # sync_category_athlete_to_fight_weight and back again.
+    CategoryAthlete.objects.filter(
+        category_id=instance.category_id, athlete=instance.athlete,
+    ).exclude(disqualified=instance.is_disqualified).update(disqualified=instance.is_disqualified)
 
 
 @receiver(post_delete, sender=CategoryAthlete)

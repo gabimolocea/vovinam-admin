@@ -72,6 +72,13 @@ export default function LuptaPage() {
   const [pickerCatId, setPickerCatId] = useState(null);
   const [groupPicker, setGroupPicker] = useState(null); // { groupId, gender }
   const [pickerSearch, setPickerSearch] = useState('');
+  // The age window is a guide, not a hard gate: on competition day an
+  // athlete whose date of birth was never filled in (or who is a genuine
+  // approved exception) otherwise can't be entered at all, because the
+  // pickers below hide anyone outside it. Off by default so the rule
+  // still does its job; when on, the offenders are shown and flagged
+  // rather than silently dropped.
+  const [ignoreAgeRule, setIgnoreAgeRule] = useState(false);
   const [allAthletes, setAllAthletes] = useState([]);
   const [loadingAthletes, setLoadingAthletes] = useState(false);
   const [fightGroupEnrollments, setFightGroupEnrollments] = useState([]);
@@ -511,6 +518,17 @@ export default function LuptaPage() {
   // only) is kept separately so rows can be highlighted when the confirmed
   // weight has moved them into a different category than their submission
   // implied (see exceedsInitialCategory in the table body).
+  // null when the athlete fits the group's birth-date window, otherwise a
+  // short reason - used both to filter them out (rule on) and to label
+  // why they stand out in the list (rule overridden).
+  const ageRuleViolation = useCallback((athlete, { dateStart, dateEnd, allowYounger }) => {
+    if (!dateStart || !dateEnd) return null;
+    if (!athlete.date_of_birth) return 'fără dată de naștere';
+    if (athlete.date_of_birth < dateStart) return 'născut înainte de grupă';
+    if (!allowYounger && athlete.date_of_birth > dateEnd) return 'mai tânăr decât grupa';
+    return null;
+  }, []);
+
   const getSuggestedCategoryId = useCallback((row) => (
     suggestCategoryForWeight(row.group_id, row.category_gender, row.confirmed_weight || row.submitted_weight)
   ), [suggestCategoryForWeight]);
@@ -1562,13 +1580,9 @@ export default function LuptaPage() {
             .map((item) => item.athlete)
         );
 
-        let filtered = hasDateRange
-          ? allAthletes.filter((ath) => {
-              if (!ath.date_of_birth) return false;
-              if (ath.date_of_birth < dateStart) return false;
-              if (!allowYounger && ath.date_of_birth > dateEnd) return false;
-              return true;
-            })
+        const ageBounds = { dateStart, dateEnd, allowYounger };
+        let filtered = hasDateRange && !ignoreAgeRule
+          ? allAthletes.filter((ath) => !ageRuleViolation(ath, ageBounds))
           : allAthletes;
 
         if (groupPicker.gender && groupPicker.gender !== 'mixt') {
@@ -1611,9 +1625,20 @@ export default function LuptaPage() {
                 {group?.name || 'Grupa'} - {GENDER_LABELS[groupPicker.gender] || groupPicker.gender}
               </div>
               {hasDateRange && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Nascuti {dateStart} - {allowYounger ? 'inf (tineri acceptati)' : dateEnd}
-                </p>
+                <>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Nascuti {dateStart} - {allowYounger ? 'inf (tineri acceptati)' : dateEnd}
+                  </p>
+                  <label className="mt-2 flex items-center gap-2 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={ignoreAgeRule}
+                      onChange={(e) => setIgnoreAgeRule(e.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span>Arată și sportivii în afara grupei de vârstă</span>
+                  </label>
+                </>
               )}
             </div>
             <div className="border-b border-border px-3 py-2">
@@ -1634,6 +1659,7 @@ export default function LuptaPage() {
               ) : (
                 filtered.map((ath) => {
                   const isRegistered = registeredIds.has(ath.id);
+                  const violation = ageRuleViolation(ath, ageBounds);
                   return (
                     <button
                       key={`group-pick-${ath.id}`}
@@ -1651,6 +1677,11 @@ export default function LuptaPage() {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-base font-semibold">{ath.last_name} {ath.first_name}</span>
                         <span className="block truncate text-xs text-muted-foreground">{ath.club?.name || 'Fara club'}{ath.date_of_birth ? ` · ${ath.date_of_birth}` : ''}</span>
+                        {violation && (
+                          <span className="mt-0.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+                            ⚠ {violation}
+                          </span>
+                        )}
                       </span>
                     </button>
                   );
@@ -1679,13 +1710,9 @@ export default function LuptaPage() {
         const hasDateRange = dateStart && dateEnd;
         const allowYounger = selectedGroup?.allow_younger || false;
 
-        let athleteOptions = hasDateRange
-          ? allAthletes.filter((ath) => {
-              if (!ath.date_of_birth) return false;
-              if (ath.date_of_birth < dateStart) return false;
-              if (!allowYounger && ath.date_of_birth > dateEnd) return false;
-              return true;
-            })
+        const ageBounds = { dateStart, dateEnd, allowYounger };
+        let athleteOptions = hasDateRange && !ignoreAgeRule
+          ? allAthletes.filter((ath) => !ageRuleViolation(ath, ageBounds))
           : allAthletes;
 
         if (selectedCategory?.gender && selectedCategory.gender !== 'mixt') {
@@ -1749,7 +1776,20 @@ export default function LuptaPage() {
                   </select>
                 </div>
                 <div className="relative md:col-span-2">
-                  <Label className="mb-1 block text-xs font-semibold text-muted-foreground">Sportiv (cauta dupa nume/club)</Label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <Label className="block text-xs font-semibold text-muted-foreground">Sportiv (cauta dupa nume/club)</Label>
+                    {hasDateRange && (
+                      <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={ignoreAgeRule}
+                          onChange={(e) => setIgnoreAgeRule(e.target.checked)}
+                          className="h-3 w-3"
+                        />
+                        <span>Arată și sportivii în afara grupei de vârstă</span>
+                      </label>
+                    )}
+                  </div>
                   <Input
                     type="text"
                     value={manualEnrollSearch}
@@ -1771,6 +1811,7 @@ export default function LuptaPage() {
                         athleteOptions.map((ath) => {
                           const athLabel = `${ath.last_name} ${ath.first_name} - ${ath.club?.name || 'Fara club'}`;
                           const isSelected = String(ath.id) === String(manualEnrollDraft.athleteId);
+                          const violation = ageRuleViolation(ath, ageBounds);
                           return (
                             <button
                               key={`manual-ath-opt-${ath.id}`}
@@ -1784,6 +1825,11 @@ export default function LuptaPage() {
                               className={`block w-full px-2 py-1.5 text-left text-sm hover:bg-muted ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-foreground'}`}
                             >
                               {athLabel}
+                              {violation && (
+                                <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800">
+                                  ⚠ {violation}
+                                </span>
+                              )}
                             </button>
                           );
                         })

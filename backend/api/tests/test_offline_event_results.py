@@ -381,6 +381,39 @@ class OfflineEventResultsTests(TestCase):
         self.assertEqual(MatchRefereeScore.objects.filter(match=self.match).count(), 1)
         self.assertIn(f'Imported event results for event {self.event.id}', stdout.getvalue())
 
+    def test_disqualifying_at_the_scale_removes_the_athlete_from_the_draw(self):
+        """The weigh-in screen's DQ button writes FightAthleteWeight.
+        is_disqualified, but generate_brackets draws from
+        CategoryAthlete.disqualified - unmirrored, a disqualified athlete
+        was still seeded into the bracket and the button looked inert."""
+        weight = FightAthleteWeight.objects.get(category=self.category, athlete=self.red_corner)
+
+        weight.is_disqualified = True
+        weight.save()
+
+        self.assertTrue(
+            CategoryAthlete.objects.get(category=self.category, athlete=self.red_corner).disqualified,
+        )
+        # This is the exact queryset generate_brackets seeds the draw from.
+        drawn = CategoryAthlete.objects.filter(category=self.category, disqualified=False)
+        self.assertNotIn(self.red_corner.id, [entry.athlete_id for entry in drawn])
+
+        weight.is_disqualified = False
+        weight.save()
+        self.assertFalse(
+            CategoryAthlete.objects.get(category=self.category, athlete=self.red_corner).disqualified,
+        )
+
+    def test_disqualifying_on_the_enrollment_reaches_the_weigh_in_screen(self):
+        enrollment = CategoryAthlete.objects.get(category=self.category, athlete=self.red_corner)
+
+        enrollment.disqualified = True
+        enrollment.save()
+
+        self.assertTrue(
+            FightAthleteWeight.objects.get(category=self.category, athlete=self.red_corner).is_disqualified,
+        )
+
     @override_settings(IS_LOCAL_EVENT_SERVER=True)
     def test_advance_winner_records_place_on_both_stores(self):
         """A fight category's own admin page reads FightAthleteWeight.place,
