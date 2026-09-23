@@ -8,6 +8,7 @@ crearea lor aici. Categoria în sine e tot o înregistrare nouă, așa că e
 făcută ca să fie ștearsă: `--remove` o scoate complet.
 
     python manage.py seed_device_test_category --event 21
+    python manage.py seed_device_test_category --event 21 --fill-referees
     python manage.py seed_device_test_category --event 21 --remove
 """
 
@@ -30,13 +31,23 @@ from landing.models import Event
 
 CATEGORY_NAME = 'TEST DISPOZITIV'
 
+# Arbitrii inventati pentru probe poarta numele asta, ca sa se vada in
+# orice listă că nu sunt oameni reali și ca `--remove` să îi găsească
+# fără să ghicească.
+TEST_REFEREE_FIRST_NAME = 'Arbitru'
+TEST_REFEREE_LAST_PREFIX = 'Test '
+
 
 class Command(BaseCommand):
     help = 'Categorie de tehnică de test, cu sportivi înscriși și un arbitru alocat.'
 
     def add_arguments(self, parser):
         parser.add_argument('--event', type=int, required=True, help='ID-ul competiției.')
-        parser.add_argument('--remove', action='store_true', help='Șterge categoria de test.')
+        parser.add_argument('--remove', action='store_true', help='Șterge categoria de test și arbitrii inventați.')
+        parser.add_argument(
+            '--fill-referees', action='store_true',
+            help='Completează pozițiile A2–A5 libere cu arbitri de test și le afișează PIN-urile.',
+        )
         parser.add_argument(
             '--referee', type=int, default=None,
             help='ID-ul sportivului-arbitru care va nota. Implicit, primul arbitru găsit.',
@@ -51,6 +62,8 @@ class Command(BaseCommand):
 
         if options['remove']:
             return self._remove(event)
+        if options['fill_referees']:
+            return self._fill_referees(event)
         return self._create(event, options['referee'])
 
     def _remove(self, event):
@@ -62,6 +75,74 @@ class Command(BaseCommand):
         # Înscrierile și alocarea de arbitri pleacă în cascadă cu categoria.
         categories.delete()
         self.stdout.write(self.style.SUCCESS(f'Șters: {count} categorie/categorii de test din {event.title}.'))
+
+        fake = Athlete.objects.filter(
+            first_name=TEST_REFEREE_FIRST_NAME,
+            last_name__startswith=TEST_REFEREE_LAST_PREFIX,
+        )
+        removed = fake.count()
+        if removed:
+            fake.delete()
+            self.stdout.write(self.style.SUCCESS(f'Șterși: {removed} arbitri de test.'))
+
+    def _ensure_pin(self, event, referee):
+        qr, _ = RefereeQRLogin.objects.get_or_create(event=event, referee=referee)
+        if not qr.pin:
+            qr.pin = RefereeQRLogin.generate_pin()
+            qr.save(update_fields=['pin', 'updated_at'])
+        return qr.pin
+
+    @transaction.atomic
+    def _fill_referees(self, event):
+        """Pune arbitri de test pe pozitiile libere din categoria de test.
+
+        Sunt sportivi noi pe masina din sala, deci iau chei primare care in
+        cloud apartin altor persoane - acelasi motiv pentru care API-ul
+        refuza crearea lor aici. E acceptabil doar pentru ca sunt date de
+        proba, se vad dupa nume si pleaca odata cu `--remove`.
+        """
+        category = Category.objects.filter(event=event, name=CATEGORY_NAME).first()
+        if not category:
+            raise CommandError(
+                f'Nu exista "{CATEGORY_NAME}" in {event.title}. '
+                f'Ruleaza intai comanda fara --fill-referees.'
+            )
+
+        assignment, _ = CategoryRefereeAssignment.objects.get_or_create(category=category)
+
+        filled = []
+        for position in range(1, 6):
+            field = f'referee_{position}'
+            if getattr(assignment, f'{field}_id', None):
+                continue
+
+            referee, created = Athlete.objects.get_or_create(
+                first_name=TEST_REFEREE_FIRST_NAME,
+                last_name=f'{TEST_REFEREE_LAST_PREFIX}{position}',
+                defaults={'status': 'approved', 'is_referee': True},
+            )
+            if not created and not referee.is_referee:
+                referee.is_referee = True
+                referee.save(update_fields=['is_referee'])
+
+            setattr(assignment, field, referee)
+            filled.append((position, referee))
+
+        if not filled:
+            self.stdout.write('Toate cele cinci pozitii au deja arbitru - nimic de completat.')
+            return
+        assignment.save()
+
+        self.stdout.write(self.style.SUCCESS(f'Completat {len(filled)} pozitii in "{CATEGORY_NAME}":'))
+        for position, referee in filled:
+            pin = self._ensure_pin(event, referee)
+            self.stdout.write(f'  A{position}  {referee.first_name} {referee.last_name} (id {referee.pk})  PIN {pin}')
+
+        self.stdout.write('')
+        self.stdout.write(self.style.WARNING(
+            'Arbitri inventati, pentru probe. Pleaca odata cu categoria: '
+            f'manage.py seed_device_test_category --event {event.pk} --remove'
+        ))
 
     @transaction.atomic
     def _create(self, event, referee_id):
@@ -125,16 +206,13 @@ class Command(BaseCommand):
                 defaults={'field': field, 'status': 'in_progress', 'order': 1},
             )
 
-        qr, _ = RefereeQRLogin.objects.get_or_create(event=event, referee=referee)
-        if not qr.pin:
-            qr.pin = RefereeQRLogin.generate_pin()
-            qr.save(update_fields=['pin', 'updated_at'])
+        pin = self._ensure_pin(event, referee)
 
         self.stdout.write(self.style.SUCCESS(f'Creat "{CATEGORY_NAME}" (id {category.pk}) în {event.title}.'))
         self.stdout.write(f'  Grupa:    {group.name}')
         self.stdout.write(f'  Teren:    {field.name if field else "— (niciun teren definit)"}')
         self.stdout.write(f'  Arbitru:  {referee.first_name} {referee.last_name} (id {referee.pk}), pe poziția A1')
-        self.stdout.write(f'  PIN:      {qr.pin}')
+        self.stdout.write(f'  PIN:      {pin}')
         self.stdout.write(f'  Sportivi: {len(competitors)}')
         for athlete in competitors:
             self.stdout.write(f'    - {athlete.first_name} {athlete.last_name} (id {athlete.pk})')

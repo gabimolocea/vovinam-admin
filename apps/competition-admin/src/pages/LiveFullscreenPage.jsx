@@ -1016,8 +1016,31 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   const [dqConfirmData, setDqConfirmData] = useState(null);
   const [replaceRefData, setReplaceRefData] = useState(null); // { pos, id, name }
   const [qrRefData, setQrRefData] = useState(null); // arbitrul pentru care e deschisa fereastra de conectare
+  const [stopConfirmRow, setStopConfirmRow] = useState(null); // sportivul oprit inainte ca toti arbitrii sa fi notat
   const [replacementRefId, setReplacementRefId] = useState('');
   const { id: eventId } = useParams();
+
+  // Un admin poate nota in locul arbitrilor - asta merge de mult, prin
+  // celula din tabel. Dar numai pe pozitiile cu arbitru alocat: un scor
+  // apartine unui arbitru anume, nu unei coloane. Pe o pozitie goala
+  // celula era pur si simplu moarta, fara sa spuna de ce sau ce urmeaza.
+  // Acum duce la alocare, care e chiar pasul lipsa.
+  const openScoreCell = (r, row, value) => {
+    if (!r.id) {
+      setReplaceRefData(r);
+      setReplacementRefId('');
+      return;
+    }
+    setCatRefModalData({
+      refId: r.id, refName: r.name, refPos: r.pos,
+      athleteId: row.athleteId, athleteName: row.athleteName,
+      teamId: row.teamId || null,
+      athleteScoreId: row.catScoreId || null,
+      currentScore: value != null ? Number(value) : null,
+      existingScoreId: row.scoreIds[r.pos - 1] || null,
+    });
+    setCatScoreInput(value != null ? Number(value).toString() : '');
+  };
   const autoRevealInFlightRef = useRef(false);
 
   // Build referee list from category referee assignment
@@ -1486,6 +1509,12 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     || rows.find(r => !r.isDisqualified)
     || null;
 
+  const stopPresenting = (row) => {
+    switchDisplay(cat.id, null, null);
+    setFinishedAthletes(prev => new Set(prev).add(row.athleteId));
+    if (isCategoryCompleted) onLastAthleteStopped?.();
+  };
+
   const renderActionButtons = (row, compact = false) => {
     const buttonBase = compact
       ? 'flex-1 min-w-[130px] px-3 py-2 text-xs'
@@ -1499,9 +1528,15 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         {row.isActive ? (
           <button
             onClick={() => {
-              switchDisplay(cat.id, null, null);
-              setFinishedAthletes(prev => new Set(prev).add(row.athleteId));
-              if (isCategoryCompleted) onLastAthleteStopped?.();
+              // Oprit prea devreme, nota unui arbitru care inca nu a
+              // apasat nu mai are unde sa intre - si nimeni nu observa
+              // pana la clasament. Intrebam, nu blocam: uneori chiar
+              // trebuie oprit (sportiv retras, arbitru lipsa).
+              if (!row.allScoresIn) {
+                setStopConfirmRow(row);
+                return;
+              }
+              stopPresenting(row);
             }}
             disabled={busy}
             className={`${buttonBase} ${presentButtonWidth} rounded-md border border-amber-500 font-bold transition disabled:opacity-40 bg-amber-400 text-amber-950 hover:bg-amber-300 whitespace-nowrap ${
@@ -1643,6 +1678,34 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         </div>
       </div>
 
+      {stopConfirmRow && (() => {
+        const expected = refSlots.filter(r => r.id).length || 5;
+        const missing = expected - stopConfirmRow.scoreCount;
+        return (
+          <FullscreenModal
+            onClose={() => setStopConfirmRow(null)}
+            title="Oprești fără toate notele?"
+            description={`${stopConfirmRow.athleteName} — ${stopConfirmRow.scoreCount} din ${expected} arbitri au trimis nota. ${missing === 1 ? 'Mai lipsește una' : `Mai lipsesc ${missing}`}.`}
+            actions={[
+              <button key="cancel" onClick={() => setStopConfirmRow(null)} className={MODAL_SECONDARY_BUTTON}>Mai aștept</button>,
+              <button
+                key="stop"
+                onClick={() => { const row = stopConfirmRow; setStopConfirmRow(null); stopPresenting(row); }}
+                disabled={busy}
+                className={MODAL_WARNING_BUTTON}
+              >
+                Oprește oricum
+              </button>,
+            ]}
+          >
+            <p className="py-2 text-sm text-muted-foreground">
+              Notele care nu au ajuns până acum nu se mai pot trimite de pe telefon sau de pe dispozitiv
+              după oprire. Le poți introduce manual din tabel, apăsând pe celula arbitrului.
+            </p>
+          </FullscreenModal>
+        );
+      })()}
+
       {qrRefData && (
         <RefereeAccessModal eventId={eventId} referee={qrRefData} onClose={() => setQrRefData(null)} />
       )}
@@ -1767,7 +1830,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                       )}
                       {row.isDisqualified && <span className="inline-flex rounded border border-red-700 bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Descalificat</span>}
                       {!row.isDisqualified && finishedAthletes.has(row.athleteId) && !row.isActive && <span className="inline-flex rounded border border-border bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground/80">Terminat</span>}
-                      {row.isActive && <span className="inline-flex rounded border border-emerald-700 bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Prezintă acum</span>}
+                      {row.isActive && <span className="relative inline-flex h-2.5 w-2.5 shrink-0" title="Prezintă acum"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" /></span>}
                       {row.isRevealed && <span className="inline-flex rounded border border-amber-500 bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">Scor afișat</span>}
                     </div>
                     <p className={`mt-2 break-words text-base font-black ${row.isDisqualified ? 'text-red-500 line-through' : 'text-foreground'}`}>{row.athleteName}</p>
@@ -1793,21 +1856,9 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                       <button
                         key={`${row.athleteId}-${r.pos}`}
                         type="button"
-                        onClick={() => {
-                          if (!r.id) return;
-                          setCatRefModalData({
-                            refId: r.id, refName: r.name, refPos: r.pos,
-                            athleteId: row.athleteId, athleteName: row.athleteName,
-                            teamId: row.teamId || null,
-                            athleteScoreId: row.catScoreId || null,
-                            currentScore: value != null ? Number(value) : null,
-                            existingScoreId: row.scoreIds[ri] || null,
-                          });
-                          setCatScoreInput(value != null ? Number(value).toString() : '');
-                        }}
-                        disabled={!r.id}
-                        title={auditTitle}
-                        className={`relative overflow-hidden rounded-md border px-3 py-2 text-left transition ${!r.id ? 'cursor-not-allowed border-border bg-muted/40 text-muted-foreground/40' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''}`}
+                        onClick={() => openScoreCell(r, row, value)}
+                        title={r.id ? auditTitle : `Nicio persoană pe poziția A${r.pos} — apasă ca să aloci un arbitru`}
+                        className={`relative overflow-hidden rounded-md border px-3 py-2 text-left transition ${!r.id ? 'border-dashed border-border bg-muted/30 text-muted-foreground/60 hover:bg-muted/60' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''}`}
                       >
                         {audit && (
                           <span className="absolute right-0 top-0 h-0 w-0 border-t-[16px] border-l-[16px] border-t-red-600 border-l-transparent" />
@@ -1856,7 +1907,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         <span className={`font-semibold ${row.isDisqualified ? 'text-red-400 line-through' : 'text-foreground'}`}>{row.athleteName}{row.clubName ? ` (${row.clubName})` : ''}</span>
                         {row.isDisqualified && <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider bg-red-600 text-white px-2 py-0.5">DESCALIFICAT</span>}
                         {!row.isDisqualified && finishedAthletes.has(row.athleteId) && !row.isActive && <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider bg-muted text-muted-foreground px-2 py-0.5">✓ Terminat</span>}
-                        {row.isActive && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500 text-white px-2 py-0.5 animate-pulse">● Prezintă acum</span>}
+                        {row.isActive && <span className="relative inline-flex h-2.5 w-2.5 shrink-0" title="Prezintă acum"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" /></span>}
                       </div>
                       {row.detailText && row.detailText !== row.athleteName && <div className="mt-1 text-xs text-muted-foreground/60">{row.detailText}</div>}
                     </td>
@@ -1869,19 +1920,8 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         : undefined;
                       return (
                         <td key={ri}
-                          onClick={() => {
-                            if (!r.id) return;
-                            setCatRefModalData({
-                              refId: r.id, refName: r.name, refPos: r.pos,
-                              athleteId: row.athleteId, athleteName: row.athleteName,
-                              teamId: row.teamId || null,
-                              athleteScoreId: row.catScoreId || null,
-                              currentScore: v != null ? Number(v) : null,
-                              existingScoreId: row.scoreIds[ri] || null,
-                            });
-                            setCatScoreInput(v != null ? Number(v).toString() : '');
-                          }}
-                          title={auditTitle}
+                          onClick={() => openScoreCell(r, row, v)}
+                          title={r.id ? auditTitle : `Nicio persoană pe poziția A${r.pos} — apasă ca să aloci un arbitru`}
                           className={`relative overflow-hidden border border-border/20 text-center px-2 py-2.5 tabular-nums text-sm cursor-pointer hover:bg-indigo-50 ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-foreground font-medium' : 'text-muted-foreground/40'}`}
                         >
                           {audit && (
