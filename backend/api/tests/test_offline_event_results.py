@@ -5,6 +5,7 @@ from decimal import Decimal
 from io import StringIO
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
@@ -380,6 +381,32 @@ class OfflineEventResultsTests(TestCase):
         self.assertEqual(RefereePointEvent.objects.filter(match=self.match).count(), 1)
         self.assertEqual(MatchRefereeScore.objects.filter(match=self.match).count(), 1)
         self.assertIn(f'Imported event results for event {self.event.id}', stdout.getvalue())
+
+    def test_event_results_import_refuses_an_athlete_id_that_is_someone_else(self):
+        """An athlete registered on the venue machine takes the next free
+        local id, which on cloud belongs to an unrelated person - importing
+        that blindly would file their results under a stranger."""
+        payload = build_event_results_pack(event_id=self.event.id)
+        self.assertTrue(payload['athletes'], 'identities must travel with the pack')
+
+        entry = next(item for item in payload['athletes'] if item['id'] == self.red_corner.id)
+        entry['first_name'] = 'Altcineva'
+        entry['last_name'] = 'Complet'
+
+        with self.assertRaises(ValidationError) as caught:
+            import_event_results(payload)
+
+        message = str(caught.exception)
+        self.assertIn(str(self.red_corner.id), message)
+        self.assertIn('Altcineva', message)
+        # Nothing was written: the whole import is one transaction.
+        self.red_corner.refresh_from_db()
+        self.assertEqual(self.red_corner.first_name, 'Red')
+
+    def test_event_results_import_accepts_matching_athlete_identities(self):
+        payload = build_event_results_pack(event_id=self.event.id)
+        result = import_event_results(payload)
+        self.assertEqual(result['event_id'], self.event.id)
 
     def test_disqualifying_at_the_scale_removes_the_athlete_from_the_draw(self):
         """The weigh-in screen's DQ button writes FightAthleteWeight.

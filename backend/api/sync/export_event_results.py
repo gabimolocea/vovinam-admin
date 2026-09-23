@@ -6,6 +6,7 @@ from typing import Any
 from django.utils import timezone
 
 from api.models import (
+    Athlete,
     Category,
     CategoryAthlete,
     CategoryAthleteScore,
@@ -172,6 +173,25 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
     ):
         referee_scores_by_athlete_score.setdefault(referee_score.athlete_score_id, []).append(referee_score)
 
+    # Identity for every athlete this pack refers to. Athlete pks are
+    # assigned independently by each database, and the pack that set this
+    # venue up only carried the athletes taking part - so anyone added
+    # here on competition day gets the next free *local* id, which on
+    # cloud almost certainly belongs to a different person. Sending names
+    # lets the importer refuse that rather than quietly filing a walk-up's
+    # results under a stranger.
+    referenced_athlete_ids = {entry.athlete_id for entry in category_athletes if entry.athlete_id}
+    referenced_athlete_ids.update(entry.athlete_id for entry in fight_athlete_weights if entry.athlete_id)
+    for match in matches:
+        referenced_athlete_ids.update(
+            pk for pk in (match.red_corner_id, match.blue_corner_id, match.central_referee_id) if pk
+        )
+    athlete_identities = list(
+        Athlete.objects.filter(id__in=referenced_athlete_ids)
+        .order_by('id')
+        .values('id', 'first_name', 'last_name', 'date_of_birth')
+    )
+
     athlete_places = _places_by_category(category_athletes, 'athlete_id')
     team_places = _places_by_category(category_teams, 'team_id')
 
@@ -190,6 +210,7 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
             'local_sync_status': event.local_sync_status,
             'exported_to_local_at': event.exported_to_local_at,
         },
+        'athletes': athlete_identities,
         'category_results': [
             _category_result_dict(category, athlete_places, team_places)
             for category in categories

@@ -135,6 +135,50 @@ def _upsert_fight_athlete_weight(entry: dict[str, Any], category_id: int):
     return obj
 
 
+def _assert_athlete_identities_match(athletes_payload: list[dict[str, Any]]):
+    """Refuse a pack whose athlete ids point at different people here.
+
+    Athlete pks are assigned independently by each database, and the event
+    pack only carries the athletes taking part - so someone registered on
+    the venue machine on competition day takes the next free *local* id,
+    which on cloud belongs to an unrelated athlete. Checking only that the
+    id exists (as the sections below do) would pass, and that walk-up's
+    enrollment, weigh-in and medal would be filed under a stranger. Names
+    are the practical key: date of birth is often missing in real data,
+    which is exactly the sort of athlete this happens to.
+    """
+    if not athletes_payload:
+        return
+
+    def normalize(first, last):
+        return f"{(last or '').strip().casefold()} {(first or '').strip().casefold()}".strip()
+
+    local_by_id = {entry['id']: entry for entry in athletes_payload if entry.get('id')}
+    cloud_by_id = {
+        row['id']: row
+        for row in Athlete.objects.filter(id__in=local_by_id).values('id', 'first_name', 'last_name')
+    }
+
+    mismatches = []
+    for athlete_id, local in local_by_id.items():
+        cloud = cloud_by_id.get(athlete_id)
+        if cloud is None:
+            continue  # reported per-section, with the context of what referenced it
+        if normalize(local.get('first_name'), local.get('last_name')) != normalize(cloud['first_name'], cloud['last_name']):
+            mismatches.append(
+                f"id {athlete_id}: local „{local.get('last_name')} {local.get('first_name')}” "
+                f"vs cloud „{cloud['last_name']} {cloud['first_name']}”"
+            )
+
+    if mismatches:
+        raise ValidationError({'athletes': (
+            'Acești sportivi au același id pe cele două instanțe, dar sunt persoane diferite - '
+            'probabil au fost adăugați direct pe calculatorul din sală. Adaugă-i mai întâi în cloud '
+            'și reia sincronizarea locală, altfel rezultatele lor ar ajunge pe altcineva: '
+            + '; '.join(mismatches)
+        )})
+
+
 def _upsert_category_athlete_score(entry: dict[str, Any], skipped: list[str]):
     """Technique (solo/team) scoring, keyed on CategoryAthleteScore's own
     unique_together (category, athlete, referee) - pks diverge between the
@@ -494,6 +538,8 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
     # _upsert_fight_athlete_weight's docstring for why fight_athlete_weights
     # entries must follow this instead of their own category_id.
     current_fight_category_by_athlete: dict[int, int] = {}
+
+    _assert_athlete_identities_match(_section(payload, 'athletes'))
 
     for entry in category_athletes_payload:
         if entry['category_id'] not in existing_category_ids:

@@ -639,7 +639,19 @@ def import_event_pack(payload: dict[str, Any]) -> dict[str, Any]:
     CategoryTeam.objects.filter(category_id__in=category_ids).exclude(pk__in=category_team_ids).delete()
     TeamMember.objects.filter(team_id__in=team_ids).exclude(pk__in=team_member_ids).delete()
 
-    _reset_auto_pk_sequences(CompetitionField, Group, Category, MatchRound, TrainingSeminarParticipation)
+    # Every table this import writes with explicit pks, not just the ones
+    # whose rows a signal also auto-creates: a PostgreSQL sequence never
+    # advances for an explicit-pk insert, so after a pack lands each of
+    # these sits below the ids it just received. The next row the venue
+    # machine creates on its own - a walk-up athlete on competition day,
+    # a club, an extra match - then asks for an id that is already taken
+    # and dies with a duplicate-key 500.
+    _reset_auto_pk_sequences(
+        Athlete, Category, CategoryAthlete, CategoryFieldAssignment, CategoryRefereeAssignment,
+        CategoryTeam, Club, CompetitionField, CompetitionReferee, DisplayMonitorSession,
+        FightAthleteWeight, FightGroupEnrollment, Group, Match, MatchFieldAssignment,
+        MatchRefereeAssignment, MatchRound, Team, TeamMember, TrainingSeminarParticipation,
+    )
 
     return {
         'event_id': event.id,
