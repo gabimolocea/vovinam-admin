@@ -51,6 +51,10 @@ export default function ScoringPanel() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [activeAthleteId, setActiveAthleteId] = useState(null);
+  // Ce s-a ales de nota mea dupa dezvaluire: a contat, sau a fost taiata
+  // ca extrema. Vine de la server, pentru ca prin API un arbitru vede
+  // doar propriile note - si asa trebuie sa ramana pana la dezvaluire.
+  const [reveal, setReveal] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
   const [draftScore, setDraftScore] = useState(MAX_SCORE);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -150,6 +154,17 @@ export default function ScoringPanel() {
           setActiveAthleteId(activeSess.current_athlete);
         } else {
           setActiveAthleteId(null);
+        }
+
+        if (activeSess?.status === 'scores_revealed') {
+          try {
+            const { data } = await refereeAPI.categoryScores.reveal({ category: parseInt(categoryId) });
+            setReveal(data?.revealed ? data : null);
+          } catch {
+            setReveal(null);
+          }
+        } else {
+          setReveal(null);
         }
       }
     } catch (err) {
@@ -390,6 +405,33 @@ export default function ScoringPanel() {
             <span className="text-sm font-semibold text-sky-600 animate-pulse">Se așteaptă următorul sportiv...</span>
           )}
         </div>
+        {/* Ce s-a ales de nota mea, dupa dezvaluire. Pana acum arbitrul
+            nu afla niciodata daca nota lui a intrat in total sau a cazut
+            ca extrema - iar diferenta asta conteaza pentru el. */}
+        {(() => {
+          const mine = reveal?.scores?.find(row => row.mine);
+          if (!mine) return null;
+          const cut = mine.mark === 'low' || mine.mark === 'high';
+          return (
+            <div className={`px-4 py-2 border-b shrink-0 text-center ${cut ? 'border-amber-300 bg-amber-50' : 'border-emerald-300 bg-emerald-50'}`}>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                {reveal.athlete_name}
+              </p>
+              <p className={`text-sm font-bold ${cut ? 'text-amber-900' : 'text-emerald-900'}`}>
+                Nota ta: <span className="tabular-nums text-lg">{Math.round(Number(mine.score))}</span>
+                {cut
+                  ? ` — tăiată (${mine.mark === 'low' ? 'cea mai mică' : 'cea mai mare'})`
+                  : ' — a intrat în total'}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Total sportiv: <span className="font-semibold tabular-nums">{Math.round(Number(reveal.total))}</span>
+                {' · '}
+                {reveal.scores.map(row => Math.round(Number(row.score))).join(' / ')}
+              </p>
+            </div>
+          );
+        })()}
+
         {/* Score display — centered large score + small reset button */}
         <div className="relative flex items-center justify-center px-4 py-2 border-b border-border bg-card shrink-0">
           <div className="text-center">

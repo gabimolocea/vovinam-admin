@@ -327,6 +327,10 @@ export const refereeAPI = {
   assignedMatches: () => api.get('/referees/me/assigned-matches/'),
   categoryScores: {
     list: (params) => api.get('/category-referee-score/', { params }),
+    // Ce s-a ales de nota mea, la dezvaluirea scorurilor. Raspunde doar
+    // cat timp monitorul categoriei chiar e pe 'scores_revealed' - un
+    // arbitru nu are ce cauta in notele colegilor inainte de asta.
+    reveal: (params) => api.get('/category-referee-score/reveal/', { params }),
     create: (data) => api.post('/category-referee-score/', data),
     update: (id, data) => api.patch(`/category-referee-score/${id}/`, data),
     delete: (id) => api.delete(`/category-referee-score/${id}/`),

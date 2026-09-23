@@ -12,6 +12,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.pagination import PageNumberPagination
 from ..serializers import *
+# Explicit: `import *` nu aduce numele care incep cu underscore.
+from ..serializers._common import _person_name
 from ..models import *
 from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin, IsResultReviewerOrAdmin
 from rest_framework.response import Response
@@ -37,6 +39,83 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
     """
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
+    @action(detail=False, methods=['get'])
+    def reveal(self, request):
+        """Ce s-a ales de nota arbitrului care întreabă, la dezvăluirea
+        scorurilor pentru sportivul aflat pe saltea.
+
+        Un arbitru vede prin `list` doar propriile note, și pe bună
+        dreptate: dacă ar vedea notele colegilor înainte de dezvăluire,
+        nota lui ar înceta să fie independentă. Dar după dezvăluire
+        scorurile ajung oricum pe ecranul mare, iar arbitrul e singurul
+        care nu află dacă a lui a contat sau a fost tăiată ca extremă.
+
+        De aceea răspunde doar cât timp monitorul categoriei chiar e pe
+        'scores_revealed', și doar pentru sportivul afișat atunci.
+        """
+        category_id = request.query_params.get('category')
+        if not category_id:
+            return Response({'error': 'category este obligatoriu.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        session = DisplayMonitorSession.objects.filter(
+            current_category_id=category_id,
+            status='scores_revealed',
+        ).select_related('current_athlete').first()
+        if not session or not session.current_athlete_id:
+            return Response({'revealed': False, 'scores': []})
+
+        athlete_score = CategoryAthleteScore.objects.filter(
+            category_id=category_id, athlete_id=session.current_athlete_id,
+        ).first()
+        if not athlete_score:
+            return Response({'revealed': False, 'scores': []})
+
+        rows = list(
+            CategoryRefereeScore.objects.filter(athlete_score=athlete_score)
+            .select_related('referee').order_by('referee_id')
+        )
+        values = sorted(float(row.score) for row in rows)
+
+        # Aceeași regulă ca în panoul de concurs: sub trei note nu se taie
+        # nimic, altfel cade cea mai mică și cea mai mare, o singură dată
+        # fiecare chiar dacă mai mulți arbitri au dat aceeași valoare.
+        marks = {}
+        if len(values) >= 3:
+            low, high = values[0], values[-1]
+            dropped_low = dropped_high = False
+            for row in rows:
+                value = float(row.score)
+                if not dropped_low and value == low:
+                    dropped_low = True
+                    marks[row.id] = 'low'
+                elif not dropped_high and value == high:
+                    dropped_high = True
+                    marks[row.id] = 'high'
+                else:
+                    marks[row.id] = 'counted'
+            total = sum(values[1:-1])
+        else:
+            marks = {row.id: 'counted' for row in rows}
+            total = sum(values)
+
+        my_athlete = getattr(request.user, 'athlete', None) if request.user.is_authenticated else None
+        return Response({
+            'revealed': True,
+            'athlete': session.current_athlete_id,
+            'athlete_name': _person_name(session.current_athlete),
+            'total': round(total, 2),
+            'scores': [
+                {
+                    'referee': row.referee_id,
+                    'referee_name': _person_name(row.referee),
+                    'score': row.score,
+                    'mark': marks.get(row.id, 'counted'),
+                    'mine': bool(my_athlete and row.referee_id == my_athlete.id),
+                }
+                for row in rows
+            ],
+        })
+
     def list(self, request):
         """List referee scores - unauthenticated/public see all (read-only),
         referees see their own, admins see all"""
