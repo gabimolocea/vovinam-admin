@@ -26,6 +26,7 @@ from ._common import (
     _event_for_team,
     _event_operational_guard_response,
     _event_operational_lock_response,
+    _local_server_creation_blocked_response,
 )
 
 
@@ -46,6 +47,15 @@ class TeamViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        # Aceeasi regula ca la sportivi si competitii: o echipa creata pe
+        # masina din sala primeste o cheie primara care in cloud apartine
+        # altei echipe, iar trimiterea rezultatelor o refuza abia la
+        # finalul zilei (vezi import_event_results). Echipele se fac in
+        # cloud si coboara cu pachetul.
+        blocked = _local_server_creation_blocked_response('Crearea unei echipe')
+        if blocked is not None:
+            return blocked
+
         # Ensure name field is provided (required by database)
         data = request.data.copy()
         if not data.get('name'):

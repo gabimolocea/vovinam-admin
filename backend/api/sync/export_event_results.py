@@ -13,6 +13,7 @@ from api.models import (
     CategoryRefereeScore,
     CategoryTeam,
     FightAthleteWeight,
+    FightGroupEnrollment,
     Match,
     MatchEvent,
     MatchRefereeScore,
@@ -151,6 +152,16 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
     fight_athlete_weights = list(
         FightAthleteWeight.objects.filter(category_id__in=category_ids)
         .order_by('category_id', 'athlete_id')
+    )
+
+    # Înscrierile la grupele de luptă. Coboară cu pachetul, dar până acum
+    # nu se întorceau - iar ele chiar se schimbă în sală: ecranul Luptă
+    # creează o înscriere când un sportiv se prezintă la cântar. Fără
+    # secțiunea asta, sportivul lupta, primea rezultat, și în cloud
+    # rămânea neînscris la grupă.
+    fight_group_enrollments = list(
+        FightGroupEnrollment.objects.filter(event_id=event.id)
+        .order_by('group_id', 'athlete_id')
     )
 
     # Technique (solo/team) scoring, as the referee app actually records it.
@@ -316,6 +327,18 @@ def build_event_results_pack(*, event_id: int) -> dict[str, Any]:
                 'notes': score.notes,
             }
             for score in referee_scores
+        ],
+        # Cheie: (eveniment, grupa, sportiv) - chiar unique_together-ul
+        # modelului. Pk-urile diverg între cele două instanțe, ca peste tot
+        # în pachetul de rezultate.
+        'fight_group_enrollments': [
+            {
+                'group_id': entry.group_id,
+                'athlete_id': entry.athlete_id,
+                'registered_weight_kg': entry.registered_weight_kg,
+                'notes': entry.notes,
+            }
+            for entry in fight_group_enrollments
         ],
         'fight_athlete_weights': [
             {

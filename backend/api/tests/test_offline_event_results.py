@@ -23,6 +23,7 @@ from api.models import (
     CompetitionField,
     FightAthleteWeight,
     FightCategory,
+    FightGroupEnrollment,
     Group,
     Match,
     MatchEvent,
@@ -337,6 +338,64 @@ class OfflineEventResultsTests(TestCase):
         recreated_assignment = MatchFieldAssignment.objects.get(match=recreated)
         self.assertEqual(recreated_assignment.status, 'completed')
 
+    def test_fight_group_enrollment_made_at_the_venue_reaches_cloud(self):
+        """Înscrierea la cântar e singurul lucru pe care sala îl creează
+        și care nu se întorcea: sportivul lupta, primea rezultat, și în
+        cloud rămânea neînscris la grupă."""
+        FightGroupEnrollment.objects.create(
+            event=self.event,
+            group=self.group,
+            athlete=self.red_corner,
+            registered_weight_kg=Decimal('55.40'),
+            notes='cântar sala',
+        )
+
+        payload = self.client.get(f'/api/offline/event-results/?event_id={self.event.id}').json()
+        self.assertEqual(len(payload['fight_group_enrollments']), 1)
+        self.assertEqual(payload['fight_group_enrollments'][0]['athlete_id'], self.red_corner.id)
+
+        # Cloud nu o are încă - exact situația de după competiție.
+        FightGroupEnrollment.objects.all().delete()
+        import_event_results(payload)
+
+        enrollment = FightGroupEnrollment.objects.get(group=self.group, athlete=self.red_corner)
+        self.assertEqual(enrollment.event_id, self.event.id)
+        self.assertEqual(enrollment.registered_weight_kg, Decimal('55.40'))
+        self.assertEqual(enrollment.notes, 'cântar sala')
+
+    def test_fight_group_enrollment_import_is_idempotent(self):
+        """Retrimiterea aceluiași pachet nu trebuie să dubleze înscrierea:
+        cheia e (eveniment, grupă, sportiv), nu pk-ul local."""
+        FightGroupEnrollment.objects.create(
+            event=self.event, group=self.group, athlete=self.red_corner,
+            registered_weight_kg=Decimal('55.40'),
+        )
+        payload = self.client.get(f'/api/offline/event-results/?event_id={self.event.id}').json()
+
+        import_event_results(payload)
+        import_event_results(payload)
+
+        self.assertEqual(
+            FightGroupEnrollment.objects.filter(group=self.group, athlete=self.red_corner).count(), 1,
+        )
+
+    def test_fight_group_enrollment_for_unknown_athlete_is_skipped_not_fatal(self):
+        """Un sportiv necunoscut în cloud nu are voie să arunce tot
+        importul: restul rezultatelor zilei contează mai mult decât o
+        înscriere, iar rândul sărit e raportat."""
+        payload = self.client.get(f'/api/offline/event-results/?event_id={self.event.id}').json()
+        payload['fight_group_enrollments'] = [{
+            'group_id': self.group.id,
+            'athlete_id': 999999,
+            'registered_weight_kg': None,
+            'notes': '',
+        }]
+
+        result = import_event_results(payload)
+
+        self.assertEqual(result['imported']['fight_group_enrollments'], 0)
+        self.assertTrue(any('999999' in line for line in result['skipped']))
+
     def test_event_results_import_rejects_new_local_category(self):
         export_response = self.client.get(f'/api/offline/event-results/?event_id={self.event.id}')
         payload = export_response.json()
@@ -398,6 +457,13 @@ class OfflineEventResultsTests(TestCase):
         }, format='json')
         self.assertEqual(competition.status_code, 403, competition.content)
 
+        # Aceeași problemă, aceeași regulă: o echipă creată aici ia o
+        # cheie primară care în cloud aparține altei echipe, iar importul
+        # de rezultate o refuză abia la finalul zilei.
+        team = self.client.post('/api/teams/', {'name': 'Echipa din sala'}, format='json')
+        self.assertEqual(team.status_code, 403, team.content)
+        self.assertTrue(team.json()['is_local_event_server'])
+
     def test_cloud_still_creates_athletes_and_competitions(self):
         athlete = self.client.post('/api/athletes/', {
             'first_name': 'Cloud', 'last_name': 'Allowed', 'date_of_birth': '1995-01-01',
@@ -408,6 +474,9 @@ class OfflineEventResultsTests(TestCase):
             'name': 'Cloud Allowed', 'start_date': '2026-10-01',
         }, format='json')
         self.assertIn(competition.status_code, (200, 201), competition.content)
+
+        team = self.client.post('/api/teams/', {'name': 'Echipa din cloud'}, format='json')
+        self.assertIn(team.status_code, (200, 201), team.content)
 
     def test_event_results_import_refuses_an_athlete_id_that_is_someone_else(self):
         """An athlete registered on the venue machine takes the next free

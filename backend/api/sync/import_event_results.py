@@ -13,6 +13,7 @@ from api.models import (
     CategoryRefereeScore,
     CategoryTeam,
     FightAthleteWeight,
+    FightGroupEnrollment,
     FightCategory,
     Group,
     Match,
@@ -99,6 +100,39 @@ def _upsert_category_athlete(entry: dict[str, Any], fight_bracket_by_category_id
             'ref3_score': entry.get('ref3_score'),
             'ref4_score': entry.get('ref4_score'),
             'ref5_score': entry.get('ref5_score'),
+        },
+    )
+    return obj
+
+
+def _upsert_fight_group_enrollment(entry: dict[str, Any], event_id: int, skipped: list[str]):
+    """Înscrierea la grupa de luptă, pe cheia naturală a modelului
+    (eveniment, grupă, sportiv) - pk-urile diverg între cele două instanțe.
+
+    Grupa și sportivul trebuie să existe deja în cloud: pachetul le-a
+    coborât, iar sala nu are voie să creeze niciuna dintre ele. Dacă
+    lipsesc, sărim peste rând și o raportăm, în loc să crăpăm tot importul
+    pentru o înscriere - restul rezultatelor zilei contează mai mult.
+    """
+    group_id = entry.get('group_id')
+    athlete_id = entry.get('athlete_id')
+    if not group_id or not athlete_id:
+        skipped.append(f'fight_group_enrollment fără grupă sau sportiv: {entry!r}')
+        return None
+    if not Group.objects.filter(pk=group_id).exists():
+        skipped.append(f'fight_group_enrollment: grupa {group_id} nu există în cloud')
+        return None
+    if not Athlete.objects.filter(pk=athlete_id).exists():
+        skipped.append(f'fight_group_enrollment: sportivul {athlete_id} nu există în cloud')
+        return None
+
+    obj, _created = FightGroupEnrollment.objects.update_or_create(
+        event_id=event_id,
+        group_id=group_id,
+        athlete_id=athlete_id,
+        defaults={
+            'registered_weight_kg': entry.get('registered_weight_kg'),
+            'notes': entry.get('notes') or '',
         },
     )
     return obj
@@ -486,6 +520,7 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
     match_events_payload = _section(payload, 'match_events')
     point_events_payload = _section(payload, 'point_events')
     match_referee_scores_payload = _section(payload, 'match_referee_scores')
+    fight_group_enrollments_payload = _section(payload, 'fight_group_enrollments')
     fight_athlete_weights_payload = _section(payload, 'fight_athlete_weights')
     category_athlete_scores_payload = _section(payload, 'category_athlete_scores')
 
@@ -512,6 +547,7 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
         'match_events': 0,
         'point_events': 0,
         'match_referee_scores': 0,
+        'fight_group_enrollments': 0,
         'fight_athlete_weights': 0,
     }
 
@@ -550,6 +586,12 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
         imported['category_athletes'] += 1
         if entry['category_id'] in fight_bracket_by_category_id:
             current_fight_category_by_athlete[entry['athlete_id']] = entry['category_id']
+
+    # Înainte de greutăți: o înscriere la grupă e pasul dinaintea
+    # cântarului, deci ordinea din sală se păstrează și aici.
+    for entry in fight_group_enrollments_payload:
+        if _upsert_fight_group_enrollment(entry, event.id, skipped) is not None:
+            imported['fight_group_enrollments'] += 1
 
     for entry in fight_athlete_weights_payload:
         category_id = current_fight_category_by_athlete.get(entry['athlete_id'], entry['category_id'])
