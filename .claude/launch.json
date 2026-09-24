@@ -40,7 +40,7 @@
     {
       "name": "backend",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "cd /Users/gabimolocea/copilot-worktrees/vovinam-admin/gabimolocea-supreme-eureka/backend && LAN_HOST=192.168.0.129 python3 manage.py runserver 0.0.0.0:8000"],
+      "runtimeArgs": ["-c", "cd /Users/gabimolocea/vovinam-admin/backend && LAN_HOST=192.168.0.197 IS_LOCAL_EVENT_SERVER=True python3 manage.py runserver 0.0.0.0:8000"],
       "port": 8000
     }
   ]
