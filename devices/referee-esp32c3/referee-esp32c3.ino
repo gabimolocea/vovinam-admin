@@ -59,11 +59,11 @@ const char* TZ_INFO    = "EET-2EEST,M3.5.0/3,M10.5.0/4";
 // WiFi si acelasi server - doua secunde sunt destul de prompte pentru un
 // om care tocmai a intrat pe saltea.
 const unsigned long POLL_MS         = 1000;
-// Serverul considera un arbitru conectat daca a semnalat in ultimele 15
-// secunde (vezi referee_presence_list). La 20 de secunde intre semnale,
-// arbitrul aparea permanent rosu in admin desi era pe dispozitiv - deci
-// intervalul trebuie sa stea comod sub fereastra, nu langa ea.
-const unsigned long PRESENCE_MS     = 6000;
+// Serverul considera un arbitru conectat daca a semnalat in ultimele 8
+// secunde (vezi referee_presence_list). La trei secunde intre semnale,
+// operatorul vede aproape imediat cand un dispozitiv intra sau pleaca,
+// si raman doua semnale pierdute de marja inainte de a trece pe rosu.
+const unsigned long PRESENCE_MS     = 3000;
 // Cate categorii anuntam cand stam in asteptare. Un arbitru de sala e
 // alocat la cateva, nu la zeci; plafonul e ca sa nu ajunga un semnal de
 // prezenta o rafala de cereri.
@@ -80,7 +80,7 @@ const int MAX_SCORE = 100;
 
 // Se vede pe ecranul de pornire. Singurul mod sigur de a sti, din sala,
 // daca placa chiar are versiunea pe care credem ca am incarcat-o.
-const int   FW_VERSION_NUMBER = 23;
+const int   FW_VERSION_NUMBER = 24;
 // Se vede pe ecranul de pornire. Cand ai pe masa cinci dispozitive
 // incarcate in zile diferite, data spune mai mult decat numarul.
 const char* FW_UPDATED = "24.09.2026";
