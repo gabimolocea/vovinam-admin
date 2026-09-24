@@ -466,7 +466,18 @@ export default function MatchScoring() {
         )}
 
         {/* ── WINNER DECISION ── */}
-        {allRoundsDone && (
+        {/* Doar la meciurile cu afisare finala. In timp real castigatorul
+            iese din punctele validate pe parcurs: arbitrul a decis deja,
+            apasand, si nu mai are ce sa declare. */}
+        {allRoundsDone && isRealTimeMode && (
+          <div className="rounded-lg border border-border bg-card p-3 mx-3">
+            <p className="text-xs text-muted-foreground text-center">
+              Meci încheiat. Câștigătorul rezultă din punctele validate — nu se alege manual.
+            </p>
+          </div>
+        )}
+
+        {allRoundsDone && !isRealTimeMode && (
           <div className="rounded-lg border border-border bg-card p-3 space-y-3 mx-3">
             <p className="text-xs text-muted-foreground text-center uppercase font-semibold tracking-wider">
               {myFinalChoice ? 'Decizia ta actuală' : 'Alege castigatorul'}
