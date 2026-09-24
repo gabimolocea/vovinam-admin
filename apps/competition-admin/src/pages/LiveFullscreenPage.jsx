@@ -15,6 +15,7 @@ import {
 import { formatGroupBadgeLabel, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '../components/ui';
 import { GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
+import RefereeAccessModal from '../components/RefereeAccessModal';
 import { exportMatchExcel } from '../lib/exportMatchExcel';
 
 /* ═══════════════════════════════════════════════════════
@@ -80,11 +81,55 @@ const readCachedCategoryData = (eventId) => {
   }
 };
 
+// Reprizele difera pe categorii de varsta, iar operatorul le alegea de
+// fiecare data manual - o sursa sigura de greseli intr-o zi lunga. Le
+// propunem pe cele corecte si le lasam schimbabile: regulamentul e regula,
+// dar un meci prost incadrat trebuie sa poata fi reparat pe loc.
+const ROUND_PRESETS = [
+  { key: '3x2', label: '3x2min', rounds: 3, duration: 120 },
+  { key: '2x2', label: '2x2min', rounds: 2, duration: 120 },
+  { key: '2x1.5', label: '2x 1m30', rounds: 2, duration: 90 },
+];
+
+const AGE_BAND_LABELS = {
+  '2x1.5': 'copii (sub 16 ani)',
+  '2x2': 'juniori (16-18 ani)',
+  '3x2': 'seniori (peste 18 ani)',
+};
+
+/** Presetul cerut de varsta grupei, sau null daca nu o putem determina.
+ *
+ * Incadram dupa cel mai mare din grupa: o grupa care contine si seniori
+ * trebuie sa lupte ca seniorii, chiar daca are si sportivi mai tineri.
+ * Grupele fara ani de nastere (seniori "grade mici/mari", de exemplu) nu
+ * pot fi incadrate automat si raman pe alegerea operatorului.
+ */
+const roundPresetForAge = (category, eventStartDate) => {
+  const group = category?.groupData;
+  if (!group) return null;
+
+  const startYear = group.birth_date_start
+    ? new Date(group.birth_date_start).getFullYear()
+    : group.birth_year_start;
+  if (!startYear || !Number.isFinite(Number(startYear))) return null;
+
+  const eventYear = eventStartDate ? new Date(eventStartDate).getFullYear() : new Date().getFullYear();
+  const oldestAge = eventYear - Number(startYear);
+  if (!Number.isFinite(oldestAge) || oldestAge <= 0) return null;
+
+  if (oldestAge < 16) return '2x1.5';
+  if (oldestAge <= 18) return '2x2';
+  return '3x2';
+};
+
 const buildCategoriesWithGroups = (categories, groups) => {
   const groupMap = new Map((groups || []).map(group => [group.id, group]));
   return (categories || []).map(category => ({
     ...category,
     groupName: formatGroupBadgeLabel(groupMap.get(category.group), category),
+    // Grupa intreaga, nu doar eticheta: din anii ei de nastere se alege
+    // presetul de reprize potrivit varstei (vezi ROUND_PRESETS).
+    groupData: groupMap.get(category.group) || null,
   }));
 };
 
@@ -136,6 +181,8 @@ export default function LiveFullscreenPage() {
   const pollRef = useRef(null);
   const pollInFlightRef = useRef(false);
   const exportExcelRef = useRef(null);
+  // Panoul de meci tine fereastra de setari; bara de sus doar o deschide.
+  const openMatchSettingsRef = useRef(null);
 
   // The operational lock exists to stop the CLOUD instance from accepting
   // live edits once an event is exported to a local venue machine - on the
@@ -246,6 +293,10 @@ export default function LiveFullscreenPage() {
         requests.push(matchRefereeAssignmentAPI.list({ match_id: itemId }));
         requests.push(refereeAPI.pointEvents.list(itemId));
         requests.push(recordingAPI.sessions.list({ event_id: eventId, field_id: fieldId }));
+        // Prezenta arbitrilor lipsea de aici, desi panoul de categorie o
+        // cerea: pe un meci, punctele verzi/rosii veneau doar din
+        // incarcarea initiala si ramaneau inghetate pana la un refresh.
+        requests.push(refereePresenceAPI.list({ match: itemId }));
       }
 
       const responses = await Promise.all(requests);
@@ -276,6 +327,7 @@ export default function LiveFullscreenPage() {
         setMatchRefAssignments(arr(responses[5]));
         setMatchPointEvents(arr(responses[6]));
         setRecordingSessions(arr(responses[7]));
+        setRefPresence(arr(responses[8]));
       }
     } catch (err) {
       console.error('Match state fetch error:', err);
@@ -711,6 +763,14 @@ export default function LiveFullscreenPage() {
           {panelType === 'match' && currentMatch && (
             <button onClick={() => setShowResetConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Reset</button>
           )}
+          {panelType === 'match' && currentMatch && (
+            <button
+              onClick={() => openMatchSettingsRef.current?.()}
+              disabled={busy}
+              className={TOPNAV_SECONDARY_BUTTON}
+              title="Mod de afișare și durata reprizelor"
+            >⚙ Setări meci</button>
+          )}
           {panelType === 'match' && currentMatch && isSessionActive && (
             <>
               <button onClick={() => setShowStopConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Nu afișa pe TV</button>
@@ -825,18 +885,48 @@ export default function LiveFullscreenPage() {
       )}
 
       {/* Finish panel confirm */}
-      {showFinishConfirm && ((panelType === 'match' && currentMatch) || (panelType === 'category' && currentCat && currentCat.type !== 'fight')) && (
-        <FullscreenModal
-          onClose={() => setShowFinishConfirm(false)}
-          title="Datele au fost salvate"
-          description="Toate datele pentru această probă sunt salvate. Vrei să închei proba și să revii la programă?"
-          icon="✓"
-          actions={[
-            <button key="cancel" onClick={() => setShowFinishConfirm(false)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
-            <button key="confirm" onClick={finishAndReturnToSchedule} disabled={busy} className={MODAL_SUCCESS_BUTTON}>Revenire la programă</button>,
-          ]}
-        />
-      )}
+      {showFinishConfirm && ((panelType === 'match' && currentMatch) || (panelType === 'category' && currentCat && currentCat.type !== 'fight')) && (() => {
+        // Excelul exista doar pentru probele de tehnica; la meciuri nu are
+        // ce exporta, deci acolo raman doua butoane ca pana acum. Odata
+        // incheiata proba se pleaca din ecran, iar exportul de aici e
+        // ultimul moment comod in care poate fi cerut.
+        const canExport = panelType === 'category' && !!exportExcelRef.current;
+        const finishWithExcel = async () => {
+          setShowFinishConfirm(false);
+          try {
+            await exportExcelRef.current?.();
+          } catch (err) {
+            console.error('Exportul Excel a eșuat', err);
+            window.alert('Exportul Excel nu a reușit. Proba nu a fost încheiată, poți încerca din nou.');
+            return;   // nu incheiem proba daca exportul a cazut
+          }
+          await finishAndReturnToSchedule();
+        };
+
+        return (
+          <FullscreenModal
+            onClose={() => setShowFinishConfirm(false)}
+            title="Datele au fost salvate"
+            description={canExport
+              ? 'Toate datele pentru această probă sunt salvate. Vrei să exporți și fișierul Excel înainte de a încheia?'
+              : 'Toate datele pentru această probă sunt salvate. Vrei să închei proba și să revii la programă?'}
+            icon="✓"
+            // Fara "Anulează": raman X-ul din colt si Escape, iar doua
+            // butoane care amandoua inchid proba se citesc mai repede
+            // decat trei, din care unul nu face nimic.
+            actions={[
+              <button key="confirm" onClick={finishAndReturnToSchedule} disabled={busy} className={canExport ? MODAL_SECONDARY_BUTTON : MODAL_SUCCESS_BUTTON}>
+                {canExport ? 'Încheie fără Excel' : 'Revenire la programă'}
+              </button>,
+              ...(canExport ? [
+                <button key="excel" onClick={finishWithExcel} disabled={busy} className={MODAL_SUCCESS_BUTTON}>
+                  ⬇ Exportă Excel și încheie
+                </button>,
+              ] : []),
+            ]}
+          />
+        );
+      })()}
 
       {/* All athletes done - nudge towards ÎNCHEIE PROBA, in case the pulsing button goes unnoticed */}
       {showAllDoneModal && (
@@ -967,6 +1057,8 @@ export default function LiveFullscreenPage() {
             endRound={endRound}
             resetRound={resetRound}
             createRounds={createRounds}
+            eventStartDate={eventState?.start_date}
+            openMatchSettingsRef={openMatchSettingsRef}
             pauseRound={pauseRound}
             resumeRound={resumeRound}
             addWarning={addWarning}
@@ -992,7 +1084,16 @@ export default function LiveFullscreenPage() {
           <div className="h-full flex items-center justify-center text-muted-foreground text-lg italic">
             <div className="text-center">
               <span className="text-6xl block mb-3">&mdash;</span>
-              Nicio proba in desfasurare pe acest tatami.
+              {panelType === 'category' && currentCat?.type === 'fight' ? (
+                <>
+                  Lupta se conduce pe meci, nu pe categorie.
+                  <span className="mt-2 block text-base not-italic">
+                    Alege meciul din ecranul Live.
+                  </span>
+                </>
+              ) : (
+                'Nicio proba in desfasurare pe acest tatami.'
+              )}
             </div>
           </div>
         )}
@@ -1963,7 +2064,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
    ═══════════════════════════════════════════════════════ */
 function FullscreenMatchPanel({
   match, session, matchRounds, activeRound, matchRefScores, matchEvents, pointEvents,
-  matchRefAssignment, refPresence, allCats, busy, setBusy, competitionReferees, recordingSession, setIdle, startRound, endRound, resetRound, createRounds,
+  matchRefAssignment, refPresence, allCats, busy, setBusy, competitionReferees, recordingSession, setIdle, startRound, endRound, resetRound, createRounds, eventStartDate, openMatchSettingsRef,
   pauseRound, resumeRound, addWarning, addPenalty, addBonus, addInfraction, addDisqualification,
   removeLastEvent, adjustTime, resetMatch, finalizeMatch, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh,
   operationalLockActive, operationalLockMessage, ensureOperationalWrite,
@@ -2066,6 +2167,17 @@ function FullscreenMatchPanel({
   const isMatchFinalized = match.status === 'completed';
   const settingsLocked = matchStarted || isMatchDisplayStarted || isMatchFinalized;
   const operationalSettingsLocked = settingsLocked || operationalLockActive;
+  const [showMatchSettings, setShowMatchSettings] = useState(false);
+  useEffect(() => {
+    if (!openMatchSettingsRef) return undefined;
+    openMatchSettingsRef.current = () => setShowMatchSettings(true);
+    return () => { openMatchSettingsRef.current = null; };
+  }, [openMatchSettingsRef]);
+  const agePresetKey = useMemo(
+    () => roundPresetForAge(allCats?.find(c => c.id === match.category), eventStartDate),
+    [allCats, match.category, eventStartDate],
+  );
+
   const selectedRoundPreset = useMemo(() => {
     // No rounds yet (a legacy match from before rounds were auto-provisioned
     // on creation, or one still loading) - default the display to 2x2min so
@@ -2214,7 +2326,8 @@ function FullscreenMatchPanel({
     if (busy || operationalSettingsLocked) return;
     if (autoRoundProvisionRef.current.has(match.id)) return;
     autoRoundProvisionRef.current.add(match.id);
-    applyRoundPreset(2, 120);
+    const suggested = ROUND_PRESETS.find(p => p.key === agePresetKey) || ROUND_PRESETS[1];
+    applyRoundPreset(suggested.rounds, suggested.duration);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [match.id, matchRounds.length, busy, operationalSettingsLocked]);
 
@@ -2510,65 +2623,6 @@ function FullscreenMatchPanel({
           <div className="w-full overflow-hidden bg-card shadow-sm">
             <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
               <div className="flex flex-wrap items-start gap-2 xl:self-start">
-                <div
-                  role="radiogroup"
-                  aria-label="Mod afișare"
-                  className={`relative inline-flex h-9 min-w-[236px] items-stretch overflow-hidden rounded-full border px-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm transition-colors duration-200 ${(busy || operationalSettingsLocked) ? 'opacity-50' : ''} ${matchDisplayMode === 'real_time' ? 'border-emerald-700 bg-emerald-500/95' : 'border-amber-700 bg-amber-300'}`}
-                  title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Modul nu mai poate fi schimbat după ce meciul a început.' : 'Alege modul de afișare'}
-                >
-                  <span
-                    className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-full border border-black/20 bg-white/95 shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform duration-200 ${matchDisplayMode === 'real_time' ? 'translate-x-0' : 'translate-x-[calc(100%+2px)]'}`}
-                    aria-hidden="true"
-                  />
-                  {[
-                    { key: 'real_time', label: 'Scor timp real', inactiveClass: 'text-white/75' },
-                    { key: 'reveal_final', label: 'Decizia la final', inactiveClass: 'text-amber-950/70' },
-                  ].map((mode) => {
-                    const isSelected = matchDisplayMode === mode.key;
-                    return (
-                      <button
-                        key={mode.key}
-                        type="button"
-                        role="radio"
-                        aria-checked={isSelected}
-                        onClick={() => updateMatchDisplayMode(mode.key)}
-                        disabled={busy || operationalSettingsLocked}
-                        className={`relative z-10 flex-1 text-center transition-colors disabled:cursor-not-allowed ${isSelected ? 'text-foreground' : mode.inactiveClass}`}
-                      >
-                        {mode.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div
-                  role="radiogroup"
-                  aria-label="Preset reprize"
-                  className="inline-flex h-9 items-stretch gap-0.5 rounded-full border border-sky-700 bg-sky-500 p-1 text-[10px] font-bold uppercase tracking-[0.05em] shadow-sm"
-                  title={operationalLockActive ? operationalLockMessage : settingsLocked ? 'Presetul nu mai poate fi schimbat după ce meciul a început.' : 'Alege presetul de reprize'}
-                >
-                  {[
-                    { key: '3x2', label: '3x2min', rounds: 3, duration: 120 },
-                    { key: '2x2', label: '2x2min', rounds: 2, duration: 120 },
-                    { key: '2x1.5', label: '2x 1m30', rounds: 2, duration: 90 },
-                  ].map((preset) => {
-                    const isSelected = selectedRoundPreset === preset.key;
-                    return (
-                      <button
-                        key={preset.key}
-                        type="button"
-                        role="radio"
-                        aria-checked={isSelected}
-                        onClick={() => applyRoundPreset(preset.rounds, preset.duration)}
-                        disabled={busy || operationalSettingsLocked}
-                        className={`rounded-full px-3 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isSelected ? 'bg-white/95 text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.18)]' : 'text-white/85 hover:text-white'}`}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
                 {operationalLockActive ? (
                   <div className="w-full max-w-[360px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                     {operationalLockMessage}
@@ -2734,6 +2788,85 @@ function FullscreenMatchPanel({
                 </option>
               ))}
             </select>
+          </div>
+        </FullscreenModal>
+      )}
+
+      {showMatchSettings && (
+        <FullscreenModal
+          onClose={() => setShowMatchSettings(false)}
+          title="Setări meci"
+          description={settingsLocked
+            ? 'Meciul a început - setările nu mai pot fi schimbate.'
+            : 'Se aplică doar acestui meci. Reprizele sunt propuse după categoria de vârstă, dar le poți schimba.'}
+          actions={[
+            <button key="close" onClick={() => setShowMatchSettings(false)} className={MODAL_SECONDARY_BUTTON}>Închide</button>,
+          ]}
+        >
+          <div className="space-y-5 py-2">
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Mod de afișare</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: 'real_time', label: 'Scor timp real', hint: 'Punctele apar pe ecran pe măsură ce sunt validate de doi arbitri.' },
+                  { key: 'reveal_final', label: 'Decizia la final', hint: 'Ecranul rămâne neutru; rezultatul se arată la sfârșit.' },
+                ].map((mode) => (
+                  <button
+                    key={mode.key}
+                    type="button"
+                    onClick={() => updateMatchDisplayMode(mode.key)}
+                    disabled={busy || operationalSettingsLocked}
+                    className={`flex-1 min-w-[200px] rounded-md border p-3 text-left transition disabled:opacity-40 ${
+                      matchDisplayMode === mode.key
+                        ? 'border-emerald-600 bg-emerald-50 ring-2 ring-emerald-500'
+                        : 'border-border bg-card hover:bg-accent'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold text-foreground">{mode.label}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{mode.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Reprize</p>
+              <div className="flex flex-wrap gap-2">
+                {ROUND_PRESETS.map((preset) => {
+                  const isSuggested = preset.key === agePresetKey;
+                  return (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => applyRoundPreset(preset.rounds, preset.duration)}
+                      disabled={busy || operationalSettingsLocked}
+                      className={`flex-1 min-w-[140px] rounded-md border p-3 text-left transition disabled:opacity-40 ${
+                        selectedRoundPreset === preset.key
+                          ? 'border-sky-600 bg-sky-50 ring-2 ring-sky-500'
+                          : 'border-border bg-card hover:bg-accent'
+                      }`}
+                    >
+                      <span className="block text-sm font-bold text-foreground">{preset.label}</span>
+                      {/* Categoria de varsta pe fiecare preset, nu doar pe
+                          cel propus: asa se vede regula intreaga si poti
+                          alege in cunostinta de cauza cand corectezi. */}
+                      <span className={`mt-1 block text-xs ${isSuggested ? 'font-semibold text-sky-700' : 'text-muted-foreground'}`}>
+                        {isSuggested ? 'Recomandat: ' : ''}{AGE_BAND_LABELS[preset.key]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {agePresetKey ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Propunerea vine din anii de naștere ai grupei. Dacă meciul e încadrat greșit, alege altul.
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Grupa nu are ani de naștere definiți, deci nu se poate propune automat un preset.
+                </p>
+              )}
+            </div>
           </div>
         </FullscreenModal>
       )}
@@ -3234,89 +3367,6 @@ function FullscreenMatchPanel({
         </div>
       </div>
     </div>
-  );
-}
-
-// Datele cu care un arbitru intra in sesiune: codul QR pentru telefon si
-// PIN-ul pentru dispozitivul cu buton rotativ, care nu are nici tastatura
-// nici camera. Acelasi credential in doua forme, si acelasi buton le
-// roteste pe amandoua.
-//
-// Component, nu bucata copiata in fiecare panou: exista si la tehnica si
-// la lupte, iar doua copii ar fi divergat la prima modificare.
-function RefereeAccessModal({ eventId, referee, onClose }) {
-  const [info, setInfo] = useState(null);      // { token, pin, login_path }
-  const [loading, setLoading] = useState(false);
-  const [resetting, setResetting] = useState(false);
-
-  // Ia (sau creeaza) codul de conectare. Nu roteste niciodata unul
-  // existent: redeschiderea ferestrei mai tarziu in zi nu are voie sa
-  // scoata din aplicatie un arbitru care s-a conectat de dimineata.
-  useEffect(() => {
-    if (!referee?.id || !eventId) { setInfo(null); return undefined; }
-    let cancelled = false;
-    setLoading(true);
-    setInfo(null);
-    refereeQrLoginAPI.get(eventId, referee.id)
-      .then(({ data }) => { if (!cancelled) setInfo(data); })
-      .catch((err) => { console.error('Nu s-a putut citi codul arbitrului', err); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [referee?.id, eventId]);
-
-  const reset = async () => {
-    if (!referee?.id || !eventId) return;
-    setResetting(true);
-    try {
-      const { data } = await refereeQrLoginAPI.reset(eventId, referee.id);
-      setInfo(data);
-    } catch (err) {
-      console.error('Nu s-a putut reseta codul arbitrului', err);
-      window.alert('Nu s-a putut reseta codul.');
-    }
-    setResetting(false);
-  };
-
-  if (!referee) return null;
-
-  return (
-    <FullscreenModal
-      onClose={onClose}
-      title={`Conectare arbitru — A${referee.pos} ${referee.name || ''}`}
-      description="Pe telefon: arbitrul scanează codul și intră direct în aplicația de arbitraj, fără email și parolă. Pe dispozitivul cu buton rotativ: formează PIN-ul. Amândouă rămân valabile toată ziua - resetează-le doar dacă au fost pierdute sau expuse."
-      actions={[
-        <button key="close" onClick={onClose} className={MODAL_SECONDARY_BUTTON}>Închide</button>,
-        <button key="reset" onClick={reset} disabled={loading || resetting} className={MODAL_WARNING_BUTTON}>
-          {resetting ? 'Se resetează…' : 'Resetează codul și PIN-ul'}
-        </button>,
-      ]}
-    >
-      <div className="flex flex-col items-center gap-3 py-2">
-        {['localhost', '127.0.0.1'].includes(window.location.hostname) && (
-          <div className="w-full border-2 border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            Ești pe <strong>localhost</strong> — codul QR va trimite telefonul arbitrului tot spre "localhost al lui", nu spre acest calculator, deci nu va funcționa. Deschide pagina folosind adresa IP din rețeaua locală înainte să arăți codul unui arbitru. PIN-ul nu e afectat: dispozitivul are adresa serverului scrisă în el.
-          </div>
-        )}
-        {loading || !info ? (
-          <div className="flex h-48 w-48 items-center justify-center border-2 border-dashed border-border text-sm text-muted-foreground">
-            Se încarcă…
-          </div>
-        ) : (
-          <div className="border-2 border-border bg-white p-3">
-            <QRCodeSVG value={`${refereeScoringOrigin()}${info.login_path}`} size={192} />
-          </div>
-        )}
-        {info?.pin && (
-          <div className="w-full border-2 border-border bg-muted/40 px-3 py-2 text-center">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              PIN pentru dispozitivul de arbitraj
-            </div>
-            <div className="font-mono text-3xl font-bold tracking-[0.3em] text-foreground">{info.pin}</div>
-          </div>
-        )}
-        <p className="text-xs text-muted-foreground">Cod stabil pentru acest arbitru la acest eveniment - nu se schimbă între probe.</p>
-      </div>
-    </FullscreenModal>
   );
 }
 

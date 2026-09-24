@@ -1,5 +1,6 @@
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { CentralizatorContext } from './CategoriesLayout';
+import RefereeAccessModal from '../components/RefereeAccessModal';
 import {
   competitionRefereeAPI, athleteAPI,
   categoryRefereeAssignmentAPI, matchRefereeAssignmentAPI,
@@ -10,7 +11,7 @@ import {
   Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui';
-import { FileText, Pencil, Plus, X } from 'lucide-react';
+import { FileText, Pencil, Plus, X, QrCode } from 'lucide-react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const ROLE_LABELS = {
@@ -47,6 +48,8 @@ export default function ArbitriPage() {
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Arbitrul pentru care s-a deschis fereastra cu QR si PIN.
+  const [accessRef, setAccessRef] = useState(null);
   const [search, setSearch] = useState('');
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [editingRef, setEditingRef] = useState(null);
@@ -491,7 +494,7 @@ export default function ArbitriPage() {
               <TableHead>Cat.</TableHead>
               <TableHead>Rol delegat</TableHead>
               <TableHead className="w-[110px] text-center">Conflicte</TableHead>
-              <TableHead className="w-[140px] text-center">Acțiuni</TableHead>
+              <TableHead className="w-[180px] text-center">Acțiuni</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -518,6 +521,23 @@ export default function ArbitriPage() {
                   </TableCell>
                   <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-1">
+                      {/* Datele de conectare stau si aici, nu doar in
+                          panoul Live: la inceputul zilei le imparti pe
+                          toate dintr-un singur ecran, cu lista in fata. */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setAccessRef({
+                          id: entry.athlete,
+                          name: entry.athlete_name || `Arbitru #${entry.athlete}`,
+                          pos: index + 1,
+                        })}
+                        disabled={busy}
+                        title="Cod QR și PIN de conectare"
+                      >
+                        <QrCode className="h-4 w-4" />
+                      </Button>
                       <Button
                         type="button"
                         variant="outline"
@@ -546,6 +566,10 @@ export default function ArbitriPage() {
           </TableBody>
         </Table>
       </div>
+
+      {accessRef && (
+        <RefereeAccessModal eventId={eventId} referee={accessRef} onClose={() => setAccessRef(null)} />
+      )}
 
       <Dialog open={showAddPicker} onOpenChange={(open) => (open ? setShowAddPicker(true) : closeAddPicker())}>
         <DialogContent fullScreen>

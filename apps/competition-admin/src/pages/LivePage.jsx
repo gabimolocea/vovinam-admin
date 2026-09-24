@@ -245,7 +245,28 @@ function FieldPanel({
   }, [matches, matchAssignments, field.id]);
 
   const goFullscreen = (panelType, itemId) => {
-    navigate(`/competitions/${eventId}/live-fullscreen?field=${field.id}&panel=${panelType}${itemId ? `&id=${itemId}` : ''}`);
+    let targetPanel = panelType;
+    let targetId = itemId;
+
+    // Lupta se conduce pe meci, nu pe categorie - panoul de categorie nu
+    // are ce arata pentru ea si iesea un ecran gol. Deschidem meciul:
+    // primul neterminat de pe acest teren, altfel ultimul.
+    if (panelType === 'category') {
+      const category = allCats.find(c => c.id === itemId);
+      if (category?.type === 'fight') {
+        const onThisField = (matchAssignments || [])
+          .filter(a => a.field === field.id)
+          .map(a => matches.find(m => m.id === a.match))
+          .filter(m => m && m.category === itemId);
+        const target = onThisField.find(m => m.status !== 'completed') || onThisField[onThisField.length - 1];
+        if (target) {
+          targetPanel = 'match';
+          targetId = target.id;
+        }
+      }
+    }
+
+    navigate(`/competitions/${eventId}/live-fullscreen?field=${field.id}&panel=${targetPanel}${targetId ? `&id=${targetId}` : ''}`);
   };
 
   // Build sorted schedule items (categories + matches + breaks)
