@@ -506,7 +506,12 @@ class RefereePresenceViewSet(viewsets.ViewSet):
         category_id = request.query_params.get('category')
         match_id = request.query_params.get('match')
         event_id = request.query_params.get('event_id')
-        cutoff = timezone.now() - timedelta(seconds=15)
+        # Cat timp o prezenta ramane valabila fara un semnal nou. Toti
+        # clientii semnaleaza mult mai des - aplicatia de arbitri la 2s,
+        # dispozitivul la 3s - deci opt secunde inseamna doua-trei semnale
+        # pierdute inainte sa treaca pe rosu, iar un arbitru care chiar
+        # pleaca se vede in cateva secunde, nu in cincisprezece.
+        cutoff = timezone.now() - timedelta(seconds=8)
         qs = RefereePresence.objects.filter(last_ping__gte=cutoff)
         if category_id:
             qs = qs.filter(category_id=category_id)
