@@ -124,15 +124,21 @@ class Command(BaseCommand):
         oldest_year = min(years)
         for group in groups:
             start, end = group.birth_year_start, group.birth_year_end
-            if start is None:
+            if start is None or end is None:
                 continue
-            if oldest_year >= start and (end is None or oldest_year <= end):
+            if start <= oldest_year <= end:
                 return group, None
 
-        # Nimic nu-l cuprinde: luăm grupa fără limită superioară (seniori),
-        # altfel ultima.
-        open_ended = next((g for g in groups if g.birth_year_start and g.birth_year_end is None), None)
-        return (open_ended or groups[-1]), f'niciun interval nu cuprinde anul {oldest_year}'
+        # Nimeni nu intra intr-un interval inchis: grupa cu o singura
+        # limita e cea deschisa (seniorii, "start+" = nascut atunci sau
+        # mai devreme). Altfel, ultima.
+        open_ended = next(
+            (g for g in groups if (g.birth_year_start is None) != (g.birth_year_end is None)),
+            None,
+        )
+        if open_ended:
+            return open_ended, None
+        return groups[-1], f'niciun interval nu cuprinde anul {oldest_year}'
 
     def _register_referee(self, event, referee):
         """Înscrie arbitrul la competiție, nu doar pe o poziție.

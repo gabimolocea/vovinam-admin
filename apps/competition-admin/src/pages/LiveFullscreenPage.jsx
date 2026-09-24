@@ -111,6 +111,16 @@ const roundPresetForAge = (category, eventStartDate) => {
   const startYear = group.birth_date_start
     ? new Date(group.birth_date_start).getFullYear()
     : group.birth_year_start;
+  const endYear = group.birth_date_end
+    ? new Date(group.birth_date_end).getFullYear()
+    : group.birth_year_end;
+
+  // O grupă cu o singură limită e deschisă la capăt - seniorii, "2008+",
+  // adică născut atunci sau mai devreme (vezi findMatchingGroups în
+  // apps/app/src/lib/centralizator.js). Nu are sens să scoatem o vârstă
+  // din limita aia: calculată ca și cum ar fi cel mai bătrân sportiv,
+  // dădea fix 18 ani și trimitea seniorii pe presetul de juniori.
+  if (!startYear !== !endYear) return '3x2';
   if (!startYear || !Number.isFinite(Number(startYear))) return null;
 
   const eventYear = eventStartDate ? new Date(eventStartDate).getFullYear() : new Date().getFullYear();

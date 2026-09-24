@@ -14,6 +14,21 @@ def _extract_event_year(event):
     raise ValueError('Event start_date is missing or invalid.')
 
 
+# (nume, varsta_cea_mai_mare, varsta_cea_mai_mica, allow_younger, grade)
+#
+# Anii de nastere se calculeaza din anul competitiei: cel mai batran
+# admis da `birth_year_start`, cel mai tanar da `birth_year_end`.
+#
+# ATENTIE la grupele cu o singura limita. Seniorii sunt "18 ani si
+# peste": ies cu start=anul-18 si end=None, iar o grupa cu o singura
+# limita se citeste "anul ala sau mai devreme" - deci "2008+" inseamna
+# nascut in 2008 sau inainte, adica toti adultii. Inegalitatea e
+# inversa fata de cum se citeste aceeasi coloana cand sunt setate
+# ambele limite; vezi findMatchingGroups (apps/app/src/lib/
+# centralizator.js) si Group.__str__. Nu "corecta" mutand 18 pe pozitia
+# varstei minime - strica eticheta "2008+" si nu repara nimic, pentru
+# ca Group.eligibility_warnings() oricum verifica varsta doar cand sunt
+# setate ambele limite.
 DEFAULT_GROUPS = [
     ('Grupa 0', 8, 7, False, 'all'),
     ('Grupa 1', 12, 9, False, 'all'),
