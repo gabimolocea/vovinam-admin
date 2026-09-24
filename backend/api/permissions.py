@@ -200,6 +200,17 @@ class IsResultReviewerOrAdmin(permissions.BasePermission):
         except Exception:
             return False
 
+        # Nimeni nu-și avizează propriul rezultat. La federație antrenorii
+        # sunt ei înșiși sportivi legitimați, deci un antrenor care a
+        # concurat trecea toate condițiile de mai jos - e antrenor, e al
+        # clubului, iar rezultatul aparține unui sportiv din clubul lui,
+        # adică lui. Adminul a ieșit deja din funcție mai sus și rămâne
+        # ultima instanță pentru cazul ăsta.
+        if getattr(obj, 'athlete_id', None) == reviewer_athlete.id:
+            return False
+        if hasattr(obj, 'team_members') and obj.team_members.filter(pk=reviewer_athlete.pk).exists():
+            return False
+
         if not reviewer_athlete.is_coach or not reviewer_athlete.club:
             return False
 
