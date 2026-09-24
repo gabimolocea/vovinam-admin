@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { fieldAPI } from '@shared/lib/api';
 
 const PUBLIC_DISPLAY_PORT = 5177;
@@ -64,6 +64,72 @@ export function useDisplayPreview() {
   return useContext(DisplayPreviewContext);
 }
 
+const PREVIEW_W = 400;
+const PREVIEW_H = 225;
+
+/**
+ * O fereastră de preview, mutabilă cu mouse-ul de bara de titlu.
+ *
+ * Preview-ul stătea fix în dreapta jos, exact peste coloana de acțiuni a
+ * ultimilor sportivi din tabel - iar operatorul nu avea cum să-l dea la o
+ * parte fără să-l închidă. Se trage de bara de sus; poziția e ținută per
+ * teren, așa că rămâne unde ai pus-o cât ține pagina.
+ */
+function FloatingPreview({ fieldId, label, index, onClose }) {
+  // Poziția implicită: stivuite din dreapta jos, ca până acum.
+  const [pos, setPos] = useState(null);
+  const dragRef = useRef(null);
+
+  const startDrag = (event) => {
+    // Doar butonul principal, și nu de pe ✕.
+    if (event.button !== 0 || event.target.closest('button')) return;
+    event.preventDefault();
+
+    const rect = event.currentTarget.parentElement.getBoundingClientRect();
+    dragRef.current = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+
+    const onMove = (moveEvent) => {
+      if (!dragRef.current) return;
+      // Ținem fereastra în ecran: altfel se poate trage sub marginea de
+      // jos și nu mai ai de ce s-o apuci înapoi.
+      const maxLeft = window.innerWidth - PREVIEW_W;
+      const maxTop = window.innerHeight - PREVIEW_H;
+      setPos({
+        left: Math.min(Math.max(0, moveEvent.clientX - dragRef.current.dx), Math.max(0, maxLeft)),
+        top: Math.min(Math.max(0, moveEvent.clientY - dragRef.current.dy), Math.max(0, maxTop)),
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const placement = pos
+    ? { left: `${pos.left}px`, top: `${pos.top}px` }
+    : { right: '16px', bottom: `${16 + index * (PREVIEW_H + 20)}px` };
+
+  return (
+    <div
+      className="fixed z-[9999] shadow-2xl border-2 border-gray-700 bg-black overflow-hidden rounded"
+      style={{ ...placement, width: `${PREVIEW_W}px`, height: `${PREVIEW_H}px` }}
+    >
+      <div
+        onMouseDown={startDrag}
+        title="Trage ca să muți preview-ul"
+        className="absolute top-0 left-0 right-0 bg-gray-900/90 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex items-center justify-between z-10 cursor-move select-none"
+      >
+        <span>{label} — Preview</span>
+        <button onClick={onClose} className="cursor-pointer text-gray-400 hover:text-white text-xs leading-none px-1">✕</button>
+      </div>
+      <PreviewIframe src={`${publicDisplayOrigin()}/display/${fieldId}`} title={`${label} Preview`} />
+    </div>
+  );
+}
+
 /**
  * Global provider for floating public-display previews.
  * Tracks which field previews are open; renders iframes fixed on screen.
@@ -114,26 +180,15 @@ export function DisplayPreviewProvider({ children }) {
       {children}
 
       {/* ── Floating preview iframes ── */}
-      {[...openPreviews].map((fId, idx) => {
-        const field = fields.find(f => f.id === fId);
-        const label = field?.name || `Teren ${fId}`;
-        // Stack previews from bottom-right, offset upward
-        const bottom = 16 + idx * 245;
-
-        return (
-          <div
-            key={fId}
-            className="fixed right-4 z-[9999] shadow-2xl border-2 border-gray-700 bg-black overflow-hidden rounded"
-            style={{ bottom: `${bottom}px`, width: '400px', height: '225px' }}
-          >
-            <div className="absolute top-0 left-0 right-0 bg-gray-900/90 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex items-center justify-between z-10">
-              <span>{label} — Preview</span>
-              <button onClick={() => closePreview(fId)} className="text-gray-400 hover:text-white text-xs leading-none px-1">✕</button>
-            </div>
-            <PreviewIframe src={`${publicDisplayOrigin()}/display/${fId}`} title={`${label} Preview`} />
-          </div>
-        );
-      })}
+      {[...openPreviews].map((fId, idx) => (
+        <FloatingPreview
+          key={fId}
+          fieldId={fId}
+          label={fields.find(f => f.id === fId)?.name || `Teren ${fId}`}
+          index={idx}
+          onClose={() => closePreview(fId)}
+        />
+      ))}
     </DisplayPreviewContext.Provider>
   );
 }
