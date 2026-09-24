@@ -76,7 +76,11 @@ const int MAX_SCORE = 100;
 
 // Se vede pe ecranul de pornire. Singurul mod sigur de a sti, din sala,
 // daca placa chiar are versiunea pe care credem ca am incarcat-o.
-const int   FW_VERSION_NUMBER = 25;
+// Versionare semantica: MAJOR.MINOR.PATCH. Se urca MINOR la functii
+// noi si corecturi, MAJOR doar cand se schimba felul in care se
+// foloseste aparatul. 2.0.0 e prima cu arbitraj la lupte - pana
+// atunci placa stia doar probe tehnice.
+const char* FW_VERSION = "2.0.2";
 // Se vede pe ecranul de pornire. Cand ai pe masa cinci dispozitive
 // incarcate in zile diferite, data spune mai mult decat numarul.
 const char* FW_UPDATED = "24.09.2026";
@@ -91,6 +95,16 @@ const char* FW_UPDATED = "24.09.2026";
 #define ENCODER_CLK 7
 #define ENCODER_DT  3
 #define ENCODER_SW  5
+
+// Cele patru butoane de punctaj la lupte. Encoderul ramane pentru
+// tehnica, unde nota porneste de la 10.0 si se roteste in jos - fix
+// cum gandeste un arbitru care scade dintr-un maxim. La lupte insa
+// punctul se da intr-o jumatate de secunda, cu ochii pe saltea, si
+// acolo un buton gasit pe pipaite bate orice rotire.
+#define BTN_RED_1   20
+#define BTN_RED_2    0
+#define BTN_BLUE_1  21
+#define BTN_BLUE_2   1
 
 #define BLACK     0x0000
 #define WHITE     0xFFFF
@@ -117,13 +131,32 @@ enum Screen {
   SCREEN_WIFI_DIAG,   // ce retele vede placa, cand nu prinde WiFi
   SCREEN_PIN,         // arbitrul isi formeaza PIN-ul
   SCREEN_STANDBY,     // conectat, astept sa fiu pus pe o categorie
-  SCREEN_SCORE        // sportivul e pe saltea: rotesti nota si o trimiti
+  SCREEN_SCORE,       // sportivul e pe saltea: rotesti nota si o trimiti
+  SCREEN_MATCH        // meci de lupta: patru butoane, puncte in timp real
 };
 
 // Sus, nu langa readButton(): Arduino genereaza singur prototipurile
 // functiilor si le pune imediat dupa #include-uri, deci orice tip folosit
 // intr-o semnatura trebuie sa existe inainte de prima functie.
 enum ButtonEvent { BTN_NONE, BTN_SHORT, BTN_LONG };
+
+// Ce s-a ales de punctul pe care tocmai l-am dat. La lupte in timp
+// real serverul nu valideaza un punct pe cuvantul unui singur
+// arbitru: are nevoie de cel putin doi care apasa aceeasi parte si
+// aceeasi valoare la mai putin de 1,5 secunde unul de altul (vezi
+// _auto_validate_real_time_point_event). Deci intre "am apasat" si
+// "punctul exista" e o stare de asteptare reala, care trebuie
+// aratata - altfel arbitrul crede ca a punctat cand de fapt colegii
+// n-au vazut aceeasi faza.
+enum PointState {
+  POINT_NONE,        // ecranul normal de meci
+  POINT_SENDING,     // cererea e pe drum
+  POINT_PENDING,     // serverul l-a primit, asteapta al doilea arbitru
+  POINT_VALIDATED,   // confirmat: a intrat in scor
+  POINT_FAILED,      // n-a plecat deloc (retea)
+  POINT_TOO_FAST,    // a doua apasare pe acelasi buton, prea repede
+  POINT_CLOSED       // s-a apasat in pauza sau intre reprize
+};
 
 // Cat incape pe ecran si in RAM fara sa ne jucam cu alocari dinamice.
 // O categorie de tehnica nu trece de ~24 de sportivi; daca trece, luam
@@ -425,7 +458,13 @@ int apiRequestOnce(const char* method, const String& path, const String& body,
   if (body.length())        http.addHeader("Content-Type", "application/json");
 
   unsigned long startedAt = millis();
-  int code = (strcmp(method, "POST") == 0) ? http.POST(body) : http.GET();
+  // Fara ramura de PATCH, orice metoda care nu era POST pleca drept GET -
+  // adica o corectare de scor s-ar fi trimis ca o simpla citire, fara sa
+  // dea vreo eroare.
+  int code;
+  if (strcmp(method, "POST") == 0)       code = http.POST(body);
+  else if (strcmp(method, "GET") == 0)   code = http.GET();
+  else                                   code = http.sendRequest(method, body);
 
   int payloadLen = 0;
   if (code > 0) {
@@ -606,6 +645,10 @@ bool apiLoadCategories() {
     return false;
   }
 
+  // Meciurile mele vin din alt capat; le luam acum, o data, ca sa stiu
+  // mai tarziu daca meciul pus pe teren e al meu.
+  apiLoadMyMatches();
+
   myCategoryCount = 0;
   for (JsonObject item : res.as<JsonArray>()) {
     if (myCategoryCount >= MAX_CATEGORIES) break;
@@ -633,6 +676,541 @@ const char* myPositionIn(int categoryId) {
     if (myCategoryIds[i] == categoryId) return myCategoryPos[i];
   }
   return "";
+}
+
+// ─────────────────────────── LUPTE ───────────────────────────
+//
+// Culorile colturilor. Numele proprii, nu RED/BLUE din Arduino_GFX:
+// albastrul bibliotecii (0x001F) e prea inchis ca fundal plin, textul
+// alb pe el nu se citeste de la distanta.
+#define SIDE_RED   0xE882
+#define SIDE_BLUE  0x1C9F
+
+#define MAX_MATCHES 40
+int  myMatchIds[MAX_MATCHES];
+char myMatchPos[MAX_MATCHES][4];
+int  myMatchCount = 0;
+
+int  liveMatchId        = 0;
+int  liveMatchCategoryId = 0;
+char liveRedName[22]    = "";
+char liveBlueName[22]   = "";
+bool liveMatchRealTime  = false;
+int  activeRoundId      = 0;
+int  activeRoundNumber  = 0;
+bool activeRoundPaused  = false;
+bool roundsKnown        = false;
+
+// Modul "reveal_final": nu se trimit puncte care se valideaza in doi, ci
+// fiecare arbitru isi tine propriul total pe repriza, dezvaluit la final.
+// Ecranul se imparte in doua si arata exact cele doua numere pe care le
+// tine arbitrul - altfel n-ar avea de unde sti ce a acumulat.
+int  myRoundScoreId  = 0;
+int  myRedScore      = 0;
+int  myBlueScore     = 0;
+bool roundScoreKnown = false;
+
+// Decizia finala: dupa ce toate reprizele s-au incheiat, fiecare arbitru
+// alege un castigator. Se trimite ca un rand fara repriza (round=null) cu
+// 1 la castigator si 0 la celalalt - acelasi lucru pe care il face
+// aplicatia din telefon.
+//
+// E o actiune ireversibila de pe placa: odata trimisa, serverul o mai
+// accepta doar daca o sterge competition admin. De aceea nu se trimite
+// din prima apasare, ci dintr-o a doua, pe aceeasi culoare.
+bool allRoundsDone      = false;
+bool finalDecided       = false;
+bool finalChoiceRed     = false;
+int  finalDecisionId    = 0;
+int  myTotalRed         = 0;
+int  myTotalBlue        = 0;
+bool totalsKnown        = false;
+
+bool          decisionArmed    = false;   // o culoare asteapta confirmarea
+bool          decisionArmedRed = false;
+unsigned long decisionArmedAt  = 0;
+unsigned long lastDecisionTick = 0;
+
+// Cat ramane armata confirmarea. Destul cat sa apesi a doua oara linistit,
+// prea putin cat sa ramana armata pana cand o atingi din greseala.
+const unsigned long DECISION_ARM_MS = 6000;
+
+// Ultimele puncte pe care le-am dat, cu ce s-a ales de ele. Un singur
+// punct urmarit nu ajunge: la doua faze la doua secunda distanta, primul
+// poate fi inca in asteptare cand il trimit pe al doilea, si atunci i-as
+// pierde urma. Banda asta e si raspunsul la "a intrat a doua apasare?".
+#define MAX_RECENT 3
+struct MyPoint {
+  int        eventId;
+  bool       isRed;
+  int        points;
+  PointState state;
+};
+MyPoint recent[MAX_RECENT];
+int     recentCount = 0;
+
+void pushRecent(int eventId, bool isRed, int points, PointState st) {
+  if (recentCount == MAX_RECENT) {
+    for (int i = 1; i < MAX_RECENT; i++) recent[i - 1] = recent[i];
+    recentCount = MAX_RECENT - 1;
+  }
+  recent[recentCount].eventId = eventId;
+  recent[recentCount].isRed   = isRed;
+  recent[recentCount].points  = points;
+  recent[recentCount].state   = st;
+  recentCount++;
+}
+
+PointState    pointState   = POINT_NONE;
+bool          pointSideRed = true;
+int           pointValue   = 0;
+int           pointEventId = 0;
+unsigned long pointShownAt = 0;
+
+// Cat tinem ecranul de punct inainte sa revenim la meci. Confirmarea se
+// vede scurt, asteptarea mai mult - daca al doilea arbitru n-a apasat in
+// 4 secunde, punctul aproape sigur nu se mai valideaza si arbitrul
+// trebuie sa vada din nou scorul, nu un ecran inghetat.
+// Cat sta ecranul de punct peste meci. Scurt, intentionat: intr-o
+// repriza care curge, patru secunde de ecran acoperit sunt o eternitate,
+// iar arbitrul are nevoie sa vada saltea si repriza. Starea punctului nu
+// se pierde - continua in banda de jos a ecranului de meci.
+const unsigned long POINT_OK_MS      = 1200;
+const unsigned long POINT_PENDING_MS = 1500;
+const unsigned long POINT_FAST_MS    = 900;
+
+// Butoanele de punctaj. Ca si encoderul, se citesc pe intrerupere:
+// loop() sta blocat in cereri HTTP, iar o apasare citita prin polling
+// s-ar pierde acolo fara urma.
+struct PointButton {
+  uint8_t     pin;
+  bool        isRed;
+  int         points;
+  volatile unsigned long lastEdgeMs;
+  volatile unsigned long lastAcceptedMs;
+};
+
+PointButton pointButtons[4] = {
+  { BTN_RED_1,  true,  1, 0, 0 },
+  { BTN_RED_2,  true,  2, 0, 0 },
+  { BTN_BLUE_1, false, 1, 0, 0 },
+  { BTN_BLUE_2, false, 2, 0, 0 },
+};
+
+// Doua apasari pe acelasi buton mai apropiate decat atat sunt aceeasi
+// intentie, nu doua puncte. Nimeni nu arbitreaza doua faze distincte la
+// 400ms; in schimb un deget nervos sau o atingere dubla da exact asta.
+//
+// Nu e o preferinta de interfata, e o problema de scor. Serverul refuza
+// sa valideze un punct pe apasarile unui singur arbitru (unique_referees
+// >= 2), dar daca un coleg apasa in aceeasi fereastra de 1,5 secunde,
+// atunci AMBELE apasari ale mele se valideaza si sportivul ia 2 puncte
+// in loc de 1. Filtrul de aici e singurul loc unde asta se poate opri
+// fara sa schimbam backendul.
+//
+// Pragul e generos fata de arbitrajul real: doi pumni la doua secunde,
+// sau doua puncte la 1,5 secunde, trec amandoua fara sa fie atinse.
+const unsigned long POINT_GUARD_MS = 400;
+
+// O apasare respinsa nu se inghite in tacere: arbitrul trebuie sa stie
+// ca punctul al doilea NU a plecat, altfel crede ca a dat doua.
+volatile bool pressTooFast = false;
+
+// Coada de apasari: intreruperea doar noteaza, trimiterea se face din
+// loop(). Opt locuri sunt mai mult decat poate apasa un om cat tine o
+// cerere; ce trece peste se pierde, si e mai bine asa decat sa blocam
+// intreruperea.
+volatile int pressQueue[8];
+volatile int pressHead = 0;
+volatile int pressTail = 0;
+
+void IRAM_ATTR onPointButton(void* arg) {
+  PointButton* b = (PointButton*) arg;
+  unsigned long now = millis();
+  if (now - b->lastEdgeMs < DEBOUNCE_MS) return;
+  b->lastEdgeMs = now;
+
+  // Doar frontul de apasare. Eliberarea nu ne intereseaza: un punct se
+  // da cand degetul atinge butonul, nu cand il ridica.
+  if (digitalRead(b->pin) != LOW) return;
+
+  if (now - b->lastAcceptedMs < POINT_GUARD_MS) {
+    pressTooFast = true;
+    return;
+  }
+  b->lastAcceptedMs = now;
+
+  int next = (pressHead + 1) % 8;
+  if (next == pressTail) return;     // coada plina
+  pressQueue[pressHead] = (int) (b - pointButtons);
+  pressHead = next;
+}
+
+bool takePress(int* index) {
+  if (pressTail == pressHead) return false;
+  *index = pressQueue[pressTail];
+  pressTail = (pressTail + 1) % 8;
+  return true;
+}
+
+// La ce meciuri sunt arbitru. Ca si la categorii, lista serveste doar ca
+// sa stiu daca meciul pe care il pune masa centrala e al meu - nu se
+// alege nimic de pe dispozitiv.
+bool apiLoadMyMatches() {
+  JsonDocument filter;
+  JsonObject row = filter.add<JsonObject>();
+  row["id"] = true;
+  row["referee_position"] = true;
+
+  JsonDocument res;
+  if (apiRequest("GET", "/referees/me/assigned-matches/", "", res, &filter) != 200) {
+    myMatchCount = 0;
+    return false;
+  }
+
+  myMatchCount = 0;
+  for (JsonObject item : res.as<JsonArray>()) {
+    if (myMatchCount >= MAX_MATCHES) break;
+    int id = item["id"] | 0;
+    if (!id) continue;
+    myMatchIds[myMatchCount] = id;
+    strlcpy(myMatchPos[myMatchCount], item["referee_position"] | "",
+            sizeof(myMatchPos[myMatchCount]));
+    myMatchCount++;
+  }
+  return true;
+}
+
+bool isMyMatch(int matchId) {
+  for (int i = 0; i < myMatchCount; i++) if (myMatchIds[i] == matchId) return true;
+  return false;
+}
+
+const char* myPositionInMatch(int matchId) {
+  for (int i = 0; i < myMatchCount; i++) if (myMatchIds[i] == matchId) return myMatchPos[i];
+  return "";
+}
+
+// Numele colturilor si modul de afisare. `display_mode` decide totul:
+// doar pe "real_time" serverul cere confirmarea a doi arbitri. In rest
+// punctul intra direct, si atunci n-are rost sa aratam "astept".
+void apiLoadMatch(int matchId) {
+  liveRedName[0] = '\0';
+  liveBlueName[0] = '\0';
+  liveMatchRealTime = false;
+  liveMatchCategoryId = 0;
+  if (!matchId) return;
+
+  JsonDocument filter;
+  filter["red_corner_full_name"]  = true;
+  filter["blue_corner_full_name"] = true;
+  filter["display_mode"]          = true;
+  filter["category"]              = true;
+
+  JsonDocument res;
+  if (apiRequest("GET", String("/matches/") + matchId + "/", "", res, &filter) != 200) return;
+
+  toSurnameFirst(res["red_corner_full_name"]  | "", liveRedName,  sizeof(liveRedName));
+  toSurnameFirst(res["blue_corner_full_name"] | "", liveBlueName, sizeof(liveBlueName));
+  liveMatchRealTime = (strcmp(res["display_mode"] | "", "real_time") == 0);
+  // Prezenta se raporteaza pe categorie, nu pe meci. Fara asta arbitrul
+  // ramane rosu in admin cat tine meciul - adica exact cand operatorul
+  // verifica daca toata lumea e pe pozitie.
+  liveMatchCategoryId = res["category"] | 0;
+}
+
+// Repriza activa. Fara ea nu se puncteaza: aceeasi regula ca in
+// aplicatia din telefon, unde butoanele sunt stinse in pauza.
+void apiLoadActiveRound(int matchId) {
+  activeRoundId = 0;
+  activeRoundNumber = 0;
+  activeRoundPaused = false;
+  roundsKnown = false;
+  if (!matchId) return;
+
+  JsonDocument filter;
+  JsonObject row = filter.add<JsonObject>();
+  row["id"]           = true;
+  row["round_number"] = true;
+  row["status"]       = true;
+  row["is_paused"]    = true;
+
+  JsonDocument res;
+  if (apiRequestFast("GET", String("/match-rounds/?match_id=") + matchId, res, &filter) != 200) return;
+
+  roundsKnown = true;
+  int roundCount = 0;
+  bool anyUnfinished = false;
+  for (JsonObject item : res.as<JsonArray>()) {
+    roundCount++;
+    const char* st = item["status"] | "";
+    if (strcmp(st, "active") == 0) {
+      activeRoundId     = item["id"] | 0;
+      activeRoundNumber = item["round_number"] | 0;
+      activeRoundPaused = item["is_paused"] | false;
+    }
+    // Orice repriza care nu s-a incheiat inseamna ca meciul continua.
+    if (strcmp(st, "completed") != 0) anyUnfinished = true;
+  }
+  allRoundsDone = (roundCount > 0 && !anyUnfinished);
+}
+
+// Totalurile mele pe tot meciul, plus decizia finala daca am dat-o deja.
+// Un singur raspuns le da pe amandoua: randurile cu repriza sunt notele,
+// cel fara repriza e decizia.
+void apiLoadMyTotals(int matchId) {
+  myTotalRed = 0;
+  myTotalBlue = 0;
+  finalDecided = false;
+  finalDecisionId = 0;
+  totalsKnown = false;
+  if (!matchId) return;
+
+  JsonDocument filter;
+  JsonObject row = filter.add<JsonObject>();
+  row["id"]                = true;
+  row["referee"]           = true;
+  row["round"]             = true;
+  row["red_corner_score"]  = true;
+  row["blue_corner_score"] = true;
+
+  JsonDocument res;
+  if (apiRequestFast("GET", String("/match-referee-scores/?match_id=") + matchId, res, &filter) != 200) return;
+
+  totalsKnown = true;
+  for (JsonObject item : res.as<JsonArray>()) {
+    if ((item["referee"] | 0) != myAthleteId) continue;
+    int red  = scoreFromJson(item["red_corner_score"]);
+    int blue = scoreFromJson(item["blue_corner_score"]);
+    if (item["round"].isNull()) {
+      finalDecided    = true;
+      finalDecisionId = item["id"] | 0;
+      finalChoiceRed  = (red > blue);
+    } else {
+      myTotalRed  += red;
+      myTotalBlue += blue;
+    }
+  }
+}
+
+// Trimite castigatorul ales. 1 la el, 0 la celalalt, fara repriza.
+bool apiSubmitDecision(bool redWins) {
+  JsonDocument body;
+  body["match"]             = liveMatchId;
+  body["round"]             = nullptr;
+  body["red_corner_score"]  = redWins ? 1 : 0;
+  body["blue_corner_score"] = redWins ? 0 : 1;
+
+  String payload;
+  serializeJson(body, payload);
+
+  JsonDocument res;
+  httpTimeoutMs = POLL_TIMEOUT_MS;
+  int code = finalDecisionId
+    ? apiRequest("PATCH", String("/match-referee-scores/") + finalDecisionId + "/", payload, res, nullptr)
+    : apiRequest("POST", "/match-referee-scores/", payload, res, nullptr);
+  httpTimeoutMs = HTTP_TIMEOUT_MS;
+
+  if (code != 200 && code != 201) return false;
+  if (!finalDecisionId) finalDecisionId = res["id"] | 0;
+  finalDecided   = true;
+  finalChoiceRed = redWins;
+  return true;
+}
+
+// Totalul meu pentru repriza activa. Vine de la server, nu din memoria
+// placii: o repornire in mijlocul meciului nu trebuie sa reseteze scorul
+// pe care l-am dat deja.
+void apiLoadMyRoundScore(int matchId, int roundId) {
+  myRoundScoreId  = 0;
+  myRedScore      = 0;
+  myBlueScore     = 0;
+  roundScoreKnown = false;
+  if (!matchId || !roundId) return;
+
+  JsonDocument filter;
+  JsonObject row = filter.add<JsonObject>();
+  row["id"]                = true;
+  row["referee"]           = true;
+  row["red_corner_score"]  = true;
+  row["blue_corner_score"] = true;
+
+  JsonDocument res;
+  if (apiRequestFast("GET",
+        String("/match-referee-scores/?match_id=") + matchId + "&round_id=" + roundId,
+        res, &filter) != 200) return;
+
+  roundScoreKnown = true;
+  for (JsonObject item : res.as<JsonArray>()) {
+    if ((item["referee"] | 0) != myAthleteId) continue;   // randul altui arbitru
+    myRoundScoreId = item["id"] | 0;
+    myRedScore     = scoreFromJson(item["red_corner_score"]);
+    myBlueScore    = scoreFromJson(item["blue_corner_score"]);
+    break;
+  }
+}
+
+// Salveaza ambele totaluri deodata, ca aplicatia din telefon: serverul
+// tine un singur rand per arbitru si repriza, deci se creeaza o data si
+// pe urma se corecteaza.
+bool apiSaveRoundScore() {
+  JsonDocument body;
+  body["match"]             = liveMatchId;
+  body["round"]             = activeRoundId;
+  body["red_corner_score"]  = myRedScore;
+  body["blue_corner_score"] = myBlueScore;
+
+  String payload;
+  serializeJson(body, payload);
+
+  JsonDocument res;
+  httpTimeoutMs = POLL_TIMEOUT_MS;
+  int code = myRoundScoreId
+    ? apiRequest("PATCH", String("/match-referee-scores/") + myRoundScoreId + "/", payload, res, nullptr)
+    : apiRequest("POST", "/match-referee-scores/", payload, res, nullptr);
+  httpTimeoutMs = HTTP_TIMEOUT_MS;
+
+  if (code != 200 && code != 201) return false;
+  if (!myRoundScoreId) myRoundScoreId = res["id"] | 0;
+  return true;
+}
+
+// Decizia finala se da doar la meciurile cu afisare finala. In timp
+// real castigatorul iese din punctele validate pe parcurs - acolo
+// arbitrul a decis deja, apasand butoanele, si nu mai are ce sa declare.
+bool needsFinalDecision() {
+  return allRoundsDone && !liveMatchRealTime;
+}
+
+bool canScoreNow() {
+  return liveMatchId && activeRoundId && !activeRoundPaused;
+}
+
+// Trimite punctul. Nu punem `client_timestamp_ms`: placa n-are ceas -
+// am scos NTP-ul, care oricum nu mergea fara internet. Serverul cade
+// atunci pe propriul `timestamp` (vezi
+// _get_point_event_comparison_timestamp_ms), iar cum trimitem imediat ce
+// se apasa butonul, diferenta e latenta retelei - zeci de milisecunde
+// intr-o fereastra de 1500. Un ceas gresit ar fi fost mai rau decat
+// niciun ceas: ar fi impiedicat validarea in loc s-o ajute.
+void sendPoint(bool isRed, int points) {
+  pointSideRed = isRed;
+  pointValue   = points;
+  pointEventId = 0;
+  pointState   = POINT_SENDING;
+  pointShownAt = millis();
+  screen = SCREEN_MATCH;
+  redraw();
+
+  JsonDocument body;
+  body["side"]       = isRed ? "red" : "blue";
+  body["points"]     = points;
+  body["event_type"] = "score";
+  JsonObject meta = body["metadata"].to<JsonObject>();
+  if (activeRoundNumber) meta["round"] = activeRoundNumber;
+  if (activeRoundId)     meta["round_id"] = activeRoundId;
+  meta["origin"] = "referee_device";
+
+  String payload;
+  serializeJson(body, payload);
+
+  // Timp scurt, intentionat. apiRequest reincearca de trei ori cu
+  // 10 secunde fiecare, ceea ce aici ar fi contraproductiv: fereastra
+  // de validare are 1500ms, iar serverul compara momentul sosirii. Un
+  // punct care ajunge dupa cinci secunde tot se inregistreaza, dar nu
+  // se mai potriveste cu apasarea colegului - si intre timp placa ar
+  // sta blocata si n-ar putea trimite punctul urmator.
+  JsonDocument res;
+  httpTimeoutMs = POLL_TIMEOUT_MS;
+  int code = apiRequest("POST", String("/matches/") + liveMatchId + "/point_events/",
+                        payload, res, nullptr);
+  httpTimeoutMs = HTTP_TIMEOUT_MS;
+
+  if (code != 201) {
+    pointState = POINT_FAILED;
+    pointShownAt = millis();
+    redraw();
+    return;
+  }
+
+  pointEventId = res["id"] | 0;
+  // Raspunsul spune deja daca a prins: daca un coleg apasase inaintea
+  // mea, punctul se valideaza chiar la trimiterea mea si vine
+  // "validated" din prima. Daca sunt primul, raman in asteptare.
+  pointState = (strcmp(res["validation_status"] | "pending", "validated") == 0)
+                 ? POINT_VALIDATED : POINT_PENDING;
+  pushRecent(pointEventId, isRed, points, pointState);
+  pointShownAt = millis();
+  redraw();
+}
+
+// Un punct in modul "reveal_final". Numarul creste pe loc, inainte sa
+// plece cererea: arbitrul apasa cu ochii pe saltea si are nevoie de
+// raspuns imediat. Daca salvarea pica, numarul se intoarce de unde a
+// plecat si o spunem - un total gresit pe ecran ar fi mai rau decat o
+// eroare vizibila.
+void addRoundPoint(bool isRed, int points) {
+  int prevRed  = myRedScore;
+  int prevBlue = myBlueScore;
+
+  if (isRed) myRedScore  += points;
+  else       myBlueScore += points;
+
+  pointState = POINT_NONE;
+  screen = SCREEN_MATCH;
+  redraw();
+
+  if (!apiSaveRoundScore()) {
+    myRedScore   = prevRed;
+    myBlueScore  = prevBlue;
+    pointSideRed = isRed;
+    pointValue   = points;
+    pointState   = POINT_FAILED;
+    pointShownAt = millis();
+    redraw();
+  }
+}
+
+// Cat timp punctul meu e in asteptare, intreb serverul daca intre timp a
+// apasat si al doilea arbitru.
+bool anyPendingRecent() {
+  for (int i = 0; i < recentCount; i++) if (recent[i].state == POINT_PENDING) return true;
+  return false;
+}
+
+void pollPointValidation() {
+  if (!liveMatchId || !anyPendingRecent()) return;
+
+  JsonDocument filter;
+  JsonObject row = filter.add<JsonObject>();
+  row["id"] = true;
+  row["validation_status"] = true;
+
+  JsonDocument res;
+  if (apiRequestFast("GET",
+        String("/matches/") + liveMatchId + "/point_events/?referee_id=" + myAthleteId,
+        res, &filter) != 200) return;
+
+  bool changed = false;
+  for (JsonObject item : res.as<JsonArray>()) {
+    int id = item["id"] | 0;
+    if (!id) continue;
+    bool ok = (strcmp(item["validation_status"] | "", "validated") == 0);
+    if (!ok) continue;
+
+    for (int i = 0; i < recentCount; i++) {
+      if (recent[i].eventId != id || recent[i].state == POINT_VALIDATED) continue;
+      recent[i].state = POINT_VALIDATED;
+      changed = true;
+      // Daca tocmai punctul aflat pe ecran s-a validat, fundalul trece
+      // pe auriu si cronometrul o ia de la capat, ca sa se vada.
+      if (id == pointEventId && pointState == POINT_PENDING) {
+        pointState = POINT_VALIDATED;
+        pointShownAt = millis();
+      }
+    }
+  }
+  if (changed) redraw();
 }
 
 // DRF serializeaza zecimalele ca text: scorul vine "88.00", nu 88. Citit
@@ -728,6 +1306,7 @@ bool pollMonitor() {
   JsonObject row = filter.add<JsonObject>();
   row["field_name"]             = true;
   row["current_category"]       = true;
+  row["current_match"]          = true;
   row["current_category_name"]  = true;
   row["current_athlete"]        = true;
   row["current_athlete_name"]   = true;
@@ -741,7 +1320,7 @@ bool pollMonitor() {
     return false;
   }
 
-  int  foundCategory = 0, foundAthlete = 0, foundScoreId = 0;
+  int  foundCategory = 0, foundAthlete = 0, foundScoreId = 0, foundMatch = 0;
   bool foundTeam = false, foundRevealed = false;
   const char* foundCategoryName = "";
   const char* foundName = "";
@@ -754,9 +1333,13 @@ bool pollMonitor() {
   const char* bestStamp = "";
   for (JsonObject item : res.as<JsonArray>()) {
     int categoryId = item["current_category"] | 0;
+    int matchId    = item["current_match"] | 0;
     const char* st = item["status"] | "idle";
-    if (!categoryId || strcmp(st, "idle") == 0) continue;
-    if (!isMyCategory(categoryId)) continue;   // terenul altui arbitru
+    if (strcmp(st, "idle") == 0) continue;
+    // Terenul e al meu daca e a mea fie proba tehnica, fie meciul de pe
+    // el. Masa centrala pune ori una, ori alta.
+    bool mine = (categoryId && isMyCategory(categoryId)) || (matchId && isMyMatch(matchId));
+    if (!mine) continue;
 
     // Marcajele de timp vin ISO-8601 in UTC, deci se compara ca text.
     const char* stamp = item["updated_at"] | "";
@@ -764,6 +1347,7 @@ bool pollMonitor() {
     bestStamp = stamp;
 
     foundCategory     = categoryId;
+    foundMatch        = matchId;
     foundRevealed     = (strcmp(st, "scores_revealed") == 0);
     foundCategoryName = item["current_category_name"] | "";
     foundField        = item["field_name"] | "";
@@ -781,7 +1365,29 @@ bool pollMonitor() {
     }
   }
 
-  bool changed = (foundCategory != liveCategoryId) || (foundAthlete != liveAthleteId);
+  bool matchChanged = (foundMatch != liveMatchId);
+  bool changed = matchChanged || (foundCategory != liveCategoryId) || (foundAthlete != liveAthleteId);
+  liveMatchId = foundMatch;
+  if (matchChanged) {
+    // Meci nou pe saltea: numele colturilor, si orice punct ramas pe
+    // ecran de la meciul anterior dispare. Un "+2 VALIDAT" lasat
+    // peste doi sportivi noi ar fi mai rau decat un ecran gol.
+    apiLoadMatch(foundMatch);
+    pointState = POINT_NONE;
+    recentCount = 0;
+    pointEventId = 0;
+    myRoundScoreId = 0;
+    myRedScore = 0;
+    myBlueScore = 0;
+    roundScoreKnown = false;
+    allRoundsDone = false;
+    finalDecided = false;
+    finalDecisionId = 0;
+    totalsKnown = false;
+    decisionArmed = false;
+    activeRoundId = 0;
+    roundsKnown = false;
+  }
 
   liveCategoryId     = foundCategory;
   liveAthleteId      = foundAthlete;
@@ -802,7 +1408,9 @@ bool pollMonitor() {
   if (*digits) snprintf(liveFieldName, sizeof(liveFieldName), "T%s", digits);
   else         strlcpy(liveFieldName, fieldFull, sizeof(liveFieldName));
 
-  strlcpy(liveRefPosition, myPositionIn(foundCategory), sizeof(liveRefPosition));
+    strlcpy(liveRefPosition,
+          foundMatch ? myPositionInMatch(foundMatch) : myPositionIn(foundCategory),
+          sizeof(liveRefPosition));
 
   if (changed) {
     apiLoadMyScores(liveCategoryId, liveAthleteId);
@@ -822,6 +1430,24 @@ bool pollMonitor() {
     revealMark[0] = '\0';
   }
   return changed;
+}
+
+// Prezenta pe meci. Adminul intreaba prezenta dupa meci
+// (/referee-presence/?match=N), iar un rand salvat pe categorie nu e
+// gasit de interogarea aia - de-asta arbitrul de pe placa aparea
+// deconectat cat tinea meciul, desi trimitea puncte in acelasi timp.
+void apiPingPresenceForMatch(int matchId) {
+  if (!myAthleteId || !matchId) return;
+  JsonDocument body;
+  body["match"]   = matchId;
+  body["referee"] = myAthleteId;
+  String payload;
+  serializeJson(body, payload);
+
+  JsonDocument res;
+  httpTimeoutMs = POLL_TIMEOUT_MS;
+  apiRequestOnce("POST", "/referee-presence/", payload, res, nullptr);
+  httpTimeoutMs = HTTP_TIMEOUT_MS;
 }
 
 void apiPingPresence(int categoryId) {
@@ -926,7 +1552,7 @@ void drawSplash(int percent, const char* step) {
 
   printCentered("APLICATIE ARBITRI", 138, 2, GOLD);
 
-  String version = String("Versiunea ") + FW_VERSION_NUMBER + "  -  " + FW_UPDATED;
+  String version = String("v") + FW_VERSION + "  -  " + FW_UPDATED;
   printCentered(version.c_str(), 160, 1, LIGHTGRAY);
 
   // Bara de progres: fara ea, o conectare la WiFi de cateva secunde pare
@@ -993,6 +1619,255 @@ void drawTopBar() {
   }
 }
 
+// Ecranul de meci: cine e in fiecare colt, ce repriza e, si daca am
+// voie sa punctez acum. Nu afisam scorul total - arbitrul de margine
+// nu-l tine el, iar un numar gresit pe ecran ar cantari mai mult decat
+// niciun numar.
+void drawMatchScreen() {
+  gfx->fillRect(0, 26, 240, 214, BLACK);
+  drawTopBar();
+
+  gfx->fillRect(0, 30, 240, 74, SIDE_RED);
+  gfx->setTextSize(2);
+  gfx->setTextColor(WHITE);
+  gfx->setCursor(8, 40);
+  gfx->print("ROSU");
+  gfx->setTextSize(1);
+  gfx->setCursor(8, 62);
+  gfx->print(liveRedName[0] ? liveRedName : "-");
+  gfx->setTextSize(3);
+  gfx->setCursor(170, 48);
+  gfx->print("1 2");
+
+  gfx->fillRect(0, 108, 240, 74, SIDE_BLUE);
+  gfx->setTextSize(2);
+  gfx->setTextColor(WHITE);
+  gfx->setCursor(8, 118);
+  gfx->print("ALBASTRU");
+  gfx->setTextSize(1);
+  gfx->setCursor(8, 140);
+  gfx->print(liveBlueName[0] ? liveBlueName : "-");
+  gfx->setTextSize(3);
+  gfx->setCursor(170, 126);
+  gfx->print("1 2");
+
+  gfx->setTextSize(2);
+  if (!roundsKnown) {
+    gfx->setTextColor(LIGHTGRAY);
+    printCentered("...", 196, 2, LIGHTGRAY);
+  } else if (activeRoundPaused) {
+    printCentered("PAUZA", 196, 2, ORANGE);
+  } else if (allRoundsDone) {
+    printCentered("MECI INCHEIAT", 196, 2, GOLD);
+  } else if (!activeRoundId) {
+    printCentered("INTRE REPRIZE", 196, 2, ORANGE);
+  } else {
+    char line[24];
+    snprintf(line, sizeof(line), "REPRIZA %d", activeRoundNumber);
+    printCentered(line, 196, 2, GREEN);
+  }
+
+  if (!canScoreNow()) {
+    printCentered("nu se puncteaza acum", 222, 1, LIGHTGRAY);
+    return;
+  }
+
+  // Ultimele puncte date de mine, cu ce s-a ales de ele. Cutia are
+  // culoarea coltului; conturul auriu inseamna validat. Fara banda asta
+  // arbitrul n-ar avea cum sa stie daca a doua apasare a intrat sau a
+  // fost oprita de garda.
+  for (int i = 0; i < recentCount; i++) {
+    int x = 10 + i * 74;
+    uint16_t bg = recent[i].isRed ? SIDE_RED : SIDE_BLUE;
+    gfx->fillRect(x, 214, 66, 24, bg);
+    if (recent[i].state == POINT_VALIDATED) {
+      gfx->drawRect(x,     214,     66,     24,     GOLD);
+      gfx->drawRect(x + 1, 214 + 1, 66 - 2, 24 - 2, GOLD);
+    }
+    gfx->setTextSize(2);
+    gfx->setTextColor(recent[i].state == POINT_VALIDATED ? GOLD : WHITE);
+    gfx->setCursor(x + 6, 218);
+    gfx->print("+");
+    gfx->print(recent[i].points);
+    if (recent[i].state == POINT_PENDING) {
+      gfx->setTextSize(1);
+      gfx->setTextColor(WHITE);
+      gfx->setCursor(x + 46, 222);
+      gfx->print("?");
+    }
+  }
+}
+
+// O jumatate de ecran: coltul, sportivul, si totalul meu pentru repriza.
+void drawHalfScoreAt(int x0, uint16_t bg, const char* corner, const char* name, int value, int y0) {
+  gfx->fillRect(x0, y0, 120, 207 - y0, bg);
+
+  gfx->setTextSize(1);
+  gfx->setTextColor(WHITE);
+  gfx->setCursor(x0 + 6, y0 + 8);
+  gfx->print(corner);
+
+  // 120px la marimea 1 inseamna 20 de caractere; taiem, nu lasam numele
+  // sa curga peste jumatatea cealalta.
+  char shortName[19];
+  strlcpy(shortName, name[0] ? name : "-", sizeof(shortName));
+  gfx->setCursor(x0 + 6, y0 + 22);
+  gfx->print(shortName);
+
+  char buf[6];
+  snprintf(buf, sizeof(buf), "%d", value);
+
+  gfx->setTextSize(6);
+  int w = strlen(buf) * 6 * 6;
+  gfx->setCursor(x0 + (120 - w) / 2, y0 + 78);
+  gfx->print(buf);
+}
+
+void drawHalfScore(int x0, uint16_t bg, const char* corner, const char* name, int value) {
+  drawHalfScoreAt(x0, bg, corner, name, value, 26);
+}
+
+// Modul "reveal_final": nu exista validare in doi, fiecare arbitru isi
+// tine propriul total. Ecranul se imparte in doua pentru ca arbitrul
+// trebuie sa vada permanent ambele numere - ele sunt nota lui, nu un
+// simplu semnal ca apasarea a fost primita.
+void drawMatchScoreScreen() {
+  drawTopBar();
+  if (roundScoreKnown) {
+    drawHalfScore(0,   SIDE_RED,  "ROSU",     liveRedName,  myRedScore);
+    drawHalfScore(120, SIDE_BLUE, "ALBASTRU", liveBlueName, myBlueScore);
+  } else {
+    // Pana vine nota de la server nu aratam zero: un zero neadevarat se
+    // citeste ca "n-am dat niciun punct".
+    drawHalfScoreAt(0,   SIDE_RED,  "ROSU",     liveRedName,  0, 26);
+    drawHalfScoreAt(120, SIDE_BLUE, "ALBASTRU", liveBlueName, 0, 26);
+    gfx->fillRect(0, 100, 240, 60, BLACK);
+    printCentered("se incarca...", 120, 2, LIGHTGRAY);
+  }
+  gfx->drawFastVLine(120, 26, 181, BLACK);
+
+  gfx->fillRect(0, 207, 240, 33, BLACK);
+  if (!roundsKnown) {
+    printCentered("...", 214, 2, LIGHTGRAY);
+  } else if (activeRoundPaused) {
+    printCentered("PAUZA", 214, 2, ORANGE);
+  } else if (allRoundsDone) {
+    printCentered("MECI INCHEIAT", 216, 2, GOLD);
+  } else if (!activeRoundId) {
+    printCentered("INTRE REPRIZE", 216, 2, ORANGE);
+  } else {
+    char line[24];
+    snprintf(line, sizeof(line), "REPRIZA %d", activeRoundNumber);
+    printCentered(line, 214, 2, GREEN);
+  }
+}
+
+// Decizia finala. Trei stari pe acelasi ecran: alegerea, confirmarea, si
+// decizia deja trimisa.
+void drawDecisionScreen() {
+  // Deja am decis: nu mai are ce sa faca butonul. Serverul oricum n-ar
+  // accepta o schimbare fara ca adminul sa stearga randul, iar un ecran
+  // care pare sa astepte o apasare ar minti.
+  if (finalDecided) {
+    gfx->fillScreen(finalChoiceRed ? SIDE_RED : SIDE_BLUE);
+    printCentered("DECIZIA TA", 50, 2, WHITE);
+    printCentered(finalChoiceRed ? "ROSU" : "ALBASTRU", 100, 4, WHITE);
+    printCentered("trimisa", 160, 2, WHITE);
+    printCentered("se schimba doar de la masa centrala", 200, 1, WHITE);
+    return;
+  }
+
+  // O culoare asteapta confirmarea. Ecran plin, ca sa nu existe dubiu
+  // despre ce urmeaza sa trimiti.
+  if (decisionArmed) {
+    gfx->fillScreen(decisionArmedRed ? SIDE_RED : SIDE_BLUE);
+    printCentered(decisionArmedRed ? "ROSU" : "ALBASTRU", 40, 4, WHITE);
+    printCentered("APASA DIN NOU", 100, 2, WHITE);
+    printCentered("ca sa confirmi castigatorul", 130, 1, WHITE);
+    unsigned long left = DECISION_ARM_MS - (millis() - decisionArmedAt);
+    char line[24];
+    snprintf(line, sizeof(line), "%lus", (left / 1000) + 1);
+    printCentered(line, 160, 2, WHITE);
+    printCentered("cealalta culoare schimba alegerea", 200, 1, WHITE);
+    return;
+  }
+
+  drawTopBar();
+  printCentered("CINE A CASTIGAT?", 32, 1, GOLD);
+
+  // Totalurile mele, nu ale meciului: arbitrul decide pe ce a notat el.
+  drawHalfScoreAt(0,   SIDE_RED,  "ROSU",     liveRedName,  myTotalRed,  46);
+  drawHalfScoreAt(120, SIDE_BLUE, "ALBASTRU", liveBlueName, myTotalBlue, 46);
+  gfx->drawFastVLine(120, 46, 160, BLACK);
+
+  gfx->fillRect(0, 206, 240, 34, BLACK);
+  if (!totalsKnown) {
+    printCentered("se incarca notele...", 214, 1, LIGHTGRAY);
+  } else if (myTotalRed == myTotalBlue) {
+    printCentered("EGALITATE - alegi tu", 212, 1, ORANGE);
+    printCentered("apasa un buton al culorii", 226, 1, LIGHTGRAY);
+  } else {
+    printCentered("apasa un buton al culorii", 220, 1, LIGHTGRAY);
+  }
+}
+
+// Confirmarea apasarii, pe tot ecranul. Fundalul spune cui i-am dat
+// punctul inainte sa citesti ceva: rosu sau albastru la apasare, auriu
+// cand punctul a fost validat. Arbitrul se uita la saltea, nu la cutie -
+// trebuie sa-i spuna culoarea, din coltul ochiului.
+void drawPointOverlay() {
+  uint16_t bg = pointSideRed ? SIDE_RED : SIDE_BLUE;
+  if (pointState == POINT_VALIDATED) bg = GOLD;
+  if (pointState == POINT_FAILED)    bg = DARKGRAY;
+  if (pointState == POINT_TOO_FAST)  bg = ORANGE;
+  if (pointState == POINT_CLOSED)    bg = DARKGRAY;
+
+  // Bara de sus ramane vizibila. Semnalul, numele arbitrului si terenul
+  // sunt exact ce vrei sa poti verifica dintr-o privire tocmai cand
+  // tocmai ai trimis un punct - daca le acoperim, arbitrul nu mai are
+  // cum sa vada ca a pierdut legatura fix in momentul care conteaza.
+  gfx->fillRect(0, 26, 240, 214, bg);
+  drawTopBar();
+
+  uint16_t ink = (pointState == POINT_VALIDATED) ? BLACK : WHITE;
+
+  // Numarul mare doar cand chiar exista un punct in spatele lui. La
+  // "prea repede" nu stim care buton a fost respins, iar un "+2" ramas
+  // de la apasarea anterioara ar minti.
+  if (pointState != POINT_TOO_FAST && pointValue > 0) {
+    char big[6];
+    snprintf(big, sizeof(big), "+%d", pointValue);
+    printCentered(big, 44, pointState == POINT_CLOSED ? 6 : 9, ink);
+  }
+
+  // La validare scriem si cine a luat punctul, in culoarea lui: auriul
+  // spune "confirmat", cuvantul spune "al cui".
+  if (pointState == POINT_VALIDATED) {
+    printCentered(pointSideRed ? "ROSU" : "ALBASTRU", 140, 3,
+                  pointSideRed ? SIDE_RED : SIDE_BLUE);
+    printCentered("VALIDAT", 180, 2, BLACK);
+  } else if (pointState == POINT_PENDING) {
+    printCentered(pointSideRed ? "ROSU" : "ALBASTRU", 140, 3, ink);
+    printCentered("ASTEPT AL 2-LEA ARBITRU", 190, 1, ink);
+  } else if (pointState == POINT_SENDING) {
+    printCentered(pointSideRed ? "ROSU" : "ALBASTRU", 140, 3, ink);
+    printCentered("SE TRIMITE...", 190, 1, ink);
+  } else if (pointState == POINT_CLOSED) {
+    printCentered("NU SE PUNCTEAZA", 120, 2, WHITE);
+    printCentered(allRoundsDone ? "meciul s-a incheiat"
+                  : (activeRoundPaused ? "repriza e in pauza" : "esti intre reprize"),
+                  160, 1, WHITE);
+    printCentered("punctul NU a fost trimis", 184, 1, ORANGE);
+  } else if (pointState == POINT_TOO_FAST) {
+    printCentered("PREA REPEDE", 130, 2, WHITE);
+    printCentered("punctul NU a fost trimis", 170, 1, WHITE);
+    printCentered("apasa din nou daca e o faza noua", 190, 1, WHITE);
+  } else {
+    printCentered("NETRIMIS", 140, 3, RED);
+    printCentered("fara legatura cu serverul", 190, 1, WHITE);
+  }
+}
+
 void drawStatusScreen() {
   gfx->fillRect(0, 26, 240, 214, BLACK);
   drawTopBar();
@@ -1037,7 +1912,7 @@ void drawWifiDiagScreen() {
   gfx->setTextColor(scanFoundOurs ? GREEN : RED);
   gfx->setCursor(150, 36);
   gfx->print("v");
-  gfx->print(FW_VERSION_NUMBER);
+  gfx->print(FW_VERSION);
   gfx->print(scanFoundOurs ? " gasit" : " negasit");
 
   gfx->setTextColor(YELLOW);
@@ -1277,6 +2152,12 @@ void redraw() {
     case SCREEN_PIN:        drawPinScreen();        break;
     case SCREEN_STANDBY:    drawStandbyScreen();    break;
     case SCREEN_SCORE:      drawScoreScreen();      break;
+    case SCREEN_MATCH:
+      if (pointState != POINT_NONE)   drawPointOverlay();
+      else if (needsFinalDecision())  drawDecisionScreen();
+      else if (liveMatchRealTime)     drawMatchScreen();
+      else                            drawMatchScoreScreen();
+      break;
   }
 }
 
@@ -1531,12 +2412,25 @@ void submitCurrentScore() {
 
 void setup() {
   Serial.begin(115200);
+  // Pe USB CDC, scrierea asteapta pana la 100ms cand gazda e
+  // conectata dar nu citeste - adica ori de cate ori placa e in
+  // priza calculatorului fara monitor deschis. Cum logam la
+  // fiecare cerere, asta punea sute de milisecunde exact in
+  // drumul notei arbitrului. 0 = nu astepta; ce nu incape se
+  // pierde, si logul merita mai putin decat raspunsul pe ecran.
+  Serial.setTxTimeoutMs(0);
 
   pinMode(ENCODER_CLK, INPUT_PULLUP);
   pinMode(ENCODER_DT,  INPUT_PULLUP);
   pinMode(ENCODER_SW,  INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(ENCODER_CLK), onEncoderTurn,   FALLING);
   attachInterrupt(digitalPinToInterrupt(ENCODER_SW),  onButtonChange, CHANGE);
+
+  for (int i = 0; i < 4; i++) {
+    pinMode(pointButtons[i].pin, INPUT_PULLUP);
+    attachInterruptArg(digitalPinToInterrupt(pointButtons[i].pin),
+                       onPointButton, &pointButtons[i], FALLING);
+  }
 
   gfx->begin();
   drawSplash(5, "Pornire...");
@@ -1558,18 +2452,51 @@ void loop() {
   // Cat suntem in sesiune, urmarim masa centrala. Si pe ecranul de nota:
   // daca a trecut la alt sportiv, dispozitivul trebuie sa il urmeze, nu
   // sa ramana cu cine tocmai a iesit de pe saltea.
-  if ((screen == SCREEN_STANDBY || screen == SCREEN_SCORE) &&
+  if ((screen == SCREEN_STANDBY || screen == SCREEN_SCORE || screen == SCREEN_MATCH) &&
       (millis() - lastPoll >= POLL_MS) && !userIsBusy()) {
     lastPoll = millis();
     bool changed = pollMonitor();
+
+    // Repriza se schimba des si independent de cine e pe saltea, deci o
+    // cerem la fiecare tura cat suntem pe un meci.
+    if (liveMatchId) {
+      int wasRound = activeRoundId;
+      bool wasPaused = activeRoundPaused;
+      bool wasAllDone = allRoundsDone;
+      apiLoadActiveRound(liveMatchId);
+
+      // Meciul tocmai s-a incheiat: aducem notele mele si decizia, daca
+      // am dat-o deja de pe telefon sau de pe alta placa.
+      if (needsFinalDecision() && (!wasAllDone || !totalsKnown)) {
+        apiLoadMyTotals(liveMatchId);
+        changed = true;
+      }
+      if (!allRoundsDone && wasAllDone) changed = true;
+      if (activeRoundId != wasRound) {
+        // Punctele apartin reprizei in care au fost date. Lasate pe ecran
+        // peste repriza urmatoare, ar fi citite gresit.
+        recentCount = 0;
+        pointEventId = 0;
+        if (!liveMatchRealTime) apiLoadMyRoundScore(liveMatchId, activeRoundId);
+        changed = true;
+      }
+      if (activeRoundPaused != wasPaused) changed = true;
+    }
+
+    pollPointValidation();
 
     if (liveRevealed && !revealKnown && liveCategoryId) {
       apiLoadReveal(liveCategoryId);
       if (revealKnown) changed = true;
     }
 
-    Screen want = (liveCategoryId && (liveAthleteId || liveCompetitorName[0]))
-                  ? SCREEN_SCORE : SCREEN_STANDBY;
+    // Meciul are prioritate: daca masa centrala a pus un meci pe
+    // teren, dispozitivul trece pe butoane, oricat de recenta ar fi
+    // proba tehnica dinainte.
+    Screen want;
+    if (liveMatchId)                                                     want = SCREEN_MATCH;
+    else if (liveCategoryId && (liveAthleteId || liveCompetitorName[0])) want = SCREEN_SCORE;
+    else                                                                 want = SCREEN_STANDBY;
     if (want != screen) {
       screen = want;
       redraw();
@@ -1583,15 +2510,109 @@ void loop() {
   // verde in admin si cat asteapta, nu doar cat e cineva pe saltea. Fara
   // asta ramanea rosu pana intra primul concurent, adica exact cand
   // operatorul verifica daca toata lumea e pe pozitie.
-  if (screen == SCREEN_STANDBY || screen == SCREEN_SCORE) {
+  if (screen == SCREEN_STANDBY || screen == SCREEN_SCORE || screen == SCREEN_MATCH) {
     if (millis() - lastPresence >= PRESENCE_MS) {
       lastPresence = millis();
-      if (liveCategoryId) {
+      if (liveMatchId) {
+        // Pe meci raportam pe meci, altfel adminul nu ne vede deloc.
+        apiPingPresenceForMatch(liveMatchId);
+        // Si pe categorie, pentru ecranele care inca intreaba asa.
+        if (liveMatchCategoryId) apiPingPresence(liveMatchCategoryId);
+      } else if (liveCategoryId) {
         apiPingPresence(liveCategoryId);
       } else {
         int upTo = myCategoryCount < PRESENCE_MAX_CATEGORIES ? myCategoryCount : PRESENCE_MAX_CATEGORIES;
         for (int i = 0; i < upTo; i++) apiPingPresence(myCategoryIds[i]);
       }
+    }
+  }
+
+  // Apasarile de punctaj, scoase din coada si trimise. Se trimit doar
+  // pe ecranul de meci si doar in repriza activa - aceeasi regula ca in
+  // aplicatia din telefon, unde butoanele sunt stinse in pauza. O
+  // apasare venita in alt moment se arunca in tacere: mai bine niciun
+  // punct decat unul intr-o repriza care nu curge.
+  // Apasarea oprita de garda: aratam explicit ca n-a plecat. Tacerea ar
+  // fi cea mai proasta varianta - arbitrul ar crede ca a dat doua puncte.
+  if (pressTooFast) {
+    pressTooFast = false;
+    if (screen == SCREEN_MATCH && canScoreNow()) {
+      pointState   = POINT_TOO_FAST;
+      pointShownAt = millis();
+      redraw();
+    }
+  }
+
+  int pressed;
+  while (takePress(&pressed)) {
+    if (screen != SCREEN_MATCH) continue;
+
+    // Meciul s-a terminat: butoanele nu mai dau puncte, aleg castigatorul.
+    // Prima apasare armeaza culoarea, a doua o trimite. O apasare
+    // singura nu decide nimic - decizia e ireversibila de pe placa, iar
+    // serverul o mai accepta doar daca o sterge masa centrala.
+    if (needsFinalDecision()) {
+      if (finalDecided) continue;
+      bool wantRed = pointButtons[pressed].isRed;
+
+      if (decisionArmed && decisionArmedRed == wantRed) {
+        decisionArmed = false;
+        if (!apiSubmitDecision(wantRed)) {
+          pointSideRed = wantRed;
+          pointValue   = 0;
+          pointState   = POINT_FAILED;
+          pointShownAt = millis();
+        }
+      } else {
+        // Fie e prima apasare, fie te-ai razgandit: cealalta culoare
+        // schimba alegerea in loc s-o confirme pe cea veche.
+        decisionArmed    = true;
+        decisionArmedRed = wantRed;
+        decisionArmedAt  = millis();
+        lastDecisionTick = millis();
+      }
+      redraw();
+      continue;
+    }
+    // Apasare in pauza sau intre reprize. Regula e a competitiei, nu a
+    // noastra - dar arbitrul trebuie sa afle ca punctul n-a plecat, nu
+    // sa presupuna ca a intrat.
+    if (!canScoreNow()) {
+      pointSideRed = pointButtons[pressed].isRed;
+      pointValue   = pointButtons[pressed].points;
+      pointState   = POINT_CLOSED;
+      pointShownAt = millis();
+      redraw();
+      continue;
+    }
+    if (liveMatchRealTime) sendPoint(pointButtons[pressed].isRed, pointButtons[pressed].points);
+    else                   addRoundPoint(pointButtons[pressed].isRed, pointButtons[pressed].points);
+  }
+
+  // Confirmarea nu ramane armata la nesfarsit, si cat e armata numaram
+  // invers pe ecran - altfel arbitrul n-ar sti cat mai are.
+  if (decisionArmed) {
+    if (millis() - decisionArmedAt >= DECISION_ARM_MS) {
+      decisionArmed = false;
+      if (screen == SCREEN_MATCH) redraw();
+    } else if (millis() - lastDecisionTick >= 1000) {
+      lastDecisionTick = millis();
+      if (screen == SCREEN_MATCH && pointState == POINT_NONE) redraw();
+    }
+  }
+
+  // Ecranul de punct nu ramane la nesfarsit: confirmarea se vede scurt,
+  // asteptarea mai mult. Daca al doilea arbitru n-a apasat in patru
+  // secunde, punctul nu se mai valideaza si arbitrul trebuie sa vada din
+  // nou meciul, nu un ecran inghetat.
+  if (pointState != POINT_NONE && pointState != POINT_SENDING) {
+    unsigned long hold = POINT_PENDING_MS;
+    if (pointState == POINT_VALIDATED) hold = POINT_OK_MS;
+    if (pointState == POINT_TOO_FAST)  hold = POINT_FAST_MS;
+    if (pointState == POINT_CLOSED)    hold = POINT_FAST_MS;
+    if (millis() - pointShownAt >= hold) {
+      pointState = POINT_NONE;
+      if (screen == SCREEN_MATCH) redraw();
     }
   }
 
@@ -1625,6 +2646,12 @@ void loop() {
     case SCREEN_STANDBY:
       // Nimic de rotit sau de confirmat aici. Apasarea lunga preda
       // dispozitivul: urmatorul arbitru isi formeaza propriul PIN.
+      if (button == BTN_LONG) askForPin();
+      break;
+
+    case SCREEN_MATCH:
+      // Encoderul nu puncteaza la lupte - doar butoanele. Ii lasam insa
+      // apasarea lunga, ca peste tot: iesirea din tura.
       if (button == BTN_LONG) askForPin();
       break;
 
