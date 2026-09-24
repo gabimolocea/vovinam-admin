@@ -21,6 +21,8 @@ class MatchSerializer(serializers.ModelSerializer):
     winner_name = serializers.SerializerMethodField()  # Dynamically determine the winner name
     referees = serializers.StringRelatedField(many=True)  # Display referees as strings
     referee_scores = serializers.SerializerMethodField()  # Detailed referee scores
+    consensus_total_red = serializers.SerializerMethodField()  # Detailed referee scores
+    consensus_total_blue = serializers.SerializerMethodField()  # Detailed referee scores
     central_penalties_red = serializers.SerializerMethodField()
     central_penalties_blue = serializers.SerializerMethodField()
     field_id = serializers.SerializerMethodField()
@@ -51,6 +53,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'blue_corner_club_name',
             'referees',
             'referee_scores',  # Detailed referee scores
+            'consensus_total_red', 'consensus_total_blue',
             'central_penalties_red',
             'central_penalties_blue',
             'central_referee',
@@ -62,7 +65,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'next_match',
             'loser_next_match',
         ]
-        read_only_fields = ['name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name', 'referee_scores', 'central_penalties_red', 'central_penalties_blue', 'winner', 'winner_name']
+        read_only_fields = ['name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name', 'referee_scores', 'consensus_total_red', 'consensus_total_blue', 'central_penalties_red', 'central_penalties_blue', 'winner', 'winner_name']
 
     def get_red_corner_full_name(self, obj):
         """Get the full name of the red corner athlete."""
@@ -108,6 +111,22 @@ class MatchSerializer(serializers.ModelSerializer):
         if not hasattr(obj, '_serialized_winner'):
             obj._serialized_winner = obj.winner
         return obj._serialized_winner
+
+    def get_consensus_total_red(self, obj):
+        return self._consensus(obj)[0]
+
+    def get_consensus_total_blue(self, obj):
+        return self._consensus(obj)[1]
+
+    def _consensus(self, obj):
+        # Scorul real al meciului in arbitrajul in timp real: o faza
+        # confirmata de doi arbitri conteaza o data, nu o data pentru
+        # fiecare arbitru care a apasat. Fara asta, interfetele care
+        # adunau totalurile pe arbitri aratau dublu.
+        if getattr(obj, 'display_mode', None) != 'real_time':
+            return (None, None)
+        from ..views._common import aggregate_validated_point_phases
+        return aggregate_validated_point_phases(list(self._get_point_events(obj)))
 
     def _get_point_events(self, obj):
         prefetched_events = getattr(obj, '_prefetched_point_events', None)

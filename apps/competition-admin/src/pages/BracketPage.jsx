@@ -217,12 +217,24 @@ function MatchDetailModal({ match: m, onClose, eventId, onScheduled }) {
   const blueWon = !!m.winner && m.winner === m.blue_corner;
   const redLost = !!m.winner && !redWon && !!m.red_corner;
   const blueLost = !!m.winner && !blueWon && !!m.blue_corner;
-  // Aggregate final score: sum of every referee's tally for each corner
-  // (each referee's total already has central penalties folded in - see
-  // MatchSerializer.get_referee_scores on the backend).
+  // Scorul final al meciului.
+  //
+  // La arbitrajul in timp real il da serverul: o faza confirmata de doi
+  // arbitri valoreaza un punct, nu cate unul de la fiecare arbitru care
+  // a apasat. Aici se aduna pur si simplu totalurile pe arbitri, ceea ce
+  // arata dublu cu doi arbitri si de cinci ori cu cinci.
+  //
+  // La afisarea finala nu exista un scor unic al meciului - fiecare
+  // arbitru noteaza separat, iar castigatorul iese din majoritatea
+  // deciziilor. Aratam media lor, care e singurul numar pe scara
+  // corecta; notele individuale sunt in panoul de operare.
   const hasScores = m.referee_scores && m.referee_scores.length > 0;
-  const finalRedScore = hasScores ? m.referee_scores.reduce((sum, rs) => sum + (rs.total_red || 0), 0) : null;
-  const finalBlueScore = hasScores ? m.referee_scores.reduce((sum, rs) => sum + (rs.total_blue || 0), 0) : null;
+  const isRealTime = m.display_mode === 'real_time';
+  const avg = (key) => (hasScores
+    ? Math.round(m.referee_scores.reduce((sum, rs) => sum + (rs[key] || 0), 0) / m.referee_scores.length)
+    : null);
+  const finalRedScore = isRealTime ? (m.consensus_total_red ?? null) : avg('total_red');
+  const finalBlueScore = isRealTime ? (m.consensus_total_blue ?? null) : avg('total_blue');
 
   // Quick tatami scheduling, right from the drawer - full drag-and-drop
   // ordering within a tatami's queue still only lives on Programare.

@@ -261,16 +261,36 @@ def _auto_validate_real_time_point_event(event):
     round_id, round_number = _get_point_event_round_signature(event)
     event_comparison_timestamp = _get_point_event_comparison_timestamp_ms(event)
 
+    # Doar evenimentele inca in asteptare pot corobora. Unul deja validat
+    # si-a consumat faza: daca l-am lasa sa sprijine si punctul urmator,
+    # o singura apasare a unui coleg ar valida doua faze diferite - la doi
+    # pumni la o secunda distanta, al doilea punct s-ar valida singur, pe
+    # baza confirmarii primite pentru primul.
     candidates = RefereePointEvent.objects.filter(
         match_id=event.match_id,
         side=event.side,
         points=event.points,
         event_type=event.event_type,
+        validation_status='pending',
         timestamp__gte=window_start,
         timestamp__lte=window_end,
-    ).exclude(validation_status='rejected').select_related('match', 'referee').order_by('timestamp', 'id')
+    ).select_related('match', 'referee').order_by('timestamp', 'id')
 
-    matched_events = []
+    def _distance_ms(candidate):
+        candidate_ts = _get_point_event_comparison_timestamp_ms(candidate)
+        if event_comparison_timestamp is not None and candidate_ts is not None:
+            return abs(candidate_ts - event_comparison_timestamp)
+        try:
+            return abs(int((candidate.timestamp - event.timestamp).total_seconds() * 1000))
+        except Exception:
+            return 0
+
+    # Cel mult un eveniment de fiecare arbitru: cel mai apropiat in timp de
+    # cel care declanseaza verificarea. Un arbitru care apasa de doua ori
+    # pentru aceeasi faza - din graba sau din nervi - nu trebuie sa produca
+    # doua puncte doar pentru ca un coleg a apasat o data. Apasarea in plus
+    # ramane in asteptare si nu intra in scor.
+    best_by_referee = {}
     for candidate in candidates:
         candidate_comparison_timestamp = _get_point_event_comparison_timestamp_ms(candidate)
         if event_comparison_timestamp is not None and candidate_comparison_timestamp is not None:
@@ -282,7 +302,12 @@ def _auto_validate_real_time_point_event(event):
             continue
         if not round_id and round_number and candidate_round_number and candidate_round_number != round_number:
             continue
-        matched_events.append(candidate)
+
+        previous = best_by_referee.get(candidate.referee_id)
+        if previous is None or _distance_ms(candidate) < _distance_ms(previous):
+            best_by_referee[candidate.referee_id] = candidate
+
+    matched_events = list(best_by_referee.values())
 
     unique_referees = {item.referee_id for item in matched_events if item.referee_id}
     if len(unique_referees) < 2:
@@ -311,6 +336,48 @@ def _log_category_score_event(*, athlete_score, referee, action, source, created
         video_offset_ms=_compute_video_offset_ms(recording_session),
         metadata=metadata or {},
     )
+
+
+def aggregate_validated_point_phases(events):
+    """Punctele validate, numarate pe FAZE, nu pe evenimente.
+
+    O faza confirmata de doi arbitri produce cate un rand de la fiecare.
+    Adunate, dau dublu - iar cu cinci arbitri, de cinci ori. Numarul asta
+    e cel dupa care se dau medaliile, deci se calculeaza aici, pe server,
+    si nu se mai recalculeaza in fiecare interfata.
+
+    Regula e aceeasi cu a validarii (_auto_validate_real_time_point_event):
+    aceeasi repriza, aceeasi parte, aceeasi valoare, la mai putin de
+    REAL_TIME_POINT_VALIDATION_WINDOW_MS distanta. O faza intra in scor
+    doar daca au confirmat-o cel putin doi arbitri distincti.
+    """
+    scored = [
+        e for e in events
+        if e.validation_status == 'validated' and e.event_type not in ('penalty', 'deduction')
+    ]
+    scored.sort(key=lambda e: (_get_point_event_comparison_timestamp_ms(e) or 0, e.id))
+
+    groups = {}
+    for event in scored:
+        round_id, round_number = _get_point_event_round_signature(event)
+        key = (round_id or round_number or 'unassigned', event.side, event.points, event.event_type)
+        stamp = _get_point_event_comparison_timestamp_ms(event) or 0
+        bucket = groups.setdefault(key, [])
+        if bucket and stamp - bucket[-1]['anchor'] < REAL_TIME_POINT_VALIDATION_WINDOW_MS:
+            bucket[-1]['referees'].add(event.referee_id)
+        else:
+            bucket.append({'anchor': stamp, 'event': event, 'referees': {event.referee_id}})
+
+    red = blue = 0
+    for bucket in groups.values():
+        for phase in bucket:
+            if len(phase['referees']) < 2:
+                continue
+            if phase['event'].side == 'blue':
+                blue += phase['event'].points or 0
+            else:
+                red += phase['event'].points or 0
+    return red, blue
 
 
 def _sync_point_events_to_match_referee_scores(match_id, referee_id):

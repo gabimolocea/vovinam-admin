@@ -3,6 +3,7 @@ import { Wifi, WifiOff, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import ExcelJS from 'exceljs';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { aggregateRealtimeValidatedPoints } from '@shared/lib/realtimePoints';
 import {
   eventAPI,
   fieldAPI, monitorAPI, roundAPI, matchAPI, scoreAPI,
@@ -2627,8 +2628,13 @@ function FullscreenMatchPanel({
       {(() => {
         const matchCat = allCats?.find(c => c.id === match.category);
         const matchTypeLabels = { 'qualifications': 'Calificări', 'quarter-finals': 'Sferturi', 'semi-finals': 'Semi-finală', 'finals': 'Finală', 'bronze': 'Bronz' };
-        const totalValidatedRed = Object.values(pointStatsByRef).reduce((sum, ref) => sum + (ref.totals?.validated?.red || 0), 0) + totalBonusRed + warningPenaltyRed;
-        const totalValidatedBlue = Object.values(pointStatsByRef).reduce((sum, ref) => sum + (ref.totals?.validated?.blue || 0), 0) + totalBonusBlue + warningPenaltyBlue;
+        // Pe faze, nu pe evenimente. O fază confirmată de doi arbitri
+        // produce două rânduri în baza de date, iar adunarea lor arăta
+        // dublu: doi arbitri de acord pe un +2 dădeau +4 în capul
+        // ecranului, deși sportivul primise 2 puncte.
+        const consensus = aggregateRealtimeValidatedPoints(pointEvents || []);
+        const totalValidatedRed = consensus.red + totalBonusRed + warningPenaltyRed;
+        const totalValidatedBlue = consensus.blue + totalBonusBlue + warningPenaltyBlue;
         return matchCat ? (
           <div className="w-full overflow-hidden bg-card shadow-sm">
             <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
