@@ -136,8 +136,41 @@ care e problema. Cauzele, în ordinea frecvenţei:
 - **Semnal slab.** Antena de pe plăcile SuperMini e slabă. Sub -80 dBm în
   listă, apropie placa de AP şi încearcă din nou. Economia de energie a
   modemului e deja oprită din cod, tocmai din motivul ăsta.
+- **„Reîncerc, emisie redusă…" la pornire.** Nu e lipsă de acoperire, e
+  alimentare: regulatorul de pe SuperMini nu ţine vârful de curent de la
+  emisie, iar placa rămâne pe 8.5 dBm — cu ~11 dB mai puţin, adică sub
+  jumătate din rază. Se vede ca „zonă moartă" exact la masa ei. Alimentare
+  de 5V serioasă, cablu scurt şi gros, şi un condensator de 220–470 µF pe
+  5V/GND lângă placă.
 
 Apasă encoderul ca să reîncerce.
+
+## Cât de bună e legătura
+
+Barele de semnal arată cât de tare **aude placa AP-ul** — downlink-ul. Dar
+legătura e asimetrică: nota arbitrului pleacă în sus, pe antena ceramică
+slabă a plăcii, şi acolo bare pline nu garantează nimic. Un AP puternic
+umple barele permanent şi ascunde exact problema; un router „de mare
+putere" nu schimbă cu nimic cât de tare emite placa.
+
+De-asta, cât timp placa n-are un teren asignat, în dreapta sus apare
+**durata ultimului dus-întors până la server**, nu un ceas:
+
+| Afişaj | Înseamnă |
+|---|---|
+| `48ms` verde | legătură bună |
+| `210ms` galben | merge, dar se retransmite |
+| `800ms` roşu | la limită, mută placa sau AP-ul |
+| `!!` roşu | ultima cerere a picat de tot |
+| `--` gri | încă n-a fost nicio cerere |
+
+La montaj, plimbă o placă pe la fiecare masă de arbitraj şi uită-te la
+numărul ăsta, nu la bare. Când arbitrul e asignat pe un teren, locul e luat
+de `T1|A1` — atunci terenul contează mai mult, iar reţeaua s-a dovedit deja.
+
+Placa nu foloseşte NTP şi n-are nevoie de internet: toate cererile merg la
+calculatorul din sală. Internetul îţi trebuie doar la final, pentru
+sincronizarea în cloud, şi se poate face şi a doua zi.
 
 ## Pe telefon
 

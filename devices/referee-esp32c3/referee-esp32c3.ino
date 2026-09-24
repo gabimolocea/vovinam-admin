@@ -26,7 +26,6 @@
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <time.h>
 
 #include "frvv_logo.h"
 
@@ -50,9 +49,6 @@ const char* API_MDNS_NAME = "Gabis-MacBook-Pro";
 // Nu se configureaza nimic per arbitru: PIN-ul se formeaza din encoder la
 // pornire, iar serverul stie din el cine e si la ce eveniment. Acelasi
 // dispozitiv trece de la un arbitru la altul fara sa fie reprogramat.
-
-const char* NTP_SERVER = "pool.ntp.org";
-const char* TZ_INFO    = "EET-2EEST,M3.5.0/3,M10.5.0/4";
 
 // Cat de des intrebam masa centrala ce are pe ecran. E o singura cerere
 // de ~500 de octeti, dar in sala sunt zeci de dispozitive pe acelasi
@@ -80,7 +76,7 @@ const int MAX_SCORE = 100;
 
 // Se vede pe ecranul de pornire. Singurul mod sigur de a sti, din sala,
 // daca placa chiar are versiunea pe care credem ca am incarcat-o.
-const int   FW_VERSION_NUMBER = 24;
+const int   FW_VERSION_NUMBER = 25;
 // Se vede pe ecranul de pornire. Cand ai pe masa cinci dispozitive
 // incarcate in zile diferite, data spune mai mult decat numarul.
 const char* FW_UPDATED = "24.09.2026";
@@ -393,15 +389,31 @@ String httpErrorText(int code) {
   }
 }
 
+// Cat a durat ultimul dus-intors pana la server si daca a reusit.
+// Barele de semnal arata cat de tare aude placa AP-ul, adica
+// downlink-ul - fix directia care nu e problema. Scorul pleaca in
+// sus, pe antena slaba a placii, si acolo bare pline nu garanteaza
+// nimic. Numarul asta e singurul care masoara drumul pe care pleaca
+// efectiv nota arbitrului.
+unsigned long lastRequestMs = 0;
+bool lastRequestDone = false;
+bool lastRequestOk = false;
+
+void noteRequest(unsigned long ms, bool ok) {
+  lastRequestMs = ms;
+  lastRequestDone = true;
+  lastRequestOk = ok;
+}
+
 // O singura incercare. Intoarce codul HTTP, sau unul negativ de la
 // HTTPClient / de-al nostru (-20 fara WiFi, -21 raspuns neparsabil).
 int apiRequestOnce(const char* method, const String& path, const String& body,
                    JsonDocument& out, JsonDocument* filter) {
-  if (WiFi.status() != WL_CONNECTED) return -20;
+  if (WiFi.status() != WL_CONNECTED) { noteRequest(0, false); return -20; }
 
   HTTPClient http;
   String url = apiBase + path;
-  if (!http.begin(url)) return -4;
+  if (!http.begin(url)) { noteRequest(0, false); return -4; }
 
   http.setTimeout(httpTimeoutMs);
   http.setConnectTimeout(httpTimeoutMs);
@@ -427,14 +439,20 @@ int apiRequestOnce(const char* method, const String& path, const String& body,
       : deserializeJson(out, payload);
     if (err) {
       Serial.printf("JSON %s %s (%d octeti): %s\n", method, path.c_str(), payloadLen, err.c_str());
+      noteRequest(millis() - startedAt, false);
       http.end();
       return -21;
     }
   }
 
+  unsigned long took = millis() - startedAt;
+  // Un 401 sau un 500 inseamna tot ca dus-intorsul a functionat, iar
+  // pentru calitatea legaturii asta conteaza, nu ce a raspuns Django.
+  noteRequest(took, code > 0);
+
   http.end();
   Serial.printf("%s %s -> %d in %lums (%d octeti, RSSI %d, heap %u)\n",
-                method, path.c_str(), code, millis() - startedAt,
+                method, path.c_str(), code, took,
                 payloadLen, WiFi.RSSI(), ESP.getFreeHeap());
   return code;
 }
@@ -845,14 +863,6 @@ int apiSubmitScore(int score) {
 
 // ───────────────────────────── DESEN ─────────────────────────────
 
-String clockText() {
-  struct tm t;
-  if (!getLocalTime(&t)) return "--:--";
-  char buf[8];
-  strftime(buf, sizeof(buf), "%H:%M", &t);
-  return String(buf);
-}
-
 // Ecranul are 240px, iar fontul are 6px pe caracter: cam 38 de caractere
 // pe rand. Fara taiere pe cuvinte, un mesaj mai lung se scrie pur si
 // simplu peste marginea ecranului - si se pierde tocmai coada, unde sta
@@ -929,6 +939,28 @@ void drawSplash(int percent, const char* step) {
   if (step && step[0]) printCentered(step, 204, 1, WHITE);
 }
 
+// In locul ceasului: cat a durat ultimul dus-intors. Verde sub
+// 150ms, galben sub 400, rosu peste, "!!" cand ultima cerere a
+// picat de tot. La montaj, plimbat pe la fiecare masa, arata unde e
+// legatura slaba inainte sa inceapa concursul - acolo unde barele
+// pline ar spune ca totul e in regula.
+void drawLastRequest(int x, int y) {
+  gfx->setCursor(x, y);
+  if (!lastRequestDone) {
+    gfx->setTextColor(DARKGRAY);
+    gfx->print("--");
+    return;
+  }
+  if (!lastRequestOk) {
+    gfx->setTextColor(RED);
+    gfx->print("!!");
+    return;
+  }
+  gfx->setTextColor(lastRequestMs < 150 ? GREEN : (lastRequestMs < 400 ? YELLOW : RED));
+  gfx->print(lastRequestMs);
+  gfx->print("ms");
+}
+
 void drawTopBar() {
   gfx->fillRect(0, 0, 240, 25, DARKGRAY);
   gfx->drawFastHLine(0, 25, 240, LIGHTGRAY);
@@ -946,17 +978,18 @@ void drawTopBar() {
   }
 
   // Terenul si pozitia de arbitru, in dreapta - astea doua spun, dintr-o
-  // privire, daca dispozitivul e pe locul potrivit. Pana e ceva pe
-  // saltea, ceasul e mai util decat un spatiu gol.
-  gfx->setCursor(186, 9);
+  // privire, daca dispozitivul e pe locul potrivit. Cat nu e nimic
+  // pe saltea locul e liber, si atunci arata calitatea legaturii -
+  // adica exact in perioada in care umbli la AP-uri si vrei sa stii
+  // daca ai reusit.
   if (liveFieldName[0] || liveRefPosition[0]) {
+    gfx->setCursor(186, 9);
     gfx->setTextColor(YELLOW);
     gfx->print(liveFieldName);
     if (liveFieldName[0] && liveRefPosition[0]) gfx->print("|");
     gfx->print(liveRefPosition);
   } else {
-    gfx->setTextColor(LIGHTGRAY);
-    gfx->print(clockText());
+    drawLastRequest(186, 9);
   }
 }
 
@@ -1354,16 +1387,12 @@ bool connectWifi() {
   WiFi.onEvent(onWifiEvent);
 
   drawSplash(20, (String("Conectare la ") + WIFI_SSID).c_str());
-  if (attemptConnect(false, 15000)) {
-    configTzTime(TZ_INFO, NTP_SERVER);
-    return true;
-  }
+  if (attemptConnect(false, 15000)) return true;
 
   // A doua incercare cu emisie redusa: daca asta trece iar prima nu,
   // problema e alimentarea placii, nu reteaua.
   drawSplash(35, "Reincerc, emisie redusa...");
   if (attemptConnect(true, 15000)) {
-    configTzTime(TZ_INFO, NTP_SERVER);
     Serial.println("Conectat abia cu putere redusa - verifica alimentarea placii.");
     return true;
   }
