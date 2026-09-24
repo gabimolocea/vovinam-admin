@@ -61,7 +61,10 @@ class GradeHistorySubmissionSerializer(serializers.ModelSerializer):
             'level', 'event', 'event_name', 'examiner_1', 'examiner_1_name', 'examiner_2', 'examiner_2_name', 'submitted_by_athlete', 'certificate_image', 'result_document', 'notes',
             'status', 'submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name', 'admin_notes'
         ]
-        read_only_fields = ['submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name']
+        # 'status' era scriibil: o cerere putea fi trimisa direct ca
+        # 'aprobat', ocolind tocmai avizarea pentru care exista fluxul.
+        # Se schimba doar prin approve/reject, de catre cine are dreptul.
+        read_only_fields = ['submitted_date', 'reviewed_date', 'reviewed_by', 'reviewed_by_name', 'status']
 
     def get_reviewed_by_name(self, obj):
         return str(obj.reviewed_by) if obj.reviewed_by else None

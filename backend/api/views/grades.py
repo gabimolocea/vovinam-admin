@@ -54,6 +54,35 @@ class GradeViewSet(viewsets.ViewSet):
         return Response(status=204)
 
 
+def _may_record_grade_for(user, athlete_id):
+    """Cine poate scrie un grad în dreptul cui.
+
+    Un rând de GradeHistory se creează direct cu status 'aprobat', deci
+    e evidența finală a federației, nu o cerere. `create` nu verifica
+    nimic: orice cont autentificat putea acorda orice grad oricui,
+    inclusiv sieși. Verificările pe obiect ale permisiunii declarate nu
+    ajută aici - DRF nu le rulează pe un `viewsets.ViewSet` simplu, și
+    oricum la creare nu există încă obiect.
+
+    Gradul se acordă, nu se declară: nici sportivul pentru sine. Calea
+    legitimă pentru o cerere a sportivului e
+    GradeHistorySubmissionViewSet, care trece prin aprobare.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if getattr(user, 'is_admin', False) or getattr(user, 'role', None) == 'admin' or user.is_staff:
+        return True
+
+    athlete = getattr(user, 'athlete', None)
+    if not athlete or not athlete.is_coach or not athlete.club_id:
+        return False
+    if not athlete.club.coaches.filter(pk=athlete.pk).exists():
+        return False
+
+    target = Athlete.objects.filter(pk=athlete_id).first()
+    return bool(target and target.club_id == athlete.club_id)
+
+
 class GradeHistoryViewSet(viewsets.ViewSet):
     permission_classes = [IsAthleteOwnerCoachOrAdmin]
     serializer_class = GradeHistorySerializer
@@ -84,6 +113,12 @@ class GradeHistoryViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
+        if not _may_record_grade_for(request.user, request.data.get('athlete')):
+            return Response(
+                {'detail': 'Doar un antrenor al clubului sportivului sau un admin poate înregistra un grad. '
+                           'Pentru o cerere proprie, folosește trimiterea de grad care trece prin aprobare.'},
+                status=403,
+            )
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -168,7 +203,14 @@ class GradeHistorySubmissionViewSet(viewsets.ModelViewSet):
                     return Response(out_serializer.data, status=status.HTTP_201_CREATED)
             except Exception:
                 pass
-            return Response({'detail': 'Failed to process submission, please contact support.', 'error': str(e), 'traceback': tb}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Traceback-ul pleaca spre client doar in dezvoltare: in
+            # productie ar expune caile si structura interna oricui
+            # nimereste o eroare.
+            body = {'detail': 'Failed to process submission, please contact support.'}
+            if settings.DEBUG:
+                body['error'] = str(e)
+                body['traceback'] = tb
+            return Response(body, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         out_serializer = self.get_serializer(instance)
         return Response(out_serializer.data, status=status.HTTP_201_CREATED)
