@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import ExcelJS from 'exceljs';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { aggregateRealtimeValidatedPoints } from '@shared/lib/realtimePoints';
+import { useVoiceAssistant } from '../hooks/useVoiceAssistant';
 import {
   eventAPI,
   fieldAPI, monitorAPI, roundAPI, matchAPI, scoreAPI,
@@ -2176,6 +2177,104 @@ function FullscreenMatchPanel({
   );
   const totalRounds = matchRounds.length;
   const isMatchFinalized = match.status === 'completed';
+
+  // ── ASISTENT VOCAL ──
+  //
+  // Pentru cazul in care nu sta nimeni la masa: arbitrul central,
+  // singur pe saltea, cu o casca in ureche. Implicit oprit - e o
+  // functie care schimba scorul si care inca n-a fost masurata intr-o
+  // sala plina.
+  const [voiceEnabled, setVoiceEnabled] = useState(
+    () => { try { return localStorage.getItem('voice-assistant') === '1'; } catch { return false; } },
+  );
+  useEffect(() => {
+    try { localStorage.setItem('voice-assistant', voiceEnabled ? '1' : '0'); } catch { /* fara persistenta */ }
+  }, [voiceEnabled]);
+
+  // Ce a aplicat ultima comanda, ca "anuleaza" sa stie ce sa stearga.
+  const lastVoiceEventRef = useRef(null);
+
+  const applyVoiceCommand = useCallback(async (cmd) => {
+    const roundId = activeRound?.id || null;
+    const speak = (t) => { try {
+      const u = new SpeechSynthesisUtterance(t); u.lang = 'ro-RO'; u.rate = 1.1;
+      window.speechSynthesis.speak(u);
+    } catch { /* ramane banda de pe ecran */ } };
+
+    if (isMatchFinalized) { speak('meciul s-a incheiat'); return; }
+
+    if (cmd === 'undo') {
+      const last = lastVoiceEventRef.current;
+      if (!last) { speak('nu am ce anula'); return; }
+      await removeLastEvent(match.id, last);
+      lastVoiceEventRef.current = null;
+      speak('anulat');
+      onRefresh?.();
+      return;
+    }
+
+    if (cmd === 'round_start') {
+      const next = (matchRounds || []).find(r => r.status === 'scheduled');
+      if (!next) { speak('nu mai e nicio repriza de pornit'); return; }
+      await startRound(next.id);
+      speak('repriza pornita');
+      onRefresh?.();
+      return;
+    }
+
+    // Restul comenzilor schimba scorul sau timpul reprizei, deci cer o
+    // repriza in desfasurare - aceeasi regula ca butoanele din panou.
+    if (!roundId) { speak('nu e nicio repriza activa'); return; }
+
+    const corner = cmd.includes('_red') ? 'red' : 'blue';
+    const applied = {
+      point_red_1: () => addBonus(match.id, 'red', roundId, 1),
+      point_red_2: () => addBonus(match.id, 'red', roundId, 2),
+      point_blue_1: () => addBonus(match.id, 'blue', roundId, 1),
+      point_blue_2: () => addBonus(match.id, 'blue', roundId, 2),
+      minus_red_1: () => addPenalty(match.id, 'red', roundId, -1),
+      minus_red_2: () => addPenalty(match.id, 'red', roundId, -2),
+      minus_blue_1: () => addPenalty(match.id, 'blue', roundId, -1),
+      minus_blue_2: () => addPenalty(match.id, 'blue', roundId, -2),
+      penalty_red: () => addInfraction(match.id, 'red', roundId),
+      penalty_blue: () => addInfraction(match.id, 'blue', roundId),
+      warning_red: () => addWarning(match.id, 'red', roundId),
+      warning_blue: () => addWarning(match.id, 'blue', roundId),
+      pause: () => pauseRound(match.id, roundId),
+      resume: () => resumeRound(match.id, roundId),
+      round_end: () => endRound(roundId),
+    }[cmd];
+
+    if (!applied) return;
+    await applied();
+
+    // Al treilea avertisment descalifica, exact ca butonul din panou -
+    // altfel vocea si mana ar face lucruri diferite.
+    if (cmd === 'warning_red' && warningsRed + 1 >= 3 && !disqualifiedRed) {
+      await addDisqualification(match.id, 'red');
+    }
+    if (cmd === 'warning_blue' && warningsBlue + 1 >= 3 && !disqualifiedBlue) {
+      await addDisqualification(match.id, 'blue');
+    }
+
+    const eventTypes = {
+      point: `bonus_${corner}`, minus: `penalty_${corner}`,
+      penalty: `infraction_${corner}`, warning: `warning_${corner}`,
+    };
+    const kind = cmd.split('_')[0];
+    lastVoiceEventRef.current = eventTypes[kind] || null;
+
+    speak('aplicat');
+    onRefresh?.();
+  }, [activeRound, isMatchFinalized, match.id, matchRounds, startRound, endRound,
+      pauseRound, resumeRound, addBonus, addPenalty, addInfraction, addWarning,
+      addDisqualification, removeLastEvent, onRefresh,
+      warningsRed, warningsBlue, disqualifiedRed, disqualifiedBlue]);
+
+  const voice = useVoiceAssistant({
+    enabled: voiceEnabled && !isMatchFinalized,
+    onCommand: applyVoiceCommand,
+  });
   const settingsLocked = matchStarted || isMatchDisplayStarted || isMatchFinalized;
   const operationalSettingsLocked = settingsLocked || operationalLockActive;
   const [showMatchSettings, setShowMatchSettings] = useState(false);
@@ -2458,6 +2557,30 @@ function FullscreenMatchPanel({
 
   return (
     <div className="w-full space-y-4 relative">
+      {/* Banda asistentului vocal. Arbitrul central o aude in casca, dar
+          operatorul - daca exista unul - trebuie sa vada ce s-a inteles
+          si ce s-a aplicat, altfel scorul se misca singur pe ecran. */}
+      {voiceEnabled && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t-2 border-amber-400 bg-amber-50 px-4 py-2 text-sm dark:bg-amber-950/70">
+          <div className="mx-auto flex max-w-5xl items-center gap-3">
+            <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${
+              voice.status === 'aud ceva' ? 'bg-emerald-500 animate-pulse'
+              : voice.status === 'eroare' ? 'bg-red-600'
+              : 'bg-amber-500'}`} />
+            <b className="uppercase tracking-wide text-xs">Asistent vocal</b>
+            <span className="text-muted-foreground">{voice.error || voice.status}</span>
+            {voice.lastHeard && (
+              <span className="ml-auto truncate">
+                <i className="text-muted-foreground">&bdquo;{voice.lastHeard.transcript}&rdquo;</i>
+                {voice.lastHeard.code === 'ok'
+                  ? <b className="ml-2 text-emerald-700">aplicat</b>
+                  : <b className="ml-2 text-amber-700">neînțeles</b>}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Extra Round Modal */}
       {showExtraRoundModal && (
         <FullscreenModal
@@ -2820,6 +2943,28 @@ function FullscreenMatchPanel({
           ]}
         >
           <div className="space-y-5 py-2">
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Asistent vocal</p>
+              <label className="flex items-start gap-3 rounded-md border border-input p-3">
+                <input
+                  type="checkbox"
+                  checked={voiceEnabled}
+                  onChange={e => setVoiceEnabled(e.target.checked)}
+                  className="mt-1"
+                />
+                <span className="text-sm">
+                  <b>Comenzi prin voce</b>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Pentru meciurile fără operator la masă. Arbitrul central poartă o cască și spune
+                    <b> &bdquo;arbitru&rdquo;</b> înaintea comenzii — de exemplu <i>&bdquo;arbitru, un punct roșu&rdquo;</i>.
+                    Fără cuvântul ăsta nu se aplică nimic, ca să poată vorbi liber cu sportivii.
+                    Spune <i>&bdquo;arbitru, anulează&rdquo;</i> ca să retragi ultima comandă.
+                  </span>
+                  {voice.error && <span className="mt-2 block text-xs font-semibold text-red-600">{voice.error}</span>}
+                </span>
+              </label>
+            </div>
+
             <div>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Mod de afișare</p>
               <div className="flex flex-wrap gap-2">

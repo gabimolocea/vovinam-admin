@@ -130,6 +130,7 @@ urlpatterns = autocomplete_urlpatterns + [
     path('auth/session-login/', SessionLoginView.as_view(), name='session-login'),
     path('auth/session-logout/', SessionLogoutView.as_view(), name='session-logout'),
     path('referees/me/assigned-categories/', views.RefereeAssignedCategoriesView.as_view(), name='referee-assigned-categories'),
+    path('voice-command/', views.voice_command, name='voice-command'),
     path('referees/me/assigned-matches/', views.RefereeAssignedMatchesView.as_view(), name='referee-assigned-matches'),
     
     # New athlete workflow URLs (must come before router.urls for specific endpoints)

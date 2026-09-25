@@ -73,3 +73,5 @@ from .matches import (  # noqa: F401
     _sync_match_event_to_legacy,
 )
 from ._common import _auto_validate_real_time_point_event  # noqa: F401
+
+from .voice import voice_command  # noqa: F401,E402

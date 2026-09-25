@@ -1,0 +1,11 @@
+# Asistentul vocal de arbitraj — opțional.
+#
+# Nu intră în requirements.txt: e o funcție pe care o folosește doar
+# calculatorul din sală, iar modelul are sute de MB. Un server fără el
+# pornește normal și răspunde 503 explicit dacă cineva cere transcriere.
+#
+#   python3 -m pip install --user -r backend/requirements-voice.txt
+#
+# mlx-whisper rulează pe GPU-ul Apple Silicon. Pe alt hardware,
+# înlocuiește cu faster-whisper — codul le acceptă pe amândouă.
+mlx-whisper>=0.4
