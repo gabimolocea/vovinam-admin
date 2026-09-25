@@ -80,7 +80,7 @@ const int MAX_SCORE = 100;
 // noi si corecturi, MAJOR doar cand se schimba felul in care se
 // foloseste aparatul. 2.0.0 e prima cu arbitraj la lupte - pana
 // atunci placa stia doar probe tehnice.
-const char* FW_VERSION = "2.0.2";
+const char* FW_VERSION = "2.1.0";
 // Se vede pe ecranul de pornire. Cand ai pe masa cinci dispozitive
 // incarcate in zile diferite, data spune mai mult decat numarul.
 const char* FW_UPDATED = "24.09.2026";
@@ -1619,82 +1619,89 @@ void drawTopBar() {
   }
 }
 
-// Ecranul de meci: cine e in fiecare colt, ce repriza e, si daca am
-// voie sa punctez acum. Nu afisam scorul total - arbitrul de margine
-// nu-l tine el, iar un numar gresit pe ecran ar cantari mai mult decat
-// niciun numar.
+// Ecranul de meci in timp real: patru patrate, asezate exact ca
+// butoanele de pe masa. Rosu in stanga, albastru in dreapta, +2 sus si
+// +1 jos.
+//
+// Fara numele sportivilor si fara scor. Arbitrul nu citeste ecranul in
+// timpul reprizei - are ochii pe saltea. Ecranul e oglinda mainii lui:
+// la apasare, patratul corespunzator se face galben, si atat trebuie sa
+// prinda din coltul ochiului ca sa stie ca punctul a plecat. Verde
+// inseamna ca l-a confirmat si al doilea arbitru.
+void drawQuadrant(int x0, int y0, bool isRed, int points) {
+  uint16_t bg = isRed ? SIDE_RED : SIDE_BLUE;
+
+  // Patratul apasat acum. Il recunoastem dupa culoare si valoare, nu
+  // dupa pozitie, ca sa nu existe doua adevaruri despre acelasi buton.
+  bool mine = (pointState != POINT_NONE)
+              && (pointSideRed == isRed)
+              && (pointValue == points);
+  if (mine) {
+    if      (pointState == POINT_VALIDATED) bg = GREEN;
+    else if (pointState == POINT_FAILED)    bg = DARKGRAY;
+    else if (pointState == POINT_SENDING
+          || pointState == POINT_PENDING)   bg = YELLOW;
+  }
+
+  gfx->fillRect(x0, y0, 119, 92, bg);
+  gfx->drawRect(x0, y0, 119, 92, BLACK);
+
+  char label[4];
+  snprintf(label, sizeof(label), "+%d", points);
+  gfx->setTextSize(5);
+  // Pe galben si pe verde, textul alb dispare.
+  gfx->setTextColor((bg == YELLOW || bg == GREEN) ? BLACK : WHITE);
+  int w = strlen(label) * 6 * 5;
+  gfx->setCursor(x0 + (119 - w) / 2, y0 + 26);
+  gfx->print(label);
+}
+
 void drawMatchScreen() {
-  gfx->fillRect(0, 26, 240, 214, BLACK);
   drawTopBar();
 
-  gfx->fillRect(0, 30, 240, 74, SIDE_RED);
-  gfx->setTextSize(2);
-  gfx->setTextColor(WHITE);
-  gfx->setCursor(8, 40);
-  gfx->print("ROSU");
-  gfx->setTextSize(1);
-  gfx->setCursor(8, 62);
-  gfx->print(liveRedName[0] ? liveRedName : "-");
-  gfx->setTextSize(3);
-  gfx->setCursor(170, 48);
-  gfx->print("1 2");
+  drawQuadrant(0,   26,  true,  2);   // rosu     +2, stanga sus
+  drawQuadrant(0,   119, true,  1);   // rosu     +1, stanga jos
+  drawQuadrant(120, 26,  false, 2);   // albastru +2, dreapta sus
+  drawQuadrant(120, 119, false, 1);   // albastru +1, dreapta jos
 
-  gfx->fillRect(0, 108, 240, 74, SIDE_BLUE);
-  gfx->setTextSize(2);
-  gfx->setTextColor(WHITE);
-  gfx->setCursor(8, 118);
-  gfx->print("ALBASTRU");
-  gfx->setTextSize(1);
-  gfx->setCursor(8, 140);
-  gfx->print(liveBlueName[0] ? liveBlueName : "-");
-  gfx->setTextSize(3);
-  gfx->setCursor(170, 126);
-  gfx->print("1 2");
-
-  gfx->setTextSize(2);
-  if (!roundsKnown) {
-    gfx->setTextColor(LIGHTGRAY);
-    printCentered("...", 196, 2, LIGHTGRAY);
-  } else if (activeRoundPaused) {
-    printCentered("PAUZA", 196, 2, ORANGE);
-  } else if (allRoundsDone) {
-    printCentered("MECI INCHEIAT", 196, 2, GOLD);
-  } else if (!activeRoundId) {
-    printCentered("INTRE REPRIZE", 196, 2, ORANGE);
-  } else {
-    char line[24];
-    snprintf(line, sizeof(line), "REPRIZA %d", activeRoundNumber);
-    printCentered(line, 196, 2, GREEN);
-  }
-
-  if (!canScoreNow()) {
-    printCentered("nu se puncteaza acum", 222, 1, LIGHTGRAY);
-    return;
-  }
-
-  // Ultimele puncte date de mine, cu ce s-a ales de ele. Cutia are
-  // culoarea coltului; conturul auriu inseamna validat. Fara banda asta
-  // arbitrul n-ar avea cum sa stie daca a doua apasare a intrat sau a
-  // fost oprita de garda.
-  for (int i = 0; i < recentCount; i++) {
-    int x = 10 + i * 74;
-    uint16_t bg = recent[i].isRed ? SIDE_RED : SIDE_BLUE;
-    gfx->fillRect(x, 214, 66, 24, bg);
-    if (recent[i].state == POINT_VALIDATED) {
-      gfx->drawRect(x,     214,     66,     24,     GOLD);
-      gfx->drawRect(x + 1, 214 + 1, 66 - 2, 24 - 2, GOLD);
-    }
-    gfx->setTextSize(2);
-    gfx->setTextColor(recent[i].state == POINT_VALIDATED ? GOLD : WHITE);
-    gfx->setCursor(x + 6, 218);
-    gfx->print("+");
-    gfx->print(recent[i].points);
-    if (recent[i].state == POINT_PENDING) {
-      gfx->setTextSize(1);
-      gfx->setTextColor(WHITE);
-      gfx->setCursor(x + 46, 222);
-      gfx->print("?");
-    }
+  // Banda de jos spune ori in ce repriza suntem, ori ce s-a ales de
+  // ultima apasare. Nicio apasare nu dispare in tacere.
+  gfx->fillRect(0, 212, 240, 28, BLACK);
+  switch (pointState) {
+    case POINT_SENDING:
+      printCentered("SE TRIMITE...", 218, 1, YELLOW);
+      break;
+    case POINT_PENDING:
+      printCentered("TRIMIS - astept al 2-lea arbitru", 218, 1, YELLOW);
+      break;
+    case POINT_VALIDATED:
+      printCentered("VALIDAT", 216, 2, GREEN);
+      break;
+    case POINT_FAILED:
+      printCentered("NETRIMIS - fara legatura", 218, 1, RED);
+      break;
+    case POINT_TOO_FAST:
+      printCentered("PREA REPEDE - punctul NU a plecat", 218, 1, ORANGE);
+      break;
+    case POINT_CLOSED:
+      printCentered(allRoundsDone ? "MECI INCHEIAT - nu se puncteaza"
+                                  : "NU SE PUNCTEAZA ACUM", 218, 1, ORANGE);
+      break;
+    default:
+      if (!roundsKnown) {
+        printCentered("...", 216, 2, LIGHTGRAY);
+      } else if (allRoundsDone) {
+        printCentered("MECI INCHEIAT", 216, 2, GOLD);
+      } else if (activeRoundPaused) {
+        printCentered("PAUZA", 216, 2, ORANGE);
+      } else if (!activeRoundId) {
+        printCentered("INTRE REPRIZE", 216, 2, ORANGE);
+      } else {
+        char line[24];
+        snprintf(line, sizeof(line), "REPRIZA %d", activeRoundNumber);
+        printCentered(line, 216, 2, GREEN);
+      }
+      break;
   }
 }
 
@@ -2153,10 +2160,12 @@ void redraw() {
     case SCREEN_STANDBY:    drawStandbyScreen();    break;
     case SCREEN_SCORE:      drawScoreScreen();      break;
     case SCREEN_MATCH:
-      if (pointState != POINT_NONE)   drawPointOverlay();
-      else if (needsFinalDecision())  drawDecisionScreen();
-      else if (liveMatchRealTime)     drawMatchScreen();
-      else                            drawMatchScoreScreen();
+      // In timp real ecranul isi arata singur starea, in patratul
+      // apasat - nu-l mai acoperim cu nimic.
+      if (liveMatchRealTime)             drawMatchScreen();
+      else if (pointState != POINT_NONE) drawPointOverlay();
+      else if (needsFinalDecision())     drawDecisionScreen();
+      else                               drawMatchScoreScreen();
       break;
   }
 }
