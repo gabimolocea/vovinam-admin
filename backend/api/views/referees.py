@@ -27,6 +27,29 @@ import secrets
 from ._common import _event_operational_lock_response, _referee_schedule_conflict_warnings
 
 
+def _monitor_occupancy(field_ids):
+    """Ce tine ocupat monitorul fiecarui teren, daca tine ceva.
+
+    Starea "e pe teren acum" vine din doua surse care pot sa nu fie de
+    acord: sesiunea de monitor si alocarea de teren. Cand masa centrala
+    trece de la un meci la o proba tehnica pe acelasi tatami, alocarea
+    meciului ramane "in desfasurare" desi monitorul arata deja altceva -
+    iar arbitrul primeste doua lucruri active si trebuie sa aleaga intre
+    ele, in loc sa intre direct in cel care chiar e pe saltea.
+
+    Monitorul e autoritatea cat timp afiseaza ceva; alocarea ramane plasa
+    de siguranta pentru cand monitorul e liber.
+    """
+    ids = [f for f in field_ids if f]
+    if not ids:
+        return {}
+    rows = (DisplayMonitorSession.objects
+            .filter(field_id__in=ids)
+            .exclude(status='idle')
+            .values('field_id', 'current_match_id', 'current_category_id'))
+    return {r['field_id']: r for r in rows}
+
+
 class RefereeAssignedCategoriesView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -52,6 +75,11 @@ class RefereeAssignedCategoriesView(APIView):
             ).exclude(status='idle').values_list('current_category_id', flat=True)
         )
 
+        occupancy = _monitor_occupancy([
+            getattr(getattr(a.category, 'field_assignment', None), 'field_id', None)
+            for a in assignments
+        ])
+
         data = []
         for assignment in assignments:
             cat = assignment.category
@@ -67,6 +95,10 @@ class RefereeAssignedCategoriesView(APIView):
                 fs = 'in_progress'
             elif field_assignment:
                 fs = field_assignment.status
+                # Monitorul terenului arata altceva: proba e in coada, nu
+                # in desfasurare, oricat ar spune alocarea ramasa in urma.
+                if fs == 'in_progress' and field and field.id in occupancy:
+                    fs = 'not_started'
             else:
                 fs = None
 
@@ -131,6 +163,11 @@ class RefereeAssignedMatchesView(APIView):
             ).values_list('current_match_id', flat=True)
         )
 
+        occupancy = _monitor_occupancy([
+            getattr(getattr(m, 'field_assignment', None), 'field_id', None) or getattr(m, 'field_id', None)
+            for m in match_by_id.values()
+        ])
+
         # Annotate field_status: check MatchFieldAssignment, monitor session,
         # and CategoryFieldAssignment (in priority order)
         for item in result:
@@ -160,6 +197,14 @@ class RefereeAssignedMatchesView(APIView):
                     item['field_status'] = category_field_assignment.status
                 else:
                     item['field_status'] = None
+
+                # Monitorul terenului arata altceva: meciul asta asteapta
+                # la rand, oricat ar spune alocarea ramasa in urma. Fara
+                # regula asta, un arbitru mutat de pe meci pe proba
+                # tehnica primea ambele ca active si trebuia sa aleaga.
+                if (item['field_status'] == 'in_progress'
+                        and resolved_field and resolved_field.id in occupancy):
+                    item['field_status'] = 'not_started'
 
             item['field_id'] = resolved_field.id if resolved_field else item.get('field_id')
             item['field_name'] = resolved_field.name if resolved_field else item.get('field_name')
