@@ -4,6 +4,8 @@ import { refereeAPI } from '@shared/lib/api';
 import { useAuth } from '@shared';
 import { Spinner, formatGroupBadgeLabel, Card, CardContent, Badge, Button } from '../components/ui';
 import { LogOut, HelpCircle } from 'lucide-react';
+import ScoringPanel from './ScoringPanel';
+import MatchScoring from './MatchScoring';
 
 const GENDER_LABELS = { male: 'Masculin', female: 'Feminin', mixt: 'Mixt' };
 const MATCH_TYPE_LABELS = { qualifications: 'Calificări', 'quarter-finals': 'Sferturi', 'semi-finals': 'Semi-finală', finals: 'Finală', bronze: 'Bronz' };
@@ -58,6 +60,22 @@ export default function Dashboard() {
 
   const hasNothing = categories.length === 0 && matches.length === 0;
 
+  // Arbitrul nu alege pe ce intra. Masa centrala pune o proba sau un
+  // meci pe teren, si acela apare - la fel ca pe dispozitivul fizic.
+  // Ecranul de selectie ramane doar pentru cazul in care un arbitru e
+  // prins pe doua terenuri deodata, unde chiar trebuie sa aleaga.
+  const live = [
+    ...categories.map(c => ({ kind: 'category', id: c.id })),
+    ...matches.map(m => ({ kind: 'match', id: m.id })),
+  ];
+
+  if (live.length === 1) {
+    const only = live[0];
+    return only.kind === 'category'
+      ? <ScoringPanel categoryId={String(only.id)} embedded />
+      : <MatchScoring matchId={String(only.id)} embedded />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-sidebar-border bg-sidebar px-4 py-3 text-sidebar-foreground">
@@ -79,14 +97,19 @@ export default function Dashboard() {
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
               <HelpCircle className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="font-medium text-foreground">Nicio probă activă</p>
-            <p className="mt-1 text-sm text-muted-foreground">Nu aveți probe sau meciuri asignate momentan.</p>
+            <p className="font-medium text-foreground">Aștepți masa centrală</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Proba sau meciul apar aici singure, imediat ce sunt puse pe teren.
+              Nu trebuie să alegi nimic.
+            </p>
           </div>
         )}
 
         {categories.length > 0 && (
           <section className="mb-6">
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Categorii asignate</h2>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Ești pe mai multe terenuri — alege
+            </h2>
             <div className="grid gap-3">
               {categories.map((cat) => (
                 <Card key={cat.id} className="border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-950/10">

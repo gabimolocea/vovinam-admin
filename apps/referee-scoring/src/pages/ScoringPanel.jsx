@@ -40,8 +40,11 @@ function FullscreenStyleModal({ onClose, title, description, maxWidth = 'max-w-m
   );
 }
 
-export default function ScoringPanel() {
-  const { categoryId } = useParams();
+export default function ScoringPanel({ categoryId: categoryIdProp, embedded = false }) {
+  // Fie din adresa (legatura directa, cod QR), fie de la ecranul
+  // care ne afiseaza cand arbitrul are o singura proba pe teren.
+  const { categoryId: categoryIdParam } = useParams();
+  const categoryId = categoryIdProp ?? categoryIdParam;
   const navigate = useNavigate();
   const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -305,7 +308,9 @@ export default function ScoringPanel() {
     <div className="flex flex-col bg-background text-foreground" style={{ height: '100dvh' }}>
       {/* ── Header — similar to MatchScoring ── */}
       <header className="flex items-center justify-between border-b border-sidebar-border bg-sidebar px-3 py-2 text-sidebar-foreground shrink-0">
-        <button onClick={handleBack} className="text-sidebar-foreground/80 hover:text-sidebar-foreground text-sm font-semibold flex items-center gap-1">&larr; ÎNAPOI</button>
+        {embedded
+          ? <span className="w-8" />
+          : <button onClick={handleBack} className="text-sidebar-foreground/80 hover:text-sidebar-foreground text-sm font-semibold flex items-center gap-1">&larr; ÎNAPOI</button>}
         <h1 className="font-display font-semibold text-sm uppercase tracking-wide truncate">{category.name}</h1>
         <div className={`flex items-center gap-1.5 rounded-full px-2 py-1 border text-[11px] font-semibold whitespace-nowrap ${isOnline ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
           <span className={`inline-block w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`}></span>

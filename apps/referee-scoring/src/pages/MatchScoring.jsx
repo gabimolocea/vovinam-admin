@@ -28,8 +28,9 @@ const SCORE_BUTTON_BASE = 'flex w-full items-center justify-center text-white fo
 const MODAL_ACTION_BASE = 'flex-1 rounded-md px-4 py-3 text-sm font-bold uppercase tracking-[0.18em] transition active:scale-[0.98] disabled:opacity-40';
 const REALTIME_BUTTON_BASE = 'flex min-h-[20dvh] w-full flex-col items-center justify-center font-bold text-white transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed';
 
-export default function MatchScoring() {
-  const { matchId } = useParams();
+export default function MatchScoring({ matchId: matchIdProp, embedded = false }) {
+  const { matchId: matchIdParam } = useParams();
+  const matchId = matchIdProp ?? matchIdParam;
   const navigate = useNavigate();
   const { user } = useAuth();
   const [match, setMatch] = useState(null);
@@ -273,7 +274,7 @@ export default function MatchScoring() {
     return (
       <div className="flex min-h-screen flex-col bg-sidebar text-sidebar-foreground">
         <header className="flex items-center justify-between border-b border-secondary/60 bg-sidebar px-4 py-3">
-          <button onClick={() => navigate('/')} className="text-sm font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/80 hover:text-sidebar-foreground">&larr; Înapoi</button>
+          {!embedded && <button onClick={() => navigate('/')} className="text-sm font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/80 hover:text-sidebar-foreground">&larr; Înapoi</button>}
           <div className="text-center">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-secondary">Scor timp real</p>
             <h1 className="text-base font-bold uppercase tracking-[0.18em]">Meci #{matchId}</h1>
@@ -325,25 +326,29 @@ export default function MatchScoring() {
           )}
         </div>
 
+        {/* +2 sus, +1 jos — aceeași așezare ca pe dispozitivul fizic, unde
+            e dictată de cum sunt lipite butoanele. Un arbitru care trece de
+            pe telefon pe placă nu trebuie să-și schimbe reflexul: inversate,
+            ar da 2 puncte în loc de 1 fără să observe. */}
         <div className="grid flex-1 grid-cols-2">
           <div className="grid grid-rows-2 border-r border-black/30 bg-red-950">
-            <button onClick={() => addPoint('red', 1)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-red-500 hover:bg-red-400 border-b border-black/20`}>
-              <span className="text-6xl leading-none">+1</span>
+            <button onClick={() => addPoint('red', 2)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-red-600 hover:bg-red-500 border-b border-black/20`}>
+              <span className="text-6xl leading-none">+2</span>
               <span className="mt-3 text-sm tracking-[0.22em]">ROȘU</span>
             </button>
-            <button onClick={() => addPoint('red', 2)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-red-600 hover:bg-red-500`}>
-              <span className="text-6xl leading-none">+2</span>
+            <button onClick={() => addPoint('red', 1)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-red-500 hover:bg-red-400`}>
+              <span className="text-6xl leading-none">+1</span>
               <span className="mt-3 text-sm tracking-[0.22em]">ROȘU</span>
             </button>
           </div>
 
           <div className="grid grid-rows-2 bg-blue-950">
-            <button onClick={() => addPoint('blue', 1)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-blue-500 hover:bg-blue-400 border-b border-black/20`}>
-              <span className="text-6xl leading-none">+1</span>
+            <button onClick={() => addPoint('blue', 2)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-blue-600 hover:bg-blue-500 border-b border-black/20`}>
+              <span className="text-6xl leading-none">+2</span>
               <span className="mt-3 text-sm tracking-[0.22em]">ALBASTRU</span>
             </button>
-            <button onClick={() => addPoint('blue', 2)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-blue-600 hover:bg-blue-500`}>
-              <span className="text-6xl leading-none">+2</span>
+            <button onClick={() => addPoint('blue', 1)} disabled={buttonsDisabled} className={`${REALTIME_BUTTON_BASE} bg-blue-500 hover:bg-blue-400`}>
+              <span className="text-6xl leading-none">+1</span>
               <span className="mt-3 text-sm tracking-[0.22em]">ALBASTRU</span>
             </button>
           </div>
@@ -360,7 +365,9 @@ export default function MatchScoring() {
     <div className="flex flex-col bg-background text-foreground" style={{ height: '100dvh' }}>
       {/* ── TOP: Header + VS ── */}
       <header className="flex items-center justify-between border-b border-sidebar-border bg-sidebar px-3 py-2 text-sidebar-foreground shrink-0">
-        <button onClick={() => navigate('/')} className="text-sidebar-foreground/80 hover:text-sidebar-foreground text-sm font-semibold flex items-center gap-1">&larr; INAPOI</button>
+        {embedded
+          ? <span className="w-8" />
+          : <button onClick={() => navigate('/')} className="text-sidebar-foreground/80 hover:text-sidebar-foreground text-sm font-semibold flex items-center gap-1">&larr; INAPOI</button>}
         <h1 className="font-display font-semibold text-sm uppercase tracking-wide">Meci #{matchId}</h1>
         <div className="w-8" />
       </header>
