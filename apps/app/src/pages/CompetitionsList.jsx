@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { competitionAPI } from '@shared/lib/api';
-import { Badge, Card, CardContent, EmptyState, Skeleton } from '../components/ui';
-import { Calendar, MapPin } from 'lucide-react';
+import { useAuth } from '@shared';
+import { Badge, Button, Card, CardContent, EmptyState, Skeleton } from '../components/ui';
+import { Calendar, MapPin, Plus } from 'lucide-react';
+import CreateCompetitionDialog from '../components/CreateCompetitionDialog';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -43,7 +45,17 @@ function CompetitionCard({ event, disabled = false, onOpen }) {
 export default function CompetitionsList() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
+
+  // Dupa creare mergem direct in centralizator: acolo se genereaza
+  // grupele si categoriile, si e oricum pasul urmator.
+  const handleCreated = (event) => {
+    if (!event?.id) return;
+    setEvents(prev => [event, ...prev]);
+    navigate(`/competitions/${event.id}`);
+  };
 
   useEffect(() => {
     competitionAPI.list().then(res => {
@@ -62,7 +74,20 @@ export default function CompetitionsList() {
   }
 
   if (events.length === 0) {
-    return <EmptyState title="Fără competiții" message="Nu există competiții disponibile momentan." />;
+    return (
+      <>
+        <EmptyState
+          title="Fără competiții"
+          message={isAdmin
+            ? 'Nu există nicio competiție. Creează prima.'
+            : 'Nu există competiții disponibile momentan.'}
+          action={isAdmin
+            ? <Button onClick={() => setCreating(true)}><Plus className="mr-1 h-4 w-4" />Competiție nouă</Button>
+            : undefined}
+        />
+        <CreateCompetitionDialog open={creating} onOpenChange={setCreating} onCreated={handleCreated} />
+      </>
+    );
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -78,11 +103,18 @@ export default function CompetitionsList() {
           <h1 className="font-display text-2xl font-bold">Competiții</h1>
           <p className="text-sm text-muted-foreground">Înscrieri pentru sportivii clubului tău</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Badge variant="outline">{upcoming.length} viitoare</Badge>
           <Badge variant="outline">{past.length} încheiate</Badge>
+          {isAdmin && (
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="mr-1 h-4 w-4" />Competiție nouă
+            </Button>
+          )}
         </div>
       </div>
+
+      <CreateCompetitionDialog open={creating} onOpenChange={setCreating} onCreated={handleCreated} />
 
       {upcoming.length > 0 && (
         <section className="flex flex-col gap-3">
