@@ -50,9 +50,21 @@ if USE_SPACES:
     AWS_STORAGE_BUCKET_NAME = os.getenv('SPACES_BUCKET_NAME')
     AWS_S3_ENDPOINT_URL = os.getenv('SPACES_ENDPOINT_URL')  # e.g., https://fra1.digitaloceanspaces.com
     AWS_S3_REGION_NAME = os.getenv('SPACES_REGION', 'fra1')
-    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_REGION_NAME}.digitaloceanspaces.com'
+    # Prin CDN, nu direct din Space. Diferenta e ".cdn." din mijloc, si
+    # fara ea endpoint-ul CDN exista, se plateste, si nu serveste nimic:
+    # fiecare adresa emisa de Django ocoleste marginea si loveste
+    # originea din Frankfurt.
+    _spaces_origin = f'{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_REGION_NAME}.digitaloceanspaces.com'
+    AWS_S3_CUSTOM_DOMAIN = os.getenv('SPACES_CDN_DOMAIN') or (
+        f'{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_REGION_NAME}.cdn.digitaloceanspaces.com'
+    )
+
+    # Un an. Numele fisierelor sunt practic imuabile - AWS_S3_FILE_OVERWRITE
+    # e False, deci Django adauga sufix la coliziune si nimic nu se
+    # schimba vreodata sub acelasi nume. Cu o ora, fiecare vizitator
+    # reincarca aceleasi sigle in fiecare zi degeaba.
     AWS_S3_OBJECT_PARAMETERS = {
-        'CacheControl': 'max-age=86400',
+        'CacheControl': 'public, max-age=31536000, immutable',
         'ACL': 'public-read',  # Make files publicly readable
     }
     AWS_DEFAULT_ACL = 'public-read'
@@ -64,7 +76,7 @@ if USE_SPACES:
     # Configure separate storage backends for static and media files
     STORAGES = {
         "default": {
-            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "BACKEND": "api.storages.OptimizedS3Storage",
         },
         "staticfiles": {
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
@@ -81,7 +93,7 @@ else:
     # Local media files (development or without Spaces)
     STORAGES = {
         "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "BACKEND": "api.storages.OptimizedFileSystemStorage",
         },
         "staticfiles": {
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
