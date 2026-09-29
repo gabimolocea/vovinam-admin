@@ -133,14 +133,14 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
         )}
       </div>
 
-      <div className="flex w-full flex-col border-t border-white/10 bg-neutral-900 text-white md:h-full md:w-96 md:border-l md:border-t-0">
-        <div className="flex flex-col gap-2 border-b border-white/10 p-4">
+      <div className="flex w-full flex-col border-t border-border bg-card text-foreground md:h-full md:w-96 md:border-l md:border-t-0">
+        <div className="flex flex-col gap-2 border-b border-border p-4">
           {detail.news_post_title && (
-            <a href={`${PUBLIC_SITE_URL}/noutati/${detail.news_post_slug}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-white/90 hover:underline">
+            <a href={`${PUBLIC_SITE_URL}/noutati/${detail.news_post_slug}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-foreground hover:underline">
               {detail.news_post_title}
             </a>
           )}
-          {detail.caption && <p className="text-sm text-white/70">{detail.caption}</p>}
+          {detail.caption && <p className="text-sm text-muted-foreground">{detail.caption}</p>}
           <GalleryTagEditor
             photoId={detail.id}
             tags={detail.tagged_athletes || []}
@@ -152,7 +152,7 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
             )}
           />
           {detail.tagged_clubs?.length > 0 && (
-            <p className="flex flex-wrap gap-x-1 text-xs text-white/60">
+            <p className="flex flex-wrap gap-x-1 text-xs text-muted-foreground">
               <span>Cluburi:</span>
               {detail.tagged_clubs.map((c) => (
                 <a key={`c-${c.id}`} href={`${PUBLIC_SITE_URL}/cluburi/${c.slug}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
@@ -168,7 +168,7 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
               onClick={() => handleReact('like')}
               aria-label={`Apreciază${detail.my_reaction === 'like' ? ' (apreciat deja)' : ''}`}
               aria-pressed={detail.my_reaction === 'like'}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition disabled:opacity-40 ${detail.my_reaction === 'like' ? 'bg-primary/20 text-primary' : 'bg-white/10 hover:bg-white/20'}`}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition disabled:opacity-40 ${detail.my_reaction === 'like' ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-muted/70'}`}
             >
               <ThumbsUp className="h-4 w-4" /> {detail.like_count}
             </button>
@@ -178,11 +178,11 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
               onClick={() => handleReact('dislike')}
               aria-label={`Nu apreciază${detail.my_reaction === 'dislike' ? ' (selectat deja)' : ''}`}
               aria-pressed={detail.my_reaction === 'dislike'}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition disabled:opacity-40 ${detail.my_reaction === 'dislike' ? 'bg-destructive/20 text-destructive' : 'bg-white/10 hover:bg-white/20'}`}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition disabled:opacity-40 ${detail.my_reaction === 'dislike' ? 'bg-destructive/20 text-destructive' : 'bg-muted hover:bg-muted/70'}`}
             >
               <ThumbsDown className="h-4 w-4" /> {detail.dislike_count}
             </button>
-            <span className="flex items-center gap-1.5 text-sm text-white/60">
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <MessageCircle className="h-4 w-4" /> {comments.length}
             </span>
           </div>
@@ -190,23 +190,23 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
 
         <div className="flex-1 overflow-y-auto p-4">
           {commentsLoading ? (
-            <div className="flex justify-center py-6"><Spinner className="text-white/60" /></div>
+            <div className="flex justify-center py-6"><Spinner className="text-muted-foreground" /></div>
           ) : comments.length === 0 ? (
-            <p className="py-6 text-center text-sm text-white/50">Niciun comentariu încă.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">Niciun comentariu încă.</p>
           ) : (
             <ul className="flex flex-col gap-3">
               {comments.map((comment) => (
                 <li key={comment.id} className="flex flex-col gap-1">
                   <p className="text-sm">
                     <span className="font-medium">{comment.author_name}</span>{' '}
-                    <span className="text-white/80">{comment.content}</span>
+                    <span className="text-foreground">{comment.content}</span>
                   </p>
                   {comment.replies?.length > 0 && (
-                    <ul className="ml-4 flex flex-col gap-1 border-l border-white/10 pl-3">
+                    <ul className="ml-4 flex flex-col gap-1 border-l border-border pl-3">
                       {comment.replies.map((reply) => (
                         <li key={reply.id} className="text-sm">
                           <span className="font-medium">{reply.author_name}</span>{' '}
-                          <span className="text-white/80">{reply.content}</span>
+                          <span className="text-foreground">{reply.content}</span>
                         </li>
                       ))}
                     </ul>
@@ -217,7 +217,7 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
           )}
         </div>
 
-        <form onSubmit={handleAddComment} className="flex items-end gap-2 border-t border-white/10 p-4">
+        <form onSubmit={handleAddComment} className="flex items-end gap-2 border-t border-border p-4">
           <Textarea
             value={commentText}
             onChange={(event) => setCommentText(event.target.value)}
@@ -225,7 +225,7 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
             aria-label="Comentariu"
             disabled={!isAuthenticated || posting}
             rows={1}
-            className="min-h-0 flex-1 resize-none bg-white/10 text-white placeholder:text-white/40"
+            className="min-h-0 flex-1 resize-none"
           />
           <Button type="submit" size="sm" disabled={!isAuthenticated || posting || !commentText.trim()}>
             Trimite
