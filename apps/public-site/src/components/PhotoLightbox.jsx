@@ -37,6 +37,16 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
     setDetail(photo);
     setCommentText('');
     loadComments(photo.id);
+
+    // Cerem poza intreaga de la server, nu ne bazam pe ce ne-a dat lista.
+    // Galeria unui articol trimite doar id, imagine si legenda - fara
+    // etichete si fara reactii - iar fara pasul asta vizualizatorul ar
+    // arata zero aprecieri si nicio eticheta pentru o poza care le are.
+    let cancelled = false;
+    publicContentAPI.gallery.get(photo.id)
+      .then(({ data }) => { if (!cancelled) setDetail((prev) => ({ ...prev, ...data })); })
+      .catch(() => { /* ramanem cu ce ne-a dat lista */ });
+    return () => { cancelled = true; };
   }, [photo, loadComments]);
 
   useEffect(() => {
