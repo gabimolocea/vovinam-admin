@@ -3,6 +3,7 @@ import { publicContentAPI } from '@shared/lib/api';
 import { Alert, EmptyState, Skeleton } from '../components/ui';
 import Breadcrumbs from '../components/Breadcrumbs';
 import Seo from '../components/Seo';
+import RichContent from '../components/RichContent';
 
 export default function AboutPage() {
   const [sections, setSections] = useState([]);
@@ -86,9 +87,9 @@ export default function AboutPage() {
                     className="h-48 w-full shrink-0 rounded-xl object-cover sm:h-auto sm:w-64"
                   />
                 )}
-                <div
+                <RichContent
+                  html={section.content}
                   className="prose-content ck-content max-w-none text-[#00334d]"
-                  dangerouslySetInnerHTML={{ __html: section.content }}
                 />
               </div>
             </div>

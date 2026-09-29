@@ -7,6 +7,7 @@ import Seo, { sportsEventJsonLd } from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ShareButton from '../components/ShareButton';
 import Lightbox from '../components/Lightbox';
+import RichContent from '../components/RichContent';
 import { excerpt, DEFAULT_OG_IMAGE } from '../lib/seo';
 import { formatEventDateRange, getEventTypeLabels } from '../lib/events';
 
@@ -136,7 +137,7 @@ export default function EventDetailPage() {
           </div>
 
           {event.description && (
-            <div className="prose-content ck-content max-w-none" dangerouslySetInnerHTML={{ __html: event.description }} />
+            <RichContent html={event.description} />
           )}
         </div>
       </div>

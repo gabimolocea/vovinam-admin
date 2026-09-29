@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Download, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { useSwipe } from '@shared';
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
@@ -10,8 +11,12 @@ const ZOOM_STEP = 0.5;
  * overlay, with zoom and download controls. There's no shared lightbox
  * component in @shared yet, so this is a small self-contained
  * implementation scoped to the public site.
+ *
+ * `onPrev` si `onNext` sunt optionale: locurile care arata o singura
+ * imagine - poza principala a unui articol, o diploma - nu le dau, si
+ * atunci nu apar nici sagetile, nici derularea cu degetul.
  */
-export default function Lightbox({ image, onClose }) {
+export default function Lightbox({ image, onClose, onPrev, onNext }) {
   const [zoom, setZoom] = useState(1);
   const [downloading, setDownloading] = useState(false);
 
@@ -25,10 +30,16 @@ export default function Lightbox({ image, onClose }) {
       if (event.key === 'Escape') onClose();
       if (event.key === '+' || event.key === '=') setZoom((z) => Math.min(MAX_ZOOM, z + ZOOM_STEP));
       if (event.key === '-') setZoom((z) => Math.max(MIN_ZOOM, z - ZOOM_STEP));
+      if (event.key === 'ArrowLeft') onPrev?.();
+      if (event.key === 'ArrowRight') onNext?.();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [image, onClose]);
+  }, [image, onClose, onPrev, onNext]);
+
+  // Derulare cu degetul, ca la galerie: pe telefon nimeni nu cauta sageti
+  // pe un ecran negru, trage de poza.
+  const swipe = useSwipe({ onLeft: () => onNext?.(), onRight: () => onPrev?.() });
 
   if (!image) return null;
 
@@ -70,7 +81,28 @@ export default function Lightbox({ image, onClose }) {
       role="dialog"
       aria-modal="true"
       onClick={onClose}
+      {...swipe}
     >
+      {onPrev && (
+        <button
+          type="button"
+          onClick={(event) => { event.stopPropagation(); onPrev(); }}
+          aria-label="Imaginea anterioară"
+          className="fixed left-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+      )}
+      {onNext && (
+        <button
+          type="button"
+          onClick={(event) => { event.stopPropagation(); onNext(); }}
+          aria-label="Imaginea următoare"
+          className="fixed right-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+        >
+          <ChevronRight className="h-6 w-6" />
+        </button>
+      )}
       <div className="fixed right-4 top-4 z-10 flex items-center gap-2">
         <button
           type="button"

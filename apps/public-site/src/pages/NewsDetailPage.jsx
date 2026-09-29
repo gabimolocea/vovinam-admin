@@ -5,6 +5,7 @@ import { useAuth, publicContentAPI } from '@shared';
 import { Alert, Button, Skeleton, Textarea } from '../components/ui';
 import Lightbox from '../components/Lightbox';
 import PhotoLightbox from '../components/PhotoLightbox';
+import RichContent from '../components/RichContent';
 import ShareButton from '../components/ShareButton';
 import Seo, { newsArticleJsonLd } from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
@@ -284,7 +285,7 @@ export default function NewsDetailPage() {
           </div>
         )}
 
-        <div className="prose-content ck-content max-w-none" dangerouslySetInnerHTML={{ __html: cleanContent }} />
+        <RichContent html={cleanContent} />
 
         {post.gallery_images?.length > 0 && (
           <section className="flex flex-col gap-3">
