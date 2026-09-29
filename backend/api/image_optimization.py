@@ -34,6 +34,9 @@ RULES = [
     ('about/',               1280,  'WEBP', 82),
     ('grades/',               512,  'WEBP', 82),
     ('match_images/',        1280,  'WEBP', 82),
+    # Ce se incarca din editorul de text: poze in articole si
+    # evenimente, deci imagini de afisare ca toate celelalte.
+    ('uploads/',             1280,  'WEBP', 82),
 
     # Dovezi fotografiate: raman lizibile si isi pastreaza formatul.
     # Plafonul taie tot ce e peste ce poate citi un ochi pe ecran, dar

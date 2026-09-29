@@ -87,6 +87,14 @@ class UntouchedFileTests(SimpleTestCase):
     def test_a_video_passes_through(self):
         self.assertIsNone(rule_for('match_videos/meci.mp4'))
 
+    def test_editor_uploads_are_optimized_like_any_other_image(self):
+        """Pozele puse într-un articol din editorul de text sunt tot
+        imagini de afișare, și vin direct de pe telefon."""
+        self.assertEqual(rule_for('uploads/poza.jpg'), (1280, 'WEBP', 82))
+
+    def test_a_document_uploaded_from_the_editor_is_left_alone(self):
+        self.assertIsNone(rule_for('uploads/regulament.pdf'))
+
     def test_an_unknown_folder_is_left_alone(self):
         """Un folder nou apărut nu primește un tratament ghicit."""
         self.assertIsNone(rule_for('ceva_nou/imagine.png'))

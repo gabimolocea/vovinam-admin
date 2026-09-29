@@ -83,6 +83,14 @@ if USE_SPACES:
         },
     }
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
+
+    # CKEditor scria pe discul containerului, dar adresa imaginii se
+    # compune din MEDIA_URL - adica Spaces. Rezultatul: poza ajungea
+    # undeva unde adresa ei nu arata, iar in articol ramanea o imagine
+    # stricata. Si chiar daca adresa ar fi fost locala, discul de pe App
+    # Platform se sterge la fiecare deploy, deci poza ar fi disparut
+    # oricum la urmatoarea publicare.
+    CKEDITOR_5_FILE_STORAGE = 'api.storages.OptimizedS3Storage'
     
     # Debug: Log storage backend info
     import logging
