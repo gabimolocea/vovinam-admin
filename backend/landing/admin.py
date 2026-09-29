@@ -3,6 +3,8 @@ import json
 from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
+from django.db.models import Max
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils.html import format_html
@@ -43,6 +45,61 @@ class NewsPostAdmin(admin.ModelAdmin):
     # object change form or admin actions instead of list_editable.
     ordering = ['-created_at']
     inlines = [NewsPostGalleryInline]
+    change_form_template = 'admin/landing/newspost/change_form.html'
+
+    # Cate fisiere acceptam intr-o cerere. Nu e o preferinta: serverul
+    # are un vCPU si o jumatate de gigabyte, iar fiecare imagine se
+    # deschide, se micsoreaza si se recodeaza inainte de raspuns. O suta
+    # deodata trec de orice limita de timp si de memorie - de acolo a
+    # venit 503-ul. Incarcarea in masa se face in transe mici, una dupa
+    # alta, din browser.
+    GALLERY_BATCH_LIMIT = 6
+
+    def get_urls(self):
+        custom = [
+            path(
+                '<int:post_id>/gallery-upload/',
+                self.admin_site.admin_view(self.gallery_upload_view),
+                name='landing_newspost_gallery_upload',
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def gallery_upload_view(self, request, post_id):
+        """Primeste o transa de imagini si le adauga in galerie."""
+        if request.method != 'POST':
+            return HttpResponseBadRequest('POST required')
+
+        post = get_object_or_404(NewsPost, pk=post_id)
+        if not self.has_change_permission(request, post):
+            return JsonResponse({'error': 'Nu ai dreptul să modifici articolul.'}, status=403)
+
+        files = request.FILES.getlist('images')
+        if not files:
+            return JsonResponse({'error': 'Nicio imagine primită.'}, status=400)
+        if len(files) > self.GALLERY_BATCH_LIMIT:
+            return JsonResponse(
+                {'error': f'Maxim {self.GALLERY_BATCH_LIMIT} imagini pe cerere.'}, status=400,
+            )
+
+        # Continuam numerotarea, ca imaginile adaugate acum sa nu sara in
+        # fata celor existente.
+        start = (NewsPostGallery.objects.filter(news_post=post)
+                 .aggregate(Max('order'))['order__max'] or 0) + 1
+
+        created, failed = [], []
+        for offset, uploaded in enumerate(files):
+            try:
+                item = NewsPostGallery.objects.create(
+                    news_post=post, image=uploaded, order=start + offset,
+                )
+                created.append({'id': item.pk, 'url': item.image.url, 'name': uploaded.name})
+            except Exception as exc:
+                # O imagine stricata dintr-o transa nu trebuie sa piarda
+                # si restul transei.
+                failed.append({'name': uploaded.name, 'error': str(exc)})
+
+        return JsonResponse({'created': created, 'failed': failed})
 
     fieldsets = (
         (_('Informații de bază'), {

@@ -1,0 +1,110 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_related_objects %}
+  {{ block.super }}
+
+  {% if original %}
+  <fieldset class="module aligned" style="margin-top:1em">
+    <h2>Încarcă mai multe imagini în galerie</h2>
+    <div style="padding:12px 16px">
+      <p style="margin-top:0">
+        Alege oricâte imagini. Se trimit în transe mici, una după alta —
+        aşa nu se mai atinge limita de timp a serverului, iar dacă o
+        imagine e stricată afli care, fără să pierzi restul.
+      </p>
+
+      <input type="file" id="bulk-gallery-input" accept="image/*" multiple>
+      <button type="button" class="default" id="bulk-gallery-start" style="margin-left:8px">Încarcă</button>
+
+      <div id="bulk-gallery-status" style="margin-top:12px"></div>
+      <ul id="bulk-gallery-errors" style="color:#ba2121;margin-top:8px"></ul>
+    </div>
+  </fieldset>
+
+  <script>
+  (function () {
+    var BATCH = 6;
+    var url = "{% url 'admin:landing_newspost_gallery_upload' original.pk %}";
+    var input = document.getElementById('bulk-gallery-input');
+    var button = document.getElementById('bulk-gallery-start');
+    var status = document.getElementById('bulk-gallery-status');
+    var errors = document.getElementById('bulk-gallery-errors');
+
+    function csrf() {
+      var field = document.querySelector('input[name=csrfmiddlewaretoken]');
+      return field ? field.value : '';
+    }
+
+    button.addEventListener('click', function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) { status.textContent = 'Nu ai ales nicio imagine.'; return; }
+
+      button.disabled = true;
+      input.disabled = true;
+      errors.innerHTML = '';
+      var done = 0, failed = 0;
+
+      // Transele pleaca una dupa alta, nu toate deodata: scopul e tocmai
+      // sa nu incarcam serverul cu o suta de imagini in acelasi moment.
+      function sendNext(index) {
+        if (index >= files.length) {
+          status.textContent = 'Gata: ' + done + ' imagini adăugate'
+            + (failed ? ', ' + failed + ' eşuate' : '') + '. Reîncarc pagina...';
+          setTimeout(function () { window.location.reload(); }, 1200);
+          return;
+        }
+
+        var batch = files.slice(index, index + BATCH);
+        var data = new FormData();
+        batch.forEach(function (file) { data.append('images', file); });
+
+        status.textContent = 'Se încarcă ' + (index + 1) + '–'
+          + Math.min(index + BATCH, files.length) + ' din ' + files.length + '...';
+
+        fetch(url, {
+          method: 'POST',
+          body: data,
+          headers: { 'X-CSRFToken': csrf() },
+          credentials: 'same-origin'
+        })
+        .then(function (response) { return response.json().catch(function () {
+          throw new Error('Serverul a răspuns ' + response.status);
+        }); })
+        .then(function (payload) {
+          if (payload.error) { throw new Error(payload.error); }
+          done += (payload.created || []).length;
+          (payload.failed || []).forEach(function (item) {
+            failed++;
+            var li = document.createElement('li');
+            li.textContent = item.name + ' — ' + item.error;
+            errors.appendChild(li);
+          });
+          sendNext(index + BATCH);
+        })
+        .catch(function (err) {
+          // O transa picata opreste restul: daca serverul are o problema,
+          // nu are rost sa-i trimitem inca nouazeci de fisiere.
+          failed += batch.length;
+          var li = document.createElement('li');
+          li.textContent = 'Transa ' + (index + 1) + '–'
+            + Math.min(index + BATCH, files.length) + ': ' + err.message;
+          errors.appendChild(li);
+          status.textContent = 'Oprit după ' + done + ' imagini adăugate.';
+          button.disabled = false;
+          input.disabled = false;
+        });
+      }
+
+      sendNext(0);
+    });
+  })();
+  </script>
+  {% else %}
+  <fieldset class="module aligned" style="margin-top:1em">
+    <h2>Galerie</h2>
+    <div style="padding:12px 16px">
+      <p style="margin:0">Salvează întâi articolul, apoi poţi încărca imagini în masă.</p>
+    </div>
+  </fieldset>
+  {% endif %}
+{% endblock %}
