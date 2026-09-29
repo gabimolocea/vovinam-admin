@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '@shared';
+import { useAuth, GalleryTagEditor, useSwipe } from '@shared';
 import { publicContentAPI } from '@shared/lib/api';
 import { ChevronLeft, ChevronRight, MessageCircle, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { Button, Spinner, Textarea } from './ui';
@@ -49,6 +49,13 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, onIndexChange, index, photos.length]);
 
+  // Derulare cu degetul: pe telefon nimeni nu caută săgeți de 40px pe
+  // un ecran negru, trage de poză.
+  const swipe = useSwipe({
+    onLeft: () => { if (index < photos.length - 1) onIndexChange(index + 1); },
+    onRight: () => { if (index > 0) onIndexChange(index - 1); },
+  });
+
   if (!detail) return null;
 
   async function handleReact(type) {
@@ -87,7 +94,7 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
         <X className="h-6 w-6" />
       </button>
 
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4">
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4" {...swipe}>
         {index > 0 && (
           <button
             type="button"
@@ -123,14 +130,19 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
             </Link>
           )}
           {detail.caption && <p className="text-sm text-white/70">{detail.caption}</p>}
-          {(detail.tagged_athletes?.length > 0 || detail.tagged_clubs?.length > 0) && (
+          <GalleryTagEditor
+            photoId={detail.id}
+            tags={detail.tagged_athletes || []}
+            onChange={(tags) => setDetail((prev) => ({ ...prev, tagged_athletes: tags }))}
+            renderLink={(tag) => (
+              <Link to={`/sportivi/${tag.id}`} className="text-primary hover:underline">
+                {tag.name}
+              </Link>
+            )}
+          />
+          {detail.tagged_clubs?.length > 0 && (
             <p className="flex flex-wrap gap-x-1 text-xs text-white/60">
-              <span>Etichete:</span>
-              {detail.tagged_athletes.map((a) => (
-                <Link key={`a-${a.id}`} to={`/sportivi/${a.id}`} className="text-primary hover:underline">
-                  {a.name}
-                </Link>
-              ))}
+              <span>Cluburi:</span>
               {detail.tagged_clubs.map((c) => (
                 <Link key={`c-${c.id}`} to={`/cluburi/${c.slug}`} className="text-primary hover:underline">
                   {c.name}

@@ -604,5 +604,11 @@ export const publicContentAPI = {
     react: (id, type) => api.post(`/public/gallery/${id}/react/`, { type }),
     comments: (id) => api.get(`/public/gallery/${id}/comments/`),
     addComment: (id, content, parent) => api.post(`/public/gallery/${id}/comments/`, { content, parent }),
+    // Etichetarea: oricine autentificat poate pune o etichetă, dar
+    // scoaterea e a celui etichetat (sau a antrenorului lui, sau a unui
+    // admin) - serverul spune per etichetă, prin `can_remove`.
+    addTag: (id, athleteId) => api.post(`/public/gallery/${id}/tags/`, { athlete: athleteId }),
+    removeTag: (id, athleteId) => api.delete(`/public/gallery/${id}/tags/`, { data: { athlete: athleteId } }),
+    tagSearch: (q) => api.get('/public/gallery/tag-search/', { params: { q } }),
   },
 };

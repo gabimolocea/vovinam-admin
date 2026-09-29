@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@shared';
+import { useAuth, GalleryTagEditor, useSwipe } from '@shared';
 import { publicContentAPI } from '@shared/lib/api';
 import { ChevronLeft, ChevronRight, MessageCircle, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { Button, Spinner, Textarea } from './ui';
@@ -50,6 +50,13 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, onIndexChange, index, photos.length]);
 
+  // Derulare cu degetul: pe telefon nimeni nu caută săgeți de 40px pe
+  // un ecran negru, trage de poză.
+  const swipe = useSwipe({
+    onLeft: () => { if (index < photos.length - 1) onIndexChange(index + 1); },
+    onRight: () => { if (index > 0) onIndexChange(index - 1); },
+  });
+
   if (!detail) return null;
 
   async function handleReact(type) {
@@ -88,7 +95,7 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
         <X className="h-6 w-6" />
       </button>
 
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4">
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4" {...swipe}>
         {index > 0 && (
           <button
             type="button"
@@ -124,14 +131,19 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
             </a>
           )}
           {detail.caption && <p className="text-sm text-white/70">{detail.caption}</p>}
-          {(detail.tagged_athletes?.length > 0 || detail.tagged_clubs?.length > 0) && (
+          <GalleryTagEditor
+            photoId={detail.id}
+            tags={detail.tagged_athletes || []}
+            onChange={(tags) => setDetail((prev) => ({ ...prev, tagged_athletes: tags }))}
+            renderLink={(tag) => (
+              <a href={`${PUBLIC_SITE_URL}/sportivi/${tag.id}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                {tag.name}
+              </a>
+            )}
+          />
+          {detail.tagged_clubs?.length > 0 && (
             <p className="flex flex-wrap gap-x-1 text-xs text-white/60">
-              <span>Etichete:</span>
-              {detail.tagged_athletes.map((a) => (
-                <a key={`a-${a.id}`} href={`${PUBLIC_SITE_URL}/sportivi/${a.id}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                  {a.name}
-                </a>
-              ))}
+              <span>Cluburi:</span>
               {detail.tagged_clubs.map((c) => (
                 <a key={`c-${c.id}`} href={`${PUBLIC_SITE_URL}/cluburi/${c.slug}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
                   {c.name}
