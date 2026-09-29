@@ -25,6 +25,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from ..permissions import can_edit_object, IsClubCoachOrAdmin
 from rest_framework.response import Response
 
+from django.db.models import Q
 from api.models import Athlete, Club, medal_counts_for_club, trophy_counts_for_club
 from landing.models import (
     AboutSection, DocumentPage, Event, GalleryComment, GalleryReaction, NewsComment, NewsPost, NewsPostGallery,
@@ -326,8 +327,15 @@ class PublicGalleryPhotoSerializer(serializers.ModelSerializer):
         ]
 
     def get_tagged_athletes(self, obj):
+        request = self.context.get('request')
         return [
-            {'id': a.id, 'name': f'{a.first_name} {a.last_name}'.strip()}
+            {
+                'id': a.id,
+                'name': f'{a.first_name} {a.last_name}'.strip(),
+                # Interfata nu trebuie sa ofere un buton care va fi
+                # refuzat, deci regula de scoatere calatoreste cu eticheta.
+                'can_remove': _may_remove_tag(getattr(request, 'user', None), a),
+            }
             for a in obj.tagged_athletes.all()
         ]
 
@@ -690,6 +698,35 @@ class PublicDocumentViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
 
+def _may_remove_tag(user, athlete):
+    """Cine poate scoate eticheta unui sportiv dintr-o poza.
+
+    Oricine autentificat poate eticheta - asa a fost cerut. Dar atunci
+    trebuie sa existe si drumul invers, altfel o eticheta pusa gresit
+    ramane acolo pentru totdeauna.
+
+    Scot: sportivul insusi, antrenorul clubului lui, si adminul. NU si
+    cine a pus-o: legatura e un M2M simplu, fara autor, iar inventarea
+    unuia ar cere o migrare pe date existente pentru un castig mic. Ce
+    conteaza e ca cel etichetat sa se poata dezlipi singur.
+    """
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_admin', False) or user.is_staff:
+        return True
+
+    mine = getattr(user, 'athlete', None)
+    if mine is None:
+        return False
+    if mine.id == athlete.id:
+        return True
+
+    club = getattr(athlete, 'club', None)
+    if club and mine.is_coach and club.coaches.filter(pk=mine.pk).exists():
+        return True
+    return False
+
+
 class PublicGalleryViewSet(viewsets.ViewSet):
     """Tagged photo gallery, Facebook-style: powers the 'Poze' tab on club
     and athlete public profiles, plus the full-screen lightbox (like/dislike
@@ -716,7 +753,12 @@ class PublicGalleryViewSet(viewsets.ViewSet):
         # serves GET (public reads), which `self.action == 'comments'`
         # alone can't distinguish. (This same fix applies to both the news
         # and gallery viewsets, which shared the original, buggy check.)
-        if self.action == 'react' or (self.action == 'comments' and self.request.method == 'POST'):
+        # Etichetarea si cautarea de etichetat cer autentificare: nici un
+        # vizitator nu lipeste nume pe poze, si nici nu rasfoieste lista
+        # de sportivi dupa nume fara sa fie cineva in spatele cererii.
+        if self.action in ('react', 'tags', 'tag_search') or (
+            self.action == 'comments' and self.request.method == 'POST'
+        ):
             return [IsAuthenticated()]
         return [AllowAny()]
 
@@ -772,6 +814,64 @@ class PublicGalleryViewSet(viewsets.ViewSet):
             'like_count': photo.reactions.filter(reaction_type='like').count(),
             'dislike_count': photo.reactions.filter(reaction_type='dislike').count(),
         })
+
+    @action(detail=True, methods=['post', 'delete'], url_path='tags')
+    def tags(self, request, pk=None):
+        """Adauga sau scoate eticheta unui sportiv intr-o poza.
+
+        Oricine autentificat poate eticheta, pe sine sau pe altcineva.
+        Scoaterea e mai stramta - vezi _may_remove_tag - fiindca altfel
+        oricine ar putea sterge etichetele altora, adica aceeasi problema
+        pe dos.
+        """
+        photo = get_object_or_404(NewsPostGallery, pk=pk)
+        athlete_id = request.data.get('athlete')
+        if not athlete_id:
+            return Response({'detail': 'Lipsește sportivul.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        athlete = Athlete.objects.filter(pk=athlete_id).first()
+        if not athlete:
+            return Response({'detail': 'Sportivul nu există.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'POST':
+            photo.tagged_athletes.add(athlete)
+        else:
+            if not _may_remove_tag(request.user, athlete):
+                return Response(
+                    {'detail': 'Poți scoate doar eticheta ta sau a unui sportiv din clubul tău.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            photo.tagged_athletes.remove(athlete)
+
+        serializer = PublicGalleryPhotoSerializer(photo, context={'request': request})
+        return Response({'tagged_athletes': serializer.data['tagged_athletes']})
+
+    @action(detail=False, methods=['get'], url_path='tag-search')
+    def tag_search(self, request):
+        """Sportivii pe care îi poți eticheta, după nume.
+
+        Endpoint separat și îngust: întoarce doar cât trebuie ca să alegi
+        o persoană dintr-o listă, nu restul dosarului unui sportiv.
+        """
+        query = (request.query_params.get('q') or '').strip()
+        if len(query) < 2:
+            return Response([])
+
+        matches = Athlete.objects.filter(status='approved').select_related('club')
+        for part in query.split():
+            matches = matches.filter(
+                Q(first_name__icontains=part) | Q(last_name__icontains=part)
+            )
+
+        return Response([
+            {
+                'id': a.id,
+                'name': f'{a.first_name} {a.last_name}'.strip(),
+                'club': a.club.name if a.club else None,
+            }
+            for a in matches.order_by('last_name', 'first_name')[:15]
+        ])
+
 
     @action(detail=True, methods=['get', 'post'], url_path='comments')
     def comments(self, request, pk=None):

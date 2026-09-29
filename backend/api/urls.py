@@ -198,6 +198,16 @@ urlpatterns = autocomplete_urlpatterns + [
     path('public/gallery/<int:pk>/', PublicGalleryViewSet.as_view({'get': 'retrieve'}), name='public-gallery-detail'),
     path('public/gallery/<int:pk>/react/', PublicGalleryViewSet.as_view({'post': 'react'}), name='public-gallery-react'),
     path(
+        'public/gallery/tag-search/',
+        PublicGalleryViewSet.as_view({'get': 'tag_search'}),
+        name='public-gallery-tag-search',
+    ),
+    path(
+        'public/gallery/<int:pk>/tags/',
+        PublicGalleryViewSet.as_view({'post': 'tags', 'delete': 'tags'}),
+        name='public-gallery-tags',
+    ),
+    path(
         'public/gallery/<int:pk>/comments/',
         PublicGalleryViewSet.as_view({'get': 'comments', 'post': 'comments'}),
         name='public-gallery-comments',
