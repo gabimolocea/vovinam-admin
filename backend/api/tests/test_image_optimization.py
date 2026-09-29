@@ -60,6 +60,18 @@ class EvidenceImageTests(SimpleTestCase):
                                   make_image(4000, 3000, fmt='JPEG'))
         self.assertEqual(max(reopen(content).size), 2000)
 
+    def test_a_jpeg_lands_exactly_on_the_cap_despite_the_fast_decode(self):
+        """Decodarea JPEG cere acum decodorului o versiune deja micșorată,
+        la jumătate sau la sfert, ca să nu desfacă toată poza în memorie -
+        serverul are un singur vCPU și o jumătate de gigabyte. Treptele
+        alea sunt grosiere, deci verificăm că dimensiunea finală cade tot
+        pe plafon, nu pe cea mai apropiată treaptă."""
+        _name, content = optimize('medical_certificates/odd.jpeg',
+                                  make_image(3333, 2111, fmt='JPEG'))
+        image = reopen(content)
+        self.assertEqual(max(image.size), 2000)
+        self.assertEqual(image.size[1], round(2000 * 2111 / 3333))
+
     def test_evidence_is_never_shrunk_as_hard_as_a_logo(self):
         _name, evidence = optimize('grade_certificates/c.jpeg', make_image(1800, 1800, fmt='JPEG'))
         _name2, logo = optimize('club_logos/c.jpeg', make_image(1800, 1800, fmt='JPEG'))

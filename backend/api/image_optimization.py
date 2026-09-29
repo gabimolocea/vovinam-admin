@@ -117,6 +117,15 @@ def optimize(name, content):
 
         content.seek(0)
         image = Image.open(content)
+        # `draft` cere decodorului JPEG sa scoata direct o versiune mai
+        # mica - la jumatate, sfert sau optime - in loc sa desfaca toata
+        # poza si abia apoi s-o micsoram noi. Pentru o poza de telefon de
+        # 4000x3000 redusa la 1280, asta inseamna de patru ori mai putini
+        # pixeli in memorie si o treime din timp. Conteaza: serverul are
+        # un singur vCPU si o jumatate de gigabyte, iar o galerie de o
+        # suta de poze il duce exact la limita. Pe alte formate e o
+        # operatie fara efect, deci nu are nevoie de conditie.
+        image.draft('RGB', (max_side, max_side))
         image.load()
     except Exception as exc:
         logger.warning('Nu am putut deschide %s pentru optimizare: %s', name, exc)
@@ -130,12 +139,10 @@ def optimize(name, content):
         from PIL import ImageOps
         image = ImageOps.exif_transpose(image) or image
 
-        width, height = image.size
-        longest = max(width, height)
-        if longest > max_side:
-            scale = max_side / longest
-            image = image.resize((max(1, round(width * scale)), max(1, round(height * scale))),
-                                 Image.LANCZOS)
+        # thumbnail micsoreaza pe loc si nu mareste niciodata - exact ce
+        # vrem, si fara sa tinem doua imagini deodata in memorie.
+        if max(image.size) > max_side:
+            image.thumbnail((max_side, max_side), Image.LANCZOS)
 
         out_format = target or (image.format or 'JPEG').upper()
         if out_format == 'JPG':
@@ -154,7 +161,10 @@ def optimize(name, content):
         buffer = io.BytesIO()
         save_args = {'quality': quality}
         if out_format == 'WEBP':
-            save_args['method'] = 6
+            # method=4, nu 6. Masurat pe o poza de telefon: 6 costa dublu
+            # timp pentru 0,3% dimensiune - un targ prost oriunde, dar mai
+            # ales intr-o cerere care poate duce o suta de fisiere.
+            save_args['method'] = 4
         elif out_format == 'JPEG':
             save_args['optimize'] = True
             save_args['progressive'] = True
