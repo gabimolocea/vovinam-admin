@@ -1,80 +1,48 @@
-from django.contrib import admin, messages
-from django.contrib.admin.models import LogEntry
-from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
-from django.utils.html import format_html
+from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from django.forms import ModelForm
-from django.core.exceptions import ValidationError
+from ..models import CategoryTeam, Team, TeamMember
 from django import forms
-from django.urls import path, reverse
-from django.shortcuts import render
-from django.http import JsonResponse, HttpResponseRedirect
-from reversion.admin import VersionAdmin
-from dal import autocomplete, forward
-from ..bracket_visualization import bracket_visualization_readonly_field, BracketStats
-from django.db import models, connection
-from django.db.models import Count, Case, When, IntegerField, Func
-from django.db.models.functions import Lower
-import json
-import urllib.parse
-from django.utils.safestring import mark_safe
-from django.template.response import TemplateResponse
-from ..models import (
-    City,
-    Club,
-    Athlete,
-    SupporterAthleteRelation,
-    TrainingSeminarParticipation,
-    Grade,
-    GradeHistory,
-    Title,
-    FederationRole,
-    Category,
-    SoloCategory,
-    TeamCategory,
-    FightCategory,
-    FightAthleteWeight,
-    Team,
-    CategoryTeam,
-    CategoryAthlete,
-    Match,
-    MatchEvent,
-    MatchRefereeScore,
-    RefereeScore,
-    RefereePointEvent,
-    CategoryAthleteScore,
-    CategoryRefereeScore,
-    CategoryRefereeAssignment,
-    MatchRefereeAssignment,
-    CategoryTeamScore,
-    TeamMember,
-    Group,
-    MatchVideoRecording,
-    AthletePerformanceVideo,
-    TeamPerformanceVideo,
-    CompetitionField,
-    CategoryFieldAssignment,
-    MatchFieldAssignment,
-    MatchRound,
-    CompetitionReferee,
-    DisplayMonitorSession,
-    Visa,
-    Event,
-    EventParticipation,
-    UserProxy,
-)
+
+
+# Formularele si inline-urile folosite mai jos, in acest fisier si nicaieri
+# altundeva. Au stat pana acum in _common.py, desi nu erau comune cu nimeni.
+class TeamMemberInline(admin.TabularInline):
+    model = TeamMember
+    extra = 1  # Allow adding new athletes to the team
+    autocomplete_fields = ['athlete']
+    verbose_name = _('Membru echipă')
+    verbose_name_plural = _('Membri echipă')
+
+
+class CategoryTeamInline(admin.TabularInline):
+    model = CategoryTeam
+    extra = 0
+    autocomplete_fields = ['category']
+    fields = ('category', 'place_obtained')
+    readonly_fields = ('place_obtained',)
+    verbose_name_plural = _("ECHIPĂ ÎNSCRISĂ ÎN URMĂTOARELE CATEGORII")  # Rename the section title
+    def place_obtained(self, obj):
+        """
+        Display the place obtained by the team in the category.
+        """
+        if obj.category.first_place_team == obj.team:
+            return "Locul 1"
+        elif obj.category.second_place_team == obj.team:
+            return "Locul 2"
+        elif obj.category.third_place_team == obj.team:
+            return "Locul 3"
+        return "Fără clasare"
+    place_obtained.short_description = "Loc obținut"
+
+class TeamAdminForm(forms.ModelForm):
+    """Custom form for Team that excludes the name property"""
+    class Meta:
+        model = Team
+        exclude = ['categories']  # Only exclude many-to-many, name is handled automatically as property
 
 
 admin.site.enable_nav_sidebar = True
 
-
-
-from ._common import (
-    CategoryTeamInline,
-    TeamAdminForm,
-    TeamMemberInline,
-)
 
 @admin.register(Team)
 class TeamAdmin(admin.ModelAdmin):
@@ -127,3 +95,5 @@ class TeamAdmin(admin.ModelAdmin):
             existing_team_members = set(team.members.values_list('athlete', flat=True))
             if team_members == existing_team_members:
                 raise ValueError("A team with the same members already exists.")
+
+

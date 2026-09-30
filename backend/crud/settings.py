@@ -47,21 +47,6 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', LAN_HOST]
 # Allow admin related modals to load in same-origin iframes
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
-# Admin sidebar app order (best-first for daily workflow)
-ADMIN_APP_ORDER = [
-    'api',
-    'landing',
-    'news',
-    'contact',
-    'auth',
-    'reversion',
-]
-
-# Hide specific models from the admin sidebar (per app label)
-ADMIN_MODEL_HIDE = {
-    'api': ['Grade'],
-}
-
 ADMIN_ROOT_HOSTS = []
 API_ROOT_HOSTS = []
 

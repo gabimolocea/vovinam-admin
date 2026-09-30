@@ -1,79 +1,113 @@
-from django.contrib import admin, messages
-from django.contrib.admin.models import LogEntry
-from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
-from django.utils.html import format_html
+from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
-from django.forms import ModelForm
-from django.core.exceptions import ValidationError
-from django import forms
-from django.urls import path, reverse
-from django.shortcuts import render
-from django.http import JsonResponse, HttpResponseRedirect
-from reversion.admin import VersionAdmin
-from dal import autocomplete, forward
-from ..bracket_visualization import bracket_visualization_readonly_field, BracketStats
-from django.db import models, connection
-from django.db.models import Count, Case, When, IntegerField, Func
-from django.db.models.functions import Lower
-import json
-import urllib.parse
-from django.utils.safestring import mark_safe
-from django.template.response import TemplateResponse
-from ..models import (
-    City,
-    Club,
-    Athlete,
-    SupporterAthleteRelation,
-    TrainingSeminarParticipation,
-    Grade,
-    GradeHistory,
-    Title,
-    FederationRole,
-    Category,
-    SoloCategory,
-    TeamCategory,
-    FightCategory,
-    FightAthleteWeight,
-    Team,
-    CategoryTeam,
-    CategoryAthlete,
-    Match,
-    MatchEvent,
-    MatchRefereeScore,
-    RefereeScore,
-    RefereePointEvent,
-    CategoryAthleteScore,
-    CategoryRefereeScore,
-    CategoryRefereeAssignment,
-    MatchRefereeAssignment,
-    CategoryTeamScore,
-    TeamMember,
-    Group,
-    MatchVideoRecording,
-    AthletePerformanceVideo,
-    TeamPerformanceVideo,
-    CompetitionField,
-    CategoryFieldAssignment,
-    MatchFieldAssignment,
-    MatchRound,
-    CompetitionReferee,
-    DisplayMonitorSession,
-    Visa,
-    Event,
-    EventParticipation,
-    UserProxy,
-)
+from django.db import models
+from django.db.models import Count
+from ..models import Club, Athlete, TrainingSeminarParticipation
 
 
 admin.site.enable_nav_sidebar = True
 
 
-
 from ._common import (
-    AthleteInline,
     TrainingSeminarParticipationInline,
 )
+from django.core.exceptions import ValidationError
+from dal import autocomplete
+from django.utils.html import format_html
+from django import forms
+from django.urls import reverse
+
+
+# Formularele si inline-urile folosite mai jos, in acest fisier si nicaieri
+# altundeva. Au stat pana acum in _common.py, desi nu erau comune cu nimeni.
+class AthleteInlineForm(forms.ModelForm):
+    athlete_selector = forms.ModelChoiceField(
+        queryset=Athlete.objects.all(),
+        required=False,
+        label=_('Name'),
+        widget=autocomplete.ModelSelect2(url='athlete-autocomplete')
+    )
+
+    class Meta:
+        model = Athlete
+        fields = ()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        def label_with_club(athlete):
+            if not athlete:
+                return ''
+            club_name = athlete.club.name if athlete.club else None
+            if club_name:
+                return f"{athlete.first_name} {athlete.last_name} ({club_name})"
+            return f"{athlete.first_name} {athlete.last_name}"
+
+        self.fields['athlete_selector'].label_from_instance = label_with_club
+        # Only allow athletes without a club for new rows
+        if not (self.instance and self.instance.pk):
+            self.fields['athlete_selector'].queryset = Athlete.objects.filter(club__isnull=True)
+        else:
+            # For existing rows, show the current athlete but prevent edits
+            self.fields['athlete_selector'].initial = self.instance
+            self.fields['athlete_selector'].required = False
+            self.fields['athlete_selector'].widget.attrs['disabled'] = True
+
+class AthleteInlineFormSet(forms.BaseInlineFormSet):
+    def delete_existing(self, obj, commit=True):
+        """Remove athlete from club without deleting the athlete record."""
+        obj.club = None
+        if commit:
+            obj.save()
+        return obj
+
+    def save_new(self, form, commit=True):
+        """Attach selected athlete to this club without editing details."""
+        athlete = form.cleaned_data.get('athlete_selector')
+        if not athlete:
+            return None
+        if athlete.club_id:
+            raise ValidationError(_('Selected athlete is already assigned to a club.'))
+        athlete.club = self.instance
+        if commit:
+            athlete.save()
+        return athlete
+
+class AthleteInline(admin.TabularInline):
+    model = Athlete
+    fk_name = 'club'  # Specify the foreign key field
+    formset = AthleteInlineFormSet
+    form = AthleteInlineForm
+    fields = ('athlete_selector', 'current_grade_display')
+    readonly_fields = ('current_grade_display',)
+    extra = 1  # Allow adding athletes from the tab
+    verbose_name = _('Sportiv')
+    verbose_name_plural = _('Sportivi')
+    can_delete = True  # Allow removing athletes from the club
+
+    def current_grade_display(self, obj):
+        if obj and obj.current_grade:
+            return obj.current_grade.name
+        return '—'
+    current_grade_display.short_description = _('Grad')
+    
+    def get_athlete_link(self, obj):
+        """Display athlete name as clickable link to their detail page"""
+        if obj and obj.pk:
+            try:
+                url = reverse('admin:api_athlete_change', args=(obj.pk,))
+                return format_html('<a href="{}" target="_blank">{} {}</a>', url, obj.first_name, obj.last_name)
+            except Exception:
+                return f"{obj.first_name} {obj.last_name}"
+        return '-'
+    get_athlete_link.short_description = _('Nume')
+    
+    def has_add_permission(self, request, obj=None):
+        return True
+    
+    def has_delete_permission(self, request, obj=None):
+        return True
+
 
 @admin.register(Club)
 class ClubAdmin(admin.ModelAdmin):
@@ -86,7 +120,19 @@ class ClubAdmin(admin.ModelAdmin):
     # Organize fields in the admin form
     fieldsets = (
         ('Detalii club', {
-            'fields': ('name', 'logo', 'city', 'address', 'mobile_number', 'website')
+            'fields': ('name', 'slug', 'logo', 'city', 'address', 'mobile_number', 'website')
+        }),
+        ('Pagina publică', {
+            'fields': ('description', 'display_order'),
+            'description': (
+                'Descrierea apare pe tab-ul „Info” al paginii publice a clubului. '
+                'Ordinea de afișare decide poziția clubului în lista publică de cluburi.'
+            ),
+        }),
+        ('Rețele sociale', {
+            'fields': ('facebook_url', 'instagram_url', 'tiktok_url', 'youtube_url'),
+            'classes': ('collapse',),
+            'description': 'Linkurile apar ca iconițe pe pagina publică a clubului. Lăsate goale, iconița nu apare.',
         }),
         ('Antrenori', {
             'fields': ('coaches',),
@@ -97,7 +143,10 @@ class ClubAdmin(admin.ModelAdmin):
         }),
     )
 
-    readonly_fields = ('created', 'modified')  # Mark non-editable fields as read-only
+    # slug e generat din nume si intra in URL-ul public al clubului: se
+    # arata ca sa se stie ce adresa are clubul, dar nu se schimba de mana,
+    # ca sa nu rupem linkurile deja date mai departe.
+    readonly_fields = ('created', 'modified', 'slug')
 
     class Media:
         js = ('/static/admin/js/club_tabs.js?v=20260206',)
@@ -211,3 +260,5 @@ class TrainingSeminarAdmin(admin.ModelAdmin):
 # backward compatibility and existing integrations.
 
 # Register Grade model with the new grade_type field
+
+

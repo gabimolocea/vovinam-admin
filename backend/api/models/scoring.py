@@ -1,22 +1,7 @@
 from django.db import models, transaction
-from django.db.models import F
 from django.core.exceptions import ValidationError
-from django.contrib import admin
-from django.conf import settings
-from django.contrib.auth.models import AbstractUser
-from datetime import date, timedelta
-import hashlib
-import secrets
-from urllib.parse import urlparse
-from django.db.models.signals import m2m_changed, post_save
-from django.dispatch import receiver
 from django.core.exceptions import ValidationError
-from django.db.models.signals import post_delete
 from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from django.utils.text import slugify
-from ..mixins import TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin
-from ..managers import AthleteManager
 
 # Create your models here.
 
@@ -204,7 +189,6 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
         ('fight', 'Luptă'),
     ]
     
-    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
     
     PLACEMENT_CHOICES = [
         ('1st', 'Locul 1'),
@@ -231,22 +215,6 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
     team_members = models.ManyToManyField('Athlete', verbose_name=_('Membri echipă'), blank=True, related_name='team_results', help_text=_('Membrii echipei, inclusiv persoana care a trimis rezultatul echipei.'))
     team_name = models.CharField(_('Nume echipă'), max_length=200, blank=True, null=True, help_text=_('Nume opțional al echipei.'))
 
-    # Backwards-compatibility: some scripts/tests use `result_type` as the field name.
-    # Provide a manager that annotates `result_type` and accept `result_type` in __init__.
-    class _CompatManager(models.Manager):
-        def get_queryset(self):
-            # annotate a virtual `result_type` column equal to the `type` field so filters like
-            # .filter(result_type='teams') work in legacy scripts/tests
-            return super().get_queryset().annotate(result_type=F('type'))
-
-    objects = _CompatManager()
-
-    def __init__(self, *args, **kwargs):
-        # map legacy kwarg `result_type` to the actual `type` field
-        if 'result_type' in kwargs and 'type' not in kwargs:
-            kwargs['type'] = kwargs.pop('result_type')
-        super().__init__(*args, **kwargs)
-    
     # Athlete self-submission fields
     submitted_by_athlete = models.BooleanField(_('Trimis de sportiv'), default=False, help_text=_('Bifat dacă a fost trimis chiar de sportiv.'))
     placement_claimed = models.CharField(_('Loc revendicat'), max_length=10, choices=PLACEMENT_CHOICES, blank=True, null=True, help_text=_('Locul revendicat de sportiv sau echipă.'))
@@ -255,11 +223,10 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
     result_document = models.FileField(_('Document rezultat'), upload_to='result_documents/', null=True, blank=True, help_text=_('Documentul oficial cu rezultatul.'))
     
     # Approval workflow fields
-    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved', help_text=_('Starea aprobării (implicit aprobat pentru trimiterile arbitrilor).'))
-    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
-    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_scores')
-    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
+    status = models.CharField(
+        _('Stare'), max_length=20, choices=APPROVAL_STATUS_CHOICES, default='approved',
+        help_text=_('Starea aprobării (implicit aprobat pentru trimiterile arbitrilor).'),
+    )
 
     class Meta:
         unique_together = ('category', 'athlete', 'referee')  # Ensure unique scores per referee and athlete

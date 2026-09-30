@@ -146,25 +146,15 @@ class EventViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         # Get status from query params - handle both DRF Request and Django Request
         status = self.request.query_params.get('status') if hasattr(self.request, 'query_params') else self.request.GET.get('status')
-        
-        print(f"DEBUG: get_queryset called with status={status}")
-        
+
+        now = timezone.now()
         if status == 'upcoming':
-            # Events that haven't started yet
-            queryset = queryset.filter(start_date__gt=timezone.now())
-            print(f"DEBUG: Filtered to upcoming, count={queryset.count()}")
+            queryset = queryset.filter(start_date__gt=now)
         elif status == 'ongoing':
-            # Events that are currently happening
-            now = timezone.now()
             queryset = queryset.filter(start_date__lte=now, end_date__gte=now)
-            print(f"DEBUG: Filtered to ongoing, count={queryset.count()}")
         elif status == 'past':
-            # Events that have ended
-            queryset = queryset.filter(end_date__lt=timezone.now())
-            print(f"DEBUG: Filtered to past, count={queryset.count()}")
-        else:
-            print(f"DEBUG: No status filter applied, count={queryset.count()}")
-        
+            queryset = queryset.filter(end_date__lt=now)
+
         return queryset
 
     @action(detail=False, methods=['get'])

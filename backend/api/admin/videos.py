@@ -1,80 +1,90 @@
-from django.contrib import admin, messages
-from django.contrib.admin.models import LogEntry
-from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
-from django.utils.html import format_html
-from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from django.forms import ModelForm
-from django.core.exceptions import ValidationError
+from django.contrib import admin
+from ..models import MatchVideoRecording, AthletePerformanceVideo, TeamPerformanceVideo
 from django import forms
-from django.urls import path, reverse
-from django.shortcuts import render
-from django.http import JsonResponse, HttpResponseRedirect
-from reversion.admin import VersionAdmin
-from dal import autocomplete, forward
-from ..bracket_visualization import bracket_visualization_readonly_field, BracketStats
-from django.db import models, connection
-from django.db.models import Count, Case, When, IntegerField, Func
-from django.db.models.functions import Lower
-import json
-import urllib.parse
-from django.utils.safestring import mark_safe
-from django.template.response import TemplateResponse
-from ..models import (
-    City,
-    Club,
-    Athlete,
-    SupporterAthleteRelation,
-    TrainingSeminarParticipation,
-    Grade,
-    GradeHistory,
-    Title,
-    FederationRole,
-    Category,
-    SoloCategory,
-    TeamCategory,
-    FightCategory,
-    FightAthleteWeight,
-    Team,
-    CategoryTeam,
-    CategoryAthlete,
-    Match,
-    MatchEvent,
-    MatchRefereeScore,
-    RefereeScore,
-    RefereePointEvent,
-    CategoryAthleteScore,
-    CategoryRefereeScore,
-    CategoryRefereeAssignment,
-    MatchRefereeAssignment,
-    CategoryTeamScore,
-    TeamMember,
-    Group,
-    MatchVideoRecording,
-    AthletePerformanceVideo,
-    TeamPerformanceVideo,
-    CompetitionField,
-    CategoryFieldAssignment,
-    MatchFieldAssignment,
-    MatchRound,
-    CompetitionReferee,
-    DisplayMonitorSession,
-    Visa,
-    Event,
-    EventParticipation,
-    UserProxy,
-)
+
+
+# Formularele si inline-urile folosite mai jos, in acest fisier si nicaieri
+# altundeva. Au stat pana acum in _common.py, desi nu erau comune cu nimeni.
+class AthletePerformanceVideoForm(forms.ModelForm):
+    class Meta:
+        model = AthletePerformanceVideo
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields.get('athlete_score')
+        if field:
+            def label_from_instance(obj):
+                athlete = obj.athlete
+                category = obj.category
+                
+                if not athlete:
+                    return f"{category.name if category else 'Unknown'}"
+                
+                group = category.group if category else None
+                event = category.event if category else None
+                group_name = group.name if group else 'Fără grupă'
+                event_title = event.title if event else 'Fără competiție'
+                return (
+                    f"{athlete.first_name} {athlete.last_name} - "
+                    f"{category.name} - {group_name} - {event_title}"
+                )
+            field.label_from_instance = label_from_instance
+
+class TeamPerformanceVideoForm(forms.ModelForm):
+    class Meta:
+        model = TeamPerformanceVideo
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields.get('category_team')
+        if field:
+            def label_from_instance(obj):
+                team = obj.team
+                category = obj.category
+                
+                if not team or not category:
+                    return f"{team.name if team else 'Necunoscut'}"
+                
+                group = category.group if category else None
+                event = category.event if category else None
+                group_name = group.name if group else 'Fără grupă'
+                event_title = event.title if event else 'Fără competiție'
+                return (
+                    f"{team.name} - "
+                    f"{category.name} - {group_name} - {event_title}"
+                )
+            field.label_from_instance = label_from_instance
+
+class MatchVideoRecordingForm(forms.ModelForm):
+    class Meta:
+        model = MatchVideoRecording
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields.get('match')
+        if field:
+            def label_from_instance(obj):
+                category = obj.category
+                
+                if not category:
+                    return obj.name
+                
+                group = category.group if category else None
+                event = category.event if category else None
+                group_name = group.name if group else 'Fără grupă'
+                event_title = event.title if event else 'Fără competiție'
+                return (
+                    f"{obj.name} - "
+                    f"{category.name} - {group_name} - {event_title}"
+                )
+            field.label_from_instance = label_from_instance
 
 
 admin.site.enable_nav_sidebar = True
 
-
-
-from ._common import (
-    AthletePerformanceVideoForm,
-    MatchVideoRecordingForm,
-    TeamPerformanceVideoForm,
-)
 
 @admin.register(MatchVideoRecording)
 class MatchVideoRecordingAdmin(admin.ModelAdmin):
@@ -235,3 +245,5 @@ class TeamPerformanceVideoAdmin(admin.ModelAdmin):
 
 
 # @admin.register(CategoryTeam)  # Disabled - manage teams via TeamCategory admin inline
+
+

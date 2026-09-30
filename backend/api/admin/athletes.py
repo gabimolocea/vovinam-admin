@@ -1,84 +1,308 @@
 from django.contrib import admin, messages
-from django.contrib.admin.models import LogEntry
-from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from django.forms import ModelForm
-from django.core.exceptions import ValidationError
-from django import forms
 from django.urls import path, reverse
 from django.shortcuts import render
-from django.http import JsonResponse, HttpResponseRedirect
-from reversion.admin import VersionAdmin
-from dal import autocomplete, forward
-from ..bracket_visualization import bracket_visualization_readonly_field, BracketStats
-from django.db import models, connection
-from django.db.models import Count, Case, When, IntegerField, Func
-from django.db.models.functions import Lower
-import json
-import urllib.parse
+from django.db import models
 from django.utils.safestring import mark_safe
 from django.template.response import TemplateResponse
-from ..models import (
-    City,
-    Club,
-    Athlete,
-    SupporterAthleteRelation,
-    TrainingSeminarParticipation,
-    Grade,
-    GradeHistory,
-    Title,
-    FederationRole,
-    Category,
-    SoloCategory,
-    TeamCategory,
-    FightCategory,
-    FightAthleteWeight,
-    Team,
-    CategoryTeam,
-    CategoryAthlete,
-    Match,
-    MatchEvent,
-    MatchRefereeScore,
-    RefereeScore,
-    RefereePointEvent,
-    CategoryAthleteScore,
-    CategoryRefereeScore,
-    CategoryRefereeAssignment,
-    MatchRefereeAssignment,
-    CategoryTeamScore,
-    TeamMember,
-    Group,
-    MatchVideoRecording,
-    AthletePerformanceVideo,
-    TeamPerformanceVideo,
-    CompetitionField,
-    CategoryFieldAssignment,
-    MatchFieldAssignment,
-    MatchRound,
-    CompetitionReferee,
-    DisplayMonitorSession,
-    Visa,
-    Event,
-    EventParticipation,
-    UserProxy,
-)
+from ..models import Athlete, CategoryAthlete, CategoryAthleteScore, GradeHistory
 
 
 admin.site.enable_nav_sidebar = True
 
 
-
 from ._common import (
-    AthleteAdminForm,
-    AthleteFightResultsInline,
-    AthleteSoloResultsInline,
-    AthleteTeamResultsInline,
     AthleteTrainingSeminarParticipationInline,
-    GradeHistoryInline,
-    VisaInline,
 )
+from django import forms
+
+
+# Formularele si inline-urile folosite mai jos, in acest fisier si nicaieri
+# altundeva. Au stat pana acum in _common.py, desi nu erau comune cu nimeni.
+# Inline GradeHistory for Athlete
+class GradeHistoryInline(admin.TabularInline):
+    model = GradeHistory
+    fk_name = 'athlete'  # There are two FKs to Athlete on GradeHistory; ensure inline uses the athlete FK
+    extra = 0  # Display only existing entries
+    # Make the inline read-only when displayed on the Athlete page. Editing
+    # grade history should be done in the dedicated GradeHistory admin page.
+    fields = ('grade', 'obtained_date', 'level', 'event', 'examiner_1', 'examiner_2', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by')
+    readonly_fields = ('grade', 'obtained_date', 'level', 'event', 'examiner_1', 'examiner_2', 'status', 'submitted_date', 'reviewed_date', 'reviewed_by')
+    show_change_link = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict examiner_1 and examiner_2 foreign key dropdowns to athletes that are coaches
+        when editing GradeHistory from the Athlete admin inline.
+        """
+        if db_field.name in ('examiner_1', 'examiner_2'):
+            kwargs['queryset'] = Athlete.objects.filter(is_coach=True)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+# Unified Visa inline to replace MedicalVisaInline and AnnualVisaInline
+class VisaInline(admin.TabularInline):
+    try:
+        from ..models import Visa
+    except Exception:
+        Visa = None
+    model = Visa
+    extra = 0
+    fields = ('visa_type', 'issued_date', 'visa_status', 'document', 'image', 'notes')
+    readonly_fields = ('visa_status',)
+    verbose_name = _('Viză')
+    verbose_name_plural = _('Vize')
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def visa_status(self, obj):
+            try:
+                translations = {
+                    'Valid': _('Validă'),
+                    'Expired': _('Expirată'),
+                    'Not available': _('Indisponibilă'),
+                }
+                return translations.get(obj.visa_status, obj.visa_status) or ''
+            except Exception:
+                return ''
+    visa_status.short_description = _('Status')
+
+class AthleteSoloResultsInline(admin.TabularInline):
+    """
+    Inline to display results for solo categories.
+    """
+    model = CategoryAthlete
+    extra = 0
+    verbose_name = _('Rezultat solo')
+    verbose_name_plural = _('Rezultate solo')
+    can_add = False  # Disable the "Add another" button
+    can_delete = False  # Disable the "Delete" button
+    show_change_link = False  # Hide the "Change" link
+    fields = ('category_name', 'competition_name', 'results')  # Fields to display
+    readonly_fields = ('category_name', 'competition_name', 'results')  # Make fields read-only
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        """
+        Filter the queryset to include only results for solo categories.
+        """
+        qs = super().get_queryset(request)
+        return qs.filter(category__solocategory__isnull=False)  # Filter by SoloCategory type
+
+    def category_name(self, obj):
+        """
+        Display the category name.
+        """
+        return obj.category.name
+    category_name.short_description = _('Nume categorie')
+
+    def competition_name(self, obj):
+        """
+        Display the event name.
+        """
+        if obj.category and obj.category.event:
+            return obj.category.event.title
+        return _('N/A')
+    competition_name.short_description = _('Nume eveniment')
+
+    def results(self, obj):
+        """
+        Display the results of the athlete for solo categories.
+        """
+        if obj.category.first_place == obj.athlete:
+            return _('Locul 1')
+        elif obj.category.second_place == obj.athlete:
+            return _('Locul 2')
+        elif obj.category.third_place == obj.athlete:
+            return _('Locul 3')
+        return _('Fără clasare')
+    results.short_description = _('Loc obținut')
+
+class AthleteTeamResultsInline(admin.TabularInline):
+    """Compact tabular inline to show team results related to this athlete.
+
+    Uses CategoryAthleteScore (team results model) filtered to type='teams'.
+    Displayed as a single inline on the Athlete change form so there are no
+    nested or duplicate inlines.
+    """
+    model = CategoryAthleteScore
+    extra = 0
+    verbose_name = _('Rezultat echipă')
+    verbose_name_plural = _('REZULTATE ECHIPE')
+    can_add = False
+    can_delete = False
+    show_change_link = True
+    fields = ('competition_name', 'category_name', 'team_name', 'team_members_display', 'placement_claimed', 'status')
+    readonly_fields = ('competition_name', 'category_name', 'team_name', 'team_members_display', 'placement_claimed', 'status')
+
+    fk_name = 'athlete'
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def get_formset(self, request, obj=None, **kwargs):
+        """Wrap the formset so its queryset includes team entries where this
+        athlete is a team member (team_members M2M) in addition to rows where
+        they are the primary `athlete` FK.
+        """
+        FormSet = super().get_formset(request, obj, **kwargs)
+
+        class WrappedFormSet(FormSet):
+            def __init__(self, *args, **kw):
+                super().__init__(*args, **kw)
+                try:
+                    # self.queryset is already limited to athlete=<parent>
+                    qs = self.queryset
+                    if obj is not None:
+                        from ..models import CategoryAthleteScore
+                        extra = CategoryAthleteScore.objects.filter(type='teams', team_members=obj)
+                        # Combine and deduplicate
+                        self.queryset = (qs | extra).distinct().select_related('category__event').prefetch_related('team_members')
+                except Exception:
+                    pass
+
+        return WrappedFormSet
+
+    def competition_name(self, obj):
+        return obj.category.event.title if obj.category and obj.category.event else 'N/A'
+    competition_name.short_description = _('Eveniment')
+
+    def category_name(self, obj):
+        return obj.category.name if obj.category else 'N/A'
+    category_name.short_description = _('Categorie')
+
+    def team_members_display(self, obj):
+        return ', '.join([f"{m.first_name} {m.last_name}" for m in obj.team_members.all()])
+    team_members_display.short_description = _('Membri echipă')
+
+class AthleteFightResultsInline(admin.TabularInline):
+    """
+    Inline to display results for fight categories.
+    """
+    model = CategoryAthlete
+    extra = 0
+    verbose_name = _("Rezultat la luptă")
+    verbose_name_plural = _("Rezultate la luptă")
+    can_add = False  # Disable the "Add another" button
+    can_delete = False  # Disable the "Delete" button
+    show_change_link = False  # Hide the "Change" link
+    fields = ('category_name', 'competition_name', 'results')  # Fields to display
+    readonly_fields = ('category_name', 'competition_name', 'results')  # Make fields read-only
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        """
+        Filter the queryset to include only results for fight categories.
+        """
+        qs = super().get_queryset(request)
+        return qs.filter(category__fightcategory__isnull=False)  # Filter by FightCategory type
+
+    def category_name(self, obj):
+        """
+        Display the category name.
+        """
+        return obj.category.name
+    category_name.short_description = "Nume categorie"
+
+    def competition_name(self, obj):
+        """
+        Display the event name.
+        """
+        return obj.category.event.title if obj.category.event else "N/A"
+    competition_name.short_description = "Nume eveniment"
+
+    def results(self, obj):
+        """
+        Display the results of the athlete for fight categories.
+        """
+        if obj.category.first_place == obj.athlete:
+            return "Locul 1"
+        elif obj.category.second_place == obj.athlete:
+            return "Locul 2"
+        elif obj.category.third_place == obj.athlete:
+            return "Locul 3"
+        return "Fără clasare"
+    results.short_description = "Loc obținut"
+
+class AthleteAdminForm(forms.ModelForm):
+    class Meta:
+        model = Athlete
+        fields = '__all__'
+
+    FIELD_LABELS = {
+        'user': _('Utilizator'),
+        'first_name': _('Prenume'),
+        'last_name': _('Nume'),
+        'gender': _('Gen'),
+        'license_series': _('Serie legitimație'),
+        'cnp': _('CNP'),
+        'date_of_birth': _('Data nașterii'),
+        'address': _('Adresă'),
+        'mobile_number': _('Telefon mobil'),
+        'profile_image': _('Fotografie profil'),
+        'club': _('Club'),
+        'city': _('Oraș'),
+        'current_grade': _('Grad curent'),
+        'federation_role': _('Rol în federație'),
+        'title': _('Titlu'),
+        'registered_date': _('Data înregistrării'),
+        'expiration_date': _('Data expirării'),
+        'is_coach': _('Este antrenor'),
+        'is_referee': _('Este arbitru'),
+        'emergency_contact_name': _('Nume contact de urgență'),
+        'emergency_contact_phone': _('Telefon contact de urgență'),
+        'status': _('Status'),
+        'reviewed_by': _('Revizuit de'),
+        'admin_notes': _('Notițe administrator'),
+        'medical_certificate': _('Certificat medical'),
+        'previous_experience': _('Experiență anterioară'),
+        'team_place': _('Loc obținut cu echipa'),
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, label in self.FIELD_LABELS.items():
+            if field_name in self.fields:
+                self.fields[field_name].label = label
+
+
+class SoftDeletedFilter(admin.SimpleListFilter):
+    """Arata sau ascunde sportivii stersi logic.
+
+    Stergerea unui sportiv din admin nu scoate randul din tabel, il
+    marcheaza `is_deleted` (vezi SoftDeleteMixin), iar managerul implicit
+    al modelului filtreaza randurile astea din toate interogarile. Pana
+    acum nu exista niciun ecran care sa le arate, deci un sportiv sters
+    din greseala disparea definitiv, desi modelul stie sa-l restaureze.
+    """
+
+    title = _('Șterși')
+    parameter_name = 'sters'
+
+    def lookups(self, request, model_admin):
+        return (('doar', _('Doar cei șterși')), ('toti', _('Și cei șterși')))
+
+    def queryset(self, request, queryset):
+        if self.value() == 'doar':
+            return queryset.filter(is_deleted=True)
+        if self.value() == 'toti':
+            return queryset
+        return queryset.filter(is_deleted=False)
+
 
 @admin.register(Athlete)
 class AthleteAdmin(admin.ModelAdmin):
@@ -87,12 +311,12 @@ class AthleteAdmin(admin.ModelAdmin):
     list_display = [
         'full_name_link', 'status', 'pending_photo_indicator', 'is_referee', 'referee_level', 'is_coach', 'is_instructor'
     ]
-    list_filter = ['status', 'profile_image_status', 'is_coach', 'is_instructor', 'is_referee', 'referee_level', 'referee_category', 'submitted_date', 'reviewed_date']
+    list_filter = [SoftDeletedFilter, 'status', 'profile_image_status', 'is_coach', 'is_instructor', 'is_referee', 'referee_level', 'referee_category', 'submitted_date', 'reviewed_date']
     autocomplete_fields = ('club', 'city', 'current_grade', 'federation_role', 'title')
     search_fields = ['first_name', 'last_name', 'license_series', 'cnp', 'user__email', 'user__username', 'current_grade__name', 'club__name', 'city__name']
     readonly_fields = ['submitted_date_display', 'reviewed_date_display', 'current_grade_display_readonly', 'add_enrolled_event_link', 'add_grade_history_link', 'license_image_preview', 'pending_profile_image_preview']
     ordering = ['-submitted_date']
-    actions = ['approve_pending_photos', 'reject_pending_photos']
+    actions = ['approve_pending_photos', 'reject_pending_photos', 'restore_deleted']
     inlines = [
         GradeHistoryInline,
     VisaInline,
@@ -104,7 +328,7 @@ class AthleteAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Informații personale', {
-            'fields': ('user', 'first_name', 'last_name', 'gender', 'cnp', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
+            'fields': ('user', 'first_name', 'last_name', 'gender', 'cnp', 'nationality', 'date_of_birth', 'address', 'mobile_number', 'profile_image')
         }),
         ('Legitimație', {
             'description': 'Verifică poza legitimației trimise de sportiv înainte de a aproba profilul.',
@@ -119,7 +343,7 @@ class AthleteAdmin(admin.ModelAdmin):
             'fields': ('profile_image_status', 'pending_profile_image_preview', 'profile_image_admin_notes'),
         }),
         ('Informații sportive și club', {
-            'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_instructor', 'is_referee')
+            'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'team_place', 'is_coach', 'is_instructor', 'is_referee')
         }),
         ('Arbitraj', {
             'description': 'Doar pentru sportivii bifați ca arbitru mai sus. Categoria se aplică doar arbitrilor naționali.',
@@ -128,8 +352,15 @@ class AthleteAdmin(admin.ModelAdmin):
         ('Contact de urgență', {
             'fields': ('emergency_contact_name', 'emergency_contact_phone')
         }),
+        ('Documente medicale și experiență', {
+            'fields': ('medical_certificate', 'previous_experience'),
+        }),
         ('Flux de aprobare', {
-            'fields': ('status', 'submitted_date_display', 'reviewed_date_display', 'reviewed_by', 'add_enrolled_event_link', 'add_grade_history_link')
+            'fields': ('status', 'submitted_date_display', 'reviewed_date_display', 'reviewed_by', 'admin_notes', 'add_enrolled_event_link', 'add_grade_history_link'),
+            'description': (
+                'Notele de administrator sunt cele scrise la aprobarea sau respingerea profilului. '
+                'Sportivul le vede pe pagina lui, deci scrie-le ca pentru el.'
+            ),
         }),
         ('Medalii internaționale (Campionat European / Mondial)', {
             'description': (
@@ -145,7 +376,10 @@ class AthleteAdmin(admin.ModelAdmin):
     )
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related(
+        # Pornim de la toate randurile, inclusiv cele sterse logic, si lasam
+        # SoftDeletedFilter sa le ascunda - altfel filtrul n-ar avea ce sa
+        # arate, fiindca managerul implicit le-a taiat deja.
+        return Athlete.objects.with_deleted().select_related(
             'club',
             'city',
             'current_grade',
@@ -153,6 +387,28 @@ class AthleteAdmin(admin.ModelAdmin):
             'reviewed_by',
             'approved_by',
         )
+
+    # Django sterge un singur obiect cu obj.delete() (deci logic, prin
+    # SoftDeleteMixin) dar o selectie intreaga cu queryset.delete(), care
+    # ocoleste mixinul si sterge definitiv. Doua butoane care arata la fel
+    # faceau doua lucruri diferite; acum amandoua sterg logic.
+    def delete_model(self, request, obj):
+        obj.delete(user=request.user)
+
+    def delete_queryset(self, request, queryset):
+        for athlete in queryset:
+            athlete.delete(user=request.user)
+
+    @admin.action(description=_('Restaurează sportivii șterși'))
+    def restore_deleted(self, request, queryset):
+        restored = 0
+        for athlete in queryset.filter(is_deleted=True):
+            athlete.restore()
+            restored += 1
+        if restored:
+            self.message_user(request, f'{restored} sportiv(i) restaurat(i).', messages.SUCCESS)
+        else:
+            self.message_user(request, 'Niciun sportiv șters în selecție.', messages.WARNING)
 
     def full_name_link(self, obj):
         try:
@@ -757,3 +1013,5 @@ class AthleteAdmin(admin.ModelAdmin):
 
 
 # Enhanced CategoryAthleteScore admin with approval workflow
+
+

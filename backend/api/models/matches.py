@@ -1,22 +1,5 @@
-from django.db import models, transaction
-from django.db.models import F
-from django.core.exceptions import ValidationError
-from django.contrib import admin
-from django.conf import settings
-from django.contrib.auth.models import AbstractUser
-from datetime import date, timedelta
-import hashlib
-import secrets
-from urllib.parse import urlparse
-from django.db.models.signals import m2m_changed, post_save
-from django.dispatch import receiver
-from django.core.exceptions import ValidationError
-from django.db.models.signals import post_delete
+from django.db import models
 from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from django.utils.text import slugify
-from ..mixins import TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin
-from ..managers import AthleteManager
 
 # Create your models here.
 
@@ -521,8 +504,8 @@ class MatchRefereeScore(models.Model):
         indexes = [
             models.Index(fields=['match', 'referee']),
         ]
-        verbose_name = _('Scor al arbitrului pentru meci')
-        verbose_name_plural = _('Scoruri ale arbitrilor pentru meciuri')
+        verbose_name = _('Scor de arbitru pentru meci')
+        verbose_name_plural = _('Scoruri de arbitru pentru meciuri')
     
     def __str__(self):
         rnd = f" R{self.round.round_number}" if self.round else " Final"
@@ -549,7 +532,6 @@ class AthleteMatch(ApprovalWorkflowMixin, models.Model):
         ('draw', 'Egal'),
     ]
     
-    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
     
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='athlete_matches')
     opponent_name = models.CharField(_('Nume adversar'), max_length=200, help_text=_('Numele adversarului.'))
@@ -567,11 +549,6 @@ class AthleteMatch(ApprovalWorkflowMixin, models.Model):
     notes = models.TextField(_('Note'), blank=True, null=True, help_text=_('Note suplimentare despre meci.'))
     
     # Approval workflow fields
-    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved', help_text=_('Starea aprobării (implicit aprobat pentru înregistrările adăugate de administrator).'))
-    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
-    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_athlete_matches')
-    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
     
     class Meta:
         ordering = ['-match_date']

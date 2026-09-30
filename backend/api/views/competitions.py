@@ -36,11 +36,17 @@ class CompetitionViewSet(viewsets.ViewSet):
         from landing.models import Event
         event_type = request.query_params.get('event_type') or 'competition'
         events = Event.objects.filter(event_types__icontains=Event.type_query_value(event_type))
+        # Filtrarea se face pe date, nu pe un camp stocat: Event.status e
+        # acum derivat din start_date/end_date si nu exista in baza de date.
         status_filter = request.query_params.get('status')
         if status_filter:
-            events = events.filter(status=status_filter)
-        elif event_type == 'competition' and request.user.is_authenticated and request.user.role == 'referee' and not request.user.is_admin:
-            events = events.filter(status='ongoing')
+            now = timezone.now()
+            if status_filter == 'upcoming':
+                events = events.filter(start_date__gt=now)
+            elif status_filter == 'ongoing':
+                events = events.filter(start_date__lte=now, end_date__gte=now)
+            elif status_filter == 'past':
+                events = events.filter(end_date__lt=now)
         # select_related('city') + prefetch categories/field assignments to
         # avoid N+1 queries (one per event for city_name, one per category
         # for its field assignment).
@@ -155,9 +161,6 @@ class CompetitionViewSet(viewsets.ViewSet):
             status_filter = request.query_params.get('status')
             if status_filter and ev.status != status_filter:
                 return Response({'detail': 'Not found.'}, status=404)
-            if request.user.is_authenticated and request.user.role == 'referee' and not request.user.is_admin:
-                if ev.status != 'ongoing':
-                    return Response({'detail': 'Not found.'}, status=404)
         except Event.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=404)
         return Response(self._serialize_event(ev, include_categories=True))
@@ -218,7 +221,6 @@ class CompetitionViewSet(viewsets.ViewSet):
             coach_registration_deadline=coach_deadline,
             description=d.get('description', ''),
             event_types=[event_type],
-            status=d.get('status', 'upcoming'),
             is_publicly_visible=_coerce_bool(d.get('is_publicly_visible'), default=True),
             sync_mode=d.get('sync_mode', 'cloud') or 'cloud',
             sync_locked=_coerce_bool(d.get('sync_locked'), default=False),
@@ -282,7 +284,6 @@ class CompetitionViewSet(viewsets.ViewSet):
             end_date=parsed_end_date,
             description=d.get('description', ''),
             event_types=['examination'],
-            status=d.get('status', 'upcoming'),
             organizing_club=organizing_club,
         )
         return Response(self._serialize_event(ev), status=201)
@@ -336,8 +337,6 @@ class CompetitionViewSet(viewsets.ViewSet):
             ev.coach_registration_deadline = self._default_coach_deadline(ev.start_date)
         if 'description' in d:
             ev.description = d['description']
-        if 'status' in d:
-            ev.status = d['status']
         if 'is_publicly_visible' in d:
             # The local venue server has no public-facing site of its own -
             # this only makes sense as a cloud-side decision.

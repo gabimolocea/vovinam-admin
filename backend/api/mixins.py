@@ -126,36 +126,6 @@ class SoftDeleteMixin(models.Model):
         self.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
 
 
-class ExcelSyncMixin(models.Model):
-    """
-    Track Excel import/export metadata
-    """
-    excel_row_number = models.IntegerField(null=True, blank=True, db_index=True,
-                                          help_text='Row number in Excel file (for error reporting)')
-    excel_imported_at = models.DateTimeField(null=True, blank=True,
-                                            help_text='When this record was imported from Excel')
-    excel_imported_by = models.ForeignKey(
-        'User',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='%(class)s_excel_imports'
-    )
-    excel_export_hash = models.CharField(max_length=64, blank=True,
-                                        help_text='Hash of last exported data to detect Excel modifications')
-    
-    class Meta:
-        abstract = True
-    
-    def mark_excel_import(self, row_number, user=None):
-        """Mark record as imported from Excel"""
-        self.excel_row_number = row_number
-        self.excel_imported_at = timezone.now()
-        if user:
-            self.excel_imported_by = user
-        self.save(update_fields=['excel_row_number', 'excel_imported_at', 'excel_imported_by'])
-
-
 class AuditMixin(models.Model):
     """
     Track who created and last modified a record

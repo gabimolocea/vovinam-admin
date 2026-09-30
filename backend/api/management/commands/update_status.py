@@ -62,14 +62,30 @@ class Command(BaseCommand):
             raise CommandError(f'{options["model"].capitalize()} with ID {obj_id} does not exist')
 
         updated_fields = []
-        
+
         if options['status']:
-            old_status = obj.status
-            obj.status = options['status']
-            updated_fields.append('status')
-            self.stdout.write(
-                self.style.SUCCESS(f'Status: {old_status} → {options["status"]}')
-            )
+            # O categorie nu are stare proprie: starea ei e a programarii pe
+            # teren (CategoryFieldAssignment), de unde o citeste si --list.
+            if options['model'] == 'category':
+                assignment = getattr(obj, 'field_assignment', None)
+                if assignment is None:
+                    raise CommandError(
+                        f'Category #{obj_id} has no field assignment yet, so it has no status to set. '
+                        f'Assign it to a field first.'
+                    )
+                old_status = assignment.status
+                assignment.status = options['status']
+                assignment.save(update_fields=['status'])
+                self.stdout.write(
+                    self.style.SUCCESS(f'Status: {old_status} → {options["status"]}')
+                )
+            else:
+                old_status = obj.status
+                obj.status = options['status']
+                updated_fields.append('status')
+                self.stdout.write(
+                    self.style.SUCCESS(f'Status: {old_status} → {options["status"]}')
+                )
         
         if options['number']:
             field_name = 'category_number' if options['model'] == 'category' else 'match_number'

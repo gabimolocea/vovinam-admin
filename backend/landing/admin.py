@@ -167,9 +167,12 @@ class EventAdminForm(forms.ModelForm):
 class EventAdmin(admin.ModelAdmin):
     form = EventAdminForm
     list_display = ['title', 'start_date', 'city', 'event_types_display', 'event_status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'is_publicly_visible']
-    list_filter = ['status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'is_publicly_visible', 'start_date']
+    # `status` nu mai e camp in baza de date, ci se citeste din date (vezi
+    # Event.status), asa ca nu se poate filtra pe el; coloana start_date
+    # face aceeasi treaba si spune adevarul.
+    list_filter = ['sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'is_publicly_visible', 'start_date']
     search_fields = ['title', 'description', 'city__name', 'tags']
-    autocomplete_fields = ['city']
+    autocomplete_fields = ['city', 'organizing_club']
     prepopulated_fields = {'slug': ('title',)}
     # sync_mode/sync_locked/local_sync_status are deliberately readonly here
     # (via the *_display wrappers below, for human-readable labels instead
@@ -193,7 +196,12 @@ class EventAdmin(admin.ModelAdmin):
             'fields': ('start_date', 'end_date', 'coach_registration_deadline', 'city', 'address', 'price', 'event_types', 'status')
         }),
         (_('Setări afișare'), {
-            'fields': ('is_featured', 'is_publicly_visible')
+            'fields': ('is_featured', 'is_publicly_visible', 'organizing_club'),
+            'description': _(
+                'Clubul organizator se completează doar pentru examenele create de un antrenor de club - '
+                'acelea nu apar în calendarul public, dar rămân vizibile clubului și sportivilor lui. '
+                'Pentru evenimentele federației se lasă gol.'
+            )
         }),
         (_('Sincronizare eveniment local'), {
             'fields': ('sync_mode_display', 'sync_locked_display', 'local_sync_status_display', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at', 'import_results_action'),

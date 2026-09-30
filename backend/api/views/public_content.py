@@ -549,7 +549,7 @@ class PublicEventViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
         queryset = Event.objects.filter(
-            status='upcoming', start_date__gt=timezone.now(),
+            start_date__gt=timezone.now(),
             organizing_club__isnull=True, is_publicly_visible=True
         ).select_related('city').order_by('start_date')
         serializer = PublicEventSerializer(queryset, many=True, context={'request': request})

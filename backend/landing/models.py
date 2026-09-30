@@ -250,12 +250,6 @@ class Event(SEOModel):
         ('ongoing', 'Ongoing'),
         ('past', 'Past'),
     ]
-    status = models.CharField(
-        max_length=16,
-        choices=STATUS_CHOICES,
-        default='upcoming',
-        help_text='Operational status of the event'
-    )
     is_publicly_visible = models.BooleanField(
         default=True,
         help_text='Show this event on the public site. Uncheck to keep it admin-only.'
@@ -308,27 +302,43 @@ class Event(SEOModel):
     def __str__(self):
         return f"{self.title} - {self.start_date.strftime('%Y-%m-%d')}"
 
-    def clean(self):
-        if self.status == 'ongoing':
-            exists = Event.objects.filter(status='ongoing').exclude(pk=self.pk).exists()
-            if exists:
-                raise ValidationError('Only one event can be ongoing at a time.')
-    
+    @property
+    def status(self):
+        """Unde e evenimentul fata de ziua de azi.
+
+        A fost camp in baza de date, dar nimic nu-l scria vreodata: toate
+        evenimentele ramaneau 'upcoming' la nesfarsit, inclusiv cele
+        incheiate de luni de zile, iar filtrarea dupa el intorcea prostii.
+        Datele de start si de final spun oricum adevarul, deci se citeste
+        de acolo. Pentru interogari se filtreaza pe date (vezi
+        EventViewSet.get_queryset), nu pe valoarea asta.
+        """
+        if self.is_past:
+            return 'past'
+        if self.is_ongoing:
+            return 'ongoing'
+        return 'upcoming'
+
+    # Cele trei raspund False cand data lipseste, nu crapa: formularul de
+    # adaugare din admin le cere pe un eveniment gol, inainte sa fi apucat
+    # cineva sa completeze datele.
     @property
     def is_upcoming(self):
         """Event hasn't started yet"""
-        return self.start_date > timezone.now()
-    
+        return bool(self.start_date) and self.start_date > timezone.now()
+
     @property
     def is_ongoing(self):
         """Event is currently happening"""
+        if not self.start_date or not self.end_date:
+            return False
         now = timezone.now()
         return self.start_date <= now <= self.end_date
-    
+
     @property
     def is_past(self):
         """Event has ended"""
-        return self.end_date < timezone.now()
+        return bool(self.end_date) and self.end_date < timezone.now()
 
     @property
     def effective_coach_registration_deadline(self):

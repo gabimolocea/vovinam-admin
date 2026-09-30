@@ -1,83 +1,213 @@
 from django.contrib import admin, messages
-from django.contrib.admin.models import LogEntry
-from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
-from django.forms import ModelForm
-from django.core.exceptions import ValidationError
-from django import forms
 from django.urls import path, reverse
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponseRedirect
-from reversion.admin import VersionAdmin
-from dal import autocomplete, forward
-from ..bracket_visualization import bracket_visualization_readonly_field, BracketStats
-from django.db import models, connection
-from django.db.models import Count, Case, When, IntegerField, Func
-from django.db.models.functions import Lower
-import json
-import urllib.parse
 from django.utils.safestring import mark_safe
-from django.template.response import TemplateResponse
 from ..models import (
-    City,
-    Club,
     Athlete,
-    SupporterAthleteRelation,
-    TrainingSeminarParticipation,
-    Grade,
-    GradeHistory,
-    Title,
-    FederationRole,
     Category,
-    SoloCategory,
-    TeamCategory,
-    FightCategory,
-    FightAthleteWeight,
-    Team,
-    CategoryTeam,
-    CategoryAthlete,
+    CompetitionField,
+    DisplayMonitorSession,
     Match,
     MatchEvent,
-    MatchRefereeScore,
-    RefereeScore,
-    RefereePointEvent,
-    CategoryAthleteScore,
-    CategoryRefereeScore,
-    CategoryRefereeAssignment,
-    MatchRefereeAssignment,
-    CategoryTeamScore,
-    TeamMember,
-    Group,
-    MatchVideoRecording,
-    AthletePerformanceVideo,
-    TeamPerformanceVideo,
-    CompetitionField,
-    CategoryFieldAssignment,
     MatchFieldAssignment,
+    MatchRefereeAssignment,
+    MatchRefereeScore,
     MatchRound,
-    CompetitionReferee,
-    DisplayMonitorSession,
-    Visa,
-    Event,
-    EventParticipation,
-    UserProxy,
+    MatchVideoRecording,
+    RefereePointEvent,
+    RefereeScore,
 )
+from ._common import get_event_referee_queryset_for_match
+from django.core.exceptions import ValidationError
+from django import forms
+
+
+# Formularele si inline-urile folosite mai jos, in acest fisier si nicaieri
+# altundeva. Au stat pana acum in _common.py, desi nu erau comune cu nimeni.
+class CentralPenaltyForm(forms.Form):
+    SIDE_CHOICES = [('red', 'Red Corner'), ('blue', 'Blue Corner')]
+    side = forms.ChoiceField(choices=SIDE_CHOICES, label='Penalty side')
+    points = forms.IntegerField(min_value=1, initial=1, label='Penalty points')
+    reason = forms.CharField(required=False, widget=forms.Textarea, label='Reason (optional)')
+
+class MatchVideoRecordingInline(admin.TabularInline):
+    """Inline for adding videos to Fight matches"""
+    model = MatchVideoRecording
+    extra = 0
+    fields = ('video_file', 'video_url', 'recorded_at', 'is_public')
+    verbose_name = _('Înregistrare video')
+    verbose_name_plural = _('Înregistrări video (opțional)')
+    show_change_link = True
+
+class MatchRefereeAssignmentForm(forms.ModelForm):
+    class Meta:
+        model = MatchRefereeAssignment
+        fields = '__all__'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        selected = []
+        for i in range(1, 6):
+            ref_field = f'referee_{i}'
+            ref = cleaned_data.get(ref_field)
+            if ref:
+                if ref.pk in selected:
+                    raise ValidationError('Each referee can be selected only once.')
+                selected.append(ref.pk)
+        return cleaned_data
+
+class MatchRefereeAssignmentInline(admin.TabularInline):
+    """Inline for assigning referees to matches in fight categories"""
+    model = MatchRefereeAssignment
+    form = MatchRefereeAssignmentForm
+    extra = 0
+    fields = ('referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5')
+    verbose_name = _('Atribuire arbitri')
+    verbose_name_plural = _('Atribuire arbitri')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name.startswith('referee_'):
+            qs = Athlete.objects.filter(is_referee=True, status='approved')
+            try:
+                match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if match_id:
+                    match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+                    qs = get_event_referee_queryset_for_match(match=match)
+            except Exception:
+                pass
+            kwargs['queryset'] = qs.distinct()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+class LiveMatchRefereeScoreInline(admin.TabularInline):
+    model = MatchRefereeScore
+    extra = 0
+    fields = ('referee', 'round', 'red_corner_score', 'blue_corner_score', 'winner_choice_display', 'submitted_date')
+    readonly_fields = ('winner_choice_display', 'submitted_date')
+    verbose_name = _('Scor live al arbitrului')
+    verbose_name_plural = _('Scoruri live ale arbitrilor (sursa principală)')
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('referee', 'round').order_by('referee__last_name', 'referee__first_name', 'round__round_number', 'id')
+
+    def winner_choice_display(self, obj):
+        if not obj:
+            return '—'
+        winner = obj.winner_choice
+        if winner == 'red':
+            return 'Roșu'
+        if winner == 'blue':
+            return 'Albastru'
+        return 'Egalitate'
+    winner_choice_display.short_description = 'Câștigător'
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        match = None
+        try:
+            match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+            if match_id:
+                match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+        except Exception:
+            match = None
+
+        if db_field.name == 'referee':
+            kwargs['queryset'] = get_event_referee_queryset_for_match(match=match)
+        elif db_field.name == 'round':
+            kwargs['queryset'] = MatchRound.objects.filter(match=match).order_by('round_number') if match else MatchRound.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+class LiveCentralPenaltyEventInlineForm(forms.ModelForm):
+    class Meta:
+        model = MatchEvent
+        fields = ('created_by', 'corner', 'value', 'round', 'notes')
+
+    def clean_corner(self):
+        corner = self.cleaned_data.get('corner')
+        if corner not in ('red', 'blue'):
+            raise forms.ValidationError('Alege roșu sau albastru pentru o penalizare centrală.')
+        return corner
+
+    def clean_value(self):
+        value = self.cleaned_data.get('value')
+        if value is None:
+            return -1
+        return value if value <= 0 else -value
+
+class LiveCentralPenaltyEventInline(admin.TabularInline):
+    model = MatchEvent
+    form = LiveCentralPenaltyEventInlineForm
+    extra = 0
+    fields = ('created_by', 'corner', 'value', 'round', 'notes', 'created_at')
+    readonly_fields = ('created_at',)
+    verbose_name = _('Penalizare centrală live')
+    verbose_name_plural = _('Penalizări centrale live (sursa principală)')
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(event_type__in=['penalty_red', 'penalty_blue']).select_related('created_by', 'round').order_by('-created_at')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        match = None
+        try:
+            match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+            if match_id:
+                match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+        except Exception:
+            match = None
+
+        if db_field.name == 'created_by':
+            kwargs['queryset'] = get_event_referee_queryset_for_match(match=match)
+        elif db_field.name == 'round':
+            kwargs['queryset'] = MatchRound.objects.filter(match=match).order_by('round_number') if match else MatchRound.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+class MatchFieldAssignmentInline(admin.StackedInline):
+    class MatchFieldAssignmentInlineForm(forms.ModelForm):
+        class Meta:
+            model = MatchFieldAssignment
+            fields = '__all__'
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            if 'status' in self.fields:
+                self.fields['status'].label = 'Status în programare teren'
+                self.fields['status'].help_text = 'Controlează starea meciului în programare/live pentru terenul alocat.'
+
+    model = MatchFieldAssignment
+    form = MatchFieldAssignmentInlineForm
+    extra = 0
+    verbose_name = _('Programare pe teren')
+    verbose_name_plural = _('Programări pe teren')
+    fields = (
+        'field',
+        'status',
+        'scheduled_start_time',
+        'actual_start_time',
+        'actual_end_time',
+        'order',
+    )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == 'field':
+            qs = CompetitionField.objects.filter(field_number__in=[1, 2, 3])
+            try:
+                match_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+                if match_id:
+                    match = Match.objects.filter(pk=match_id).select_related('category__event').first()
+                    if match and match.category_id and match.category.event_id:
+                        qs = qs.filter(event_id=match.category.event_id)
+            except Exception:
+                pass
+            formfield.queryset = qs
+            formfield.label_from_instance = lambda obj: f"Field {obj.field_number}"
+        return formfield
 
 
 admin.site.enable_nav_sidebar = True
 
-
-
-from ._common import (
-    CentralPenaltyForm,
-    LiveCentralPenaltyEventInline,
-    LiveMatchRefereeScoreInline,
-    MatchFieldAssignmentInline,
-    MatchRefereeAssignmentInline,
-    MatchVideoRecordingInline,
-)
 
 @admin.register(Match)
 class MatchAdmin(admin.ModelAdmin):
@@ -91,20 +221,41 @@ class MatchAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('DETALII MECI', {
-            # Central referee is selected in the Central Penalties inline below
             # Winner is read-only and computed from referee scores/penalties
             'fields': ('category', 'match_type', 'status', 'red_corner', 'blue_corner', 'winner_display'),
             'description': 'Identifică meciul după ID. Câștigătorul este calculat automat din scorurile arbitrilor și penalizări.'
         } ),
+        ('ARBITRAJ ȘI TEREN', {
+            'fields': ('central_referee', 'field', 'display_mode'),
+            'description': (
+                'Arbitrul central e cel de la care pleacă penalizările din formularul „Adaugă penalizare centrală”. '
+                'Modul de afișare decide cum se punctează meciul: în timp real, cu punctele vizibile pe loc, '
+                'sau cu decizia arbitrilor dezvăluită abia la final.'
+            ),
+        }),
+        ('TABLOU', {
+            'fields': ('match_number', 'name', 'round_number', 'bracket_position', 'next_match', 'loser_next_match'),
+            'classes': ('collapse',),
+            'description': (
+                'Completate de generatorul de tablou și afișate aici doar ca să se vadă cum e legat meciul. '
+                'Se schimbă regenerând tabloul, nu de mână - altfel avansarea câștigătorilor rămâne ruptă.'
+            ),
+        }),
         ('DATE LIVE (MODELE NOI DE SCORARE)', {
             'fields': ('frontend_referee_scores_panel', 'frontend_central_penalties_panel'),
             'description': 'Vizualizare doar-citire a datelor scrise de frontend-ul live/fullscreen. Nu depinde de rândurile legacy sincronizate.',
         }),
     )
 
+    # central_referee ramane select obisnuit, nu autocomplete: filtrarea pe
+    # arbitrii meciului se face in formfield_for_foreignkey, iar cautarea
+    # prin AJAX a autocomplete-ului ar ocoli-o si ar arata toti arbitrii.
     autocomplete_fields = ['red_corner', 'blue_corner']  # Winner is computed and read-only
 
-    readonly_fields = ('winner_display', 'frontend_referee_scores_panel', 'frontend_central_penalties_panel')
+    readonly_fields = (
+        'winner_display', 'frontend_referee_scores_panel', 'frontend_central_penalties_panel',
+        'match_number', 'name', 'round_number', 'bracket_position', 'next_match', 'loser_next_match',
+    )
 
     def get_queryset(self, request):
         """Select related rows used by list_display to avoid a query per row on the changelist."""
@@ -950,3 +1101,5 @@ class MatchAdmin(admin.ModelAdmin):
             return JsonResponse({'ok': True, 'match_winner': mv, 'per_ref': persisted})
         except Exception as exc:
             return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+
+

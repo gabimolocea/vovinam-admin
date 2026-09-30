@@ -1,78 +1,52 @@
 from django.contrib import admin, messages
-from django.contrib.admin.models import LogEntry
-from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from django.forms import ModelForm
-from django.core.exceptions import ValidationError
-from django import forms
-from django.urls import path, reverse
-from django.shortcuts import render
-from django.http import JsonResponse, HttpResponseRedirect
-from reversion.admin import VersionAdmin
-from dal import autocomplete, forward
-from ..bracket_visualization import bracket_visualization_readonly_field, BracketStats
-from django.db import models, connection
-from django.db.models import Count, Case, When, IntegerField, Func
-from django.db.models.functions import Lower
-import json
-import urllib.parse
-from django.utils.safestring import mark_safe
-from django.template.response import TemplateResponse
-from ..models import (
-    City,
-    Club,
-    Athlete,
-    SupporterAthleteRelation,
-    TrainingSeminarParticipation,
-    Grade,
-    GradeHistory,
-    Title,
-    FederationRole,
-    Category,
-    SoloCategory,
-    TeamCategory,
-    FightCategory,
-    FightAthleteWeight,
-    Team,
-    CategoryTeam,
-    CategoryAthlete,
-    Match,
-    MatchEvent,
-    MatchRefereeScore,
-    RefereeScore,
-    RefereePointEvent,
-    CategoryAthleteScore,
-    CategoryRefereeScore,
-    CategoryRefereeAssignment,
-    MatchRefereeAssignment,
-    CategoryTeamScore,
-    TeamMember,
-    Group,
-    MatchVideoRecording,
-    AthletePerformanceVideo,
-    TeamPerformanceVideo,
-    CompetitionField,
-    CategoryFieldAssignment,
-    MatchFieldAssignment,
-    MatchRound,
-    CompetitionReferee,
-    DisplayMonitorSession,
-    Visa,
-    Event,
-    EventParticipation,
-    UserProxy,
-)
+from ..models import Athlete, Grade, GradeHistory
 
 
 admin.site.enable_nav_sidebar = True
 
 
-
 from ._common import (
-    GradeHistoryAdminForm,
+    APPROVAL_FIELDSET,
+    APPROVAL_READONLY,
 )
+from django.core.exceptions import ValidationError
+from django import forms
+from django.urls import reverse
+
+
+# Formularele si inline-urile folosite mai jos, in acest fisier si nicaieri
+# altundeva. Au stat pana acum in _common.py, desi nu erau comune cu nimeni.
+# Admin form for GradeHistory to provide friendly validation in admin UI
+class GradeHistoryAdminForm(forms.ModelForm):
+    class Meta:
+        model = GradeHistory
+        fields = '__all__'
+
+    def clean(self):
+        cleaned = super().clean()
+        athlete = cleaned.get('athlete')
+        grade = cleaned.get('grade')
+        if athlete and grade:
+            qs = GradeHistory.objects.filter(athlete=athlete, grade=grade)
+            if self.instance and self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                # Prefer an approved existing record to link to
+                approved = qs.filter(status='approved').order_by('submitted_date', 'pk').first()
+                existing = approved or qs.order_by('submitted_date', 'pk').first()
+                try:
+                    url = reverse('admin:api_gradehistory_change', args=(existing.pk,))
+                    link = format_html('<a href="{}">vezi înregistrarea existentă</a>', url)
+                    message = format_html('Există deja o înregistrare pentru acest sportiv și acest grad. {}', link)
+                except Exception:
+                    # Fallback to plain text message if reverse fails
+                    message = 'Există deja o înregistrare pentru acest sportiv și acest grad.'
+                # Attach error to the grade field for a friendly admin message with link
+                raise ValidationError({'grade': message})
+        return cleaned
+
 
 @admin.register(Grade)
 class GradeAdmin(admin.ModelAdmin):
@@ -88,7 +62,6 @@ class GradeAdmin(admin.ModelAdmin):
     image_preview.short_description = 'Previzualizare imagine'
 
 
-
 # Updated GradeHistoryAdmin
 @admin.register(GradeHistory)
 class GradeHistoryAdmin(admin.ModelAdmin):
@@ -97,8 +70,25 @@ class GradeHistoryAdmin(admin.ModelAdmin):
     list_filter = ('status', 'submitted_by_athlete', 'level', 'event', 'obtained_date')
     # Use Django admin autocomplete for examiner fields and restrict choices to coaches
     autocomplete_fields = ('examiner_1', 'examiner_2')
-    readonly_fields = ('certificate_image_preview',)
+    readonly_fields = ('certificate_image_preview',) + APPROVAL_READONLY
     actions = ['approve_pending', 'reject_pending']
+
+    fieldsets = (
+        ('Gradul obținut', {
+            'fields': ('athlete', 'grade', 'level', 'obtained_date', 'event'),
+        }),
+        ('Examinatori', {
+            'fields': ('examiner_1', 'examiner_2'),
+            'description': 'În listă apar doar sportivii marcați ca antrenori.',
+        }),
+        ('Dovezi', {
+            'fields': ('certificate_image', 'certificate_image_preview', 'result_document', 'notes'),
+        }),
+        ('Cine a trimis', {
+            'fields': ('submitted_by_athlete',),
+        }),
+        APPROVAL_FIELDSET,
+    )
 
     # Use the custom form to show friendly validation messages in the admin
     form = GradeHistoryAdminForm
@@ -160,3 +150,4 @@ class GradeHistoryAdmin(admin.ModelAdmin):
     # Do not use readonly_fields beyond the preview above, to allow editing in the standalone GradeHistory admin panel
 
 # Register Title model
+

@@ -1,69 +1,11 @@
-from django.contrib import admin, messages
+from django.contrib import admin
 from django.contrib.admin.models import LogEntry
-from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.utils.html import format_html
-from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from django.forms import ModelForm
-from django.core.exceptions import ValidationError
-from django import forms
-from django.urls import path, reverse
-from django.shortcuts import render
-from django.http import JsonResponse, HttpResponseRedirect
-from reversion.admin import VersionAdmin
-from dal import autocomplete, forward
-from ..bracket_visualization import bracket_visualization_readonly_field, BracketStats
+from django.urls import reverse
 from django.db import models, connection
-from django.db.models import Count, Case, When, IntegerField, Func
+from django.db.models import Case, When, IntegerField, Func
 from django.db.models.functions import Lower
-import json
-import urllib.parse
-from django.utils.safestring import mark_safe
-from django.template.response import TemplateResponse
-from ..models import (
-    City,
-    Club,
-    Athlete,
-    SupporterAthleteRelation,
-    TrainingSeminarParticipation,
-    Grade,
-    GradeHistory,
-    Title,
-    FederationRole,
-    Category,
-    SoloCategory,
-    TeamCategory,
-    FightCategory,
-    FightAthleteWeight,
-    Team,
-    CategoryTeam,
-    CategoryAthlete,
-    Match,
-    MatchEvent,
-    MatchRefereeScore,
-    RefereeScore,
-    RefereePointEvent,
-    CategoryAthleteScore,
-    CategoryRefereeScore,
-    CategoryRefereeAssignment,
-    MatchRefereeAssignment,
-    CategoryTeamScore,
-    TeamMember,
-    Group,
-    MatchVideoRecording,
-    AthletePerformanceVideo,
-    TeamPerformanceVideo,
-    CompetitionField,
-    CategoryFieldAssignment,
-    MatchFieldAssignment,
-    MatchRound,
-    CompetitionReferee,
-    DisplayMonitorSession,
-    Visa,
-    Event,
-    EventParticipation,
-    UserProxy,
-)
+from ..models import City
 
 
 admin.site.enable_nav_sidebar = True

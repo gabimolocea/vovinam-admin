@@ -37,11 +37,9 @@ migrated" follow-up):
     foreign city) would be a bigger problem than leaving `city` empty. The
     raw location text is always preserved in `Event.address`, and `city` is
     only set when it exact-matches an *existing* City by name.
-  - Imported events are only ever marked 'upcoming' or 'past' (based on
-    `end_date` vs. now at import time), never 'ongoing' - the Event model
-    enforces at most one 'ongoing' event globally (see Event.clean()), and
-    that status is meant to be set live by staff running a real event, not
-    backdated by a bulk import.
+  - Nu se mai importa niciun status: `Event.status` se citeste acum din
+    `start_date`/`end_date`, deci un eveniment importat isi spune singur
+    daca e viitor, in desfasurare sau trecut.
   - `end_date` is parsed from the "📅 D, D, D <month> <year>" line commonly
     present in the description (multi-day events); when that pattern isn't
     found, it defaults to `start_date + 1 day`, matching the same
@@ -242,7 +240,6 @@ class Command(BaseCommand):
         end_date = self._parse_end_date(description_html, start_date)
         event_type = self._infer_event_type(type_badges.get(slug, ""), title)
         city = self._match_city(address)
-        status = "past" if end_date < timezone.now() else "upcoming"
 
         if dry_run:
             self.stdout.write(
@@ -260,7 +257,6 @@ class Command(BaseCommand):
         event.address = address
         event.city = city
         event.event_type = event_type
-        event.status = status
         event.save()
 
         action = "Creating" if is_new else "Updating"

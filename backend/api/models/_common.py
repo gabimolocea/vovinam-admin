@@ -1,17 +1,9 @@
-from django.db import models, transaction
-from django.db.models import F
+from django.db import models
 from django.core.exceptions import ValidationError
-from django.contrib import admin
-from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from datetime import date, timedelta
-import hashlib
 import secrets
-from urllib.parse import urlparse
-from django.db.models.signals import m2m_changed, post_save
-from django.dispatch import receiver
 from django.core.exceptions import ValidationError
-from django.db.models.signals import post_delete
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.utils.text import slugify
@@ -115,8 +107,43 @@ APPROVAL_STATUS_CHOICES = [
 ]
 
 
-class ApprovalWorkflowMixin:
-    """Shared helper for status transitions used across approval-driven models."""
+class ApprovalWorkflowMixin(models.Model):
+    """Campurile si tranzitiile fluxului de aprobare, la un loc.
+
+    Sase modele trec prin acelasi flux (sportiv, istoric de grad, viza,
+    participare, rezultat, meci de sportiv) si isi copiau fiecare aceleasi
+    patru campuri. `status` ramane declarat de fiecare model: sportivul
+    porneste 'pending' (profilul se aproba), restul pornesc 'approved'
+    (se trec deja verificate), iar Django nu permite suprascrierea unui
+    camp mostenit dintr-o clasa abstracta.
+    """
+
+    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
+    reviewed_date = models.DateTimeField(_('Data revizuirii'), blank=True, null=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        verbose_name=_('Revizuit de'),
+        blank=True,
+        null=True,
+        related_name='reviewed_%(class)s',
+    )
+    admin_notes = models.TextField(
+        _('Note administrator'),
+        blank=True,
+        null=True,
+        help_text=_('Note ale administratorului despre aprobare sau respingere.'),
+    )
+
+    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
+
+    status = models.CharField(
+        _('Stare'),
+        max_length=20,
+        choices=APPROVAL_STATUS_CHOICES,
+        default='approved',
+        help_text=_('Starea aprobării (implicit aprobat pentru înregistrările adăugate de administrator).'),
+    )
 
     class Meta:
         abstract = True
@@ -153,10 +180,7 @@ class ApprovalWorkflowMixin:
 # itself, writing into that *installed package's* migrations directory
 # (site-packages) instead of this app's own, tracked one. That directory
 # isn't writable (nor should it be) once deployed, so `makemigrations`
-# crashes there in production. The custom ADMIN_MODEL_GROUPS grouping
-# (api/admin/_common.py) already places UserProxy under "GENERAL" - it
-# just needs app_label left as the default ('api') for that to actually
-# take effect, instead of being silently inert under 'auth'.
+# crashes there in production. Leave app_label at its default ('api').
 class UserProxy(User):
     class Meta:
         proxy = True
@@ -329,7 +353,6 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     Replaces the separate AthleteProfile system for simplified workflow.
     Enhanced with: timestamps, sync tracking, soft delete, and audit trail.
     """
-    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
     GENDER_CHOICES = [
         ('male', 'Masculin'),
@@ -482,11 +505,11 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     profile_image_admin_notes = models.TextField(_('Note despre imaginea de profil'), blank=True, null=True)
     
     # Approval workflow (merged from AthleteProfile)
-    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='pending')
-    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
-    reviewed_date = models.DateTimeField(_('Data revizuirii'), blank=True, null=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), blank=True, null=True, related_name='reviewed_athletes')
-    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
+    # Sportivul e singurul care porneste neaprobat: profilul trimis de el
+    # trebuie citit de cineva inainte sa conteze.
+    status = models.CharField(
+        _('Stare'), max_length=20, choices=APPROVAL_STATUS_CHOICES, default='pending'
+    )
     
     # Legacy approval tracking (keep for compatibility)
     approved_date = models.DateTimeField(_('Data aprobării'), blank=True, null=True)
@@ -708,7 +731,6 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
         ('bad', 'Slab'),
     ]
     
-    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='grade_history')
     grade = models.ForeignKey(Grade, on_delete=models.CASCADE, verbose_name=_('Grad'))
@@ -751,11 +773,6 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
     notes = models.TextField(_('Note'), blank=True, null=True, help_text=_('Note suplimentare despre examenul de grad.'))
     
     # Approval workflow fields
-    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved', help_text=_('Starea aprobării (implicit aprobat pentru înregistrările adăugate de administrator).'))
-    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
-    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_grades')
-    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
 
     class Meta:
         indexes = [
@@ -763,8 +780,8 @@ class GradeHistory(ApprovalWorkflowMixin, models.Model):
             models.Index(fields=['obtained_date']),
             models.Index(fields=['status', 'submitted_date']),
         ]
-        verbose_name = _('Istoric grad')
-        verbose_name_plural = _('Istoric grade')
+        verbose_name = _('Istoric de grad')
+        verbose_name_plural = _('Istorice de grad')
 
     def __str__(self):
         if self.submitted_by_athlete:
@@ -839,7 +856,6 @@ class Visa(ApprovalWorkflowMixin, models.Model):
         ('annual', 'Anuală'),
     ]
 
-    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
 
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='visas')
     visa_type = models.CharField(_('Tip viză'), max_length=10, choices=VISA_TYPE_CHOICES)
@@ -861,11 +877,6 @@ class Visa(ApprovalWorkflowMixin, models.Model):
     )
 
     # Approval workflow
-    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved')
-    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
-    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_visas')
-    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True)
 
     class Meta:
         verbose_name = _('Viză')
@@ -938,7 +949,6 @@ class TrainingSeminarParticipation(ApprovalWorkflowMixin, models.Model):
     Athlete participation in events (training seminars, competitions, etc.) with approval workflow.
     Migrated from TrainingSeminar to use Event model directly.
     """
-    STATUS_CHOICES = APPROVAL_STATUS_CHOICES
     
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='seminar_participations')
     # Legacy seminar field - deprecated, use event instead
@@ -959,16 +969,14 @@ class TrainingSeminarParticipation(ApprovalWorkflowMixin, models.Model):
     notes = models.TextField(_('Note'), blank=True, null=True, help_text=_('Note suplimentare despre participare.'))
     
     # Approval workflow fields
-    status = models.CharField(_('Stare'), max_length=20, choices=STATUS_CHOICES, default='approved', help_text=_('Starea aprobării (implicit aprobat pentru înregistrările adăugate de administrator).'))
-    submitted_date = models.DateTimeField(_('Data trimiterii'), auto_now_add=True)
-    reviewed_date = models.DateTimeField(_('Data revizuirii'), null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name=_('Revizuit de'), null=True, blank=True, related_name='reviewed_seminar_participations')
-    admin_notes = models.TextField(_('Note administrator'), blank=True, null=True, help_text=_('Note ale administratorului despre aprobare sau respingere.'))
     
     class Meta:
         unique_together = ('athlete', 'event')
-        verbose_name = _('Participare la eveniment')
-        verbose_name_plural = _('Participări la evenimente')
+        # Modelul concret tine participarile la seminare; proxy-ul
+        # EventParticipation de mai jos e intrarea pentru evenimente in
+        # general, de aceea cele doua au etichete diferite.
+        verbose_name = _('Participare la seminar')
+        verbose_name_plural = _('Participări la seminare')
         indexes = [
             models.Index(fields=['athlete', 'status']),
             models.Index(fields=['status', 'submitted_date']),
