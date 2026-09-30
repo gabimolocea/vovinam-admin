@@ -13,6 +13,9 @@ db.sqlite3
 *.pyc
 *.pyo
 *.sqlite3
+# Copiile de baza de date nu se termina in .sqlite3, deci nu le prinde
+# regula de mai sus - db.sqlite3.bak a stat urmarit in repo pana acum.
+*.sqlite3.bak*
 media/
 staticfiles/
 
