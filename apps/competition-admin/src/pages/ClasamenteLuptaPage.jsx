@@ -11,6 +11,7 @@ import {
   resolveDiplomaTemplate,
 } from '../lib/diplomas';
 import { Badge, Button, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
+import { useToast } from '../contexts/ToastContext';
 
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
@@ -66,6 +67,7 @@ function GroupHeader({ group }) {
 }
 
 export default function ClasamenteLuptaPage() {
+  const toast = useToast();
   const { id: eventId } = useParams();
   const ctx = useContext(CentralizatorContext);
   const [diplomaTemplates, setDiplomaTemplates] = useState([]);
@@ -132,7 +134,7 @@ export default function ClasamenteLuptaPage() {
       }
     }
     if (!template) {
-      window.alert('Nu există niciun șablon de diplomă disponibil pentru acest eveniment. Configurează unul în tab-ul Diplome.');
+      toast.error('Nu există niciun șablon de diplomă disponibil pentru acest eveniment. Configurează unul în tab-ul Diplome.');
       return;
     }
 
@@ -168,7 +170,7 @@ export default function ClasamenteLuptaPage() {
       } catch (error) {
         if (previewWindow && !previewWindow.closed) previewWindow.close();
         console.error('Failed to generate diploma PDF:', error);
-        window.alert(error.message || 'Nu s-a putut genera diploma.');
+        toast.error(error.message || 'Nu s-a putut genera diploma.');
         break;
       }
     }

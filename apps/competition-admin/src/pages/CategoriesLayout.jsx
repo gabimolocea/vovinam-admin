@@ -26,6 +26,7 @@ import { enrollmentAPI, systemAPI, teamAPI } from '@shared/lib/api';
 import useCentralizator from '../hooks/useCentralizator';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 import EditLockButton from '../components/EditLockButton';
+import { useToast } from '../contexts/ToastContext';
 
 const GENDER_LABELS = { male: 'MASCULIN', female: 'FEMININ', mixt: 'MIXT' };
 const GENDER_BG     = { male: 'bg-blue-100', female: 'bg-pink-100', mixt: 'bg-amber-100' };
@@ -45,6 +46,7 @@ export const CentralizatorContext = React.createContext(null);
 export { GENDER_LABELS, GENDER_BG, TYPE_LABELS };
 
 export default function CategoriesLayout() {
+  const toast = useToast();
   const ctx = useCentralizator();
   const navigate = useNavigate();
   const location = useLocation();
@@ -111,7 +113,7 @@ export default function CategoriesLayout() {
       await ctx.refreshCategoriesOnly();
     } catch (error) {
       console.error('Failed to enroll team', error);
-      window.alert(error?.response?.data?.error || 'Nu s-a putut înrola echipa.');
+      toast.error(error?.response?.data?.error || 'Nu s-a putut înrola echipa.');
     } finally {
       ctx.setBusy(false);
       setTeamBuilderBusy(false);

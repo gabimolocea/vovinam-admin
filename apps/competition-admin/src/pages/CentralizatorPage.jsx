@@ -4,6 +4,7 @@ import { api } from '@shared';
 import { CentralizatorContext, GENDER_BG, GENDER_LABELS, TYPE_LABELS } from './CategoriesLayout';
 import { Button, Input } from '../components/ui';
 import { buildFullCompetitionWorkbook, downloadWorkbook } from '../lib/fullExport';
+import { useToast } from '../contexts/ToastContext';
 
 // The shared GENDER_BG tokens are translucent (nice over a card background),
 // but this table's header row is sticky - a translucent background lets
@@ -11,6 +12,7 @@ import { buildFullCompetitionWorkbook, downloadWorkbook } from '../lib/fullExpor
 const GENDER_HEADER_BG = { male: 'bg-blue-100 dark:bg-blue-950', female: 'bg-pink-100 dark:bg-pink-950', mixt: 'bg-amber-100 dark:bg-amber-950' };
 
 export default function CentralizatorPage() {
+  const toast = useToast();
   const ctx = useContext(CentralizatorContext);
 
   // Independent, packed list per (club, category) instead of one shared row
@@ -49,6 +51,8 @@ export default function CentralizatorPage() {
 
   const {
     columnStructure, allCols, clubRows, countPerCat, groups, categories,
+    visibleColumnStructure, visibleCols, totalCatCount, visibleCatCount,
+    groupFilter, setGroupFilter, hideEmptyCats, setHideEmptyCats,
     eventId, eventData, fightWeights,
     dragType, dragId, dragOverId,
     editingGroupId, editingGroupName, setEditingGroupId, setEditingGroupName,
@@ -86,15 +90,22 @@ export default function CentralizatorPage() {
       await downloadWorkbook(wb, `Export_complet_${safeTitle}.xlsx`);
     } catch (err) {
       console.error('Export complet failed', err);
-      window.alert('Exportul complet a eșuat: ' + (err.message || 'eroare necunoscută'));
+      toast.error('Exportul complet a eșuat: ' + (err.message || 'eroare necunoscută'));
     } finally {
       setExportingComplet(false);
     }
   };
 
+const filteredToNothing = visibleCatCount === 0 && totalCatCount > 0;
+  const filteredEmptyMessage = groupFilter !== null && hideEmptyCats
+    ? 'Nicio categorie cu înscrieri în grupa aleasă.'
+    : groupFilter !== null
+      ? 'Grupa aleasă nu are categorii.'
+      : 'Nicio categorie nu are înscrieri încă.';
+
   // Total colSpan for the empty-state message
   const totalColSpan = 1
-    + columnStructure.reduce((sum, col) => sum + 1 + Math.max(col.cats.length, 1), 0)
+    + visibleColumnStructure.reduce((sum, col) => sum + 1 + Math.max(col.cats.length, 1), 0)
     + 1;
 
   const renderAddLabel = (label = 'Adaugă sportiv') => (
@@ -138,24 +149,65 @@ export default function CentralizatorPage() {
           </div>
         </div>
       )}
-      <div className="flex items-center justify-end border-b border-border bg-card px-3 py-2 md:px-5 lg:px-7 xl:px-8 2xl:px-10">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleExportComplet}
-          disabled={exportingComplet}
-        >
-          {exportingComplet ? 'Se exportă...' : '⬇ Export complet (Excel)'}
-        </Button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-card px-3 py-2 md:px-5 lg:px-7 xl:px-8 2xl:px-10">
+        <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Grupă
+          <select
+            value={groupFilter ?? ''}
+            onChange={(e) => setGroupFilter(e.target.value === '' ? null : Number(e.target.value))}
+            className="h-8 border border-input bg-background px-2 text-xs font-medium normal-case text-foreground"
+          >
+            <option value="">Toate grupele</option>
+            {groups.map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground">
+          <input
+            type="checkbox"
+            checked={hideEmptyCats}
+            onChange={(e) => setHideEmptyCats(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Ascunde categoriile goale
+        </label>
+
+        {/* Cate coloane s-au ascuns - altfel filtrul ramas de ieri arata ca
+            o competitie care si-a pierdut categoriile. */}
+        {visibleCatCount !== totalCatCount && (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            {visibleCatCount} din {totalCatCount} categorii
+            <button
+              type="button"
+              onClick={() => { setGroupFilter(null); setHideEmptyCats(false); }}
+              className="font-semibold text-primary underline-offset-2 hover:underline"
+            >
+              arată tot
+            </button>
+          </span>
+        )}
+
+        <div className="ml-auto">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExportComplet}
+            disabled={exportingComplet}
+          >
+            {exportingComplet ? 'Se exportă...' : '⬇ Export complet (Excel)'}
+          </Button>
+        </div>
       </div>
 
       <div className={`space-y-4 p-3 md:hidden ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
-        {columnStructure.length === 0 ? (
+        {visibleColumnStructure.length === 0 ? (
           <div className="rounded-md border-2 border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground italic">
-            Nu există încă grupe sau categorii.
+            {filteredToNothing ? filteredEmptyMessage : 'Nu există încă grupe sau categorii.'}
           </div>
         ) : (
-          columnStructure.flatMap(col =>
+          visibleColumnStructure.flatMap(col =>
             (col.cats || []).map(cat => {
               const enrolled = (cat.enrolled_athletes || []).slice().sort((a, b) => {
                 const an = `${a.athlete_details?.last_name || ''} ${a.athlete_details?.first_name || ''}`;
@@ -230,7 +282,7 @@ export default function CentralizatorPage() {
               rowSpan={3}>
               CLUB
             </th>
-            {columnStructure.map((col, ci) => (
+            {visibleColumnStructure.map((col, ci) => (
               <React.Fragment key={col.group.id}>
                 {/* ── Between-group insert zone ── */}
                 <th className="border-none p-0 w-0 relative group/insert" rowSpan={3}>
@@ -330,7 +382,7 @@ export default function CentralizatorPage() {
 
           {/* ═══ ROW 2: Gender sub-headers ═══ */}
           <tr>
-            {columnStructure.map(col =>
+            {visibleColumnStructure.map(col =>
               col.genderSections.length === 0
                 ? <th key={`g-empty-${col.group.id}`} className="bg-muted border border-border px-1 py-0.5 text-center text-[10px] text-muted-foreground italic">
                     Fără categorii
@@ -346,14 +398,14 @@ export default function CentralizatorPage() {
 
           {/* ═══ ROW 3: Individual category names with delete ═══ */}
           <tr>
-            {allCols.length === 0 && columnStructure.length > 0 ? (
-              columnStructure.map(col => (
+            {allCols.length === 0 && visibleColumnStructure.length > 0 ? (
+              visibleColumnStructure.map(col => (
                 <th key={`empty-${col.group.id}`} className="bg-muted border border-border px-1 py-0.5 text-center text-[10px] text-muted-foreground italic min-w-[70px]">
                   click + sus
                 </th>
               ))
             ) : (
-              allCols.map(cat => (
+              visibleCols.map(cat => (
                 <th key={cat.id}
                   draggable
                   onDragStart={(e) => handleCatDragStart(e, cat.id)}
@@ -396,7 +448,20 @@ export default function CentralizatorPage() {
              rows per category — no more blank rows chasing gaps between
              an athlete's own row and other columns' entries ═══ */}
         <tbody>
-          {clubRows.length === 0 ? (
+          {filteredToNothing ? (
+            <tr>
+              <td colSpan={totalColSpan} className="px-4 py-10 text-center text-xs text-muted-foreground italic">
+                {filteredEmptyMessage}{' '}
+                <button
+                  type="button"
+                  onClick={() => { setGroupFilter(null); setHideEmptyCats(false); }}
+                  className="font-semibold not-italic text-primary underline-offset-2 hover:underline"
+                >
+                  Arată toate categoriile
+                </button>
+              </td>
+            </tr>
+          ) : clubRows.length === 0 ? (
             <tr>
               <td colSpan={totalColSpan} className="px-4 py-10 text-center text-xs text-muted-foreground italic">
                 {groups.length === 0
@@ -409,7 +474,7 @@ export default function CentralizatorPage() {
           ) : (
             clubRows.map(({ clubId, club }) => {
               const perCat = enrollmentsByClubAndCategory[clubId] || {};
-              const maxCount = allCols.reduce((max, cat) => Math.max(max, (perCat[cat.id] || []).length), 0);
+              const maxCount = visibleCols.reduce((max, cat) => Math.max(max, (perCat[cat.id] || []).length), 0);
               const isDraggedClub = dragType === 'club' && dragId === clubId;
               const isDragOverClub = dragType === 'club' && dragOverId === clubId;
 
@@ -429,7 +494,7 @@ export default function CentralizatorPage() {
                         <span className="truncate">{club}</span>
                       </div>
                     </td>
-                    {columnStructure.map(col => (
+                    {visibleColumnStructure.map(col => (
                       <React.Fragment key={`grp-${col.group.id}`}>
                         <td className="p-0 w-0 border-none"></td>
                         {col.cats.length === 0 ? (
@@ -459,7 +524,7 @@ export default function CentralizatorPage() {
 
                   {Array.from({ length: maxCount }).map((_, rowIdx) => (
                     <tr key={rowIdx} className={`hover:bg-accent/40 transition-colors ${isDraggedClub ? 'opacity-40' : ''}`}>
-                      {columnStructure.map(col => (
+                      {visibleColumnStructure.map(col => (
                         <React.Fragment key={`grp-${col.group.id}`}>
                           <td className="p-0 w-0 border-none"></td>
                           {col.cats.length === 0 ? (
@@ -501,7 +566,7 @@ export default function CentralizatorPage() {
               <td className="sticky left-0 z-10 bg-muted border border-border px-2 py-1.5 font-bold text-xs text-foreground">
                 Nr. participanți
               </td>
-              {columnStructure.map(col => (
+              {visibleColumnStructure.map(col => (
                 <React.Fragment key={`f-${col.group.id}`}>
                   <td className="p-0 w-0 border-none bg-muted"></td>
                   {col.cats.length === 0 ? (

@@ -4,6 +4,7 @@ import { refereeQrLoginAPI } from '@shared/lib/api';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from './ui';
+import { useToast } from '../contexts/ToastContext';
 
 // Portul aplicatiei de arbitraj. Aceeasi gazda, alt port: admin-ul si
 // aplicatia arbitrilor pot fi deschise de pe dispozitive diferite din
@@ -41,6 +42,7 @@ function FullscreenModal({ onClose, title, description, actions, children }) {
 // Component, nu bucata copiata in fiecare panou: exista si la tehnica si
 // la lupte, iar doua copii ar fi divergat la prima modificare.
 export default function RefereeAccessModal({ eventId, referee, onClose }) {
+  const toast = useToast();
   const [info, setInfo] = useState(null);      // { token, pin, login_path }
   const [loading, setLoading] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -68,7 +70,7 @@ export default function RefereeAccessModal({ eventId, referee, onClose }) {
       setInfo(data);
     } catch (err) {
       console.error('Nu s-a putut reseta codul arbitrului', err);
-      window.alert('Nu s-a putut reseta codul.');
+      toast.error('Nu s-a putut reseta codul.');
     }
     setResetting(false);
   };

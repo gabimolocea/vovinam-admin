@@ -4,6 +4,7 @@ import { CentralizatorContext, GENDER_BG, GENDER_LABELS } from './CategoriesLayo
 import { api, MEDIA_BASE_URL, fieldAPI, matchFieldAssignmentAPI, matchEventAPI } from '@shared';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, formatGroupBadgeLabel } from '../components/ui';
 import ExcelJS from 'exceljs';
+import { useToast } from '../contexts/ToastContext';
 
 /* ── round label map ── */
 const ROUND_LABELS = {
@@ -440,6 +441,7 @@ function MatchDetailModal({ match: m, onClose, eventId, onScheduled }) {
    Shows athlete list + bracket tree side-by-side with drag & drop
    ═══════════════════════════════════════════════════════════════════ */
 function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchClick, registerRefetch }) {
+  const toast = useToast();
   const ctx = useContext(CentralizatorContext);
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1039,7 +1041,7 @@ function CategoryBracket({ category, shortLabel, eventId, fightWeights, onMatchC
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Export Excel failed', err);
-      window.alert('Export Excel a eșuat: ' + err.message);
+      toast.error('Export Excel a eșuat: ' + err.message);
     }
     setExportingExcel(false);
   };

@@ -34,6 +34,7 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
+import { useToast } from '../contexts/ToastContext';
 
 const TYPE_BADGES = {
   solo: { label: 'Solo' },
@@ -55,6 +56,7 @@ const formatFieldLabel = (name = '') => String(name)
   .toUpperCase();
 
 export default function ProgramarePage() {
+  const toast = useToast();
   const ctx = useContext(CentralizatorContext);
   const { eventId, categories, groups, columnStructure } = ctx || {};
 
@@ -376,7 +378,7 @@ export default function ProgramarePage() {
       });
     } catch (err) {
       console.error('Export match Excel failed', err);
-      window.alert('Export Excel a eșuat: ' + err.message);
+      toast.error('Export Excel a eșuat: ' + err.message);
     }
     setExportingMatchExcel(false);
   };

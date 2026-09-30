@@ -11,6 +11,7 @@ import {
   resolveDiplomaTemplate,
 } from '../lib/diplomas';
 import { Badge, Button, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
+import { useToast } from '../contexts/ToastContext';
 
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
@@ -101,6 +102,7 @@ function GroupHeader({ group }) {
 }
 
 export default function ClasamenteTehnicaPage() {
+  const toast = useToast();
   const { id: eventId } = useParams();
   const navigate = useNavigate();
   const ctx = useContext(CentralizatorContext);
@@ -216,7 +218,7 @@ export default function ClasamenteTehnicaPage() {
       }
     }
     if (!template) {
-      window.alert('Nu există niciun șablon de diplomă disponibil pentru acest eveniment. Configurează unul în tab-ul Diplome.');
+      toast.error('Nu există niciun șablon de diplomă disponibil pentru acest eveniment. Configurează unul în tab-ul Diplome.');
       return;
     }
 
@@ -254,7 +256,7 @@ export default function ClasamenteTehnicaPage() {
     } catch (error) {
       if (previewWindow && !previewWindow.closed) previewWindow.close();
       console.error('Failed to generate diploma PDF:', error);
-      window.alert(error.message || 'Nu s-a putut genera diploma.');
+      toast.error(error.message || 'Nu s-a putut genera diploma.');
     }
   };
 

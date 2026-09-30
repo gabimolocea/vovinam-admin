@@ -5,6 +5,8 @@ import ExcelJS from 'exceljs';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { aggregateRealtimeValidatedPoints } from '@shared/lib/realtimePoints';
 import { useVoiceAssistant } from '../hooks/useVoiceAssistant';
+import useHotkeys from '../hooks/useHotkeys';
+import ShortcutsHelp, { CATEGORY_SHORTCUTS, MATCH_SHORTCUTS, ShortcutsHint } from '../components/ShortcutsHelp';
 import {
   eventAPI,
   fieldAPI, monitorAPI, roundAPI, matchAPI, scoreAPI,
@@ -19,6 +21,7 @@ import { GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 import RefereeAccessModal from '../components/RefereeAccessModal';
 import { exportMatchExcel } from '../lib/exportMatchExcel';
+import { useToast } from '../contexts/ToastContext';
 
 /* ═══════════════════════════════════════════════════════
    LIVE FULLSCREEN PAGE — full-screen view for a field
@@ -152,6 +155,7 @@ const writeCachedCategoryData = (eventId, groups, categories) => {
 };
 
 export default function LiveFullscreenPage() {
+  const toast = useToast();
   const { id: eventId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -481,7 +485,7 @@ export default function LiveFullscreenPage() {
 
   const ensureOperationalWrite = useCallback(() => {
     if (!operationalLockActive) return true;
-    window.alert(operationalLockMessage);
+    toast.error(operationalLockMessage);
     return false;
   }, [operationalLockActive, operationalLockMessage]);
 
@@ -527,7 +531,7 @@ export default function LiveFullscreenPage() {
       await fetchMatchState();
     } catch (e) {
       console.error(e);
-      window.alert(e?.response?.data?.error || e?.response?.data?.detail || 'Operația nu a putut fi salvată.');
+      toast.error(e?.response?.data?.error || e?.response?.data?.detail || 'Operația nu a putut fi salvată.');
     }
     setBusy(false);
   };
@@ -557,7 +561,7 @@ export default function LiveFullscreenPage() {
       await fetchMatchState();
     } catch (e) {
       console.error(e);
-      window.alert('Nu s-a putut porni sesiunea de înregistrare.');
+      toast.error('Nu s-a putut porni sesiunea de înregistrare.');
     }
     setBusy(false);
   };
@@ -576,7 +580,7 @@ export default function LiveFullscreenPage() {
       await fetchMatchState();
     } catch (e) {
       console.error(e);
-      window.alert('Nu s-a putut opri sesiunea de înregistrare.');
+      toast.error('Nu s-a putut opri sesiunea de înregistrare.');
     }
     setBusy(false);
   };
@@ -602,7 +606,7 @@ export default function LiveFullscreenPage() {
             // match never actually advanced in the bracket - surface the
             // backend's real reason (e.g. "Nu exista un castigator pentru
             // acest meci." when too few referees have a recorded decision).
-            window.alert(
+            toast.error(
               e.response?.data?.error
                 || 'Sportivul nu a putut fi avansat în piramidă. Verifică dacă există suficiente decizii ale arbitrilor.'
             );
@@ -909,7 +913,7 @@ export default function LiveFullscreenPage() {
             await exportExcelRef.current?.();
           } catch (err) {
             console.error('Exportul Excel a eșuat', err);
-            window.alert('Exportul Excel nu a reușit. Proba nu a fost încheiată, poți încerca din nou.');
+            toast.error('Exportul Excel nu a reușit. Proba nu a fost încheiată, poți încerca din nou.');
             return;   // nu incheiem proba daca exportul a cazut
           }
           await finishAndReturnToSchedule();
@@ -1622,6 +1626,29 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     || rows.find(r => !r.isDisqualified)
     || null;
 
+  // ── TASTATURA ──
+  //
+  // Spatiul apasa butonul pe care ecranul il evidentiaza oricum
+  // (highlightAction de mai sus): prezinta urmatorul sportiv sau il
+  // opreste pe cel activ. O proba intreaga se conduce fara mouse.
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  useHotkeys({
+    ' ': () => {
+      if (busy) return;
+      const row = rows.find(r => r.athleteId === highlightAthleteId);
+      if (!row) return;
+      if (highlightAction === 'active') {
+        if (!row.allScoresIn) { setStopConfirmRow(row); return; }
+        stopPresenting(row);
+      } else if (highlightAction === 'present') {
+        switchDisplay(cat.id, null, row.athleteId);
+      }
+    },
+    '?': () => setShowShortcuts(true),
+    Escape: () => setShowShortcuts(false),
+  }, { enabled: !stopConfirmRow && !resetConfirmData && !dqConfirmData });
+
   const stopPresenting = (row) => {
     switchDisplay(cat.id, null, null);
     setFinishedAthletes(prev => new Set(prev).add(row.athleteId));
@@ -1790,6 +1817,11 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           </div>
         </div>
       </div>
+
+      <ShortcutsHint onClick={() => setShowShortcuts(true)} />
+      {showShortcuts && (
+        <ShortcutsHelp shortcuts={CATEGORY_SHORTCUTS} onClose={() => setShowShortcuts(false)} />
+      )}
 
       {stopConfirmRow && (() => {
         const expected = refSlots.filter(r => r.id).length || 5;
@@ -2074,6 +2106,13 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN MATCH PANEL
    ═══════════════════════════════════════════════════════ */
+// Ce se poate da inapoi, pentru butonul „Undo" si pentru tasta u.
+const UNDOABLE_EVENT_TYPES = [
+  'disqualify_red', 'disqualify_blue', 'penalty_red', 'penalty_blue',
+  'bonus_red', 'bonus_blue', 'warning_red', 'warning_blue',
+  'infraction_red', 'infraction_blue',
+];
+
 function FullscreenMatchPanel({
   match, session, matchRounds, activeRound, matchRefScores, matchEvents, pointEvents,
   matchRefAssignment, refPresence, allCats, busy, setBusy, competitionReferees, recordingSession, setIdle, startRound, endRound, resetRound, createRounds, eventStartDate, openMatchSettingsRef,
@@ -2081,6 +2120,7 @@ function FullscreenMatchPanel({
   removeLastEvent, adjustTime, resetMatch, finalizeMatch, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh,
   operationalLockActive, operationalLockMessage, ensureOperationalWrite,
 }) {
+  const toast = useToast();
   const [showRoundResetConfirm, setShowRoundResetConfirm] = useState(null); // round id
   const [showStopRoundConfirm, setShowStopRoundConfirm] = useState(null); // round id for stop confirm
   const [showWinnerConfirm, setShowWinnerConfirm] = useState(false);
@@ -2194,9 +2234,12 @@ function FullscreenMatchPanel({
   // Ce a aplicat ultima comanda, ca "anuleaza" sa stie ce sa stearga.
   const lastVoiceEventRef = useRef(null);
 
-  const applyVoiceCommand = useCallback(async (cmd) => {
+  // `silent` e pentru tastatura: la masa centrala se vede scorul pe ecran,
+  // n-are rost sa vorbeasca la fiecare tasta. Comenzile raman aceleasi, ca
+  // vocea si tastele sa nu ajunga sa faca lucruri diferite.
+  const applyVoiceCommand = useCallback(async (cmd, { silent = false } = {}) => {
     const roundId = activeRound?.id || null;
-    const speak = (t) => { try {
+    const speak = (t) => { if (silent) return; try {
       const u = new SpeechSynthesisUtterance(t); u.lang = 'ro-RO'; u.rate = 1.1;
       window.speechSynthesis.speak(u);
     } catch { /* ramane banda de pe ecran */ } };
@@ -2275,6 +2318,40 @@ function FullscreenMatchPanel({
     enabled: voiceEnabled && !isMatchFinalized,
     onCommand: applyVoiceCommand,
   });
+
+  // ── TASTATURA ──
+  //
+  // Aceleasi comenzi ca vocea, doar ca tacute. Rosu e in stanga pe ecran
+  // si in stanga pe tastatura; albastru invers. Spatiul porneste repriza
+  // si o pune pe pauza, fiindca aia e apasata de cele mai multe ori.
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const runCommand = useCallback((cmd) => applyVoiceCommand(cmd, { silent: true }), [applyVoiceCommand]);
+
+  useHotkeys({
+    ' ': () => runCommand(activeRound && activeRound.status === 'active' ? 'pause' : (activeRound ? 'resume' : 'round_start')),
+    '1': () => runCommand('point_red_1'),
+    '2': () => runCommand('point_red_2'),
+    '3': () => runCommand('point_blue_1'),
+    '4': () => runCommand('point_blue_2'),
+    q: () => runCommand('penalty_red'),
+    w: () => runCommand('warning_red'),
+    o: () => runCommand('penalty_blue'),
+    p: () => runCommand('warning_blue'),
+    // Nu trece prin comanda vocala: aia isi tine minte un singur pas si
+    // dupa el spune "nu am ce anula", desi butonul de pe ecran mai poate
+    // da inapoi. Tasta face exact ce face butonul.
+    u: () => {
+      const last = [...(matchEvents || [])].reverse().find(e => UNDOABLE_EVENT_TYPES.includes(e.event_type));
+      if (last) removeLastEvent(match.id, last.event_type);
+    },
+    '?': () => setShowShortcuts(true),
+    Escape: () => setShowShortcuts(false),
+  });
+  // Fara conditie pe starea meciului: comenzile se opresc oricum singure
+  // pe un meci incheiat (applyVoiceCommand), iar "?" trebuie sa mearga si
+  // atunci - altfel lista de scurtaturi dispare exact cand cineva se uita
+  // la un meci terminat si vrea sa afle cum se conduce unul.
+
   const settingsLocked = matchStarted || isMatchDisplayStarted || isMatchFinalized;
   const operationalSettingsLocked = settingsLocked || operationalLockActive;
   const [showMatchSettings, setShowMatchSettings] = useState(false);
@@ -2383,7 +2460,7 @@ function FullscreenMatchPanel({
       await exportMatchExcel({ match, matchRounds, matchRefScores, matchEvents, pointEvents, matchRefSlots });
     } catch (err) {
       console.error('Export Excel failed', err);
-      window.alert('Export Excel a eșuat: ' + err.message);
+      toast.error('Export Excel a eșuat: ' + err.message);
     }
     setExportingExcel(false);
   };
@@ -2398,7 +2475,7 @@ function FullscreenMatchPanel({
       await onRefresh();
     } catch (error) {
       console.error('Failed to update match display mode', error);
-      window.alert(error?.response?.data?.detail || 'Nu s-a putut salva modul de afișare al meciului.');
+      toast.error(error?.response?.data?.detail || 'Nu s-a putut salva modul de afișare al meciului.');
     }
     setBusy(false);
   };
@@ -2419,7 +2496,7 @@ function FullscreenMatchPanel({
       await onRefresh();
     } catch (error) {
       console.error('Failed to apply round preset', error);
-      window.alert(error?.response?.data?.detail || 'Nu s-a putut salva presetul de reprize.');
+      toast.error(error?.response?.data?.detail || 'Nu s-a putut salva presetul de reprize.');
     }
     setBusy(false);
   };
@@ -2597,7 +2674,7 @@ function FullscreenMatchPanel({
                 await onRefresh();
               } catch (e) {
                 console.error(e);
-                window.alert(e?.response?.data?.detail || 'Nu s-a putut adăuga repriza extra.');
+                toast.error(e?.response?.data?.detail || 'Nu s-a putut adăuga repriza extra.');
               }
               setBusy(false);
               setShowExtraRoundModal(false);
@@ -2931,6 +3008,11 @@ function FullscreenMatchPanel({
         </FullscreenModal>
       )}
 
+      <ShortcutsHint onClick={() => setShowShortcuts(true)} />
+      {showShortcuts && (
+        <ShortcutsHelp shortcuts={MATCH_SHORTCUTS} onClose={() => setShowShortcuts(false)} />
+      )}
+
       {showMatchSettings && (
         <FullscreenModal
           onClose={() => setShowMatchSettings(false)}
@@ -3039,8 +3121,7 @@ function FullscreenMatchPanel({
       {/* ── SCOREBOARD — no dot, no ROSU/ALBASTRU label ── */}
       {/* Undo last action */}
       {(() => {
-        const undoableTypes = ['disqualify_red','disqualify_blue','penalty_red','penalty_blue','bonus_red','bonus_blue','warning_red','warning_blue','infraction_red','infraction_blue'];
-        const lastEvent = [...matchEvents].reverse().find(e => undoableTypes.includes(e.event_type));
+        const lastEvent = [...matchEvents].reverse().find(e => UNDOABLE_EVENT_TYPES.includes(e.event_type));
         const typeLabels = { disqualify_red: 'Descalif. Roșu', disqualify_blue: 'Descalif. Albastru', penalty_red: '-pt Roșu', penalty_blue: '-pt Albastru', bonus_red: '+pt Roșu', bonus_blue: '+pt Albastru', warning_red: 'Avertism. Roșu', warning_blue: 'Avertism. Albastru', infraction_red: 'Abatere Roșu', infraction_blue: 'Abatere Albastru' };
         return lastEvent ? (
           <div className="flex items-center gap-2 justify-end">

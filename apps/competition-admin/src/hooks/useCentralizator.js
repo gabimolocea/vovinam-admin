@@ -2,12 +2,14 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@shared';
 import { categoryAPI, groupAPI, clubAPI, enrollmentAPI, athleteAPI, competitionAPI, fightWeightAPI } from '@shared/lib/api';
+import { useToast } from '../contexts/ToastContext';
 
 /**
  * Shared hook for Centralizator / Tehnica / Lupta pages.
  * Owns all data fetching, derived state, and mutation handlers.
  */
 export default function useCentralizator() {
+  const toast = useToast();
   const { id: eventId } = useParams();
   const { isAdmin } = useAuth();
 
@@ -30,6 +32,47 @@ export default function useCentralizator() {
   const [catModal, setCatModal]     = useState(null);
   const [catForm, setCatForm]       = useState({ name: '', category_type: 'solo', gender: 'male' });
   const [confirmModal, setConfirmModal] = useState(null);
+
+  // Ce se vede din matrice. La un campionat, un eveniment are ~100 de
+  // categorii, adica ~100 de coloane si vreo opt ecrane de derulat pe
+  // orizontala pana la cea cautata. Operatorul lucreaza oricum pe o grupa
+  // odata, iar la inceput de competitie aproape toate categoriile sunt
+  // goale. Alegerea se tine minte pe evenimentul asta: masina de la masa
+  // centrala se reincarca de mai multe ori pe zi si nu are rost sa fie
+  // refacuta de fiecare data.
+  const viewPrefsKey = eventId ? `centralizator:view:${eventId}` : null;
+  const [groupFilter, setGroupFilterState] = useState(null);
+  const [hideEmptyCats, setHideEmptyCatsState] = useState(false);
+
+  useEffect(() => {
+    if (!viewPrefsKey) return;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(viewPrefsKey) || '{}');
+      setGroupFilterState(saved.groupFilter ?? null);
+      setHideEmptyCatsState(Boolean(saved.hideEmptyCats));
+    } catch {
+      // Stocare blocata sau JSON stricat: pornim cu matricea intreaga.
+    }
+  }, [viewPrefsKey]);
+
+  const persistViewPrefs = useCallback((next) => {
+    if (!viewPrefsKey) return;
+    try {
+      window.localStorage.setItem(viewPrefsKey, JSON.stringify(next));
+    } catch {
+      // Nu putem tine minte preferinta - nu e capat de lume.
+    }
+  }, [viewPrefsKey]);
+
+  const setGroupFilter = useCallback((value) => {
+    setGroupFilterState(value);
+    persistViewPrefs({ groupFilter: value, hideEmptyCats });
+  }, [hideEmptyCats, persistViewPrefs]);
+
+  const setHideEmptyCats = useCallback((value) => {
+    setHideEmptyCatsState(value);
+    persistViewPrefs({ groupFilter, hideEmptyCats: value });
+  }, [groupFilter, persistViewPrefs]);
 
   // Drag & drop
   const [dragType, setDragType]     = useState(null);
@@ -243,6 +286,39 @@ export default function useCentralizator() {
   }, [categories]);
 
   const totalAthletes = Object.keys(athleteMap).length;
+
+  // Aceeasi structura, dar doar coloanele care trec de filtre. Grupele fara
+  // nicio categorie ramasa dispar cu totul: un cap de grupa gol nu spune
+  // nimic si ocupa o coloana.
+  const visibleColumnStructure = useMemo(() => {
+    if (groupFilter === null && !hideEmptyCats) return columnStructure;
+    const out = [];
+    for (const col of columnStructure) {
+      if (groupFilter !== null && col.group.id !== groupFilter) continue;
+      const cats = hideEmptyCats
+        ? col.cats.filter(cat => (countPerCat[cat.id] || 0) > 0)
+        : col.cats;
+      if (cats.length === 0 && (hideEmptyCats || col.cats.length > 0)) continue;
+      const catIds = new Set(cats.map(c => c.id));
+      out.push({
+        ...col,
+        cats,
+        genderSections: col.genderSections
+          .map(section => {
+            const sectionCats = section.cats.filter(c => catIds.has(c.id));
+            return { ...section, cats: sectionCats, colSpan: sectionCats.length };
+          })
+          .filter(section => section.cats.length > 0),
+        colSpan: cats.length || 1,
+      });
+    }
+    return out;
+  }, [columnStructure, countPerCat, groupFilter, hideEmptyCats]);
+
+  const visibleCols = useMemo(() => visibleColumnStructure.flatMap(s => s.cats), [visibleColumnStructure]);
+
+  const totalCatCount = columnStructure.reduce((sum, col) => sum + col.cats.length, 0);
+  const visibleCatCount = visibleColumnStructure.reduce((sum, col) => sum + col.cats.length, 0);
 
   /* ════════════════════════════════════════════════════
      HANDLERS
@@ -553,11 +629,11 @@ export default function useCentralizator() {
           await refreshStructureData();
           const result = data?.result || {};
           dismissStandardStructureBanner();
-          window.alert(
+          toast.error(
             `Sincronizare finalizată. Grupe create: ${result.groups_created || 0}, actualizate: ${result.groups_updated || 0}; categorii create: ${result.categories_created || 0}, actualizate: ${result.categories_updated || 0}.`
           );
         } catch (err) {
-          window.alert(err.response?.data?.detail || 'Nu s-au putut genera grupele și categoriile standard.');
+          toast.error(err.response?.data?.detail || 'Nu s-au putut genera grupele și categoriile standard.');
         } finally {
           setGeneratingDefaults(false);
           setConfirmModal(null);
@@ -584,6 +660,8 @@ export default function useCentralizator() {
     groups, setGroups, categories, setCategories, clubs, setClubs,
     eventData, eventYear, eventDateStr,
     sortedCategories, columnStructure, allCols,
+    visibleColumnStructure, visibleCols, totalCatCount, visibleCatCount,
+    groupFilter, setGroupFilter, hideEmptyCats, setHideEmptyCats,
     clubRows, athleteMap, countPerCat, totalAthletes,
     // UI state
     editingGroupId, setEditingGroupId, editingGroupName, setEditingGroupName,

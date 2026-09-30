@@ -13,6 +13,7 @@ import {
   normalizeDiplomaScope,
   resolveDiplomaTemplate,
 } from '../lib/diplomas';
+import { useToast } from '../contexts/ToastContext';
 
 function normalizeListPayload(data) {
   return Array.isArray(data) ? data : data?.results ?? [];
@@ -25,6 +26,7 @@ function buildCategorySummary(categories) {
 }
 
 export default function ClasamentSportiviInscrisiPage() {
+  const toast = useToast();
   const { id: eventId } = useParams();
   const ctx = useContext(CentralizatorContext);
   const [diplomaTemplates, setDiplomaTemplates] = useState([]);
@@ -152,7 +154,7 @@ export default function ClasamentSportiviInscrisiPage() {
     const participation = buildParticipationValues(athlete);
     const template = resolveDiplomaTemplate(diplomaTemplates, { place: 0, scope: participation.scope });
     if (!template) {
-      window.alert('Nu există un șablon de diplomă de participare disponibil. Configurează unul în tab-ul Diplome.');
+      toast.error('Nu există un șablon de diplomă de participare disponibil. Configurează unul în tab-ul Diplome.');
       return;
     }
 
@@ -172,7 +174,7 @@ export default function ClasamentSportiviInscrisiPage() {
     } catch (error) {
       if (previewWindow && !previewWindow.closed) previewWindow.close();
       console.error('Failed to generate participation diploma:', error);
-      window.alert(error.message || 'Nu s-a putut genera diploma de participare.');
+      toast.error(error.message || 'Nu s-a putut genera diploma de participare.');
     }
   };
 
@@ -201,14 +203,14 @@ export default function ClasamentSportiviInscrisiPage() {
 
           if (!diplomaJobs.length) {
             if (previewWindow && !previewWindow.closed) previewWindow.close();
-            window.alert('Nu există un șablon de diplomă de participare disponibil. Configurează unul în tab-ul Diplome.');
+            toast.error('Nu există un șablon de diplomă de participare disponibil. Configurează unul în tab-ul Diplome.');
             return;
           }
 
           await generateCombinedDiplomaPdf(diplomaJobs, previewWindow);
         } catch (error) {
           console.error('Failed to generate combined participation diplomas:', error);
-          window.alert(error.message || 'Nu s-a putut genera PDF-ul cu diplomele de participare.');
+          toast.error(error.message || 'Nu s-a putut genera PDF-ul cu diplomele de participare.');
         } finally {
           setGeneratingAll(false);
           ctx.setConfirmModal(null);
