@@ -54,7 +54,13 @@ function backendPython() {
 // SQLite-backed `manage.py runserver`, for real events with heavier
 // concurrent write load (multiple tatami scoring at once) than SQLite's
 // single-writer model comfortably handles.
-function buildServiceDefs(lanIp, { useDocker = false } = {}) {
+// `frontendsFromDocker` e cazul laptopului din sala: cele trei interfete
+// vin ca fisiere statice dintr-un container, nu din `npm run dev`. Raman in
+// lista - launcherul are nevoie de ele ca sa afiseze adresele - dar sunt
+// marcate ca pornite de altcineva, si nu incercam sa le lansam noi. Fara
+// marcajul asta, launcherul ar cauta npm pe un calculator unde Node nici nu
+// e instalat.
+function buildServiceDefs(lanIp, { useDocker = false, frontendsFromDocker = false } = {}) {
   const backendDef = {
     id: 'backend',
     label: 'Backend (Django)',
@@ -70,8 +76,7 @@ function buildServiceDefs(lanIp, { useDocker = false } = {}) {
     env: { LAN_HOST: lanIp, IS_LOCAL_EVENT_SERVER: 'True' },
   };
 
-  return [
-    ...(useDocker ? [] : [backendDef]),
+  const frontends = [
     {
       id: 'competition-admin',
       label: 'Competition Admin',
@@ -97,6 +102,12 @@ function buildServiceDefs(lanIp, { useDocker = false } = {}) {
       cwd: repoRoot(),
     },
   ];
+
+  if (frontendsFromDocker) {
+    return frontends.map(({ id, label, port }) => ({ id, label, port, managedByDocker: true }));
+  }
+
+  return [...(useDocker ? [] : [backendDef]), ...frontends];
 }
 
 // Manages the child processes for the local stack: starts them, streams
@@ -118,6 +129,12 @@ class ServiceManager {
 
   async start(def) {
     if (this.processes.has(def.id)) return;
+
+    // Pornit de Docker, nu de noi: nu avem ce lansa si nu avem ce opri.
+    if (def.managedByDocker) {
+      this.onStatusChange(def.id, 'running');
+      return;
+    }
 
     if (await isPortOpen(def.port)) {
       this.onLog(def.id, `Portul ${def.port} este deja ocupat de un proces existent — se folosește ca atare.`);

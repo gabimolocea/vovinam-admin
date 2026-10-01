@@ -4,7 +4,7 @@ const path = require('path');
 
 const { getLanIp } = require('./network');
 const { ServiceManager, buildServiceDefs, ensureLocalAdmin } = require('./services');
-const { getRepoRoot, setRepoRoot, isRepoRoot } = require('./repoRoot');
+const { getRepoRoot, setRepoRoot } = require('./repoRoot');
 const dockerBackend = require('./dockerBackend');
 const cloudSync = require('./cloudSync');
 
@@ -331,6 +331,12 @@ async function waitForBackend(baseUrl, { timeoutMs = 30000, intervalMs = 500 } =
 async function ensureRepoRootKnown() {
   if (getRepoRoot()) return true;
 
+  // Pe laptopul din sala nu exista cod, si asa trebuie sa fie: stiva vine
+  // ca imagini gata facute (docker-compose.venue.yml, purtat in aplicatie).
+  // Intrebam de folder doar cand aplicatia ruleaza din sursa si l-am
+  // pierdut - adica pe calculatorul unui dezvoltator.
+  if (app.isPackaged) return true;
+
   const { response } = await dialog.showMessageBox({
     type: 'question',
     title: 'Unde este proiectul?',
@@ -444,7 +450,10 @@ ipcMain.handle('cloud:overview', async () => {
 
 ipcMain.handle('network:get-lan-ip', async () => getLanIp());
 
-ipcMain.handle('services:defs', async () => buildServiceDefs(session.lanIp || getLanIp()));
+ipcMain.handle('services:defs', async () => buildServiceDefs(session.lanIp || getLanIp(), {
+  useDocker: session.useDocker,
+  frontendsFromDocker: !getRepoRoot(),
+}));
 
 ipcMain.handle('services:stop', async () => {
   getServiceManager().stopAll();
@@ -472,6 +481,10 @@ ipcMain.handle('services:start-local-stack', async (_event, { useDocker = false 
   const lanIp = getLanIp();
   if (!lanIp) throw new Error('Nu s-a găsit o adresă IP în rețeaua locală (verifică WiFi-ul).');
   session.lanIp = lanIp;
+  // Fara cod pe disc nu exista nici backend de pornit cu Python, nici
+  // interfete de pornit cu npm: totul vine din containere.
+  const dinSala = !getRepoRoot();
+  if (dinSala) useDocker = true;
   session.useDocker = useDocker;
 
   const manager = getServiceManager();
@@ -482,7 +495,7 @@ ipcMain.handle('services:start-local-stack', async (_event, { useDocker = false 
       onLog: (line) => sendToWindow('service:log', { id: 'backend', line }),
     });
   }
-  const defs = manager.startAll(lanIp, { useDocker });
+  const defs = manager.startAll(lanIp, { useDocker, frontendsFromDocker: dinSala });
 
   const localBaseUrl = `http://localhost:${LOCAL_BACKEND_PORT}`;
   sendToWindow('sync:progress', { direction: 'local', message: 'Se pornește backend-ul local…' });

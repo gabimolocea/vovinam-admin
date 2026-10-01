@@ -16,24 +16,72 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { repoRoot } = require('./services');
+const { getRepoRoot } = require('./repoRoot');
 
-// Functii, nu constante: radacina proiectului poate fi aleasa dupa ce a
-// pornit aplicatia (vezi repoRoot.js).
-const composeFile = () => path.join(repoRoot(), 'docker-compose.local.yml');
-const envLocalFile = () => path.join(repoRoot(), '.env.local');
-const envExampleFile = () => path.join(repoRoot(), '.env.local.example');
+// Doua feluri de a porni stiva, dupa cum exista sau nu codul pe disc.
+//
+// Cu depozitul (calculatorul unui dezvoltator): docker-compose.local.yml,
+// care construieste imaginile din codul de langa el - asa se vede imediat
+// o modificare.
+//
+// Fara depozit (laptopul din sala, unde e doar aplicatia instalata):
+// docker-compose.venue.yml, purtat in aplicatie, care descarca imagini
+// gata facute. Acolo nu exista nici cod, nici Node, nici npm - si tocmai
+// asta e ideea.
+function composeFile() {
+  const root = getRepoRoot();
+  return root
+    ? path.join(root, 'docker-compose.local.yml')
+    : path.join(process.resourcesPath, 'docker-compose.venue.yml');
+}
+
+// Unde scriem configurarea stivei. Langa cod cand exista; altfel in
+// folderul aplicatiei, care e scriibil si supravietuieste reinstalarilor.
+function configDir() {
+  const root = getRepoRoot();
+  if (root) return root;
+  const { app } = require('electron');
+  return app.getPath('userData');
+}
+
+const envLocalFile = () => path.join(configDir(), '.env.local');
+
+// De unde rulam comenzile `docker`. Fisierul de compose e dat oricum
+// explicit cu -f, deci aici conteaza doar sa fie un folder care exista.
+const composeCwd = () => getRepoRoot() || path.dirname(composeFile());
+const envExampleFile = () => {
+  const root = getRepoRoot();
+  return root ? path.join(root, '.env.local.example') : null;
+};
+
+// Aceleasi valori ca .env.local.example, scrise aici fiindca pe laptopul
+// din sala fisierul acela nu exista - nu exista nici depozitul din care ar
+// veni. LAN_HOST si cheia secreta sunt oricum inlocuite mai jos.
+const ENV_IMPLICIT = `# Configurarea stivei din sala, scrisa de launcher.
+LAN_HOST=127.0.0.1
+DJANGO_SECRET_KEY=change-me-before-the-event
+DB_NAME=frvv_local
+DB_USER=frvv
+DB_PASSWORD=frvv_local_password
+LOCAL_BACKUP_INTERVAL_MINUTES=15
+LOCAL_BACKUP_RETENTION_COUNT=200
+`;
 
 // A GUI-launched Electron app (double-clicked, or even `npm run dev` from
 // some terminal/shell setups) doesn't reliably inherit the same PATH an
 // interactive shell has - Docker Desktop's CLI usually lives in one of
 // these, none of which are guaranteed to be on that inherited PATH, which
 // otherwise surfaces as a bare "spawn docker ENOENT" with no hint why.
-const DOCKER_PATH_CANDIDATES = [
-  '/usr/local/bin',
-  '/opt/homebrew/bin',
-  '/Applications/Docker.app/Contents/Resources/bin',
-];
+const DOCKER_PATH_CANDIDATES = process.platform === 'win32'
+  ? [
+    'C:\\Program Files\\Docker\\Docker\\resources\\bin',
+    'C:\\ProgramData\\DockerDesktop\\version-bin',
+  ]
+  : [
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+    '/Applications/Docker.app/Contents/Resources/bin',
+  ];
 
 function spawnEnv() {
   const existing = (process.env.PATH || '').split(path.delimiter);
@@ -43,7 +91,7 @@ function spawnEnv() {
 
 function run(command, args, { onLog } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: repoRoot(), env: spawnEnv() });
+    const child = spawn(command, args, { cwd: composeCwd(), env: spawnEnv() });
     let stdout = '';
     let stderr = '';
     child.stdout?.on('data', (chunk) => { stdout += chunk.toString(); onLog?.(chunk.toString()); });
@@ -77,10 +125,12 @@ async function isDockerAvailable() {
 // never has to hand-edit it before an event.
 function ensureEnvLocal(lanIp) {
   if (!fs.existsSync(envLocalFile())) {
-    if (!fs.existsSync(envExampleFile())) {
-      throw new Error('.env.local.example lipsește din proiect - nu pot pregăti configurația Docker.');
+    const exemplu = envExampleFile();
+    if (exemplu && fs.existsSync(exemplu)) {
+      fs.copyFileSync(exemplu, envLocalFile());
+    } else {
+      fs.writeFileSync(envLocalFile(), ENV_IMPLICIT);
     }
-    fs.copyFileSync(envExampleFile(), envLocalFile());
   }
 
   let content = fs.readFileSync(envLocalFile(), 'utf8');
@@ -101,7 +151,8 @@ const composeArgs = (...rest) => ['compose', '-f', composeFile(), '--env-file', 
 async function startDockerBackend({ lanIp, onLog }) {
   ensureEnvLocal(lanIp);
   onLog?.('Se pornește PostgreSQL + backend (Docker)…\n');
-  await run('docker', composeArgs('up', '-d', '--build'), { onLog });
+  const dinCod = Boolean(getRepoRoot());
+  await run('docker', composeArgs('up', '-d', ...(dinCod ? ['--build'] : ['--pull', 'always'])), { onLog });
 }
 
 // Provisions/updates the local admin account inside the running backend
@@ -110,7 +161,7 @@ async function startDockerBackend({ lanIp, onLog }) {
 // `docker compose exec` instead of a direct venv spawn.
 function ensureLocalAdminDocker({ email, password, firstName, lastName }) {
   return new Promise((resolve, reject) => {
-    const child = spawn('docker', composeArgs('exec', '-T', 'backend', 'python', 'manage.py', 'ensure_local_admin'), { cwd: repoRoot(), env: spawnEnv() });
+    const child = spawn('docker', composeArgs('exec', '-T', 'backend', 'python', 'manage.py', 'ensure_local_admin'), { cwd: composeCwd(), env: spawnEnv() });
     let stderr = '';
     child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
     child.on('error', (err) => {
