@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.conf import settings
 from django.urls import path, include
 from .views import *
 from . import views
@@ -54,6 +55,7 @@ router.register('visa-submissions', VisaSubmissionViewSet, basename='visa-submis
 # Import the new event enrollment viewset
 from .views import EventEnrollmentViewSet
 from .views.launcher_release import latest_launcher_release, download_launcher
+from .connectivity import connectivity
 router.register('event-enrollments', EventEnrollmentViewSet, basename='event-enrollment')
 router.register('coaches', CoachesViewSet, basename='coach')
 # Offline competition sync endpoints
@@ -197,6 +199,11 @@ urlpatterns = autocomplete_urlpatterns + [
     # Ultima versiune a launcherului, pentru pagina de instalare din panou.
     # Adresa de descarcare e stabila si nu se schimba de la o versiune la
     # alta - vezi api/views/launcher_release.py.
+    # Verificarea legaturilor din sala. Ruta exista mereu, dar view-ul
+    # raspunde doar pe serverul local - verificarea e acolo, nu aici,
+    # fiindca aici s-ar face o singura data, la pornire.
+    path('local/connectivity/', connectivity, name='local-connectivity'),
+
     path('public/launcher/latest/', latest_launcher_release, name='launcher-latest'),
     path('public/launcher/download/<slug:cheie>/', download_launcher, name='launcher-download'),
 

@@ -45,6 +45,11 @@ DATABASES = {
 
 # --- Static files served by WhiteNoise (no separate nginx needed for /api and /admin) ---
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+
+# Cine vorbeste cu serverul din sala, pentru ecranul de verificare din
+# launcher (vezi api/connectivity.py). Doar aici: in cloud middleware-ul se
+# scoate singur din lant.
+MIDDLEWARE.append('api.connectivity.ConnectivityMiddleware')
 STORAGES = {
     'default': {
         'BACKEND': 'django.core.files.storage.FileSystemStorage',
