@@ -1,6 +1,6 @@
-# Arbitru pe ESP32-C3 (tehnică)
+# Device Arbitru (ESP32-C3)
 
-Firmware pentru un dispozitiv fizic de arbitraj: **ESP32-C3 mini + display
+Firmware pentru **Device Arbitru**, dispozitivul fizic de punctaj: **ESP32-C3 mini + display
 ST7789 240×240 + encoder KY-040**. Face acelaşi lucru ca aplicaţia web de
 arbitraj pentru probele de tehnică (`apps/referee-scoring`, ecranul
 `ScoringPanel`), dar fără browser — arbitrul are un singur buton rotativ.
@@ -50,13 +50,13 @@ Totul stă în LAN-ul sălii, deci fără HTTPS.
 
 **Placa găseşte serverul după nume, nu după adresă.** `frvv-sala` nu e numele
 unui calculator anume: launcherul răspunde la el, oriunde ar fi instalat şi ce
-adresă i-ar da routerul (vezi `apps/launcher/electron/mdns.js`). Aşa plăcuţele
+adresă i-ar da routerul (vezi `apps/launcher/electron/mdns.js`). Aşa device-urile
 merg pe orice laptop, pe orice reţea, fără să fie reprogramate şi fără nicio
 setare pe router.
 
 Înainte aici era numele unui Mac anume, aflat cu `scutil --get LocalHostName`.
 Mergea doar de pe el: alt laptop — şi mai ales unul cu **Windows**, care nu-şi
-anunţă numele în reţea de la sine — şi plăcuţele tăceau fără să spună de ce.
+anunţă numele în reţea de la sine — şi device-urile tăceau fără să spună de ce.
 
 `API_HOST` rămâne ca scurtătură: se încearcă prima, fiindcă e instantanee când
 e corectă. Când nu e, se pierd vreo 4 secunde la pornire şi se trece pe

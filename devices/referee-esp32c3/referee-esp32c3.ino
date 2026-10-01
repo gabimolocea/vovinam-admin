@@ -34,11 +34,11 @@
 
 // Reteaua. Valorile de aici sunt doar punctul de pornire: ce se scrie prin
 // cablu din launcher (vezi mai jos) le ia locul si ramane in memoria
-// placutei, deci nu se reprogrameaza nimic cand se schimba reteaua.
+// device-ului, deci nu se reprogrameaza nimic cand se schimba reteaua.
 const char* WIFI_SSID_IMPLICIT = "Zignative2";
 const char* WIFI_PASS_IMPLICIT = "Rrdspider1";
 
-// Ce foloseste efectiv placuta - umplute la pornire din memorie, daca e
+// Ce foloseste efectiv device-ul - umplute la pornire din memorie, daca e
 // ceva salvat acolo.
 String wifiSsid = WIFI_SSID_IMPLICIT;
 String wifiPass = WIFI_PASS_IMPLICIT;
@@ -47,12 +47,12 @@ String wifiPass = WIFI_PASS_IMPLICIT;
 //
 // Numele asta nu e al unui calculator anume: launcherul raspunde la el,
 // oriunde ar fi instalat si ce adresa i-ar da routerul (vezi
-// apps/launcher/electron/mdns.js). Asa, placutele merg pe orice laptop,
+// apps/launcher/electron/mdns.js). Asa, device-urile merg pe orice laptop,
 // pe orice retea, fara sa fie reprogramate si fara nicio setare pe router.
 //
 // Inainte aici era numele unui Mac anume. Mergea doar de pe el: alt
 // laptop, si mai ales un laptop cu Windows - care nu-si anunta numele in
-// retea de la sine - si placutele taceau fara sa spuna de ce.
+// retea de la sine - si device-urile taceau fara sa spuna de ce.
 //
 // Lasa gol ca sa dezactivezi cautarea dupa nume.
 const char* API_MDNS_NAME = "frvv-sala";
@@ -263,25 +263,52 @@ int  submittedScore  = 0;
 
 // ──────────────────────── CONFIGURARE PRIN CABLU ────────────────────────
 //
-// Reteaua sa se poata schimba fara sa reprogramam toate placutele.
+// Reteaua sa se poata schimba fara sa reprogramam toate device-urile.
 //
 // Pana acum numele si parola erau scrise in cod: o sala cu alt Wi-Fi
-// insemna recompilat si reflashuit fiecare placuta, in dimineata
+// insemna recompilat si reflashuit fiecare device-ul, in dimineata
 // competitiei. Nici varianta "le scriu din encoder" nu e buna - o parola
 // se formeaza invartind un buton, litera cu litera, fara stergere.
 //
 // Asa ca le primim prin cablul USB, de la launcher, unde omul le scrie de
-// la tastatura. Placutele oricum se leaga la calculator ca sa fie
+// la tastatura. Device-urile oricum se leaga la calculator ca sa fie
 // programate, deci cablul e deja acolo.
 //
-// Placuta nu poate cere ea configurarea de la launcher, oricat ar parea
+// Device-ul nu poate cere ea configurarea de la launcher, oricat ar parea
 // mai simplu: ca sa ajunga la el are nevoie de Wi-Fi, iar Wi-Fi-ul e exact
 // ce-i lipseste. De aceea merge intr-o singura directie, dinspre cablu.
 
 Preferences prefs;
 
-// Definita mai jos, langa restul lucrurilor de WiFi.
+// Proba butoanelor, pornita prin cablu din launcher.
+//
+// Exista un sketch separat pentru asta (button-test/), dar el cere
+// reprogramarea device-ului - adica tocmai lucrul pe care vrei sa-l eviti cand
+// verifici, inainte de competitie, daca butoanele sunt bine lipite. Asa, se
+// porneste din launcher, se apasa fiecare buton, si se vede pe loc.
+//
+// Se stinge singura: raportarea scrie pe acelasi cablu pe care merg
+// jurnalele, si nu are ce cauta pornita in timpul unei competitii.
+bool modTest = false;
+unsigned long modTestPanaLa = 0;
+#define TEST_DURATA_MS 180000
+
+// Definite mai jos, langa lucrurile de care tin.
 void scanWifi();
+void aplicaRoluri();
+void incarcaRoluri();
+
+// Ce punct da fiecare buton fizic.
+//
+// Cablajul nu iese mereu cum a fost desenat, iar un arbitru stangaci vrea
+// altfel decat unul dreptaci. Fara asta, orice schimbare inseamna relipit
+// fire sau reprogramat device-ul; asa se face din launcher, prin cablu, in
+// cateva secunde.
+//
+// Rolurile se scriu scurt: r1 = rosu 1 punct, a2 = albastru 2 puncte. Sunt
+// mereu patru si mereu diferite - launcherul le inverseaza intre ele, deci
+// nu se poate ajunge la doua butoane cu acelasi rol.
+char rolButoane[4][3] = { "r1", "r2", "a1", "a2" };
 
 // Un rand de text, terminat cu Enter. Simplu dinadins: se poate si dintr-un
 // monitor serial obisnuit, cand launcherul nu e la indemana.
@@ -327,7 +354,7 @@ void uitaWifiSalvat() {
 
 void raspundeWifi() {
   // Parola nu se trimite inapoi niciodata: cablul e si monitorul serial al
-  // oricui are placuta in mana.
+  // oricui are device-ul in mana.
   Serial.printf("OK WIFI=%s parola=%s\n",
                 wifiSsid.c_str(),
                 wifiPass.length() ? "(setata)" : "(fara)");
@@ -344,7 +371,7 @@ void citesteComenziSerial() {
     if (c == '\r') continue;
     if (c != '\n') {
       // Marginea e cu mult peste nevoie (32 nume + 63 parola), dar exista
-      // ca un cablu cu zgomot sa nu umple memoria placutei.
+      // ca un cablu cu zgomot sa nu umple memoria device-ului.
       if (linie.length() < 200) linie += c;
       continue;
     }
@@ -352,11 +379,48 @@ void citesteComenziSerial() {
     linie.trim();
     if (!linie.length()) continue;
 
-    if (linie == "WIFI?") {
+    if (linie == "BTN?") {
+      Serial.printf("OK BTN=%s,%s,%s,%s\n",
+                    rolButoane[0], rolButoane[1], rolButoane[2], rolButoane[3]);
+    } else if (linie.startsWith("BTN=")) {
+      String rest = linie.substring(4);
+      // Patru roluri de cate doua litere, despartite de virgula: "r1,a2,r2,a1".
+      if (rest.length() != 11) {
+        Serial.println("EROARE asteptam patru roluri, ca in r1,r2,a1,a2");
+      } else {
+        bool bun = true;
+        for (int i = 0; i < 4 && bun; i++) {
+          char culoare = rest[i * 3];
+          char punct   = rest[i * 3 + 1];
+          if ((culoare != 'r' && culoare != 'a') || (punct != '1' && punct != '2')) bun = false;
+        }
+        if (!bun) {
+          Serial.println("EROARE rolurile sunt r1, r2, a1 sau a2");
+        } else {
+          for (int i = 0; i < 4; i++) {
+            rolButoane[i][0] = rest[i * 3];
+            rolButoane[i][1] = rest[i * 3 + 1];
+            rolButoane[i][2] = '\0';
+          }
+          aplicaRoluri();
+          prefs.begin(PREFS_NAMESPACE, false);
+          prefs.putString("btn", rest);
+          prefs.end();
+          Serial.printf("OK BTN=%s salvat.\n", rest.c_str());
+        }
+      }
+    } else if (linie == "TEST") {
+      modTest = true;
+      modTestPanaLa = millis() + TEST_DURATA_MS;
+      Serial.println("OK TEST pornit (3 minute). Apasa butoanele.");
+    } else if (linie == "TEST!") {
+      modTest = false;
+      Serial.println("OK TEST oprit.");
+    } else if (linie == "WIFI?") {
       raspundeWifi();
     } else if (linie == "SCAN?") {
-      // Retelele pe care le vede chiar radioul placutei - nu cele vazute de
-      // laptop. Conteaza diferenta: placuta prinde doar 2.4GHz, si tocmai
+      // Retelele pe care le vede chiar radioul device-ului - nu cele vazute de
+      // laptop. Conteaza diferenta: device-ul prinde doar 2.4GHz, si tocmai
       // ea trebuie sa se conecteze.
       scanWifi();
       Serial.printf("OK SCAN %d\n", scanCount);
@@ -367,7 +431,7 @@ void citesteComenziSerial() {
       Serial.println("OK SCAN gata");
     } else if (linie == "WIFI!") {
       uitaWifiSalvat();
-      Serial.println("OK am uitat reteaua salvata. Reporneste placuta.");
+      Serial.println("OK am uitat reteaua salvata. Reporneste device-ul.");
     } else if (linie.startsWith("WIFI=")) {
       String rest = linie.substring(5);
       int tab = rest.indexOf('\t');
@@ -382,7 +446,7 @@ void citesteComenziSerial() {
         Serial.println("EROARE parola trebuie sa aiba cel putin 8 caractere");
       } else {
         salveazaWifi(ssid, pass);
-        Serial.printf("OK WIFI=%s salvata. Reporneste placuta.\n", ssid.c_str());
+        Serial.printf("OK WIFI=%s salvata. Reporneste device-ul.\n", ssid.c_str());
       }
     } else {
       Serial.println("EROARE comanda necunoscuta (WIFI? / WIFI=nume<TAB>parola / WIFI!)");
@@ -776,8 +840,11 @@ bool apiLoginWithPin(const char* pin) {
   return true;
 }
 
-// Doar id-urile, o singura data dupa login. Categoriile de lupta se
-// arbitreaza pe puncte in timpul meciului, alt flux - aici notam tehnica.
+// Doar id-urile. Se cere la autentificare si apoi din nou, din cand in cand,
+// cat device-ul sta in asteptare: asignarile se fac in timpul zilei, iar o
+// lista ramasa de dimineata ar tine arbitrul in asteptare pe o categorie
+// care chiar e a lui. Categoriile de lupta se arbitreaza pe puncte in timpul
+// meciului, alt flux - aici notam tehnica.
 bool apiLoadCategories() {
   JsonDocument filter;
   JsonObject row = filter.add<JsonObject>();
@@ -812,6 +879,17 @@ bool apiLoadCategories() {
   }
   return true;
 }
+
+// Cand am cerut ultima oara lista de categorii si meciuri ale mele.
+//
+// Lista se incarca la autentificare, dar asignarile se fac in timpul zilei:
+// device-urile se autentifica dimineata, iar secretariatul pune arbitrii pe
+// categorii pe masura ce se desfasoara competitia. Fara reimprospatare,
+// device-ul ramane cu lista de dimineata - vede ca masa centrala a pus o
+// categorie pe teren, nu o recunoaste ca fiind a ei, si sta "in asteptare"
+// la nesfarsit desi arbitrul chiar e asignat.
+unsigned long lastAssignmentsLoad = 0;
+#define ASSIGNMENTS_REFRESH_MS 30000
 
 bool isMyCategory(int categoryId) {
   for (int i = 0; i < myCategoryCount; i++) {
@@ -939,12 +1017,44 @@ struct PointButton {
   volatile unsigned long lastAcceptedMs;
 };
 
+// Ordinea fizica a butoanelor pe device. Nu se schimba: e data de cum sunt
+// lipite firele. Ce se schimba e ROLUL fiecaruia - vezi mai jos.
 PointButton pointButtons[4] = {
   { BTN_RED_1,  true,  1, 0, 0 },
   { BTN_RED_2,  true,  2, 0, 0 },
   { BTN_BLUE_1, false, 1, 0, 0 },
   { BTN_BLUE_2, false, 2, 0, 0 },
 };
+
+// Ce punct da fiecare buton fizic.
+//
+// Cablajul nu iese mereu cum a fost desenat, iar un arbitru stangaci vrea
+// altfel decat unul dreptaci. Fara asta, orice schimbare inseamna
+// relipit fire sau reprogramat device-ul; asa se face din launcher, prin
+// cablu, in cateva secunde.
+//
+void aplicaRoluri() {
+  for (int i = 0; i < 4; i++) {
+    pointButtons[i].isRed  = (rolButoane[i][0] == 'r');
+    pointButtons[i].points = (rolButoane[i][1] == '2') ? 2 : 1;
+  }
+}
+
+void incarcaRoluri() {
+  prefs.begin(PREFS_NAMESPACE, true);
+  String salvat = prefs.getString("btn", "");
+  prefs.end();
+
+  // Formatul e "r1,r2,a1,a2" - patru roluri, despartite de virgula.
+  if (salvat.length() == 11) {
+    for (int i = 0; i < 4; i++) {
+      rolButoane[i][0] = salvat[i * 3];
+      rolButoane[i][1] = salvat[i * 3 + 1];
+      rolButoane[i][2] = '\0';
+    }
+  }
+  aplicaRoluri();
+}
 
 // Doua apasari pe acelasi buton mai apropiate decat atat sunt aceeasi
 // intentie, nu doua puncte. Nimeni nu arbitreaza doua faze distincte la
@@ -2532,6 +2642,7 @@ void startSession() {
 void loadAfterLogin() {
   setStatus("SE INCARCA", "Categoriile alocate...", false);
   if (!apiLoadCategories()) { setStatus("EROARE", statusDetail, true); return; }
+  lastAssignmentsLoad = millis();
 
   liveCategoryId = 0;
   liveAthleteId = 0;
@@ -2602,17 +2713,29 @@ void setup() {
   // Inainte de orice incercare de conectare: daca a fost configurata prin
   // cablu, reteaua din memorie e cea buna, nu cea din cod.
   incarcaWifiSalvat();
+  incarcaRoluri();
 
   startSession();
 }
 
 void loop() {
-  // Si cand placuta nu prinde reteaua: tocmai atunci e nevoie sa i-o poti
+  // Si cand device-ul nu prinde reteaua: tocmai atunci e nevoie sa i-o poti
   // schimba prin cablu, nu doar cand merge totul.
   citesteComenziSerial();
 
   int delta = readEncoderDelta();
   ButtonEvent button = readButton();
+
+  if (modTest) {
+    if (millis() > modTestPanaLa) {
+      modTest = false;
+      Serial.println("OK TEST s-a incheiat (3 minute).");
+    } else {
+      if (delta) Serial.printf("ENCODER\t%+d\n", delta);
+      if (button == BTN_SHORT) Serial.println("ENCODER\tapasare");
+      if (button == BTN_LONG)  Serial.println("ENCODER\tapasare-lunga");
+    }
+  }
 
   // Ceasul si starea WiFi din bara de sus, o data pe secunda, fara sa
   // redesenam tot ecranul sub degetul arbitrului.
@@ -2627,6 +2750,16 @@ void loop() {
   if ((screen == SCREEN_STANDBY || screen == SCREEN_SCORE || screen == SCREEN_MATCH) &&
       (millis() - lastPoll >= POLL_MS) && !userIsBusy()) {
     lastPoll = millis();
+
+    // Cat stam in asteptare, recitim din cand in cand ce ni s-a dat. Doar
+    // atunci: pe ecranul de nota sau in meci device-ul are treaba, iar lista
+    // nu se schimba sub ea.
+    if (screen == SCREEN_STANDBY &&
+        (millis() - lastAssignmentsLoad >= ASSIGNMENTS_REFRESH_MS)) {
+      lastAssignmentsLoad = millis();
+      apiLoadCategories();
+    }
+
     bool changed = pollMonitor();
 
     // Repriza se schimba des si independent de cine e pe saltea, deci o
@@ -2717,6 +2850,15 @@ void loop() {
 
   int pressed;
   while (takePress(&pressed)) {
+    // In proba, butoanele nu dau puncte - doar se anunta. Asa se verifica
+    // lipitura fara sa existe un meci pe teren.
+    if (modTest) {
+      // Si numarul butonului fizic, nu doar rolul: cand verifici cablajul,
+      // intrebarea e "care buton de pe device a raspuns", iar rolul lui se
+      // poate schimba din launcher.
+      Serial.printf("BUTON\t%d\t%s\n", pressed + 1, rolButoane[pressed]);
+      continue;
+    }
     if (screen != SCREEN_MATCH) continue;
 
     // Meciul s-a terminat: butoanele nu mai dau puncte, aleg castigatorul.
