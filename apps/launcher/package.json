@@ -26,6 +26,7 @@
     "appId": "ro.frvv.launcher",
     "productName": "FRVV Competition Launcher",
     "electronVersion": "33.4.11",
+    "npmRebuild": false,
     "files": [
       "dist/**/*",
       "electron/**/*"
