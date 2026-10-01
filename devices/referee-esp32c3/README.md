@@ -42,24 +42,32 @@ Din lista de categorii, apăsarea lungă închide sesiunea: dispozitivul se
 ```cpp
 const char* WIFI_SSID     = "...";
 const char* WIFI_PASS     = "...";
-const char* API_HOST      = "192.168.0.197";        // IP-ul din launcher
-const char* API_MDNS_NAME = "Gabis-MacBook-Pro";    // plasa de siguranţă
+const char* API_MDNS_NAME = "frvv-sala";            // cum găseşte serverul
+const char* API_HOST      = "192.168.0.197";        // scurtătură, opţională
 ```
 
-`API_HOST` e IP-ul afişat mare în launcher. Totul stă în LAN-ul sălii, deci
-fără HTTPS.
+Totul stă în LAN-ul sălii, deci fără HTTPS.
 
-**IP-ul se schimbă** — e dat de DHCP, iar o simplă trecere de pe o reţea pe
-alta l-a mutat deja odată, de la `.129` la `.197`. De aceea, dacă adresa
-configurată nu răspunde, placa întreabă reţeaua unde e calculatorul **după
-nume**, prin Bonjour/mDNS — ce anunţă macOS singur. Aşa un IP schimbat peste
-noapte nu înseamnă reflashuit toate dispozitivele în dimineaţa competiţiei.
-Numele se află pe Mac cu `scutil --get LocalHostName`; lasă `API_MDNS_NAME`
-gol ca să dezactivezi căutarea.
+**Placa găseşte serverul după nume, nu după adresă.** `frvv-sala` nu e numele
+unui calculator anume: launcherul răspunde la el, oriunde ar fi instalat şi ce
+adresă i-ar da routerul (vezi `apps/launcher/electron/mdns.js`). Aşa plăcuţele
+merg pe orice laptop, pe orice reţea, fără să fie reprogramate şi fără nicio
+setare pe router.
 
-Cel mai sigur rămâne tot o **rezervare DHCP** pentru laptopul din sală, ca
-adresa să nu se mai mişte deloc. Ecranul de PIN arată serverul cu care
-vorbeşte placa, deci o nepotrivire se vede imediat.
+Înainte aici era numele unui Mac anume, aflat cu `scutil --get LocalHostName`.
+Mergea doar de pe el: alt laptop — şi mai ales unul cu **Windows**, care nu-şi
+anunţă numele în reţea de la sine — şi plăcuţele tăceau fără să spună de ce.
+
+`API_HOST` rămâne ca scurtătură: se încearcă prima, fiindcă e instantanee când
+e corectă. Când nu e, se pierd vreo 4 secunde la pornire şi se trece pe
+căutarea după nume. Dacă laptopul din sală se schimbă des, pune acolo o adresă
+care sigur nu răspunde (`0.0.0.0`) şi lasă numele să facă treaba. Lasă
+`API_MDNS_NAME` gol ca să dezactivezi căutarea după nume.
+
+Rezervarea DHCP pe router nu mai e necesară. Dacă o faci totuşi, ţine minte
+că macOS foloseşte implicit **adresă MAC privată**, diferită de la o reţea la
+alta — o rezervare făcută pe ea nu rezistă. Ecranul de PIN arată serverul cu
+care vorbeşte placa, deci o nepotrivire se vede imediat.
 
 ## PIN-ul arbitrului
 

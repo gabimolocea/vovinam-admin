@@ -24,6 +24,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <ESPmDNS.h>
+#include <Preferences.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
@@ -31,20 +32,37 @@
 
 // ─────────────────────────── CONFIGURARE ───────────────────────────
 
-const char* WIFI_SSID = "Zignative2";
-const char* WIFI_PASS = "Rrdspider1";
+// Reteaua. Valorile de aici sunt doar punctul de pornire: ce se scrie prin
+// cablu din launcher (vezi mai jos) le ia locul si ramane in memoria
+// placutei, deci nu se reprogrameaza nimic cand se schimba reteaua.
+const char* WIFI_SSID_IMPLICIT = "Zignative2";
+const char* WIFI_PASS_IMPLICIT = "Rrdspider1";
 
-// Calculatorul din sala. IP-ul e cel afisat mare in launcher.
+// Ce foloseste efectiv placuta - umplute la pornire din memorie, daca e
+// ceva salvat acolo.
+String wifiSsid = WIFI_SSID_IMPLICIT;
+String wifiPass = WIFI_PASS_IMPLICIT;
+
+// Calculatorul din sala, dupa nume - nu dupa adresa.
+//
+// Numele asta nu e al unui calculator anume: launcherul raspunde la el,
+// oriunde ar fi instalat si ce adresa i-ar da routerul (vezi
+// apps/launcher/electron/mdns.js). Asa, placutele merg pe orice laptop,
+// pe orice retea, fara sa fie reprogramate si fara nicio setare pe router.
+//
+// Inainte aici era numele unui Mac anume. Mergea doar de pe el: alt
+// laptop, si mai ales un laptop cu Windows - care nu-si anunta numele in
+// retea de la sine - si placutele taceau fara sa spuna de ce.
+//
+// Lasa gol ca sa dezactivezi cautarea dupa nume.
+const char* API_MDNS_NAME = "frvv-sala";
+
+// Adresa, incercata prima fiindca e instantanee cand e corecta. Cand nu e,
+// se pierd vreo 4 secunde la pornire si se trece pe cautarea dupa nume.
+// Daca laptopul din sala se schimba des, pune aici o adresa care sigur nu
+// raspunde (de pilda 0.0.0.0) si lasa numele sa faca treaba.
 const char* API_HOST = "192.168.0.197";
 const int   API_PORT = 8000;
-
-// Plasa de siguranta pentru cand IP-ul se schimba - si se schimba: e dat
-// de DHCP, iar o simpla trecere de pe o retea pe alta l-a mutat deja
-// odata. Daca adresa de mai sus nu raspunde, placa intreaba reteaua unde
-// e calculatorul asta dupa nume (Bonjour/mDNS, ce anunta macOS singur) si
-// merge mai departe fara sa fie reprogramata. Numele se vede pe Mac cu
-// `scutil --get LocalHostName`; lasa gol ca sa dezactivezi cautarea.
-const char* API_MDNS_NAME = "Gabis-MacBook-Pro";
 
 // Nu se configureaza nimic per arbitru: PIN-ul se formeaza din encoder la
 // pornire, iar serverul stie din el cine e si la ce eveniment. Acelasi
@@ -242,6 +260,137 @@ unsigned long lastTopBarDraw = 0;
 bool submittedShown  = false;
 int  submittedScore  = 0;
 
+
+// ──────────────────────── CONFIGURARE PRIN CABLU ────────────────────────
+//
+// Reteaua sa se poata schimba fara sa reprogramam toate placutele.
+//
+// Pana acum numele si parola erau scrise in cod: o sala cu alt Wi-Fi
+// insemna recompilat si reflashuit fiecare placuta, in dimineata
+// competitiei. Nici varianta "le scriu din encoder" nu e buna - o parola
+// se formeaza invartind un buton, litera cu litera, fara stergere.
+//
+// Asa ca le primim prin cablul USB, de la launcher, unde omul le scrie de
+// la tastatura. Placutele oricum se leaga la calculator ca sa fie
+// programate, deci cablul e deja acolo.
+//
+// Placuta nu poate cere ea configurarea de la launcher, oricat ar parea
+// mai simplu: ca sa ajunga la el are nevoie de Wi-Fi, iar Wi-Fi-ul e exact
+// ce-i lipseste. De aceea merge intr-o singura directie, dinspre cablu.
+
+Preferences prefs;
+
+// Definita mai jos, langa restul lucrurilor de WiFi.
+void scanWifi();
+
+// Un rand de text, terminat cu Enter. Simplu dinadins: se poate si dintr-un
+// monitor serial obisnuit, cand launcherul nu e la indemana.
+//
+//   WIFI? ................ raspunde cu reteaua configurata acum
+//   WIFI=nume\tparola .... o schimba si o tine minte
+//   WIFI!................. uita ce stie si revine la cea din cod
+//
+// Numele si parola sunt despartite de TAB, nu de spatiu sau virgula:
+// amandoua apar in parole adevarate, TAB-ul nu.
+const char* PREFS_NAMESPACE = "frvv";
+
+void incarcaWifiSalvat() {
+  prefs.begin(PREFS_NAMESPACE, true);   // true = doar citire
+  String ssid = prefs.getString("ssid", "");
+  String pass = prefs.getString("pass", "");
+  prefs.end();
+
+  if (ssid.length()) {
+    wifiSsid = ssid;
+    wifiPass = pass;
+    Serial.printf("WiFi din memorie: %s\n", wifiSsid.c_str());
+  }
+}
+
+void salveazaWifi(const String& ssid, const String& pass) {
+  prefs.begin(PREFS_NAMESPACE, false);
+  prefs.putString("ssid", ssid);
+  prefs.putString("pass", pass);
+  prefs.end();
+  wifiSsid = ssid;
+  wifiPass = pass;
+}
+
+void uitaWifiSalvat() {
+  prefs.begin(PREFS_NAMESPACE, false);
+  prefs.remove("ssid");
+  prefs.remove("pass");
+  prefs.end();
+  wifiSsid = WIFI_SSID_IMPLICIT;
+  wifiPass = WIFI_PASS_IMPLICIT;
+}
+
+void raspundeWifi() {
+  // Parola nu se trimite inapoi niciodata: cablul e si monitorul serial al
+  // oricui are placuta in mana.
+  Serial.printf("OK WIFI=%s parola=%s\n",
+                wifiSsid.c_str(),
+                wifiPass.length() ? "(setata)" : "(fara)");
+}
+
+// Se cheama des, din bucla principala. Nu blocheaza: daca randul nu e
+// complet, se intoarce si revine data viitoare.
+void citesteComenziSerial() {
+  static String linie;
+
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+
+    if (c == '\r') continue;
+    if (c != '\n') {
+      // Marginea e cu mult peste nevoie (32 nume + 63 parola), dar exista
+      // ca un cablu cu zgomot sa nu umple memoria placutei.
+      if (linie.length() < 200) linie += c;
+      continue;
+    }
+
+    linie.trim();
+    if (!linie.length()) continue;
+
+    if (linie == "WIFI?") {
+      raspundeWifi();
+    } else if (linie == "SCAN?") {
+      // Retelele pe care le vede chiar radioul placutei - nu cele vazute de
+      // laptop. Conteaza diferenta: placuta prinde doar 2.4GHz, si tocmai
+      // ea trebuie sa se conecteze.
+      scanWifi();
+      Serial.printf("OK SCAN %d\n", scanCount);
+      for (int i = 0; i < scanCount; i++) {
+        Serial.printf("RETEA\t%s\t%d\t%d\n",
+                      scanRows[i].ssid, scanRows[i].rssi, scanRows[i].channel);
+      }
+      Serial.println("OK SCAN gata");
+    } else if (linie == "WIFI!") {
+      uitaWifiSalvat();
+      Serial.println("OK am uitat reteaua salvata. Reporneste placuta.");
+    } else if (linie.startsWith("WIFI=")) {
+      String rest = linie.substring(5);
+      int tab = rest.indexOf('\t');
+      String ssid = (tab >= 0) ? rest.substring(0, tab) : rest;
+      String pass = (tab >= 0) ? rest.substring(tab + 1) : "";
+
+      if (!ssid.length()) {
+        Serial.println("EROARE numele retelei lipseste");
+      } else if (pass.length() && pass.length() < 8) {
+        // WPA2 nu accepta parole sub 8 caractere. Mai bine o spunem acum
+        // decat sa salvam ceva ce nu se va putea conecta niciodata.
+        Serial.println("EROARE parola trebuie sa aiba cel putin 8 caractere");
+      } else {
+        salveazaWifi(ssid, pass);
+        Serial.printf("OK WIFI=%s salvata. Reporneste placuta.\n", ssid.c_str());
+      }
+    } else {
+      Serial.println("EROARE comanda necunoscuta (WIFI? / WIFI=nume<TAB>parola / WIFI!)");
+    }
+
+    linie = "";
+  }
+}
 
 // ───────────────────────────── ENCODER ─────────────────────────────
 
@@ -1937,7 +2086,7 @@ void drawWifiDiagScreen() {
 
   for (int i = 0; i < scanCount; i++) {
     int y = 112 + i * 16;
-    bool ours = (strcmp(scanRows[i].ssid, WIFI_SSID) == 0);
+    bool ours = (wifiSsid == scanRows[i].ssid);
     gfx->setTextColor(ours ? GREEN : WHITE);
     gfx->setCursor(10, y);
     gfx->print(scanRows[i].ssid);
@@ -2219,7 +2368,7 @@ void scanWifi() {
   }
 
   for (int i = 0; i < found; i++) {
-    if (WiFi.SSID(i) == WIFI_SSID) {
+    if (WiFi.SSID(i) == wifiSsid) {
       scanFoundOurs = true;
       ourChannel = WiFi.channel(i);
     }
@@ -2264,7 +2413,7 @@ bool attemptConnect(bool reducedPower, unsigned long timeoutMs) {
 
   if (reducedPower) WiFi.setTxPower(WIFI_POWER_8_5dBm);
 
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 
   unsigned long started = millis();
   while (WiFi.status() != WL_CONNECTED && (millis() - started) < timeoutMs) {
@@ -2276,7 +2425,7 @@ bool attemptConnect(bool reducedPower, unsigned long timeoutMs) {
 bool connectWifi() {
   WiFi.onEvent(onWifiEvent);
 
-  drawSplash(20, (String("Conectare la ") + WIFI_SSID).c_str());
+  drawSplash(20, (String("Conectare la ") + wifiSsid).c_str());
   if (attemptConnect(false, 15000)) return true;
 
   // A doua incercare cu emisie redusa: daca asta trece iar prima nu,
@@ -2301,7 +2450,7 @@ bool connectWifi() {
   } else if (reason.length()) {
     statusDetail = reason;
   } else if (!scanFoundOurs) {
-    statusDetail = String(WIFI_SSID) + " nu se vede. C3 prinde doar 2.4GHz.";
+    statusDetail = wifiSsid + " nu se vede. C3 prinde doar 2.4GHz.";
   } else if (st == WL_CONNECT_FAILED) {
     statusDetail = "Reteaua m-a refuzat - verifica parola.";
   } else {
@@ -2444,10 +2593,18 @@ void setup() {
   gfx->begin();
   drawSplash(5, "Pornire...");
 
+  // Inainte de orice incercare de conectare: daca a fost configurata prin
+  // cablu, reteaua din memorie e cea buna, nu cea din cod.
+  incarcaWifiSalvat();
+
   startSession();
 }
 
 void loop() {
+  // Si cand placuta nu prinde reteaua: tocmai atunci e nevoie sa i-o poti
+  // schimba prin cablu, nu doar cand merge totul.
+  citesteComenziSerial();
+
   int delta = readEncoderDelta();
   ButtonEvent button = readButton();
 

@@ -6,6 +6,12 @@ const { getLanIp } = require('./network');
 const { ServiceManager, buildServiceDefs, ensureLocalAdmin } = require('./services');
 const { getRepoRoot, setRepoRoot } = require('./repoRoot');
 const { checkForUpdates } = require('./updater');
+const mdns = require('./mdns');
+
+// Cipurile prin care placutele ajung pe USB: USB-ul din ESP32 insusi
+// (Espressif) si cele trei punti seriale care se gasesc pe placile ieftine.
+// Folosite doar ca sa ghicim corect cand sunt mai multe porturi deschise.
+const PLACUTA_USB = [0x303a, 0x10c4, 0x1a86, 0x0403];
 const dockerBackend = require('./dockerBackend');
 const cloudSync = require('./cloudSync');
 
@@ -404,6 +410,30 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+  // Placutele arbitrilor se configureaza prin cablu, din fereastra
+  // aplicatiei (Web Serial). Electron nu da acces la porturi fara ca
+  // procesul principal sa aleaga explicit unul - fara bucata asta,
+  // `navigator.serial.requestPort()` nu intoarce niciodata nimic, si fara
+  // nicio eroare.
+  const { session } = require('electron');
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => (
+    permission === 'serial' || permission === 'serial-port'
+  ));
+  session.defaultSession.on('select-serial-port', (event, ports, _wc, callback) => {
+    event.preventDefault();
+    if (!ports.length) {
+      callback('');
+      return;
+    }
+    // Se configureaza o placuta pe rand, deci alegem noi in loc sa punem
+    // operatorul sa aleaga dintr-o lista de nume ca "/dev/cu.usbmodem101",
+    // care nu-i spun nimic. Daca sunt mai multe, o preferam pe cea care
+    // arata a placuta.
+    const alesa = ports.find((p) => PLACUTA_USB.includes(Number(p.vendorId))) || ports[0];
+    sendToWindow('serial:port-ales', { nume: alesa.displayName || alesa.portName || alesa.portId });
+    callback(alesa.portId);
+  });
+
   createWindow();
   buildMenu();
 
@@ -432,6 +462,7 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   getServiceManager().stopAll();
+  mdns.stop();
 });
 
 ipcMain.handle('auth:login', async (_event, { baseUrl, email, password }) => {
@@ -487,6 +518,11 @@ ipcMain.handle('services:start-local-stack', async (_event, { useDocker = false 
   const lanIp = getLanIp();
   if (!lanIp) throw new Error('Nu s-a găsit o adresă IP în rețeaua locală (verifică WiFi-ul).');
   session.lanIp = lanIp;
+
+  // Placutele arbitrilor cauta serverul dupa nume, nu dupa adresa (vezi
+  // mdns.js). De aici incolo raspundem la acel nume cu adresa de acum.
+  mdns.start(lanIp, { onLog: (line) => sendToWindow('service:log', { id: 'backend', line }) });
+  mdns.update(lanIp);
   // Fara cod pe disc nu exista nici backend de pornit cu Python, nici
   // interfete de pornit cu npm: totul vine din containere.
   const dinSala = !getRepoRoot();

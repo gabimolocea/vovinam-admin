@@ -7,7 +7,21 @@ const APP_LABELS = {
   'public-display': 'Ecran Public',
 };
 
-export default function ControlPanelPage({ event, localInfo, onOpenApp, triggerResync, onResyncTriggered }) {
+// Placutele arbitrilor nu cauta laptopul dupa adresa, ci dupa numele cu
+// care se anunta launcherul in retea (apps/launcher/electron/mdns.js). Nu e
+// nimic de configurat - dar se afiseaza, fiindca atunci cand ceva nu merge
+// primul lucru pe care il intreaba cineva e "si de unde stiu ele unde sa
+// caute?".
+function NumeInRetea() {
+  return (
+    <p className="mdns-name">
+      Plăcuțele arbitrilor găsesc laptopul ca <code>frvv-sala.local</code>,
+      oricare ar fi adresa de mai sus.
+    </p>
+  );
+}
+
+export default function ControlPanelPage({ event, localInfo, onOpenApp, onConfigureDevices, triggerResync, onResyncTriggered }) {
   const [statuses, setStatuses] = useState({});
   const [lines, setLines] = useState([]);
   const [resyncing, setResyncing] = useState(false);
@@ -86,6 +100,12 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, triggerR
       <p className="subtitle">Stiva locală rulează. Deschide aplicațiile de mai jos direct aici.</p>
 
       <div className="lan-ip">{localInfo?.lanIp}</div>
+
+      <NumeInRetea />
+
+      <button type="button" className="btn-link" onClick={onConfigureDevices}>
+        Configurează rețeaua plăcuțelor de arbitraj
+      </button>
 
       <div className="app-links">
         {appIds.map((id) => (

@@ -6,6 +6,7 @@ import SyncLocalPage from './pages/SyncLocalPage.jsx';
 import ControlPanelPage from './pages/ControlPanelPage.jsx';
 import SyncToCloudPage from './pages/SyncToCloudPage.jsx';
 import BackupsPage from './pages/BackupsPage.jsx';
+import DeviceWifiPage from './pages/DeviceWifiPage.jsx';
 import AppViewPage from './pages/AppViewPage.jsx';
 
 // A linear flow - no router needed, `screen` is the only navigation
@@ -118,12 +119,15 @@ export default function App() {
           event={event}
           localInfo={localInfo}
           onOpenApp={(id, url, title) => setActiveApp({ id, url, title })}
+          onConfigureDevices={() => setScreen('device-wifi')}
           triggerResync={pendingResync}
           onResyncTriggered={() => setPendingResync(false)}
         />
       )}
 
       {screen === 'backups' && <BackupsPage onBack={() => setScreen('control')} />}
+
+      {screen === 'device-wifi' && <DeviceWifiPage onBack={() => setScreen('control')} />}
 
       {screen === 'sync-cloud' && (
         <SyncToCloudPage

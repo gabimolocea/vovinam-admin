@@ -81,6 +81,7 @@ label {
   color: var(--navy);
 }
 
+select,
 input[type='text'],
 input[type='email'],
 input[type='password'] {
@@ -238,6 +239,24 @@ button {
   text-align: center;
   margin: 8px 0 20px;
 }
+
+/* Numele cu care se anunta launcherul in retea. Discret: e o confirmare,
+   nu o actiune. */
+.mdns-name {
+  margin: -12px 0 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted, #667);
+}
+
+.mdns-name code {
+  font-family: 'Roboto Mono', ui-monospace, monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
 
 .app-links {
   display: flex;
