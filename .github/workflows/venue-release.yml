@@ -1,0 +1,153 @@
+name: Venue release
+
+# Tot ce are nevoie laptopul din sala, scos dintr-o singura apasare:
+# imaginile Docker (backend + cele trei interfete) si instalatoarele
+# launcherului pentru Mac si pentru Windows, puse intr-un GitHub Release.
+#
+# Se porneste pe o eticheta de forma v1.2.3, sau manual din fila Actions.
+# Etichetarea e deliberat manuala: o versiune noua inseamna ca cineva
+# trebuie sa reinstaleze aplicatia pe laptopul din sala, deci nu vrem una
+# la fiecare commit.
+#
+# Imaginile si instalatoarele poarta aceeasi eticheta, si asta nu e o
+# coincidenta: launcherul cere imaginile cu versiunea cu care a fost
+# construit (FRVV_IMAGE_TAG), ca sa nu ajunga o aplicatie veche sa porneasca
+# un backend nou, sau invers.
+
+# DE FACUT O SINGURA DATA, dupa prima rulare: pachetele publicate in GHCR
+# sunt private la inceput. Pe github.com/users/<cont>/packages, la fiecare
+# dintre cele doua imagini, Package settings -> Change visibility -> Public.
+# Fara pasul asta, laptopul din sala nu le poate descarca si pornirea cade
+# cu "denied" - iar mesajul nu spune nicaieri ca e o chestiune de drepturi.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Eticheta de folosit (ex. v1.0.0)'
+        required: true
+
+permissions:
+  contents: write   # pentru a crea Release-ul
+  packages: write   # pentru a publica imaginile in GHCR
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ── Imaginile Docker ────────────────────────────────────────────────
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: vovinam-venue-backend
+            dockerfile: backend/Dockerfile.local
+            context: ./backend
+          - name: vovinam-venue-frontends
+            dockerfile: Dockerfile.venue-frontends
+            context: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versiunea
+        id: ver
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Doua arhitecturi: laptopurile din sala pot fi Mac-uri cu procesor
+      # Apple (arm64) sau PC-uri obisnuite (amd64). Fara arm64, Docker ar
+      # rula imaginea prin emulare pe Mac-urile noi - merge, dar incet, si
+      # tocmai acolo nu vrem surprize.
+      - name: Construieste si publica ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}:${{ steps.ver.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Instalatoarele launcherului ─────────────────────────────────────
+  launcher:
+    strategy:
+      fail-fast: false   # un esec pe Windows nu trebuie sa ne lase si fara varianta de Mac
+      matrix:
+        include:
+          - os: macos-latest
+            artefacte: 'apps/launcher/release/*.dmg'
+          - os: windows-latest
+            artefacte: 'apps/launcher/release/*.exe'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Acelasi motiv ca in Dockerfile-urile noastre: package-lock.json e
+      # facut pe macOS si nu retine binarele rollup pentru alte platforme
+      # (npm/cli#4828). Pe Windows, `npm ci` ar trece si abia construirea ar
+      # cadea.
+      - name: Instaleaza dependintele
+        run: |
+          node -e "require('fs').rmSync('package-lock.json', { force: true })"
+          npm install
+
+      - name: Construieste launcherul
+        run: npm run build --workspace @vovinam/launcher
+        env:
+          # Nu avem certificate (vezi documentatia de instalare: aplicatia
+          # se deschide cu pasii de ocolire). Fara linia asta,
+          # electron-builder incearca sa semneze pe macOS si se opreste.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ matrix.os }}
+          path: ${{ matrix.artefacte }}
+          if-no-files-found: error
+
+  # ── Release-ul ──────────────────────────────────────────────────────
+  release:
+    needs: [images, launcher]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefacte
+
+      - name: Publica Release-ul
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: artefacte/**/*
+          body: |
+            Instalatoarele pentru laptopul din sala.
+
+            - **Mac** — fisierul `.dmg`
+            - **Windows** — fisierul `.exe`
+
+            Pe laptopul din sala mai e nevoie doar de **Docker Desktop**.
+            Nu trebuie nici Node, nici codul sursa: launcherul descarca
+            singur ce ii trebuie.
+
+            Aplicatia nu e semnata, deci la prima deschidere sistemul
+            avertizeaza. Pasii de ocolire, cu poze, sunt in panoul de
+            administrare, la **Competitie in sala**.
