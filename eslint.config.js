@@ -39,4 +39,19 @@ export default [
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Procesul principal al launcherului: Node, nu browser, si CommonJS.
+    // Fara regula asta, eslint se plangea de `require`, `module`, `process`
+    // si `__dirname` la fiecare fisier - vreo cincizeci de erori care nu
+    // insemnau nimic si care acopereau orice problema adevarata.
+    files: ['apps/launcher/electron/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    },
+  },
 ];
