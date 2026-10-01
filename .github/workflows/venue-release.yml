@@ -21,20 +21,30 @@ name: Venue release
 # scrie FRVV_IMAGE_TAG in .env.local din versiunea aplicatiei
 # (dockerBackend.js, ensureEnvLocal) si etichetele devin fixe.
 
-# DE FACUT O SINGURA DATA, dupa prima rulare: pachetele publicate in GHCR
-# sunt private la inceput. Pe github.com/users/<cont>/packages, la fiecare
-# dintre cele doua imagini, Package settings -> Change visibility -> Public.
-# Fara pasul asta, laptopul din sala nu le poate descarca si pornirea cade
-# cu "denied" - iar mesajul nu spune nicaieri ca e o chestiune de drepturi.
+# Imaginile publicate sunt publice de la sine, fiindca depozitul e public:
+# verificat cerand manifestul fara autentificare. Nu e nevoie de nimic
+# manual dupa publicare.
 
+# Trei feluri de a porni:
+#
+#  - urci versiunea din apps/launcher/package.json si impingi pe main. E
+#    calea obisnuita: schimbi un numar, si restul se intampla singur. Daca
+#    eticheta versiunii aceleia exista deja, nu se face nimic - asa, o
+#    modificare oarecare in package.json (o dependinta noua, de pilda) nu
+#    scoate un release peste cel de dinainte.
+#  - impingi o eticheta v*, ca pana acum.
+#  - din fila Actions, cu versiunea scrisa de mana.
 on:
   push:
+    branches: [main]
+    paths:
+      - 'apps/launcher/package.json'
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Eticheta de folosit (ex. v1.0.0)'
+        description: 'Eticheta de folosit (ex. v1.0.2)'
         required: true
 
 permissions:
@@ -45,8 +55,43 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # Ce versiune publicam, si daca mai e ceva de publicat.
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ver.outputs.tag }}
+      publicam: ${{ steps.ver.outputs.publicam }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # ca sa vedem etichetele existente
+
+      - id: ver
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${{ github.ref_name }}"
+          else
+            tag="v$(node -p "require('./apps/launcher/package.json').version")"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          # Daca eticheta exista deja, versiunea aceea e publicata. Singura
+          # exceptie: chiar impingerea etichetei, care e cererea explicita de
+          # a publica.
+          if [ "${{ github.ref_type }}" != "tag" ] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "publicam=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$tag exista deja - nu public nimic. Urca versiunea din apps/launcher/package.json."
+          else
+            echo "publicam=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── Imaginile Docker ────────────────────────────────────────────────
   images:
+    needs: decide
+    if: needs.decide.outputs.publicam == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -59,10 +104,6 @@ jobs:
             context: .
     steps:
       - uses: actions/checkout@v4
-
-      - name: Versiunea
-        id: ver
-        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
       # Runnerele GitHub sunt pe procesoare Intel, iar noi construim si
       # pentru arm64 (Mac-urile noi din sala). Fara emulare, acea parte
@@ -89,21 +130,32 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}:${{ steps.ver.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}:${{ needs.decide.outputs.tag }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   # ── Instalatoarele launcherului ─────────────────────────────────────
   launcher:
+    needs: decide
+    if: needs.decide.outputs.publicam == 'true'
     strategy:
       fail-fast: false   # un esec pe Windows nu trebuie sa ne lase si fara varianta de Mac
       matrix:
         include:
           - os: macos-latest
-            artefacte: 'apps/launcher/release/*.dmg'
+            # latest*.yml si .blockmap nu sunt de descarcat de nimeni, dar
+            # fara ele aplicatia instalata n-are de unde sti ca a aparut o
+            # versiune noua. builder-debug.yml ramane afara dinadins.
+            artefacte: |
+              apps/launcher/release/*.dmg
+              apps/launcher/release/*.blockmap
+              apps/launcher/release/latest*.yml
           - os: windows-latest
-            artefacte: 'apps/launcher/release/*.exe'
+            artefacte: |
+              apps/launcher/release/*.exe
+              apps/launcher/release/*.blockmap
+              apps/launcher/release/latest*.yml
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -154,7 +206,7 @@ jobs:
 
   # ── Release-ul ──────────────────────────────────────────────────────
   release:
-    needs: [images, launcher]
+    needs: [decide, images, launcher]
     runs-on: ubuntu-latest
     steps:
       # `pattern` nu e de ornament: fara el se descarca si artefactele de
@@ -169,8 +221,8 @@ jobs:
       - name: Publica Release-ul
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ needs.decide.outputs.tag }}
+          name: ${{ needs.decide.outputs.tag }}
           files: artefacte/**/*
           body: |
             Instalatoarele pentru laptopul din sala.

@@ -52,6 +52,18 @@ describe('Descarcarea launcherului', () => {
     expect(buton.getAttribute('href')).not.toContain('github.com');
   });
 
+  it('spune ce se intampla la versiunile urmatoare, diferit pe fiecare sistem', async () => {
+    cuRaspuns(RELEASE);
+    render(<VenueSetupPage />);
+
+    // Pe Windows se actualizeaza singura; pe Mac nu se poate fara certificat,
+    // si omul trebuie sa stie dinainte, nu sa descopere in ziua competitiei.
+    await waitFor(() => expect(screen.getByText(/deschide pagina de descarcare/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: /Windows/ }));
+    expect(screen.getByText(/le descarcă singură/)).toBeInTheDocument();
+  });
+
   it('arata ce versiune e, ca sa se vada daca e la zi', async () => {
     cuRaspuns(RELEASE);
     render(<VenueSetupPage />);

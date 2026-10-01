@@ -1,7 +1,7 @@
 {
   "name": "@vovinam/launcher",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "FRVV Competition Launcher - runs the full competition stack locally, syncing an event down from the cloud before the day starts and back up afterwards.",
   "main": "electron/main.js",
   "type": "commonjs",
@@ -9,7 +9,7 @@
     "dev:renderer": "vite --port 5178",
     "dev": "concurrently -k -n renderer,electron -c cyan,magenta \"npm run dev:renderer\" \"wait-on tcp:5178 && cross-env ELECTRON_START_URL=http://localhost:5178 electron .\"",
     "build:renderer": "vite build",
-    "build": "npm run build:renderer && electron-builder"
+    "build": "npm run build:renderer && electron-builder -p never"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -25,6 +25,7 @@
   "build": {
     "appId": "ro.frvv.launcher",
     "productName": "FRVV Competition Launcher",
+    "artifactName": "FRVV-Competition-Launcher-${version}-${arch}.${ext}",
     "electronVersion": "33.4.11",
     "npmRebuild": false,
     "files": [
@@ -69,6 +70,16 @@
         "from": "../../docker-compose.venue.yml",
         "to": "docker-compose.venue.yml"
       }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "gabimolocea",
+        "repo": "vovinam-admin"
+      }
     ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

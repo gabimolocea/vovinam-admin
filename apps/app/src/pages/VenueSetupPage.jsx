@@ -392,6 +392,26 @@ export default function VenueSetupPage() {
             iar la final trimiți rezultatele înapoi.
           </p>
           <Descarcari sistem={sistem} />
+          <Alert>
+            <Download className="h-4 w-4" />
+            <div>
+              {eMac ? (
+                <>
+                  <strong className="font-semibold">Despre versiunile următoare:</strong> aplicația
+                  îți spune singură când apare una nouă și îți deschide pagina de descarcare.
+                  Pe Mac instalarea nu se poate face automat, așa că o tragi din nou peste
+                  folderul Applications — e nevoie de un certificat Apple pentru ca pasul
+                  ăsta să dispară.
+                </>
+              ) : (
+                <>
+                  <strong className="font-semibold">Despre versiunile următoare:</strong> aplicația
+                  le descarcă singură și te întreabă când vrei să repornești. Dacă ești în
+                  mijlocul unei competiții, alegi &bdquo;Mai târziu&rdquo; și nu se întrerupe nimic.
+                </>
+              )}
+            </div>
+          </Alert>
         </Pas>
 
         <Pas numar={3} titlu="Deschide-o prima dată" durata="~5 minute">

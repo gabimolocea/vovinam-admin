@@ -5,6 +5,7 @@ const path = require('path');
 const { getLanIp } = require('./network');
 const { ServiceManager, buildServiceDefs, ensureLocalAdmin } = require('./services');
 const { getRepoRoot, setRepoRoot } = require('./repoRoot');
+const { checkForUpdates } = require('./updater');
 const dockerBackend = require('./dockerBackend');
 const cloudSync = require('./cloudSync');
 
@@ -405,6 +406,11 @@ app.whenReady().then(async () => {
   }
   createWindow();
   buildMenu();
+
+  // Dupa fereastra, nu inainte: verificarea vorbeste prin ferestre de
+  // dialog, iar acelea au nevoie de o fereastra parinte ca sa apara unde
+  // trebuie.
+  checkForUpdates();
 });
 
 app.on('window-all-closed', () => {
