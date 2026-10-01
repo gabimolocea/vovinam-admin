@@ -17,7 +17,7 @@ function savedCloudUrl() {
   }
 }
 
-export default function LoginPage({ onLoggedIn }) {
+export default function LoginPage({ onLoggedIn, onConfigureDevices }) {
   const [cloudUrl, setCloudUrl] = useState(savedCloudUrl);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -73,6 +73,13 @@ export default function LoginPage({ onLoggedIn }) {
           {loading ? 'Se conectează…' : 'Conectare'}
         </button>
       </form>
+
+      {/* Configurarea placutelor nu are nevoie nici de cont, nici de
+          competitie sincronizata - se face cu o saptamana inainte, pe masa
+          din birou. De aceea e aici, nu dupa cinci ecrane. */}
+      <button type="button" className="btn-link" onClick={onConfigureDevices}>
+        Configurează rețeaua plăcuțelor de arbitraj
+      </button>
 
       <p className="footer-note">Parola nu este salvată pe disc — este folosită doar cât timp aplicația rulează.</p>
     </div>

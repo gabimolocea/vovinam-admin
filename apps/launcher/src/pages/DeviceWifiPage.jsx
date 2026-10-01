@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 /**
  * Configurarea retelei pe placutele arbitrilor, prin cablul USB.
@@ -38,35 +38,64 @@ export default function DeviceWifiPage({ onBack }) {
 
   const compatibil = typeof navigator !== 'undefined' && 'serial' in navigator;
 
-  /** Trimite o linie si aduna raspunsul pana la "OK"/"EROARE" sau expirare. */
-  async function vorbeste(portDeschis, comanda, asteptareMs) {
-    const encoder = new TextEncoder();
-    const writer = portDeschis.writable.getWriter();
-    await writer.write(encoder.encode(`${comanda}\n`));
-    writer.releaseLock();
+  // Un singur cititor, pornit odata cu portul si lasat sa curga.
+  //
+  // Prima varianta punea `reader.read()` intr-un `Promise.race` cu un
+  // cronometru. Cand castiga cronometrul, citirea ramanea in asteptare, iar
+  // bucla cerea imediat alta - doua citiri in acelasi timp pe acelasi
+  // cititor. Chromium umplea consola cu "Invalid data pipe read result".
+  //
+  // Nici anularea cititorului la fiecare comanda nu merge: anularea inchide
+  // fluxul portului, iar a doua comanda n-ar mai avea de unde citi. Asa ca
+  // citim intr-un singur loc, continuu, si fiecare comanda doar asteapta sa
+  // apara in ce s-a adunat ce o intereseaza.
+  const cititor = useRef(null);
+  const adunat = useRef('');
 
+  function pornesteCitirea(portDeschis) {
     const reader = portDeschis.readable.getReader();
+    cititor.current = reader;
     const decoder = new TextDecoder();
-    let text = '';
-    const pana = Date.now() + asteptareMs;
 
-    try {
-      while (Date.now() < pana) {
-        const { value, done } = await Promise.race([
-          reader.read(),
-          new Promise((resolve) => setTimeout(() => resolve({ value: null, done: false }), 400)),
-        ]);
-        if (done) break;
-        if (value) text += decoder.decode(value, { stream: true });
-        // Placuta scrie si jurnalul ei pe acelasi cablu, deci nu ne oprim la
-        // prima linie, ci la una care arata a raspuns pentru noi.
-        if (/^(OK|EROARE)\b.*$/m.test(text) && !/OK SCAN \d+$/m.test(text.trim())) break;
-        if (/OK SCAN gata/m.test(text)) break;
+    (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) adunat.current += decoder.decode(value, { stream: true });
+        }
+      } catch {
+        // Portul s-a inchis sub noi - normal la plecarea din ecran.
       }
+    })();
+  }
+
+  async function opresteCitirea(portDeschis) {
+    try {
+      await cititor.current?.cancel();
+      cititor.current?.releaseLock();
+    } catch { /* se inchide oricum */ }
+    cititor.current = null;
+    try { await portDeschis?.close(); } catch { /* idem */ }
+  }
+
+  /** Trimite o linie si asteapta sa apara raspunsul in ce s-a adunat. */
+  async function vorbeste(portDeschis, comanda, gata, asteptareMs) {
+    adunat.current = '';
+
+    const writer = portDeschis.writable.getWriter();
+    try {
+      await writer.write(new TextEncoder().encode(`${comanda}\n`));
     } finally {
-      reader.releaseLock();
+      writer.releaseLock();
     }
-    return text;
+
+    const pana = Date.now() + asteptareMs;
+    while (Date.now() < pana) {
+      if (gata(adunat.current)) break;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    return adunat.current;
   }
 
   async function conecteaza() {
@@ -75,15 +104,27 @@ export default function DeviceWifiPage({ onBack }) {
     try {
       const ales = await navigator.serial.requestPort();
       await ales.open({ baudRate: BAUD });
+      pornesteCitirea(ales);
       setPort(ales);
       setStare('Plăcuță conectată. Caut rețelele pe care le vede ea…');
       await scaneaza(ales);
     } catch (err) {
       // `NotFoundError` inseamna ca n-a fost ales niciun port - nu e o
       // defectiune, e un "m-am razgandit".
-      if (err?.name !== 'NotFoundError') {
-        setEroare(`Nu am putut deschide plăcuța: ${err.message}`);
+      if (err?.name === 'NotFoundError') {
+        setStare('');
+        return;
       }
+      // Un port serial se deschide de un singur program odata, iar cel care
+      // il tine e aproape intotdeauna monitorul din Arduino IDE, lasat
+      // deschis dupa programare. Mesajul browserului ("Failed to open
+      // serial port") nu spune asta, si fara explicatie omul cauta
+      // defectiunea in cablu sau in placuta.
+      const ocupat = /open/i.test(err?.message || '') || err?.name === 'InvalidStateError';
+      setEroare(ocupat
+        ? 'Nu am putut deschide plăcuța — portul e ținut de alt program. '
+          + 'Închide monitorul serial din Arduino IDE (sau orice screen/picocom) și încearcă din nou.'
+        : `Nu am putut deschide plăcuța: ${err.message}`);
       setStare('');
     }
   }
@@ -93,7 +134,12 @@ export default function DeviceWifiPage({ onBack }) {
     setOcupat(true);
     setEroare('');
     try {
-      const raspuns = await vorbeste(portDeschis, 'SCAN?', ASTEPTARE_SCAN_MS);
+      const raspuns = await vorbeste(
+        portDeschis,
+        'SCAN?',
+        (text) => /OK SCAN gata/.test(text),
+        ASTEPTARE_SCAN_MS,
+      );
       const gasite = raspuns
         .split('\n')
         .filter((l) => l.startsWith('RETEA\t'))
@@ -106,6 +152,9 @@ export default function DeviceWifiPage({ onBack }) {
       setStare(gasite.length
         ? `Plăcuța vede ${gasite.length} rețele.`
         : 'Plăcuța nu vede nicio rețea. Verifică dacă routerul e pornit și emite pe 2.4GHz.');
+      // Pastram ce era ales, daca mai e in lista: altfel o simpla reluare a
+      // cautarii ar sterge alegerea facuta cu un minut inainte.
+      setSsid((curent) => (gasite.some((r) => r.nume === curent) ? curent : ''));
     } catch (err) {
       setEroare(`Scanarea a eșuat: ${err.message}`);
     } finally {
@@ -122,7 +171,14 @@ export default function DeviceWifiPage({ onBack }) {
     setOcupat(true);
     setEroare('');
     try {
-      const raspuns = await vorbeste(port, `WIFI=${ssid}\t${parola}`, ASTEPTARE_MS);
+      const raspuns = await vorbeste(
+        port,
+        `WIFI=${ssid}\t${parola}`,
+        // Placuta isi scrie si jurnalul pe acelasi cablu, deci asteptam o
+        // linie care incepe chiar cu raspunsul nostru.
+        (text) => /^(OK WIFI=|EROARE )/m.test(text),
+        ASTEPTARE_MS,
+      );
       const linie = raspuns.split('\n').reverse().find((l) => /^(OK|EROARE)\b/.test(l.trim()));
       if (linie && linie.startsWith('EROARE')) {
         setEroare(linie.replace(/^EROARE\s*/, ''));
@@ -175,6 +231,17 @@ export default function DeviceWifiPage({ onBack }) {
             ))}
           </select>
 
+          {/* Cel mai des motiv pentru care o retea lipseste din lista, si
+              singurul pe care nu-l poate ghici nimeni: placuta prinde doar
+              2.4GHz, iar hotspoturile de telefon pornesc pe 5GHz. Scris aici,
+              nu doar cand lista e goala - de obicei lista are retele, doar
+              ca nu si pe cea cautata. */}
+          <p className="hint">
+            Nu vezi rețeaua pe care o cauți? Plăcuța prinde doar <strong>2.4GHz</strong>.
+            Pe iPhone pornește &bdquo;Maximize Compatibility&rdquo; în Hotspot personal și lasă
+            ecranul acela deschis; pe Android alege banda 2.4 GHz. Apoi caută din nou.
+          </p>
+
           <label htmlFor="parola">Parola</label>
           <input
             id="parola"
@@ -197,7 +264,17 @@ export default function DeviceWifiPage({ onBack }) {
         </>
       )}
 
-      <button type="button" className="btn-link" onClick={onBack}>
+      <button
+        type="button"
+        className="btn-link"
+        onClick={async () => {
+          // Inchidem portul inainte sa plecam: altfel ramane prins de noi,
+          // iar urmatorul program care il cere - Arduino IDE, de pilda -
+          // primeste exact eroarea de mai sus.
+          await opresteCitirea(port);
+          onBack();
+        }}
+      >
         Înapoi
       </button>
     </div>

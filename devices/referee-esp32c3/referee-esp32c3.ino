@@ -2372,6 +2372,12 @@ void scanWifi() {
       scanFoundOurs = true;
       ourChannel = WiFi.channel(i);
     }
+    // Retelele ascunse se scaneaza (al doilea argument de mai sus), dar nu
+    // intra in lista: nu au nume, deci nu pot fi alese, iar locurile sunt
+    // doar sase. Una ascunsa ar impinge afara una la care chiar te poti
+    // conecta.
+    if (!WiFi.SSID(i).length()) continue;
+
     if (scanCount < MAX_SCAN) {
       strlcpy(scanRows[scanCount].ssid, WiFi.SSID(i).c_str(), sizeof(scanRows[scanCount].ssid));
       scanRows[scanCount].rssi = WiFi.RSSI(i);

@@ -18,6 +18,8 @@
 // decat doua feluri, dintre care unul lipseste tocmai pe calculatorul
 // imprumutat in ziua competitiei.
 
+const os = require('os');
+
 const makeMdns = require('multicast-dns');
 
 // Numele pe care il cauta placutele. Daca se schimba aici, trebuie schimbat
@@ -34,6 +36,36 @@ const TTL_SECUNDE = 30;
 
 let server = null;
 let adresa = null;
+
+function caIntreg(ip) {
+  return ip.split('.').reduce((acc, parte) => (acc << 8) + Number(parte), 0) >>> 0;
+}
+
+/**
+ * Adresa noastra de pe aceeasi retea cu cel care intreaba.
+ *
+ * Conteaza cand calculatorul e in doua retele odata - si asta nu e un caz
+ * rar: un Mac care face hotspot e si pe Wi-Fi-ul casei, si pe reteaua pe
+ * care o imparte el. Daca am raspunde mereu cu aceeasi adresa, placutele de
+ * pe hotspot ar primi adresa din cealalta retea, la care nu pot ajunge - si
+ * ar tacea, dupa ce tocmai au gasit numele.
+ *
+ * `intrebator` e adresa de la care a venit intrebarea; cautam interfata
+ * noastra a carei retea o contine.
+ */
+function adresaPentru(intrebator, interfete = os.networkInterfaces()) {
+  if (!intrebator) return null;
+  const tinta = caIntreg(intrebator);
+
+  for (const adrese of Object.values(interfete)) {
+    for (const a of adrese || []) {
+      if (a.family !== 'IPv4' || a.internal || !a.netmask) continue;
+      const masca = caIntreg(a.netmask);
+      if ((caIntreg(a.address) & masca) === (tinta & masca)) return a.address;
+    }
+  }
+  return null;
+}
 
 function raspundeLa(intrebare) {
   if (!adresa) return false;
@@ -69,16 +101,21 @@ function start(lanIp, { onLog } = {}) {
     spune(`Anuntul in retea a dat o eroare: ${eroare.message}`);
   });
 
-  server.on('query', (query) => {
+  server.on('query', (query, rinfo) => {
     const intrebari = (query.questions || []).filter(raspundeLa);
     if (!intrebari.length) return;
+
+    // Adresa de pe reteaua celui care intreaba; daca nu o putem afla,
+    // cea cu care am pornit.
+    const data = adresaPentru(rinfo?.address) || adresa;
+    if (!data) return;
 
     server.respond({
       answers: [{
         name: NUME_COMPLET,
         type: 'A',
         ttl: TTL_SECUNDE,
-        data: adresa,
+        data,
       }],
     });
   });
@@ -101,4 +138,4 @@ function stop() {
   server = null;
 }
 
-module.exports = { start, update, stop, NUME, NUME_COMPLET };
+module.exports = { start, update, stop, adresaPentru, NUME, NUME_COMPLET };

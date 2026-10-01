@@ -7,6 +7,7 @@ import ControlPanelPage from './pages/ControlPanelPage.jsx';
 import SyncToCloudPage from './pages/SyncToCloudPage.jsx';
 import BackupsPage from './pages/BackupsPage.jsx';
 import DeviceWifiPage from './pages/DeviceWifiPage.jsx';
+import HealthPage from './pages/HealthPage.jsx';
 import AppViewPage from './pages/AppViewPage.jsx';
 
 // A linear flow - no router needed, `screen` is the only navigation
@@ -89,7 +90,12 @@ export default function App() {
 
   return (
     <div className="screen">
-      {screen === 'login' && <LoginPage onLoggedIn={() => setScreen('overview')} />}
+      {screen === 'login' && (
+        <LoginPage
+          onLoggedIn={() => setScreen('overview')}
+          onConfigureDevices={() => setScreen('device-wifi')}
+        />
+      )}
 
       {screen === 'overview' && <OverviewPage onContinue={() => setScreen('events')} />}
 
@@ -120,6 +126,7 @@ export default function App() {
           localInfo={localInfo}
           onOpenApp={(id, url, title) => setActiveApp({ id, url, title })}
           onConfigureDevices={() => setScreen('device-wifi')}
+          onCheckHealth={() => setScreen('health')}
           triggerResync={pendingResync}
           onResyncTriggered={() => setPendingResync(false)}
         />
@@ -127,7 +134,11 @@ export default function App() {
 
       {screen === 'backups' && <BackupsPage onBack={() => setScreen('control')} />}
 
-      {screen === 'device-wifi' && <DeviceWifiPage onBack={() => setScreen('control')} />}
+      {screen === 'device-wifi' && <DeviceWifiPage onBack={() => setScreen(event ? 'control' : 'login')} />}
+
+      {screen === 'health' && (
+        <HealthPage localInfo={localInfo} onBack={() => setScreen('control')} />
+      )}
 
       {screen === 'sync-cloud' && (
         <SyncToCloudPage

@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // or child_process directly.
 contextBridge.exposeInMainWorld('launcher', {
   login: (baseUrl, email, password) => ipcRenderer.invoke('auth:login', { baseUrl, email, password }),
+  checkHealth: (gazda) => ipcRenderer.invoke('health:check', { gazda }),
   listEvents: () => ipcRenderer.invoke('events:list'),
   getCloudOverview: () => ipcRenderer.invoke('cloud:overview'),
   getLanIp: () => ipcRenderer.invoke('network:get-lan-ip'),

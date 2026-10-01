@@ -26,4 +26,28 @@ function getLanIp() {
   return candidates[0].address;
 }
 
-module.exports = { getLanIp };
+/**
+ * Toate adresele din retea ale calculatorului, cea preferata prima.
+ *
+ * De obicei e una singura. Dar un calculator care imparte internetul - un
+ * Mac facut hotspot, de pilda - e in doua retele odata, iar tabletele sunt
+ * pe cealalta decat cea pe care o alege `getLanIp`. Afisata doar una, omul
+ * tasteaza adresa gresita pe tableta si nu intelege de ce nu merge nimic.
+ */
+function getLanIps() {
+  const interfaces = os.networkInterfaces();
+  const candidates = [];
+
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    for (const addr of addrs || []) {
+      if (addr.family !== 'IPv4' || addr.internal) continue;
+      candidates.push({ name, address: addr.address });
+    }
+  }
+
+  const rank = (n) => (n === 'en0' ? 0 : /^en\d+$/.test(n) ? 1 : 2);
+  candidates.sort((a, b) => rank(a.name) - rank(b.name));
+  return candidates.map((c) => c.address);
+}
+
+module.exports = { getLanIp, getLanIps };

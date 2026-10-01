@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron')
 const fs = require('fs');
 const path = require('path');
 
-const { getLanIp } = require('./network');
+const { getLanIp, getLanIps } = require('./network');
 const { ServiceManager, buildServiceDefs, ensureLocalAdmin } = require('./services');
 const { getRepoRoot, setRepoRoot } = require('./repoRoot');
 const { checkForUpdates } = require('./updater');
@@ -560,7 +560,9 @@ ipcMain.handle('services:start-local-stack', async (_event, { useDocker = false 
   const urls = Object.fromEntries(
     defs.filter((d) => d.id !== 'backend').map((d) => [d.id, `http://${lanIp}:${d.port}`])
   );
-  return { lanIp, urls };
+  // `alteAdrese` exista pentru calculatorul care e in doua retele odata (un
+  // Mac facut hotspot): tabletele sunt pe cealalta decat cea aleasa aici.
+  return { lanIp, urls, alteAdrese: getLanIps().filter((a) => a !== lanIp) };
 });
 
 // force=true is the deliberate "wipe and re-pull" path, and is only ever
@@ -723,6 +725,51 @@ ipcMain.handle('sync:complete', async (_event, { eventId }) => {
 
 // Fallback for opening a URL in the system browser instead of embedding it
 // (used by the Window menu's "Deschide în browser extern" item).
+// Verificarea legaturilor din sala se face de aici, nu din fereastra.
+//
+// Din fereastra nu se poate: cele trei interfete sunt fisiere statice
+// servite de nginx, fara antete CORS, deci browserul blocheaza cererea si
+// le-ar arata cazute desi raspund. Un ecran de verificare care minte e mai
+// rau decat niciunul - cineva ar cauta o defectiune care nu exista, cu cinci
+// minute inainte de start. Aici nu exista CORS.
+const PORTURI_DE_VERIFICAT = [
+  { cheie: 'backend', port: 8000, cale: '/health/' },
+  { cheie: 'competition-admin', port: 5191, cale: '/' },
+  { cheie: 'referee-scoring', port: 5176, cale: '/' },
+  { cheie: 'public-display', port: 5177, cale: '/' },
+];
+
+async function raspunde(url, ms = 3000) {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(ms), redirect: 'manual' });
+    // Si o redirectionare inseamna ca ceva asculta si raspunde - backendul
+    // local trimite `/` catre /admin/, de pilda.
+    return r.status > 0;
+  } catch {
+    return false;
+  }
+}
+
+ipcMain.handle('health:check', async (_event, { gazda } = {}) => {
+  const host = gazda || 'localhost';
+
+  const legaturi = Object.fromEntries(await Promise.all(
+    PORTURI_DE_VERIFICAT.map(async (p) => [p.cheie, await raspunde(`http://${host}:${p.port}${p.cale}`)]),
+  ));
+
+  let aparate = null;
+  try {
+    const r = await fetch(`http://${host}:8000/api/local/connectivity/`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (r.ok) aparate = await r.json();
+  } catch {
+    // Server vechi sau oprit - fereastra arata singura ca nu poate citi.
+  }
+
+  return { legaturi, aparate };
+});
+
 ipcMain.handle('shell:open-external', async (_event, url) => {
   await shell.openExternal(url);
 });

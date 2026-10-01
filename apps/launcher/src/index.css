@@ -576,3 +576,56 @@ button {
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* Starea salii. Scris ca sa fie citit de la distanta, de pe un al doilea
+   ecran, nu studiat de aproape. */
+.health-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+
+.health-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.health-name {
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.health-detail {
+  margin-left: auto;
+  font-family: 'Roboto Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted, #667);
+}
+
+.health-heading {
+  font-size: 15px;
+  margin: 20px 0 4px;
+  color: var(--navy);
+}
+
+.health-counts {
+  display: flex;
+  gap: 28px;
+  margin: 12px 0 8px;
+}
+
+.health-counts strong {
+  display: block;
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 34px;
+  line-height: 1;
+  color: var(--navy);
+}
+
+.health-counts span {
+  font-size: 12px;
+  color: var(--muted, #667);
+}

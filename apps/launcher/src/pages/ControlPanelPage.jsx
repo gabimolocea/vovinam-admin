@@ -21,7 +21,7 @@ function NumeInRetea() {
   );
 }
 
-export default function ControlPanelPage({ event, localInfo, onOpenApp, onConfigureDevices, triggerResync, onResyncTriggered }) {
+export default function ControlPanelPage({ event, localInfo, onOpenApp, onConfigureDevices, onCheckHealth, triggerResync, onResyncTriggered }) {
   const [statuses, setStatuses] = useState({});
   const [lines, setLines] = useState([]);
   const [resyncing, setResyncing] = useState(false);
@@ -103,9 +103,21 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, onConfig
 
       <NumeInRetea />
 
-      <button type="button" className="btn-link" onClick={onConfigureDevices}>
-        Configurează rețeaua plăcuțelor de arbitraj
-      </button>
+      {localInfo?.alteAdrese?.length > 0 && (
+        <p className="hint" style={{ textAlign: 'center' }}>
+          Laptopul mai are și {localInfo.alteAdrese.join(', ')}. Pe tablete folosește
+          adresa din rețeaua la care sunt ele legate.
+        </p>
+      )}
+
+      <div className="row">
+        <button type="button" className="btn-secondary" onClick={onCheckHealth}>
+          Starea sălii
+        </button>
+        <button type="button" className="btn-link" onClick={onConfigureDevices}>
+          Configurează rețeaua plăcuțelor
+        </button>
+      </div>
 
       <div className="app-links">
         {appIds.map((id) => (
