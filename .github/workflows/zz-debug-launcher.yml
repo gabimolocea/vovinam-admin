@@ -1,0 +1,26 @@
+name: zz debug launcher
+on: workflow_dispatch
+jobs:
+  look:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Ce e in app-builder-bin
+        shell: bash
+        run: |
+          echo "--- versiune npm/node ---"; npm -v; node -v
+          echo "--- exista folderul? ---"
+          ls -la node_modules/app-builder-bin/ || echo "LIPSESTE cu totul"
+          echo "--- mac/ ---"; ls -la node_modules/app-builder-bin/mac/ 2>&1 || true
+          echo "--- win/x64/ ---"; ls -la node_modules/app-builder-bin/win/x64/ 2>&1 || true
+          echo "--- marime ---"; du -sh node_modules/app-builder-bin 2>&1 || true
+          echo "--- ce versiune a instalat npm ---"
+          npm ls app-builder-bin --all 2>&1 | head -20 || true
