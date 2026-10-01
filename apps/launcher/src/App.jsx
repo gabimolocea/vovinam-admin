@@ -76,6 +76,17 @@ export default function App() {
     };
   }, [screen]);
 
+  // Deschiderea configurarii device-urilor din meniul de stare. Inchide intai
+  // aplicatia deschisa: ea se deseneaza peste tot ce e dedesubt, deci fara
+  // asta ecranul s-ar schimba fara ca operatorul sa vada nimic.
+  useEffect(() => {
+    if (!window.launcher?.onMenuDeviceWifi) return undefined;
+    return window.launcher.onMenuDeviceWifi(() => {
+      setActiveApp(null);
+      setScreen('device-wifi');
+    });
+  }, []);
+
   // The Sync menu acts on the active event straight from the main process
   // (exports, verification), so it has to know which one that is - the
   // sync IPCs can't be relied on, since reconnecting to an event already

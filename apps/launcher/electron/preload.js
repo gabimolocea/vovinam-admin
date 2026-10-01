@@ -29,6 +29,12 @@ contextBridge.exposeInMainWorld('launcher', {
     ipcRenderer.on('service:log', listener);
     return () => ipcRenderer.removeListener('service:log', listener);
   },
+  serviceStatuses: () => ipcRenderer.invoke('services:statuses'),
+  onMenuDeviceWifi: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu:device-wifi', listener);
+    return () => ipcRenderer.removeListener('menu:device-wifi', listener);
+  },
   onServiceStatus: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('service:status', listener);

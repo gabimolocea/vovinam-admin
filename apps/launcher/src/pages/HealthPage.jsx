@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import BackLink from '../components/BackLink.jsx';
 
 /**
  * Starea sălii: ce răspunde și cine e conectat, acum.
@@ -13,6 +14,16 @@ import { useEffect, useRef, useState } from 'react';
  */
 
 const LA_CAT_TIMP_MS = 4000;
+
+// Cum se cheama pe ecran fiecare fel de aparat. Cheile vin de la server
+// (api/connectivity.py), unde se deduc din portul aplicatiei deschise.
+const NUME_FEL = {
+  device: 'Device Arbitru',
+  arbitraj: 'Arbitru, de pe telefon',
+  administrare: 'Secretariat',
+  ecran: 'Ecran public',
+  altul: 'Alt aparat',
+};
 
 // Ce se verifică, și cum se cheamă pe ecran. Porturile sunt aceleași cu cele
 // din electron/services.js; dacă se schimbă acolo, se schimbă și aici.
@@ -75,11 +86,12 @@ export default function HealthPage({ localInfo, onBack }) {
     };
   }, [gazda]);
 
-  const placute = aparate?.placute ?? 0;
-  const browsere = aparate?.browsere ?? 0;
+  const arbitri = aparate?.arbitri ?? 0;
+  const total = (aparate?.aparate || []).length;
 
   return (
     <div className="card card--wide">
+      <BackLink onClick={onBack} />
       <h1>Starea sălii</h1>
       <p className="subtitle">
         Se reîmprospătează singur. Poți lăsa fereastra asta deschisă în timpul competiției.
@@ -111,17 +123,29 @@ export default function HealthPage({ localInfo, onBack }) {
         <>
           <div className="health-counts">
             <div>
-              <strong>{placute}</strong>
-              <span>plăcuțe de arbitraj</span>
+              {/* Cifra pe care o citește cineva înainte de start: câți
+                  arbitri sunt legați, fie de pe device, fie de pe telefon.
+                  Despărțite dedesubt, fiindcă o device lipsă și un telefon
+                  lipsă se caută în locuri diferite. */}
+              <strong>{arbitri}</strong>
+              <span>arbitri conectați</span>
             </div>
             <div>
-              <strong>{browsere}</strong>
-              <span>tablete și ecrane</span>
+              <strong>{aparate.device_arbitru}</strong>
+              <span>de pe Device Arbitru</span>
+            </div>
+            <div>
+              <strong>{aparate.telefoane_arbitraj}</strong>
+              <span>de pe telefon</span>
+            </div>
+            <div>
+              <strong>{aparate.administrare + aparate.ecrane}</strong>
+              <span>secretariat și ecrane</span>
             </div>
           </div>
-          {placute + browsere === 0 ? (
+          {total === 0 ? (
             <p className="hint">
-              Nimic conectat încă. Pornește o plăcuță sau deschide o aplicație pe o
+              Nimic conectat încă. Pornește un device sau deschide o aplicație pe o
               tabletă — apare aici în câteva secunde.
             </p>
           ) : (
@@ -129,7 +153,7 @@ export default function HealthPage({ localInfo, onBack }) {
               {aparate.aparate.map((a) => (
                 <Rand
                   key={a.adresa}
-                  nume={a.fel === 'placuta' ? 'Plăcuță de arbitraj' : 'Tabletă sau ecran'}
+                  nume={NUME_FEL[a.fel] || 'Alt aparat'}
                   detaliu={`${a.adresa} · acum ${a.acum_secunde}s`}
                   bine
                 />
@@ -137,7 +161,7 @@ export default function HealthPage({ localInfo, onBack }) {
             </div>
           )}
           <p className="hint">
-            Se numără ce a vorbit cu serverul în ultimul minut. O plăcuță scoasă din
+            Se numără ce a vorbit cu serverul în ultimul minut. O device scoasă din
             priză dispare de aici în câteva zeci de secunde.
           </p>
         </>
@@ -148,10 +172,6 @@ export default function HealthPage({ localInfo, onBack }) {
           Verificat la {ultima.toLocaleTimeString('ro-RO')}.
         </p>
       )}
-
-      <button type="button" className="btn-link" onClick={onBack}>
-        Înapoi
-      </button>
     </div>
   );
 }

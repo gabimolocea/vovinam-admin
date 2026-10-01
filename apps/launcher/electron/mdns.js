@@ -1,14 +1,14 @@
 // Launcherul se anunta in retea cu un nume fix.
 //
-// Placutele arbitrilor (ESP32, vezi devices/referee-esp32c3) trebuie sa
+// Device-urile Arbitru (ESP32, vezi devices/referee-esp32c3) trebuie sa
 // gaseasca serverul din sala. Pana acum aveau in firmware adresa IP a unui
 // anume laptop, iar ca plasa de siguranta numele lui de retea -
-// "Gabis-MacBook-Pro". Amandoua leaga placutele de un singur calculator:
+// "Gabis-MacBook-Pro". Amandoua leaga device-urile de un singur calculator:
 // alt laptop, alta retea, sau pur si simplu alt IP dat de router, si ele
 // tac fara sa spuna de ce.
 //
 // Aici raspundem noi la numele `frvv-sala.local`, indiferent pe ce
-// calculator rulam si ce adresa ne-a dat routerul. Placutele intreaba
+// calculator rulam si ce adresa ne-a dat routerul. Device-urile intreaba
 // numele, primesc adresa de acum, si merg mai departe. Nimic de
 // reprogramat, nimic de configurat pe router.
 //
@@ -22,16 +22,16 @@ const os = require('os');
 
 const makeMdns = require('multicast-dns');
 
-// Numele pe care il cauta placutele. Daca se schimba aici, trebuie schimbat
+// Numele pe care il cauta device-urile. Daca se schimba aici, trebuie schimbat
 // si in devices/referee-esp32c3/referee-esp32c3.ino (API_MDNS_NAME) - si
-// atunci toate placutele trebuie reprogramate, deci nu se schimba.
+// atunci toate device-urile trebuie reprogramate, deci nu se schimba.
 const NUME = 'frvv-sala';
 const NUME_COMPLET = `${NUME}.local`;
 
 // Cat timp tine raspunsul nostru in memoria celui care a intrebat. Scurt:
 // adresa laptopului se poate schimba in timpul zilei (o trecere pe alt
-// Wi-Fi), iar o placuta care tine minte o adresa veche doua minute e o
-// placuta moarta doua minute.
+// Wi-Fi), iar un device care tine minte o adresa veche doua minute e o
+// device-ul moarta doua minute.
 const TTL_SECUNDE = 30;
 
 let server = null;
@@ -46,7 +46,7 @@ function caIntreg(ip) {
  *
  * Conteaza cand calculatorul e in doua retele odata - si asta nu e un caz
  * rar: un Mac care face hotspot e si pe Wi-Fi-ul casei, si pe reteaua pe
- * care o imparte el. Daca am raspunde mereu cu aceeasi adresa, placutele de
+ * care o imparte el. Daca am raspunde mereu cu aceeasi adresa, device-urile de
  * pe hotspot ar primi adresa din cealalta retea, la care nu pot ajunge - si
  * ar tacea, dupa ce tocmai au gasit numele.
  *
@@ -81,7 +81,7 @@ function raspundeLa(intrebare) {
  *
  * Nu arunca niciodata: portul mDNS poate fi ocupat (pe Windows, de Bonjour
  * instalat cu alt program), iar asta nu e un motiv sa nu porneasca
- * competitia. Placutele au mai departe adresa din firmware.
+ * competitia. Device-urile au mai departe adresa din firmware.
  */
 function start(lanIp, { onLog } = {}) {
   const spune = onLog || (() => {});

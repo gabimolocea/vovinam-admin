@@ -1,4 +1,16 @@
 import { useState } from 'react';
+
+/** Device-ul de arbitraj: un cip cu picioruse. Desenat aici, nu adus dintr-o
+ *  biblioteca de iconite - e singura din toata aplicatia. */
+function IconDevice() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <rect x="7" y="7" width="10" height="10" rx="1.5" />
+      <path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" />
+    </svg>
+  );
+}
 import frvvLogo from '../assets/frvv-logo.png';
 import { cleanErrorMessage } from '../lib/cleanError.js';
 
@@ -74,14 +86,14 @@ export default function LoginPage({ onLoggedIn, onConfigureDevices }) {
         </button>
       </form>
 
-      {/* Configurarea placutelor nu are nevoie nici de cont, nici de
+      {/* Configurarea device-urilor nu are nevoie nici de cont, nici de
           competitie sincronizata - se face cu o saptamana inainte, pe masa
           din birou. De aceea e aici, nu dupa cinci ecrane. */}
-      <button type="button" className="btn-link" onClick={onConfigureDevices}>
-        Configurează rețeaua plăcuțelor de arbitraj
+      <button type="button" className="btn-link btn-icon" onClick={onConfigureDevices}>
+        <IconDevice />
+        Configurează Device Arbitru
       </button>
 
-      <p className="footer-note">Parola nu este salvată pe disc — este folosită doar cât timp aplicația rulează.</p>
     </div>
   );
 }

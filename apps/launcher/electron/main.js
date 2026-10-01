@@ -8,10 +8,10 @@ const { getRepoRoot, setRepoRoot } = require('./repoRoot');
 const { checkForUpdates } = require('./updater');
 const mdns = require('./mdns');
 
-// Cipurile prin care placutele ajung pe USB: USB-ul din ESP32 insusi
+// Cipurile prin care device-urile ajung pe USB: USB-ul din ESP32 insusi
 // (Espressif) si cele trei punti seriale care se gasesc pe placile ieftine.
 // Folosite doar ca sa ghicim corect cand sunt mai multe porturi deschise.
-const PLACUTA_USB = [0x303a, 0x10c4, 0x1a86, 0x0403];
+const DEVICE_USB = [0x303a, 0x10c4, 0x1a86, 0x0403];
 const dockerBackend = require('./dockerBackend');
 const cloudSync = require('./cloudSync');
 
@@ -104,6 +104,85 @@ function sendToWindow(channel, payload) {
 // Native menu bar (top of the screen on macOS, window menu bar elsewhere) -
 // Account items read `session` at click time, not at menu-build time, so
 // they always reflect who's currently logged in without needing a rebuild.
+// Starea salii, in bara de meniu.
+//
+// Pe tot parcursul competitiei, panoul sta deschis pe tot ecranul. Cand ceva
+// nu merge - o tableta care nu se conecteaza, un arbitru care nu apare -
+// intrebarea e mereu aceeasi: mai merge reteaua? Raspunsul trebuie sa fie la
+// vedere, dar nu cu pretul unei benzi peste aplicatie.
+//
+// Titlul meniului arata cifra care conteaza, iar inauntru sunt detaliile.
+let stareSala = null;
+let cronometruStare = null;
+
+function titluStare() {
+  if (!stareSala) return 'Sala';
+  const jos = Object.values(stareSala.legaturi || {}).filter((v) => !v).length;
+  if (jos) return `Sala — ${jos} oprite`;
+  const arbitri = stareSala.aparate?.arbitri;
+  return typeof arbitri === 'number' ? `Sala — ${arbitri} arbitri` : 'Sala';
+}
+
+function meniuStare() {
+  const legaturi = stareSala?.legaturi || {};
+  const aparate = stareSala?.aparate;
+  const nume = {
+    backend: 'Serverul competiției',
+    'competition-admin': 'Administrare',
+    'referee-scoring': 'Arbitraj',
+    'public-display': 'Ecran public',
+  };
+
+  const randuri = Object.entries(nume).map(([cheie, eticheta]) => ({
+    label: `${legaturi[cheie] ? '●' : '○'}  ${eticheta}`,
+    enabled: false,
+  }));
+
+  if (aparate) {
+    randuri.push(
+      { type: 'separator' },
+      { label: `${aparate.arbitri} arbitri conectați`, enabled: false },
+      { label: `   ${aparate.device_arbitru} de pe Device Arbitru, ${aparate.telefoane_arbitraj} de pe telefon`, enabled: false },
+      { label: `   ${aparate.administrare} secretariat, ${aparate.ecrane} ecrane`, enabled: false },
+    );
+  }
+
+  randuri.push(
+    { type: 'separator' },
+    {
+      label: 'Configurează Device Arbitru…',
+      click: () => {
+        sendToWindow('menu:device-wifi');
+        mainWindow?.focus();
+      },
+    },
+  );
+
+  return { label: titluStare(), submenu: randuri };
+}
+
+// Reconstruim meniul doar cand se schimba ceva: pe macOS, inlocuirea lui in
+// timp ce cineva il tine deschis il inchide sub mana.
+function porneteUrmarireaStarii() {
+  if (cronometruStare) return;
+
+  const verifica = async () => {
+    const gazda = session.lanIp;
+    if (!gazda) return;
+    try {
+      const noua = await verificaLegaturi(gazda);
+      const inainte = titluStare();
+      stareSala = noua;
+      if (titluStare() !== inainte) buildMenu();
+    } catch {
+      // Fara retea - titlul ramane cel de dinainte, nu stergem ce stiam.
+    }
+  };
+
+  verifica();
+  cronometruStare = setInterval(verifica, 10000);
+}
+
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   const template = [
@@ -179,6 +258,7 @@ function buildMenu() {
         },
       ],
     },
+    meniuStare(),
     {
       // Moved out of the control panel's own body (where it was two large
       // buttons with a paragraph of explanation each) into the menu bar -
@@ -410,7 +490,7 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
-  // Placutele arbitrilor se configureaza prin cablu, din fereastra
+  // Device-urile Arbitru se configureaza prin cablu, din fereastra
   // aplicatiei (Web Serial). Electron nu da acces la porturi fara ca
   // procesul principal sa aleaga explicit unul - fara bucata asta,
   // `navigator.serial.requestPort()` nu intoarce niciodata nimic, si fara
@@ -419,17 +499,22 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => (
     permission === 'serial' || permission === 'serial-port'
   ));
+  // Fara asta, `navigator.serial.getPorts()` intoarce mereu gol, iar o
+  // device-ul deja aprobata trebuie aleasa din nou la fiecare deschidere a
+  // ecranului. Cu ea, aprobarea tine, si ecranul se deschide direct conectat.
+  session.defaultSession.setDevicePermissionHandler((detalii) => detalii.deviceType === 'serial');
+
   session.defaultSession.on('select-serial-port', (event, ports, _wc, callback) => {
     event.preventDefault();
     if (!ports.length) {
       callback('');
       return;
     }
-    // Se configureaza o placuta pe rand, deci alegem noi in loc sa punem
+    // Se configureaza o device-ul pe rand, deci alegem noi in loc sa punem
     // operatorul sa aleaga dintr-o lista de nume ca "/dev/cu.usbmodem101",
     // care nu-i spun nimic. Daca sunt mai multe, o preferam pe cea care
-    // arata a placuta.
-    const alesa = ports.find((p) => PLACUTA_USB.includes(Number(p.vendorId))) || ports[0];
+    // arata a device-ul.
+    const alesa = ports.find((p) => DEVICE_USB.includes(Number(p.vendorId))) || ports[0];
     sendToWindow('serial:port-ales', { nume: alesa.displayName || alesa.portName || alesa.portId });
     callback(alesa.portId);
   });
@@ -492,6 +577,10 @@ ipcMain.handle('services:defs', async () => buildServiceDefs(session.lanIp || ge
   frontendsFromDocker: !getRepoRoot(),
 }));
 
+// Panoul de control le cere la deschidere: evenimentele au plecat deja, cat
+// pornea stiva, si nu le-a auzit nimeni.
+ipcMain.handle('services:statuses', async () => getServiceManager().statuses);
+
 ipcMain.handle('services:stop', async () => {
   getServiceManager().stopAll();
   session.localBaseUrl = null;
@@ -519,7 +608,7 @@ ipcMain.handle('services:start-local-stack', async (_event, { useDocker = false 
   if (!lanIp) throw new Error('Nu s-a găsit o adresă IP în rețeaua locală (verifică WiFi-ul).');
   session.lanIp = lanIp;
 
-  // Placutele arbitrilor cauta serverul dupa nume, nu dupa adresa (vezi
+  // Device-urile Arbitru cauta serverul dupa nume, nu dupa adresa (vezi
   // mdns.js). De aici incolo raspundem la acel nume cu adresa de acum.
   mdns.start(lanIp, { onLog: (line) => sendToWindow('service:log', { id: 'backend', line }) });
   mdns.update(lanIp);
@@ -538,6 +627,10 @@ ipcMain.handle('services:start-local-stack', async (_event, { useDocker = false 
     });
   }
   const defs = manager.startAll(lanIp, { useDocker, frontendsFromDocker: dinSala });
+
+  // De aici incolo stim adresa din retea, deci putem urmari starea salii si
+  // s-o aratam in bara de meniu.
+  porneteUrmarireaStarii();
 
   const localBaseUrl = `http://localhost:${LOCAL_BACKEND_PORT}`;
   sendToWindow('sync:progress', { direction: 'local', message: 'Se pornește backend-ul local…' });
@@ -750,7 +843,7 @@ async function raspunde(url, ms = 3000) {
   }
 }
 
-ipcMain.handle('health:check', async (_event, { gazda } = {}) => {
+async function verificaLegaturi(gazda) {
   const host = gazda || 'localhost';
 
   const legaturi = Object.fromEntries(await Promise.all(
@@ -768,7 +861,9 @@ ipcMain.handle('health:check', async (_event, { gazda } = {}) => {
   }
 
   return { legaturi, aparate };
-});
+}
+
+ipcMain.handle('health:check', async (_event, { gazda } = {}) => verificaLegaturi(gazda));
 
 ipcMain.handle('shell:open-external', async (_event, url) => {
   await shell.openExternal(url);

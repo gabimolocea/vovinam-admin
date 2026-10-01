@@ -118,8 +118,21 @@ function buildServiceDefs(lanIp, { useDocker = false, frontendsFromDocker = fals
 class ServiceManager {
   constructor({ onLog, onStatusChange }) {
     this.onLog = onLog || (() => {});
-    this.onStatusChange = onStatusChange || (() => {});
     this.processes = new Map(); // id -> { proc, def }
+
+    // Ultima stare a fiecarui serviciu, tinuta minte.
+    //
+    // Starile se trimit ca evenimente, dar ele pleaca in timp ce stiva
+    // porneste - adica de pe ecranul dinainte, cand panoul de control nici
+    // nu e deschis. Fara memoria asta, panoul se deschidea cu toate
+    // becurile galbene si ramanea asa, desi totul mergea.
+    this.statuses = {};
+
+    const raporteaza = onStatusChange || (() => {});
+    this.onStatusChange = (id, status) => {
+      this.statuses[id] = status;
+      raporteaza(id, status);
+    };
   }
 
   startAll(lanIp, opts) {

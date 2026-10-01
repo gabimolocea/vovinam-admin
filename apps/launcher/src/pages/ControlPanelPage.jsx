@@ -7,7 +7,7 @@ const APP_LABELS = {
   'public-display': 'Ecran Public',
 };
 
-// Placutele arbitrilor nu cauta laptopul dupa adresa, ci dupa numele cu
+// Device-urile Arbitru nu cauta laptopul dupa adresa, ci dupa numele cu
 // care se anunta launcherul in retea (apps/launcher/electron/mdns.js). Nu e
 // nimic de configurat - dar se afiseaza, fiindca atunci cand ceva nu merge
 // primul lucru pe care il intreaba cineva e "si de unde stiu ele unde sa
@@ -15,7 +15,7 @@ const APP_LABELS = {
 function NumeInRetea() {
   return (
     <p className="mdns-name">
-      Plăcuțele arbitrilor găsesc laptopul ca <code>frvv-sala.local</code>,
+      Device-urile Arbitru găsesc laptopul ca <code>frvv-sala.local</code>,
       oricare ar fi adresa de mai sus.
     </p>
   );
@@ -40,6 +40,13 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, onConfig
     const offStatus = window.launcher.onServiceStatus(({ id, status }) => {
       setStatuses((prev) => ({ ...prev, [id]: status }));
     });
+    // Starile de pana acum: evenimentele au plecat cat pornea stiva, de pe
+    // ecranul dinainte, si nu le-a auzit nimeni. Fara asta, panoul se
+    // deschidea cu toate becurile galbene si ramanea asa, desi totul mergea.
+    window.launcher.serviceStatuses?.().then((initiale) => {
+      if (initiale) setStatuses((prev) => ({ ...initiale, ...prev }));
+    }).catch(() => {});
+
     const offProgress = window.launcher.onSyncProgress(({ direction, message }) => {
       if (direction === 'local') setLines((prev) => [...prev.slice(-200), message]);
     });
@@ -115,7 +122,7 @@ export default function ControlPanelPage({ event, localInfo, onOpenApp, onConfig
           Starea sălii
         </button>
         <button type="button" className="btn-link" onClick={onConfigureDevices}>
-          Configurează rețeaua plăcuțelor
+          Configurează Device Arbitru
         </button>
       </div>
 
