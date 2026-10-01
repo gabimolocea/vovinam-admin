@@ -112,14 +112,25 @@ jobs:
         with:
           node-version: '20'
 
-      # Acelasi motiv ca in Dockerfile-urile noastre: package-lock.json e
-      # facut pe macOS si nu retine binarele rollup pentru alte platforme
-      # (npm/cli#4828). Pe Windows, `npm ci` ar trece si abia construirea ar
-      # cadea.
+      # `npm ci`, nu `npm install` dupa stergerea lockfile-ului.
+      #
+      # Prima incercare stergea lockfile-ul, din cauza problemei cu rollup
+      # (npm/cli#4828, vezi mai jos). A iesit mai rau: lockfile-ul fixeaza
+      # app-builder-bin pe un alpha anume, iar o rezolvare proaspata ia un
+      # alpha mai nou, cu binarele in alta parte decat le cauta
+      # electron-builder 25. Construirea cadea pe ambele sisteme cu
+      # "spawn .../app-builder-bin/mac/app-builder_arm64 ENOENT".
       - name: Instaleaza dependintele
-        run: |
-          node -e "require('fs').rmSync('package-lock.json', { force: true })"
-          npm install
+        run: npm ci
+
+      # Problema cu rollup, rezolvata punctual in loc sa daramam tot
+      # lockfile-ul: el e facut pe macOS, deci retine doar binarul rollup
+      # pentru darwin-arm64 - npm nu scrie in lockfile dependintele
+      # optionale ale celorlalte platforme. Pe runnerul macOS (tot arm64)
+      # nu lipseste nimic; pe Windows il adaugam noi, fara sa-l salvam.
+      - name: Binarul rollup pentru Windows
+        if: runner.os == 'Windows'
+        run: npm install --no-save @rollup/rollup-win32-x64-msvc
 
       - name: Construieste launcherul
         run: npm run build --workspace @vovinam/launcher
