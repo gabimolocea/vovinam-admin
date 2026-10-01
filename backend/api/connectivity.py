@@ -1,7 +1,7 @@
 """Cine vorbeste cu serverul din sala, chiar acum.
 
 Pana acum nu exista nicio cale de a verifica lanțul inainte de start:
-tabletele deschise, placutele pornite, reteaua in regula. Se afla la primul
+tabletele deschise, device-urile pornite, reteaua in regula. Se afla la primul
 meci, cand un arbitru apasa un buton si nu se intampla nimic - adica exact
 cand nu mai e timp.
 
@@ -23,28 +23,51 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-# Cat timp un aparat ramane "conectat" dupa ultima cerere. Placutele intreaba
+# Cat timp un aparat ramane "conectat" dupa ultima cerere. Device-urile Arbitru intreaba
 # masa centrala in fiecare secunda, iar o tableta deschisa face cereri des,
 # deci un minut e generos chiar si pentru una lasata pe o pagina linistita.
 FEREASTRA_SECUNDE = 60
 
 _CHEIE = 'sala:aparate'
 
-# Prefixele din User-Agent dupa care recunoastem placutele. HTTPClient din
+# Prefixele din User-Agent dupa care recunoastem device-urile. HTTPClient din
 # Arduino nu-si schimba agentul, iar firmware-ul nostru nu-l suprascrie.
-_SEMNE_PLACUTA = ('ESP32', 'ESP8266', 'arduino')
+_SEMNE_DEVICE = ('ESP32', 'ESP8266', 'arduino')
+
+# Un browser nu spune cine e, dar spune de unde vine: cererile catre API
+# sunt catre alt port decat pagina, deci poarta antetul Origin. Iar fiecare
+# aplicatie din sala sta pe portul ei.
+#
+# Conteaza fiindca arbitrii nu stau doar pe device-uri - unii intra de pe
+# telefon, din aplicatia de arbitraj. Fara impartirea asta ar aparea la gramada
+# cu ecranul public si cu laptopul de secretariat, iar cifra "cati arbitri
+# sunt conectati" - singura care conteaza inainte de start - n-ar exista.
+_PORT_APLICATIE = {
+    '5176': 'arbitraj',
+    '5191': 'administrare',
+    '5177': 'ecran',
+}
 
 
 def _acum():
     return time.time()
 
 
-def inregistreaza(ip, user_agent):
+def inregistreaza(ip, user_agent, origine=''):
     """Chemata la fiecare cerere. Nu arunca niciodata: o evidenta care cade
     n-are voie sa opreasca o cerere de arbitraj."""
     try:
         aparate = cache.get(_CHEIE) or {}
-        aparate[ip] = {'vazut': _acum(), 'agent': (user_agent or '')[:120]}
+        fel = _fel(user_agent or '', origine or '')
+
+        # Un telefon deschide pe rand mai multe pagini, si nu toate cererile
+        # poarta originea. Pastram ultimul fel cunoscut, ca sa nu alunece in
+        # "altul" la prima cerere fara antet.
+        vechi = aparate.get(ip) or {}
+        if fel == 'altul' and vechi.get('fel'):
+            fel = vechi['fel']
+
+        aparate[ip] = {'vazut': _acum(), 'fel': fel}
 
         # Curatam aici, nu cu un proces separat: lista are cateva zeci de
         # randuri, iar asa nu exista nimic de pornit si de oprit.
@@ -56,10 +79,13 @@ def inregistreaza(ip, user_agent):
         pass
 
 
-def _fel(agent):
-    if any(s.lower() in agent.lower() for s in _SEMNE_PLACUTA):
-        return 'placuta'
-    return 'browser'
+def _fel(agent, origine):
+    if any(s.lower() in agent.lower() for s in _SEMNE_DEVICE):
+        return 'device'
+
+    # Originea arata "http://gazda:port"; ne intereseaza doar portul.
+    port = origine.rsplit(':', 1)[-1] if ':' in origine else ''
+    return _PORT_APLICATIE.get(port, 'altul')
 
 
 class ConnectivityMiddleware:
@@ -77,10 +103,20 @@ class ConnectivityMiddleware:
     def __call__(self, request):
         # Prima din X-Forwarded-For daca exista (nginx, proxy), altfel
         # adresa directa.
+        # Cel care citeste lista nu se numara pe el insusi: altfel
+        # launcherul, care intreaba din patru in patru secunde, ar aparea
+        # mereu ca "alt aparat" si ar incurca socoteala.
+        if request.path.startswith('/api/local/connectivity'):
+            return self.get_response(request)
+
         inaintat = request.META.get('HTTP_X_FORWARDED_FOR', '')
         ip = inaintat.split(',')[0].strip() if inaintat else request.META.get('REMOTE_ADDR', '')
         if ip:
-            inregistreaza(ip, request.META.get('HTTP_USER_AGENT', ''))
+            inregistreaza(
+                ip,
+                request.META.get('HTTP_USER_AGENT', ''),
+                request.META.get('HTTP_ORIGIN', '') or request.META.get('HTTP_REFERER', ''),
+            )
         return self.get_response(request)
 
 
@@ -106,7 +142,7 @@ def connectivity(request):
     recente = [
         {
             'adresa': ip,
-            'fel': _fel(date['agent']),
+            'fel': date.get('fel', 'altul'),
             'acum_secunde': int(_acum() - date['vazut']),
         }
         for ip, date in aparate.items()
@@ -114,9 +150,18 @@ def connectivity(request):
     ]
     recente.sort(key=lambda a: (a['fel'], a['adresa']))
 
+    def cati(*feluri):
+        return sum(1 for a in recente if a['fel'] in feluri)
+
     return Response({
         'fereastra_secunde': FEREASTRA_SECUNDE,
-        'placute': sum(1 for a in recente if a['fel'] == 'placuta'),
-        'browsere': sum(1 for a in recente if a['fel'] == 'browser'),
+        # Cifra care conteaza inainte de start: cati arbitri sunt legati, fie
+        # de pe device, fie de pe telefon din aplicatia de arbitraj.
+        'arbitri': cati('device', 'arbitraj'),
+        'device_arbitru': cati('device'),
+        'telefoane_arbitraj': cati('arbitraj'),
+        'administrare': cati('administrare'),
+        'ecrane': cati('ecran'),
+        'altele': cati('altul'),
         'aparate': recente,
     })
