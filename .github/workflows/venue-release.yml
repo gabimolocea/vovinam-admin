@@ -151,9 +151,14 @@ jobs:
     needs: [images, launcher]
     runs-on: ubuntu-latest
     steps:
+      # `pattern` nu e de ornament: fara el se descarca si artefactele de
+      # urmarire pe care docker/build-push-action le incarca singur
+      # (*.dockerbuild), iar unul dintre ele a picat la descarcare si a luat
+      # cu el tot pasul de publicare, desi instalatoarele erau gata.
       - uses: actions/download-artifact@v4
         with:
           path: artefacte
+          pattern: launcher-*
 
       - name: Publica Release-ul
         uses: softprops/action-gh-release@v2
