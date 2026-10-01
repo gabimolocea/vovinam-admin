@@ -6,12 +6,79 @@
     <title>Federația Română de Vovinam Việt Võ Đạo</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate icon" type="image/png" href="/frvv-logo.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Roboto+Condensed:wght@400;700&display=swap"
-      rel="stylesheet"
-    />
+
+    <!--
+      Fonturile stau la noi, nu la Google, si se cer din chiar prima linie
+      de HTML citita.
+
+      Inainte veneau de la Google printr-o foaie de stil externa, iar
+      browserul nu afla adresa fisierelor de font decat dupa ce sosea
+      foaia aceea - o conexiune noua catre alt domeniu, apoi inca una
+      pentru fonturi. Pana atunci scria deja cu fontul de sistem, si abia
+      pe urma se schimba: exact clipitul dintre doua fonturi la incarcare.
+
+      Numele au hash-ul continutului in ele, ca WhiteNoise sa le poata
+      servi cu cache pe un an (vezi WHITENOISE_IMMUTABLE_FILE_TEST in
+      settings_production.py). Cine schimba un fisier de font trebuie sa
+      schimbe si hash-ul din nume, altfel browserele vor servi vechiul
+      fisier luni de zile.
+
+      `preload` porneste descarcarea imediat, in paralel cu restul, si
+      `@font-face` e scris aici in pagina ca sa nu mai fie nevoie de nici
+      o foaie de stil inainte. Fonturile sunt variabile - un fisier
+      acopera toate grosimile de la 100 la 900 - deci si `font-semibold`,
+      folosit in vreo 34 de locuri, iese acum cu grosimea lui adevarata,
+      nu una indesata de browser din 500 sau 700.
+    -->
+    <link rel="preload" href="/fonts/roboto-latin.1404ca34.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/roboto-latin-ext.cedb374b.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/roboto-condensed-latin.8d230115.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/roboto-condensed-latin-ext.4a44e6b1.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      /*
+        `latin-ext` nu e un lux: diacriticele romanesti - a, i, s, t cu
+        semne - nu sunt in `latin`, iar fara el browserul le-ar scoate din
+        alt font decat restul cuvantului.
+
+        `font-display: block` ascunde textul cat se incarca fontul, in loc
+        sa-l scrie cu altul si sa-l schimbe apoi. Aici fereastra aceea e
+        practic zero: paginile se desenează după ce porneste JS-ul, iar
+        fonturile, cerute mai sus si venind de pe acelasi server, ajung cu
+        mult inainte.
+      */
+      @font-face {
+        font-family: 'Roboto';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url('/fonts/roboto-latin-ext.cedb374b.woff2') format('woff2');
+        unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+      }
+      @font-face {
+        font-family: 'Roboto';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url('/fonts/roboto-latin.1404ca34.woff2') format('woff2');
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+      @font-face {
+        font-family: 'Roboto Condensed';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url('/fonts/roboto-condensed-latin-ext.4a44e6b1.woff2') format('woff2');
+        unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+      }
+      @font-face {
+        font-family: 'Roboto Condensed';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url('/fonts/roboto-condensed-latin.8d230115.woff2') format('woff2');
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

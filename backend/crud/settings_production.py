@@ -39,6 +39,25 @@ MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 WHITENOISE_ROOT = os.path.join(BASE_DIR, 'frontend_build')
 WHITENOISE_INDEX_FILE = True
 
+# Cat tine browserul un fisier fara sa ne mai intrebe.
+#
+# WhiteNoise da un an fisierelor care au hash-ul continutului in nume, dar
+# verificarea lui se opreste din prima linie la tot ce nu e sub STATIC_URL
+# - iar site-ul public e servit din radacina. Asa se ajungea ca si
+# `/assets/index-1fCJVdGa.js`, 600 KB cu hash in nume, sa fie reverificat
+# la fiecare minut de fiecare vizitator.
+#
+# Regexul de mai jos prinde exact ce are hash in nume: fisierele scoase de
+# Vite in /assets/ si fonturile din /fonts/. Nu prinde paginile HTML
+# (inclusiv cele prerenderate pe rute), robots.txt, sitemap.xml sau
+# imaginile din public/ - acelea trebuie sa poata fi inlocuite si vazute,
+# si rama cu `max_age` de un minut.
+#
+# De stiut daca se trece vreodata la ManifestStaticFilesStorage: setarea
+# asta inlocuieste cu totul verificarea bazata pe manifest a WhiteNoise,
+# deci atunci regexul trebuie sa acopere si /static/.
+WHITENOISE_IMMUTABLE_FILE_TEST = r'^/(assets/.+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+|fonts/.+\.[0-9a-f]{8}\.woff2)$'
+
 # Media files configuration
 # Use DigitalOcean Spaces (S3-compatible) for persistent media storage in production
 USE_SPACES = os.getenv('USE_SPACES', 'False') == 'True'
