@@ -47,6 +47,20 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', LAN_HOST]
 # Allow admin related modals to load in same-origin iframes
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
+# Cache pentru listele publice (api/public_cache.py). In memoria procesului:
+# nu adauga nicio piesa de infrastructura, iar pe serverul de competitie -
+# un laptop in sala - asta e si tot ce are rost. In productie ruleaza doua
+# procese gunicorn, fiecare cu propriul cache, deci o invalidare ajunge doar
+# la unul; de aia intrarile traiesc putin (vezi DEFAULT_TIMEOUT acolo) si
+# celalalt se aliniaza singur.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'frvv-public-content',
+        'OPTIONS': {'MAX_ENTRIES': 2000},
+    }
+}
+
 ADMIN_ROOT_HOSTS = []
 API_ROOT_HOSTS = []
 

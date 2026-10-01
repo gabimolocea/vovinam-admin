@@ -135,13 +135,6 @@ class NewsPost(SEOModel):
 
         super().save(*args, **kwargs)
 
-    @property
-    def like_count(self):
-        return self.reactions.filter(reaction_type='like').count()
-
-    @property
-    def dislike_count(self):
-        return self.reactions.filter(reaction_type='dislike').count()
 
 
 def default_event_types():
@@ -558,13 +551,6 @@ class NewsPostGallery(models.Model):
     def __str__(self):
         return f"{self.news_post.title} - Image {self.order}"
 
-    @property
-    def like_count(self):
-        return self.reactions.filter(reaction_type='like').count()
-
-    @property
-    def dislike_count(self):
-        return self.reactions.filter(reaction_type='dislike').count()
 
 
 class GalleryReaction(models.Model):

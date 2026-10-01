@@ -25,7 +25,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from ..permissions import can_edit_object, IsClubCoachOrAdmin
 from rest_framework.response import Response
 
-from django.db.models import Q
+from ..public_cache import cache_public_response
+
+from django.db.models import Count, Q
 from api.models import Athlete, Club, medal_counts_for_club, trophy_counts_for_club
 from landing.models import (
     AboutSection, DocumentPage, Event, GalleryComment, GalleryReaction, NewsComment, NewsPost, NewsPostGallery,
@@ -49,6 +51,26 @@ def _club_summary(club, request):
     }
 
 
+def _with_reaction_counts(queryset, comment_filter=Q(comments__is_approved=True)):
+    """Numara reactiile si comentariile dintr-o interogare, nu una pe rand.
+
+    Inainte erau proprietati pe model, fiecare cu propriul COUNT - pe o
+    lista de 20 de elemente, 60 de interogari in plus doar ca sa afisam
+    niste cifre langa poza. Acum e singura cale prin care se calculeaza,
+    deci orice interogare care ajunge la serializatoarele publice trebuie
+    sa treaca prin aici.
+
+    `distinct=True` nu e de ornament: reactiile si comentariile sunt doua
+    relatii diferite, iar cele doua JOIN-uri se inmultesc intre ele - fara
+    el, cineva cu 3 comentarii ar aparea cu 3 ori mai multe aprecieri.
+    """
+    return queryset.annotate(
+        like_count=Count('reactions', filter=Q(reactions__reaction_type='like'), distinct=True),
+        dislike_count=Count('reactions', filter=Q(reactions__reaction_type='dislike'), distinct=True),
+        comment_count=Count('comments', filter=comment_filter, distinct=True),
+    )
+
+
 class PublicNewsPostGallerySerializer(serializers.ModelSerializer):
     class Meta:
         model = NewsPostGallery
@@ -60,7 +82,7 @@ class PublicNewsPostListSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     like_count = serializers.IntegerField(read_only=True)
     dislike_count = serializers.IntegerField(read_only=True)
-    comment_count = serializers.SerializerMethodField()
+    comment_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = NewsPost
@@ -74,9 +96,6 @@ class PublicNewsPostListSerializer(serializers.ModelSerializer):
         if not obj.author_id:
             return ''
         return obj.author.get_full_name() or obj.author.username
-
-    def get_comment_count(self, obj):
-        return obj.comments.filter(is_approved=True).count()
 
 
 class PublicNewsPostDetailSerializer(PublicNewsPostListSerializer):
@@ -312,7 +331,7 @@ class PublicGalleryPhotoSerializer(serializers.ModelSerializer):
     tagged_clubs = serializers.SerializerMethodField()
     like_count = serializers.IntegerField(read_only=True)
     dislike_count = serializers.IntegerField(read_only=True)
-    comment_count = serializers.SerializerMethodField()
+    comment_count = serializers.IntegerField(read_only=True)
     my_reaction = serializers.SerializerMethodField()
     news_post_title = serializers.CharField(source='news_post.title', read_only=True)
     news_post_slug = serializers.CharField(source='news_post.slug', read_only=True)
@@ -341,9 +360,6 @@ class PublicGalleryPhotoSerializer(serializers.ModelSerializer):
 
     def get_tagged_clubs(self, obj):
         return [{'id': c.id, 'name': c.name, 'slug': c.slug} for c in obj.tagged_clubs.all()]
-
-    def get_comment_count(self, obj):
-        return obj.comments.filter(is_approved=True).count()
 
     def get_my_reaction(self, obj):
         request = self.context.get('request')
@@ -394,11 +410,17 @@ class PublicNewsViewSet(viewsets.ViewSet):
 
     def get_queryset(self):
         return (
-            NewsPost.objects.filter(published=True)
+            _with_reaction_counts(NewsPost.objects.filter(published=True))
             .select_related('author')
             .prefetch_related('gallery_images', 'reactions')
+            # Ordinea e scrisa aici, nu lasata pe `Meta.ordering`: un
+            # `annotate` cu agregari devine o interogare cu GROUP BY, iar
+            # pe acelea Django nu mai aplica ordinea din Meta. Fara linia
+            # asta stirile ies in ordinea in care le da baza de date.
+            .order_by('-created_at')
         )
 
+    @cache_public_response()
     def list(self, request):
         queryset = self.get_queryset()
 
@@ -485,6 +507,7 @@ class PublicVideoViewSet(viewsets.ViewSet):
     def get_queryset(self):
         return Video.objects.filter(published=True).prefetch_related('tagged_athletes', 'tagged_clubs')
 
+    @cache_public_response()
     def list(self, request):
         queryset = self.get_queryset()
 
@@ -509,6 +532,7 @@ class PublicAboutViewSet(viewsets.ViewSet):
     """GET /api/public/about/ - all active About sections, in display order."""
     permission_classes = [AllowAny]
 
+    @cache_public_response()
     def list(self, request):
         queryset = AboutSection.objects.filter(is_active=True).order_by('order', 'id')
         serializer = PublicAboutSectionSerializer(queryset, many=True, context={'request': request})
@@ -533,6 +557,7 @@ class PublicEventViewSet(viewsets.ViewSet):
             organizing_club__isnull=True, is_publicly_visible=True
         ).select_related('city').order_by('-start_date')
 
+    @cache_public_response()
     def list(self, request):
         queryset = self.get_queryset()
         paginator = self.pagination_class()
@@ -540,13 +565,17 @@ class PublicEventViewSet(viewsets.ViewSet):
         serializer = PublicEventSerializer(page, many=True, context={'request': request})
         return paginator.get_paginated_response(serializer.data)
 
+    @cache_public_response()
     def retrieve(self, request, pk=None):
         # `pk` here is actually the event slug (see api/urls.py routing).
         instance = get_object_or_404(self.get_queryset(), slug=pk)
         serializer = PublicEventDetailSerializer(instance, context={'request': request})
         return Response(serializer.data)
 
+    # @action ramane deasupra: el inregistreaza ruta si DRF ii citeste
+    # atributele de pe functie.
     @action(detail=False, methods=['get'])
+    @cache_public_response()
     def upcoming(self, request):
         queryset = Event.objects.filter(
             start_date__gt=timezone.now(),
@@ -568,11 +597,13 @@ class PublicClubViewSet(viewsets.ViewSet):
     def get_queryset(self):
         return Club.objects.select_related('city').prefetch_related('coaches')
 
+    @cache_public_response()
     def list(self, request):
         queryset = self.get_queryset().order_by('display_order', 'name')
         serializer = PublicClubSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
+    @cache_public_response()
     def retrieve(self, request, pk=None):
         # `pk` here is actually the club slug (see api/urls.py routing).
         instance = get_object_or_404(self.get_queryset(), slug=pk)
@@ -655,6 +686,7 @@ class PublicStaffViewSet(viewsets.ViewSet):
     title, whether or not they also sit on the council)."""
     permission_classes = [AllowAny]
 
+    @cache_public_response()
     def list(self, request):
         base = Athlete.objects.filter(status='approved').select_related('federation_role', 'title', 'club')
         council = _in_curated_order(base.exclude(federation_role=None), _COUNCIL_ORDER)
@@ -674,6 +706,7 @@ class PublicRefereeViewSet(viewsets.ViewSet):
     no manual list to maintain."""
     permission_classes = [AllowAny]
 
+    @cache_public_response()
     def list(self, request):
         base = Athlete.objects.filter(status='approved', is_referee=True).select_related('title', 'club', 'current_grade', 'federation_role')
         international = _by_grade_then_name(base.filter(referee_level='international'))
@@ -689,6 +722,7 @@ class PublicDocumentViewSet(viewsets.ViewSet):
     documents, backing both the 'Regulament' and 'Documente' nav items."""
     permission_classes = [AllowAny]
 
+    @cache_public_response()
     def list(self, request):
         queryset = DocumentPage.objects.filter(published=True).order_by('order', '-created_at')
         category = request.query_params.get('category')
@@ -764,7 +798,7 @@ class PublicGalleryViewSet(viewsets.ViewSet):
 
     def get_queryset(self):
         return (
-            NewsPostGallery.objects.select_related('news_post')
+            _with_reaction_counts(NewsPostGallery.objects.select_related('news_post'))
             .prefetch_related('tagged_athletes', 'tagged_clubs', 'reactions')
             .order_by('-created_at')
         )
@@ -824,7 +858,10 @@ class PublicGalleryViewSet(viewsets.ViewSet):
         oricine ar putea sterge etichetele altora, adica aceeasi problema
         pe dos.
         """
-        photo = get_object_or_404(NewsPostGallery, pk=pk)
+        # Prin `get_queryset`, nu direct pe model: serializatorul de la
+        # capatul actiunii citeste cifrele de aprecieri si comentarii din
+        # anotarile pe care doar interogarea aceea le pune.
+        photo = get_object_or_404(self.get_queryset(), pk=pk)
         athlete_id = request.data.get('athlete')
         if not athlete_id:
             return Response({'detail': 'Lipsește sportivul.'}, status=status.HTTP_400_BAD_REQUEST)

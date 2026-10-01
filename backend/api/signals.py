@@ -632,3 +632,31 @@ def sync_admin_scores_to_referee_scores(sender, instance, **kwargs):
                 referee=ref,
                 score=score,
             )
+
+
+# ── Cache-ul site-ului public ────────────────────────────────────────────
+#
+# Listele publice (noutati, evenimente, cluburi, staff, arbitri, documente)
+# stau in cache cateva minute - vezi api/public_cache.py. Fara randurile de
+# mai jos, o modificare facuta in admin s-ar vedea abia dupa expirare; cu
+# ele, se vede imediat in procesul care a salvat-o.
+#
+# Pe productie ruleaza doua procese gunicorn cu cache propriu fiecare, deci
+# celalalt se aliniaza cand ii expira intrarile. De aia durata e scurta.
+_PUBLIC_CONTENT_MODELS = (
+    'landing.NewsPost', 'landing.NewsPostGallery', 'landing.Video',
+    'landing.AboutSection', 'landing.DocumentPage', 'landing.Event',
+    'api.Club', 'api.Athlete', 'api.City',
+    'api.FederationRole', 'api.Title', 'api.Grade',
+)
+
+
+def _invalidate_public_cache_on_change(sender, **kwargs):
+    label = f'{sender._meta.app_label}.{sender._meta.object_name}'
+    if label in _PUBLIC_CONTENT_MODELS:
+        from .public_cache import invalidate_public_cache
+        invalidate_public_cache()
+
+
+post_save.connect(_invalidate_public_cache_on_change, dispatch_uid='public_cache_save')
+post_delete.connect(_invalidate_public_cache_on_change, dispatch_uid='public_cache_delete')
