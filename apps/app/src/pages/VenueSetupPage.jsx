@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, Apple, Check, Copy, Database, Download, HardDrive, Image,
   Monitor, MonitorPlay, Server, Tablet, Timer, Wifi,
 } from 'lucide-react';
-import { Alert, Badge, Card, CardContent } from '../components/ui';
+import { API_BASE_URL } from '@shared/lib/api';
+import { Alert, Badge, Card, CardContent, Skeleton } from '../components/ui';
 
 /**
  * Ghidul de instalare a laptopului din sala de concurs.
@@ -22,7 +23,13 @@ import { Alert, Badge, Card, CardContent } from '../components/ui';
  * ceva aici, trebuie schimbat si acolo.
  */
 
-const RELEASES_URL = 'https://github.com/gabimolocea/vovinam-admin/releases/latest';
+// Adresa de descarcare e la noi, nu pe GitHub, si nu se schimba de la o
+// versiune la alta: serverul cauta de fiecare data ultima versiune si
+// trimite browserul la fisierul potrivit (api/views/launcher_release.py).
+// Asa, cel care pregateste laptopul apasa un buton si primeste fisierul, in
+// loc sa ajunga pe o pagina unde trebuie sa desfaca "Assets" si sa aleaga
+// singur dintre cinci fisiere cu nume aproape identice.
+const DOWNLOAD_URL = (cheie) => `${API_BASE_URL}/public/launcher/download/${cheie}/`;
 
 const CONTAINERE = [
   {
@@ -148,6 +155,91 @@ function Comanda({ children }) {
       {stare !== 'gata' && (
         <p className="text-xs text-muted-foreground" role="status">
           {stare === 'copiat' ? 'Copiat.' : 'Comanda e selectată — apasă Cmd+C ca s-o copiezi.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Butoanele de descarcare, cu ultima versiune adusa de la server.
+ *
+ * Nu intrebam GitHub din browser: serverul o face si tine raspunsul in
+ * cache, ca sa nu ne lovim de limita lui GitHub taman cand cineva
+ * pregateste laptopul (vezi api/views/launcher_release.py).
+ *
+ * Daca versiunea nu se poate afla - server cazut, nicio versiune publicata
+ * inca - ramane legatura catre lista de versiuni. Pagina trebuie sa fie
+ * folosibila si atunci: omul care o citeste nu are pe cine intreba.
+ */
+function Descarcari({ sistem }) {
+  const [stare, setStare] = useState({ faza: 'se-incarca' });
+
+  useEffect(() => {
+    let activ = true;
+    fetch(`${API_BASE_URL}/public/launcher/latest/`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((date) => activ && setStare({ faza: 'gata', date }))
+      .catch(() => activ && setStare({ faza: 'eroare' }));
+    return () => { activ = false; };
+  }, []);
+
+  if (stare.faza === 'se-incarca') {
+    return (
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-4 w-40" />
+      </div>
+    );
+  }
+
+  const date = stare.date;
+  const fisiere = (date?.fisiere || []).filter((f) => f.sistem === sistem);
+
+  if (!fisiere.length) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <div>
+            Nu pot afla acum ultima versiune. Descarc-o de pe pagina de versiuni și
+            alege fișierul care se termină în{' '}
+            <code className="font-mono">{sistem === 'mac' ? '.dmg' : '.exe'}</code>.
+          </div>
+        </Alert>
+        <a
+          href={date?.pagina_release || 'https://github.com/gabimolocea/vovinam-admin/releases/latest'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-fit items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-muted"
+        >
+          <Download className="h-4 w-4" /> Deschide pagina de versiuni
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {fisiere.map((f) => (
+        <a
+          key={f.cheie}
+          href={DOWNLOAD_URL(f.cheie)}
+          className="flex w-fit items-center gap-3 rounded-md bg-brand-red px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+        >
+          <Download className="h-4 w-4 shrink-0" />
+          <span className="flex flex-col items-start leading-tight">
+            <span>{f.eticheta}</span>
+            <span className="text-xs font-normal opacity-80">{f.detaliu} · {f.marime_mb} MB</span>
+          </span>
+        </a>
+      ))}
+      {date?.versiune && (
+        <p className="text-xs text-muted-foreground">
+          Versiunea {date.versiune}
+          {date.publicat_la && ` · publicată ${new Date(date.publicat_la).toLocaleDateString('ro-RO', {
+            day: 'numeric', month: 'long', year: 'numeric',
+          })}`}
         </p>
       )}
     </div>
@@ -299,30 +391,7 @@ export default function VenueSetupPage() {
             De aici se conduce toată ziua: aduci competiția din site, pornești sala,
             iar la final trimiți rezultatele înapoi.
           </p>
-          <a
-            href={RELEASES_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex w-fit items-center gap-2 rounded-md bg-brand-red px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-          >
-            <Download className="h-4 w-4" />
-            Descarcă pentru {eMac ? 'Mac' : 'Windows'}
-          </a>
-          <p className="text-sm text-muted-foreground">
-            Pe pagina care se deschide, la <strong>Assets</strong>, alege fișierul{' '}
-            {eMac ? (
-              <>
-                care se termină în <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.dmg</code>.
-                Sunt două: <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">arm64</code> pentru
-                Mac-urile cu procesor Apple, <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">x64</code> pentru
-                cele cu Intel — aceeași alegere ca la Docker.
-              </>
-            ) : (
-              <>
-                care se termină în <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.exe</code>.
-              </>
-            )}
-          </p>
+          <Descarcari sistem={sistem} />
         </Pas>
 
         <Pas numar={3} titlu="Deschide-o prima dată" durata="~5 minute">

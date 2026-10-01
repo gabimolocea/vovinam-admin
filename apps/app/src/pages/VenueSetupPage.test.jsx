@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import VenueSetupPage from './VenueSetupPage.jsx';
 
 /**
@@ -11,7 +11,83 @@ import VenueSetupPage from './VenueSetupPage.jsx';
  * singura setare de router care face ca totul sa para pornit si sa nu
  * mearga nimic.
  */
+const RELEASE = {
+  disponibil: true,
+  versiune: 'v1.2.0',
+  publicat_la: '2026-10-01T18:00:00Z',
+  pagina_release: 'https://github.com/x/releases/tag/v1.2.0',
+  fisiere: [
+    { cheie: 'mac-arm64', sistem: 'mac', eticheta: 'Mac cu procesor Apple', detaliu: 'M1, M2, M3, M4', nume: 'a.dmg', marime_mb: 96.9, url: 'https://github.com/x/a.dmg' },
+    { cheie: 'mac-intel', sistem: 'mac', eticheta: 'Mac cu procesor Intel', detaliu: 'mai vechi', nume: 'b.dmg', marime_mb: 101.3, url: 'https://github.com/x/b.dmg' },
+    { cheie: 'windows', sistem: 'windows', eticheta: 'Windows', detaliu: 'Windows 10 sau 11', nume: 'c.exe', marime_mb: 95.0, url: 'https://github.com/x/c.exe' },
+  ],
+};
+
+describe('Descarcarea launcherului', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  function cuRaspuns(date) {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(date) })));
+  }
+
+  it('arata ambele feluri de Mac, cu marimea fiecaruia', async () => {
+    cuRaspuns(RELEASE);
+    render(<VenueSetupPage />);
+
+    await waitFor(() => expect(screen.getByText(/Mac cu procesor Apple/)).toBeInTheDocument());
+    expect(screen.getByText(/Mac cu procesor Intel/)).toBeInTheDocument();
+    expect(screen.getByText(/96.9 MB/)).toBeInTheDocument();
+    // Windows e pe celalalt tab, nu trebuie sa apara acum.
+    expect(screen.queryByText(/Windows 10 sau 11/)).not.toBeInTheDocument();
+  });
+
+  it('duce la adresa noastra, nu la GitHub', async () => {
+    cuRaspuns(RELEASE);
+    render(<VenueSetupPage />);
+
+    const buton = await screen.findByRole('link', { name: /Mac cu procesor Apple/ });
+    // Tot rostul schimbarii: butonul da fisierul, nu trimite omul pe o
+    // pagina GitHub unde ar trebui sa aleaga singur dintre cinci fisiere.
+    expect(buton.getAttribute('href')).toContain('/public/launcher/download/mac-arm64/');
+    expect(buton.getAttribute('href')).not.toContain('github.com');
+  });
+
+  it('arata ce versiune e, ca sa se vada daca e la zi', async () => {
+    cuRaspuns(RELEASE);
+    render(<VenueSetupPage />);
+    await waitFor(() => expect(screen.getByText(/Versiunea v1.2.0/)).toBeInTheDocument());
+  });
+
+  it('ramane folosibila cand serverul nu raspunde', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('fara retea'))));
+    render(<VenueSetupPage />);
+
+    // Fara versiune, pagina tot trebuie sa ofere o cale - altfel cel care
+    // pregateste laptopul ramane blocat exact la pasul de descarcare.
+    const rezerva = await screen.findByRole('link', { name: /pagina de versiuni/i });
+    expect(rezerva.getAttribute('href')).toContain('releases');
+  });
+
+  it('spune ce fisier sa caute manual, pe fiecare sistem', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('fara retea'))));
+    render(<VenueSetupPage />);
+
+    // getAllByText: extensia apare si in mesajul de rezerva, si mai jos la
+    // pasul de instalare, unde se spune pe ce fisier se da clic.
+    await waitFor(() => expect(screen.getAllByText('.dmg').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('tab', { name: /Windows/ }));
+    expect(screen.getAllByText('.exe').length).toBeGreaterThan(0);
+  });
+});
+
 describe('VenueSetupPage', () => {
+  beforeEach(() => {
+    // Celelalte teste nu sunt despre descarcare: raspuns respins, ca sa nu
+    // ramana cereri de retea nemanipulate in jsdom.
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('neintrebat'))));
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
   it('numeste toate cele patru containere care trebuie sa apara in Docker', () => {
     render(<VenueSetupPage />);
     for (const nume of ['db', 'backend', 'frontends', 'backup-scheduler']) {

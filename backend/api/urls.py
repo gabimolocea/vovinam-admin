@@ -53,6 +53,7 @@ router.register('visa-submissions', VisaSubmissionViewSet, basename='visa-submis
 
 # Import the new event enrollment viewset
 from .views import EventEnrollmentViewSet
+from .views.launcher_release import latest_launcher_release, download_launcher
 router.register('event-enrollments', EventEnrollmentViewSet, basename='event-enrollment')
 router.register('coaches', CoachesViewSet, basename='coach')
 # Offline competition sync endpoints
@@ -192,6 +193,12 @@ urlpatterns = autocomplete_urlpatterns + [
     path('public/staff/', PublicStaffViewSet.as_view({'get': 'list'}), name='public-staff-list'),
     path('public/referees/', PublicRefereeViewSet.as_view({'get': 'list'}), name='public-referees-list'),
     path('public/documents/', PublicDocumentViewSet.as_view({'get': 'list'}), name='public-documents-list'),
+
+    # Ultima versiune a launcherului, pentru pagina de instalare din panou.
+    # Adresa de descarcare e stabila si nu se schimba de la o versiune la
+    # alta - vezi api/views/launcher_release.py.
+    path('public/launcher/latest/', latest_launcher_release, name='launcher-latest'),
+    path('public/launcher/download/<slug:cheie>/', download_launcher, name='launcher-download'),
 
     # Tagged photo gallery ('Poze' tab on club/athlete profiles + lightbox).
     path('public/gallery/', PublicGalleryViewSet.as_view({'get': 'list'}), name='public-gallery-list'),
