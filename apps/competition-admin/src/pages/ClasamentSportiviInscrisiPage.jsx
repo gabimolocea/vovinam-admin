@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { diplomaTemplateAPI } from '@shared/lib/api';
 import { Button, Spinner, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
@@ -26,6 +26,7 @@ function buildCategorySummary(categories) {
 }
 
 export default function ClasamentSportiviInscrisiPage() {
+  const navigate = useNavigate();
   const toast = useToast();
   const { id: eventId } = useParams();
   const ctx = useContext(CentralizatorContext);
@@ -154,7 +155,7 @@ export default function ClasamentSportiviInscrisiPage() {
     const participation = buildParticipationValues(athlete);
     const template = resolveDiplomaTemplate(diplomaTemplates, { place: 0, scope: participation.scope });
     if (!template) {
-      toast.error('Nu există un șablon de diplomă de participare disponibil. Configurează unul în tab-ul Diplome.');
+      toast.error('Nu există un șablon de diplomă de participare disponibil.', { label: 'Configurează un șablon', onClick: () => navigate(`/competitions/${eventId}/categories/diplome`) });
       return;
     }
 
@@ -203,7 +204,7 @@ export default function ClasamentSportiviInscrisiPage() {
 
           if (!diplomaJobs.length) {
             if (previewWindow && !previewWindow.closed) previewWindow.close();
-            toast.error('Nu există un șablon de diplomă de participare disponibil. Configurează unul în tab-ul Diplome.');
+            toast.error('Nu există un șablon de diplomă de participare disponibil.', { label: 'Configurează un șablon', onClick: () => navigate(`/competitions/${eventId}/categories/diplome`) });
             return;
           }
 

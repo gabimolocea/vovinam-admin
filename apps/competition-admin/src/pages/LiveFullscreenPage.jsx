@@ -1122,6 +1122,7 @@ export default function LiveFullscreenPage() {
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
 function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, recordingSession, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, exportExcelRef }) {
+  const navigate = useNavigate();
   const isTeamCategory = cat.type === 'team';
   const enrolled = isTeamCategory ? (cat.enrolled_teams || []) : (cat.enrolled_athletes || []);
 
@@ -1768,6 +1769,23 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           <div className="w-full xl:col-start-3 xl:justify-self-end xl:max-w-md">
             <>
               <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</span>
+              {/* Sloturile de aici arata alocarea facuta in Programare, si
+                  se pot schimba pe loc cand un arbitru nu ajunge. Daca sunt
+                  goale, nimeni nu le-a alocat inca - si fara randul asta
+                  arata ca si cum nu s-ar fi alocat nicaieri. */}
+              {refSlots.every(r => !r.id) && (
+                <p className="mb-1 text-[11px] leading-snug text-muted-foreground">
+                  Niciun arbitru alocat acestei probe.{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/competitions/${eventId}/categories/programare`)}
+                    className="font-semibold text-primary underline-offset-2 hover:underline"
+                  >
+                    Alocă din Programare
+                  </button>{' '}
+                  sau alege unul mai jos.
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 xl:grid-cols-1">
                 {refSlots.map(r => {
                   const isConnected = r.id ? connectedRefIds.has(r.id) : false;

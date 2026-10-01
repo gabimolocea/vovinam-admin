@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Spinner,
@@ -184,8 +184,15 @@ export default function CategoriesLayout() {
         )}
 
         {/* ═══ PAGE CONTENT — child route ═══ */}
+        {/* Fiecare tab se incarca separat (lazy). Fara granita asta, cat
+            timp vine bucata de cod suspenda tot arborele si dispare si
+            antetul cu numele competitiei, si bara de tab-uri - masuratoare:
+            aproape o secunda si jumatate de ecran gol la prima deschidere a
+            unui tab. Acum se schimba doar continutul. */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <Outlet />
+          <Suspense fallback={<div className="flex flex-1 items-center justify-center py-20"><Spinner /></div>}>
+            <Outlet />
+          </Suspense>
         </div>
 
         {/* ═══ BOTTOM TAB BAR — responsive ═══ */}

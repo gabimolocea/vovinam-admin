@@ -358,7 +358,20 @@ function FieldPanel({
           <div className="p-2 space-y-1.5">
             {visibleScheduleItems.length === 0 && (
               <p className="text-sm text-muted-foreground italic text-center py-6">
-                {scheduleTab === 'completed' ? 'Nicio probă finalizată.' : <>Nicio probă alocată.<br/>Mergi la Programare.</>}
+                {scheduleTab === 'completed' ? 'Nicio probă finalizată.' : (
+                  <>
+                    Nicio probă alocată.<br />
+                    {/* Era text simplu: iti spunea unde sa te duci si te lasa
+                        sa cauti singur tab-ul. */}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/competitions/${eventId}/categories/programare`)}
+                      className="font-semibold not-italic text-primary underline-offset-2 hover:underline"
+                    >
+                      Mergi la Programare
+                    </button>
+                  </>
+                )}
               </p>
             )}
             {visibleScheduleItems.map((item) => {

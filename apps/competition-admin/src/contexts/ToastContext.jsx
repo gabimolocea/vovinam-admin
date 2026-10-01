@@ -49,13 +49,16 @@ export function ToastProvider({ children }) {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const show = useCallback((message, variant = 'info') => {
+  // `action` e {label, onClick}: unele erori spun unde se rezolva
+  // problema ("configureaza un sablon in tab-ul Diplome") si n-are rost sa
+  // trimitem omul sa caute tab-ul cu ochii.
+  const show = useCallback((message, variant = 'info', action = null) => {
     const text = typeof message === 'string' ? message : String(message ?? '');
     if (!text.trim()) return null;
     const id = nextId.current++;
     // Cel mult patru deodată: peste asta acoperă ecranul, iar al cincilea
     // mesaj identic nu spune nimic în plus.
-    setToasts(prev => [...prev.slice(-3), { id, text, variant }]);
+    setToasts(prev => [...prev.slice(-3), { id, text, variant, action }]);
     timers.current.set(id, setTimeout(() => dismiss(id), DURATIONS[variant] ?? DURATIONS.info));
     return id;
   }, [dismiss]);
@@ -63,9 +66,9 @@ export function ToastProvider({ children }) {
   const value = useMemo(() => ({
     show,
     dismiss,
-    error: (message) => show(message, 'error'),
-    success: (message) => show(message, 'success'),
-    info: (message) => show(message, 'info'),
+    error: (message, action) => show(message, 'error', action),
+    success: (message, action) => show(message, 'success', action),
+    info: (message, action) => show(message, 'info', action),
   }), [show, dismiss]);
 
   return (
@@ -84,7 +87,18 @@ export function ToastProvider({ children }) {
               className={`pointer-events-auto flex items-start gap-2 border-2 px-3 py-2 shadow-lg ${variant.className}`}
             >
               <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${variant.iconClassName}`} />
-              <p className="min-w-0 flex-1 text-sm leading-snug">{toast.text}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm leading-snug">{toast.text}</p>
+                {toast.action && (
+                  <button
+                    type="button"
+                    onClick={() => { dismiss(toast.id); toast.action.onClick(); }}
+                    className="mt-1 text-sm font-semibold text-primary underline-offset-2 hover:underline"
+                  >
+                    {toast.action.label}
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => dismiss(toast.id)}

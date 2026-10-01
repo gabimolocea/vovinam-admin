@@ -162,6 +162,11 @@ export default function ClasamenteTehnicaPage() {
       .filter(group => group.cats.length > 0);
   }, [columnStructure]);
 
+  // Cat timp competitia e in desfasurare, aproape toate cardurile spun
+  // "rezultatele nu sunt inca disponibile" - la 98 de categorii ies noua
+  // ecrane de podiumuri goale prin care trebuie cautat cel care conteaza.
+  const [onlyWithResults, setOnlyWithResults] = useState(true);
+
   const rankingsByCategory = useMemo(() => {
     const grouped = new Map();
 
@@ -218,7 +223,7 @@ export default function ClasamenteTehnicaPage() {
       }
     }
     if (!template) {
-      toast.error('Nu există niciun șablon de diplomă disponibil pentru acest eveniment. Configurează unul în tab-ul Diplome.');
+      toast.error('Nu există niciun șablon de diplomă disponibil pentru acest eveniment.', { label: 'Configurează un șablon', onClick: () => navigate(`/competitions/${eventId}/categories/diplome`) });
       return;
     }
 
@@ -270,6 +275,14 @@ export default function ClasamenteTehnicaPage() {
     );
   }
 
+  const totalCats = techniqueGroups.reduce((sum, g) => sum + g.cats.length, 0);
+  const visibleGroups = onlyWithResults
+    ? techniqueGroups
+        .map(g => ({ ...g, cats: g.cats.filter(cat => (rankingsByCategory.get(cat.id) || []).length > 0) }))
+        .filter(g => g.cats.length > 0)
+    : techniqueGroups;
+  const visibleCats = visibleGroups.reduce((sum, g) => sum + g.cats.length, 0);
+
   if (techniqueGroups.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background text-sm italic text-muted-foreground p-4 text-center">
@@ -280,7 +293,33 @@ export default function ClasamenteTehnicaPage() {
 
   return (
     <div className="flex-1 overflow-auto bg-background p-2">
-      {techniqueGroups.map(({ group, cats }) => (
+      <div className="mb-3 flex flex-wrap items-center gap-3 border border-border bg-card px-3 py-2">
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground">
+          <input
+            type="checkbox"
+            checked={onlyWithResults}
+            onChange={(e) => setOnlyWithResults(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Doar probele cu rezultate
+        </label>
+        <span className="text-xs text-muted-foreground">{visibleCats} din {totalCats} probe</span>
+      </div>
+
+      {visibleCats === 0 && (
+        <div className="border border-border bg-card px-4 py-10 text-center text-sm italic text-muted-foreground">
+          Nicio probă nu are încă rezultate.{' '}
+          <button
+            type="button"
+            onClick={() => setOnlyWithResults(false)}
+            className="font-semibold not-italic text-primary underline-offset-2 hover:underline"
+          >
+            Arată toate probele
+          </button>
+        </div>
+      )}
+
+      {visibleGroups.map(({ group, cats }) => (
         <div key={`clas-tech-${group.id}`} className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {cats.map(cat => {
             const results = (rankingsByCategory.get(cat.id) || []).slice(0, 3);

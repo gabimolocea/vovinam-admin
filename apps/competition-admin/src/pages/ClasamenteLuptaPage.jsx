@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { diplomaTemplateAPI } from '@shared/lib/api';
 import { CentralizatorContext, GENDER_LABELS } from './CategoriesLayout';
 import {
@@ -67,6 +67,7 @@ function GroupHeader({ group }) {
 }
 
 export default function ClasamenteLuptaPage() {
+  const navigate = useNavigate();
   const toast = useToast();
   const { id: eventId } = useParams();
   const ctx = useContext(CentralizatorContext);
@@ -96,6 +97,9 @@ export default function ClasamenteLuptaPage() {
       isMounted = false;
     };
   }, [eventId]);
+
+  // Acelasi lucru ca la tehnica: nu cauti un podium printre optzeci goale.
+  const [onlyWithResults, setOnlyWithResults] = useState(true);
 
   const fightGroups = useMemo(() => {
     const seenCatIds = new Set();
@@ -134,7 +138,7 @@ export default function ClasamenteLuptaPage() {
       }
     }
     if (!template) {
-      toast.error('Nu există niciun șablon de diplomă disponibil pentru acest eveniment. Configurează unul în tab-ul Diplome.');
+      toast.error('Nu există niciun șablon de diplomă disponibil pentru acest eveniment.', { label: 'Configurează un șablon', onClick: () => navigate(`/competitions/${eventId}/categories/diplome`) });
       return;
     }
 
@@ -186,6 +190,16 @@ export default function ClasamenteLuptaPage() {
     );
   }
 
+  const hasPodium = (catId) => {
+    const p = podiumByCategory.get(catId);
+    return Boolean(p && (p[1]?.length || p[2]?.length || p[3]?.length));
+  };
+  const totalCats = fightGroups.reduce((sum, g) => sum + g.cats.length, 0);
+  const visibleGroups = onlyWithResults
+    ? fightGroups.map(g => ({ ...g, cats: g.cats.filter(cat => hasPodium(cat.id)) })).filter(g => g.cats.length > 0)
+    : fightGroups;
+  const visibleCats = visibleGroups.reduce((sum, g) => sum + g.cats.length, 0);
+
   if (fightGroups.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background text-sm italic text-muted-foreground p-4 text-center">
@@ -196,7 +210,33 @@ export default function ClasamenteLuptaPage() {
 
   return (
     <div className="flex-1 overflow-auto bg-background p-2">
-      {fightGroups.map(({ group, cats }) => (
+      <div className="mb-3 flex flex-wrap items-center gap-3 border border-border bg-card px-3 py-2">
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground">
+          <input
+            type="checkbox"
+            checked={onlyWithResults}
+            onChange={(e) => setOnlyWithResults(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Doar categoriile cu rezultate
+        </label>
+        <span className="text-xs text-muted-foreground">{visibleCats} din {totalCats} categorii</span>
+      </div>
+
+      {visibleCats === 0 && (
+        <div className="border border-border bg-card px-4 py-10 text-center text-sm italic text-muted-foreground">
+          Nicio categorie nu are încă podium.{' '}
+          <button
+            type="button"
+            onClick={() => setOnlyWithResults(false)}
+            className="font-semibold not-italic text-primary underline-offset-2 hover:underline"
+          >
+            Arată toate categoriile
+          </button>
+        </div>
+      )}
+
+      {visibleGroups.map(({ group, cats }) => (
         <div key={`clas-fight-${group.id}`} className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {cats.map(cat => {
             const podium = podiumByCategory.get(cat.id) || { 1: [], 2: [], 3: [] };

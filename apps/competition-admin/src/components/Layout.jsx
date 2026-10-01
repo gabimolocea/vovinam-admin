@@ -1,7 +1,8 @@
+import { Suspense } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@shared';
 import Logo from '@shared/components/Logo';
-import { Button } from './ui';
+import { Button, Spinner } from './ui';
 import { LogOut } from 'lucide-react';
 
 export default function Layout() {
@@ -35,7 +36,10 @@ export default function Layout() {
 
       {/* ═══ MAIN CONTENT ═══ */}
       <main className="flex-1 min-w-0 overflow-auto bg-background p-3 sm:p-4 md:p-6 lg:p-8">
-        <Outlet />
+        {/* Bara de sus ramane pe ecran cat timp se incarca pagina. */}
+        <Suspense fallback={<div className="flex justify-center py-20"><Spinner /></div>}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

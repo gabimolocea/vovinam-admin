@@ -1,4 +1,5 @@
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CentralizatorContext } from './CategoriesLayout';
 import RefereeAccessModal from '../components/RefereeAccessModal';
 import {
@@ -38,6 +39,7 @@ const stripDiacritics = (s) => String(s ?? '')
 
 export default function ArbitriPage() {
   const ctx = useContext(CentralizatorContext);
+  const navigate = useNavigate();
   const { eventId, eventData } = ctx || {};
 
   const [rosterRefs, setRosterRefs] = useState([]);
@@ -471,7 +473,19 @@ export default function ArbitriPage() {
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">Arbitri</h2>
-            <p className="mt-1 text-xs text-muted-foreground">{rosterRows.length} arbitri participanți</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {rosterRows.length} arbitri participanți — cine e în sală.{' '}
+              {/* Lista de aici nu-i pune pe terenuri; alocarea pe probe se
+                  face in Programare, iar ecranul Live doar o arata si
+                  permite schimbarea unui arbitru care n-a ajuns. */}
+              <button
+                type="button"
+                onClick={() => navigate(`/competitions/${eventId}/categories/programare`)}
+                className="font-semibold text-primary underline-offset-2 hover:underline"
+              >
+                Alocarea pe probe se face în Programare
+              </button>
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={handleGenerateDelegation}>

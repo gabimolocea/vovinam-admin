@@ -17,6 +17,16 @@ const ROUND_LABELS = {
 
 const ADMIN_BASE = MEDIA_BASE_URL;
 
+/* Starea unei categorii de lupta, asa cum se vede pe randul inchis:
+   fara sportivi -> n-are ce tablou sa aiba; cu sportivi dar fara meciuri
+   -> asteapta tragerea la sorti; cu meciuri -> cate s-au jucat. */
+function bracketStatus(athleteCount, summary) {
+  if (!athleteCount) return { label: 'fără sportivi', className: 'bg-muted text-muted-foreground' };
+  if (!summary || summary.total === 0) return { label: 'tablou negenerat', className: 'bg-amber-100 text-amber-900' };
+  if (summary.completed >= summary.total) return { label: 'finalizat', className: 'bg-emerald-100 text-emerald-900' };
+  return { label: `${summary.completed}/${summary.total} meciuri`, className: 'bg-blue-100 text-blue-900' };
+}
+
 /* Medal shown next to an athlete's name once CategoryAthlete/FightAthleteWeight.place is set. */
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
@@ -91,6 +101,42 @@ export default function BracketPage() {
   const registerCategoryRefetch = useCallback((categoryId, fn) => {
     categoryRefetchersRef.current[categoryId] = fn;
   }, []);
+
+  // Pana acum pagina desena toate piramidele deodata: la o competitie cu
+  // 40 de categorii de lupta ieseau peste 30 de ecrane de derulat, cele
+  // mai multe cu tablouri goale. Acum e o lista, cu o singura piramida
+  // deschisa - restul sunt randuri de cativa pixeli.
+  const [openCatId, setOpenCatId] = useState(null);
+
+  // Un singur apel pentru tot evenimentul, ca randurile inchise sa poata
+  // spune in ce stare e fiecare categorie fara sa-si deseneze tabloul.
+  const [matchSummary, setMatchSummary] = useState({});
+  const loadMatchSummary = useCallback(async () => {
+    try {
+      const { data } = await api.get('/matches/', { params: { event_id: eventId } });
+      const rows = Array.isArray(data) ? data : (data.results || []);
+      const summary = {};
+      for (const m of rows) {
+        const entry = summary[m.category] || (summary[m.category] = { total: 0, completed: 0 });
+        entry.total += 1;
+        if (m.status === 'completed') entry.completed += 1;
+      }
+      setMatchSummary(summary);
+    } catch {
+      // Fara sumar randurile raman fara eticheta de stare - lista
+      // functioneaza oricum.
+    }
+  }, [eventId]);
+  useEffect(() => { loadMatchSummary(); }, [loadMatchSummary]);
+
+  // Cand se inchide o piramida, starile se pot fi schimbat sub ea.
+  const toggleCategory = useCallback((catId) => {
+    setOpenCatId(prev => {
+      if (prev === catId) { loadMatchSummary(); return null; }
+      if (prev != null) loadMatchSummary();
+      return catId;
+    });
+  }, [loadMatchSummary]);
 
   if (!ctx) return null;
 
@@ -176,19 +222,45 @@ export default function BracketPage() {
           <div className="border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
             Nu există categorii care să corespundă filtrului curent.
           </div>
-        ) : filteredCats.map((cat) => {
-          return (
-            <CategoryBracket
-              key={cat.id}
-              category={cat}
-              shortLabel={shortLabel(cat)}
-              eventId={eventId}
-              fightWeights={fightWeights}
-              onMatchClick={(match) => setMatchDetailModal(match)}
-              registerRefetch={registerCategoryRefetch}
-            />
-          );
-        })}
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {filteredCats.map((cat) => {
+              const isOpen = openCatId === cat.id;
+              const athletes = cat.enrolled_athletes?.length ?? 0;
+              const summary = matchSummary[cat.id];
+              const status = bracketStatus(athletes, summary);
+              return (
+                <div key={cat.id} className="border border-border bg-card">
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(cat.id)}
+                    aria-expanded={isOpen}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-accent/60 ${isOpen ? 'bg-accent' : ''}`}
+                  >
+                    <span className={`shrink-0 text-xs text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                    <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{cat.groupName}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">{shortLabel(cat)}</span>
+                    <span className={`shrink-0 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground ${GENDER_BG[cat.gender] || 'bg-muted'}`}>
+                      {GENDER_LABELS[cat.gender] || cat.gender}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{athletes} {athletes === 1 ? 'sportiv' : 'sportivi'}</span>
+                    <span className={`shrink-0 px-2 py-0.5 text-[11px] font-semibold ${status.className}`}>{status.label}</span>
+                  </button>
+                  {isOpen && (
+                    <CategoryBracket
+                      category={cat}
+                      shortLabel={shortLabel(cat)}
+                      eventId={eventId}
+                      fightWeights={fightWeights}
+                      onMatchClick={(match) => setMatchDetailModal(match)}
+                      registerRefetch={registerCategoryRefetch}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ═══ MATCH DETAIL MODAL ═══ */}
