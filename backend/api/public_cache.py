@@ -71,23 +71,29 @@ def _cache_key(request):
 
 
 def cache_public_response(timeout=DEFAULT_TIMEOUT):
-    """Pune in cache raspunsul unei metode de view care nu depinde de user.
+    """Pune in cache raspunsul unui view care nu depinde de user.
 
     Se aplica doar pe GET-uri care intorc 200. Orice altceva (POST-uri de
     reactii sau comentarii, erori) trece neatins.
     """
-    def decorator(view_method):
-        @wraps(view_method)
-        def wrapper(self, request, *args, **kwargs):
+    def decorator(view):
+        @wraps(view)
+        def wrapper(*args, **kwargs):
+            # Merge si pe metode de viewset, si pe functii: la primele,
+            # cererea e al doilea argument, dupa `self`. Ne uitam dupa
+            # `.method` in loc sa verificam tipul, fiindca DRF nu trimite un
+            # HttpRequest, ci un obiect propriu care il imbraca.
+            request = args[0] if hasattr(args[0], 'method') else args[1]
+
             if request.method != 'GET':
-                return view_method(self, request, *args, **kwargs)
+                return view(*args, **kwargs)
 
             key = _cache_key(request)
             cached = cache.get(key)
             if cached is not None:
                 return Response(cached)
 
-            response = view_method(self, request, *args, **kwargs)
+            response = view(*args, **kwargs)
             if response.status_code == 200:
                 cache.set(key, response.data, timeout)
             return response
