@@ -1,0 +1,29 @@
+# Ce nu are ce cauta in contextul de construire.
+#
+# Fara fisierul asta, Docker trimite si node_modules si .git la fiecare
+# construire - sute de megaocteti copiati degeaba, de fiecare data. Toate
+# imaginile instaleaza oricum dependintele inauntru, pe platforma lor.
+node_modules
+**/node_modules
+.git
+.github
+
+# Rezultate de construire facute pe calculatorul cuiva: imaginile le
+# refac singure, iar cele de aici ar fi pentru alt sistem.
+**/dist
+apps/launcher/release
+backend/staticfiles
+backend/frontend_build
+
+# Mediul de lucru local
+backend/venv
+**/__pycache__
+**/*.pyc
+.env
+.env.local
+backend/db.sqlite3*
+backend/media
+backend/local_backups
+logs
+
+.DS_Store

@@ -1,0 +1,53 @@
+# Cele trei interfete din sala - administrare, arbitraj, ecran public -
+# construite ca fisiere statice si servite de nginx.
+#
+# De ce exista: pana acum porneau cu `npm run dev` pe laptopul din sala,
+# ceea ce insemna ca pe acel calculator trebuia sa existe Node, tot
+# depozitul descarcat si un `npm install` reusit - si ca la o competitie
+# adevarata rulau trei servere de dezvoltare. Imaginea asta le inlocuieste
+# pe toate: se descarca gata facuta si nu cere nimic altceva decat Docker.
+#
+# Porturile sunt aceleasi ca inainte (5191, 5176, 5177), ca nimic din ce
+# stie lumea deja - ghiduri, semne lipite pe mese - sa nu se schimbe.
+
+FROM node:20-slim AS build
+
+WORKDIR /build
+
+COPY package.json package-lock.json ./
+COPY apps/competition-admin/package.json apps/competition-admin/package.json
+COPY apps/referee-scoring/package.json apps/referee-scoring/package.json
+COPY apps/public-display/package.json apps/public-display/package.json
+COPY apps/shared/package.json apps/shared/package.json
+
+# package-lock.json e facut pe macOS, deci retine doar binarul rollup
+# pentru darwin-arm64 (npm/cli#4828: npm nu scrie in lockfile dependintele
+# optionale ale celorlalte platforme). Nici `npm ci`, nici `npm install` cu
+# lockfile-ul la locul lui nu repara asta - trebuie sters ca npm sa
+# rezolve din nou, pentru platforma de aici. Acelasi lucru il face si
+# Dockerfile-ul de productie; fara el, construirea cade cu
+# "Cannot find module @rollup/rollup-linux-x64-gnu".
+RUN rm -f package-lock.json && npm install
+
+COPY apps/shared apps/shared
+COPY apps/competition-admin apps/competition-admin
+COPY apps/referee-scoring apps/referee-scoring
+COPY apps/public-display apps/public-display
+
+# Nu punem VITE_API_BASE_URL: fara el, fiecare aplicatie isi cauta
+# backendul la acelasi nume de gazda de unde a fost deschisa, pe portul
+# 8000 (vezi apps/shared/lib/api.js). Asa, o tableta deschisa pe
+# 192.168.1.50:5176 vorbeste singura cu 192.168.1.50:8000, fara ca cineva
+# sa editeze ceva inaintea fiecarei competitii.
+RUN npm run build --workspace @vovinam/competition-admin \
+ && npm run build --workspace @vovinam/referee-scoring \
+ && npm run build --workspace @vovinam/public-display
+
+FROM nginx:1.27-alpine
+
+COPY --from=build /build/apps/competition-admin/dist /srv/competition-admin
+COPY --from=build /build/apps/referee-scoring/dist /srv/referee-scoring
+COPY --from=build /build/apps/public-display/dist /srv/public-display
+COPY docker/venue-frontends.nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 5191 5176 5177

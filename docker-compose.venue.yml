@@ -1,0 +1,99 @@
+# Stiva pentru laptopul din sala, cu imagini gata facute.
+#
+# Diferenta fata de docker-compose.local.yml, de langa el: acela
+# construieste imaginile din codul de pe disc si e pentru cineva care are
+# depozitul descarcat. Acesta doar le descarca, deci pe calculatorul din
+# sala nu mai trebuie nici codul, nici Node, nici npm - doar Docker.
+#
+# Launcherul il poarta cu el, in interiorul aplicatiei, si il foloseste
+# cand nu gaseste depozitul pe disc. Imaginile sunt publicate de
+# .github/workflows/venue-images.yml la fiecare versiune.
+#
+# Cele doua fisiere trebuie tinute in pas: ce se schimba aici - o variabila
+# noua, un volum, un port - trebuie schimbat si dincolo, altfel ziua
+# competitiei decurge altfel pe calculatorul unui dezvoltator decat pe cel
+# din sala.
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-frvv_local}
+      POSTGRES_USER: ${DB_USER:-frvv}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-frvv_local_password}
+    volumes:
+      - frvv_local_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-frvv} -d ${DB_NAME:-frvv_local}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  backend:
+    image: ghcr.io/gabimolocea/vovinam-venue-backend:${FRVV_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: crud.settings_local
+      DJANGO_DEBUG: "False"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-before-the-event}
+      LAN_HOST: ${LAN_HOST:-172.20.10.14}
+      IS_LOCAL_EVENT_SERVER: "True"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-frvv_local}
+      DB_USER: ${DB_USER:-frvv}
+      DB_PASSWORD: ${DB_PASSWORD:-frvv_local_password}
+      LOCAL_BACKUP_INTERVAL_MINUTES: ${LOCAL_BACKUP_INTERVAL_MINUTES:-15}
+      LOCAL_BACKUP_RETENTION_COUNT: ${LOCAL_BACKUP_RETENTION_COUNT:-200}
+      CLOUD_SYNC_BASE_URL: ${CLOUD_SYNC_BASE_URL:-}
+      CLOUD_SYNC_USERNAME: ${CLOUD_SYNC_USERNAME:-}
+      CLOUD_SYNC_PASSWORD: ${CLOUD_SYNC_PASSWORD:-}
+    volumes:
+      - frvv_local_media:/app/media
+      - frvv_local_backups:/app/local_backups
+    ports:
+      - "8000:8000"
+
+  # Proces separat: continua sa faca salvari chiar daca backendul e
+  # repornit dupa o schimbare de configurare.
+  backup-scheduler:
+    image: ghcr.io/gabimolocea/vovinam-venue-backend:${FRVV_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: crud.settings_local
+      LAN_HOST: ${LAN_HOST:-172.20.10.14}
+      IS_LOCAL_EVENT_SERVER: "True"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-frvv_local}
+      DB_USER: ${DB_USER:-frvv}
+      DB_PASSWORD: ${DB_PASSWORD:-frvv_local_password}
+      LOCAL_BACKUP_INTERVAL_MINUTES: ${LOCAL_BACKUP_INTERVAL_MINUTES:-15}
+      LOCAL_BACKUP_RETENTION_COUNT: ${LOCAL_BACKUP_RETENTION_COUNT:-200}
+    volumes:
+      - frvv_local_backups:/app/local_backups
+    entrypoint: ["python", "manage.py", "backup_loop"]
+
+  # Cele trei interfete, ca fisiere statice. Inlocuiesc serverele de
+  # dezvoltare care porneau pana acum cu `npm run dev` pe laptopul din sala.
+  frontends:
+    image: ghcr.io/gabimolocea/vovinam-venue-frontends:${FRVV_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "5191:5191"
+      - "5176:5176"
+      - "5177:5177"
+
+volumes:
+  frvv_local_db_data:
+  frvv_local_media:
+  frvv_local_backups:
