@@ -5,7 +5,7 @@ import { clubAPI, MEDIA_BASE_URL } from '@shared/lib/api';
 import { withSsoHandoff, withSsoLogoutSignal } from '@shared/lib/sso';
 import { suppressPublicLoginRedirect } from '../lib/logoutRedirect';
 import Logo from '@shared/components/Logo';
-import { Trophy, Building2, User, Bell, LogOut, ExternalLink, ShieldCheck, Sparkles } from 'lucide-react';
+import { Trophy, Building2, User, Bell, LogOut, ExternalLink, ShieldCheck, Sparkles, Wifi } from 'lucide-react';
 
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5179';
 const COMPETITION_ADMIN_URL = import.meta.env.VITE_COMPETITION_ADMIN_URL || 'http://localhost:5191';
@@ -30,6 +30,7 @@ function useNavItems({ isAdmin, isCoach }) {
       { to: '/aprobari', label: 'Aprobări', icon: ShieldCheck, badgeKey: 'approvals' },
       { to: '/competitions', label: 'Centralizator', icon: Trophy },
       { to: '/asistent-ai', label: 'Asistent AI', icon: Sparkles },
+      { to: '/competitie-in-sala', label: 'Competiție în sală', icon: Wifi },
     ];
   }
   if (isCoach) {
