@@ -132,6 +132,12 @@ jobs:
         if: runner.os == 'Windows'
         run: npm install --no-save @rollup/rollup-win32-x64-msvc
 
+      # Inainte de a construi, nu dupa: un launcher care nu porneste fara
+      # cod sursa nu are ce cauta intr-un release (v1.0.0 a fost publicata
+      # exact asa).
+      - name: Verifica ca porneste si fara cod sursa
+        run: node scripts/check-launcher-without-repo.mjs
+
       - name: Construieste launcherul
         run: npm run build --workspace @vovinam/launcher
         env:

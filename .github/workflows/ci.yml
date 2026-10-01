@@ -67,6 +67,14 @@ jobs:
     - name: Run frontend unit tests
       run: npm run test --workspaces --if-present
 
+    # Launcherul trebuie sa porneasca si pe un calculator fara cod sursa -
+    # asa e laptopul din sala, unde stiva vine ca imagini gata facute. Nu se
+    # vede niciodata pe calculatorul cuiva care lucreaza la proiect, fiindca
+    # acolo codul e mereu la locul lui; v1.0.0 a fost publicata rupta exact
+    # asa.
+    - name: Launcher starts without the source code
+      run: node scripts/check-launcher-without-repo.mjs
+
   # End-to-end tests (Playwright) for public-site, app and competition-admin
   # - see playwright.config.js and e2e/. Runs real dev servers for all three
   # apps and drives them in a real browser; the Django backend is replaced

@@ -60,7 +60,39 @@ function backendPython() {
 // marcate ca pornite de altcineva, si nu incercam sa le lansam noi. Fara
 // marcajul asta, launcherul ar cauta npm pe un calculator unde Node nici nu
 // e instalat.
+//
+// Cele trei interfete, descrise fara nimic legat de disc. Partea asta
+// trebuie sa poata fi data si acolo unde nu exista cod: launcherul are
+// nevoie de id, nume si port ca sa afiseze adresele din sala.
+const FRONTENDS = [
+  { id: 'competition-admin', label: 'Competition Admin', port: 5191, workspace: '@vovinam/competition-admin' },
+  { id: 'referee-scoring', label: 'Referee Scoring', port: 5176, workspace: '@vovinam/referee-scoring' },
+  { id: 'public-display', label: 'Public Display', port: 5177, workspace: '@vovinam/public-display' },
+];
+
 function buildServiceDefs(lanIp, { useDocker = false, frontendsFromDocker = false } = {}) {
+  // Intai drumul fara cod pe disc, si abia apoi orice atinge discul.
+  //
+  // Ordinea asta nu e de stil. Inainte, lista se construia toata - cu
+  // `cwd: repoRoot()` in fiecare intrare - si abia pe urma se verifica
+  // modul. Pe laptopul din sala, unde nu exista depozit, se arunca "Nu stiu
+  // unde este proiectul pe acest calculator" chiar la pornire, desi calea
+  // aceea nu era necesara nimanui: interfetele vin din container.
+  if (frontendsFromDocker) {
+    return FRONTENDS.map(({ id, label, port }) => ({ id, label, port, managedByDocker: true }));
+  }
+
+  const root = repoRoot();
+
+  const frontends = FRONTENDS.map(({ id, label, port, workspace }) => ({
+    id,
+    label,
+    port,
+    command: 'npm',
+    args: ['run', 'dev', '--workspace', workspace, '--', '--port', String(port), '--host'],
+    cwd: root,
+  }));
+
   const backendDef = {
     id: 'backend',
     label: 'Backend (Django)',
@@ -75,37 +107,6 @@ function buildServiceDefs(lanIp, { useDocker = false, frontendsFromDocker = fals
     // assignments, scores) can be edited here once an event is synced.
     env: { LAN_HOST: lanIp, IS_LOCAL_EVENT_SERVER: 'True' },
   };
-
-  const frontends = [
-    {
-      id: 'competition-admin',
-      label: 'Competition Admin',
-      port: 5191,
-      command: 'npm',
-      args: ['run', 'dev', '--workspace', '@vovinam/competition-admin', '--', '--port', '5191', '--host'],
-      cwd: repoRoot(),
-    },
-    {
-      id: 'referee-scoring',
-      label: 'Referee Scoring',
-      port: 5176,
-      command: 'npm',
-      args: ['run', 'dev', '--workspace', '@vovinam/referee-scoring', '--', '--port', '5176', '--host'],
-      cwd: repoRoot(),
-    },
-    {
-      id: 'public-display',
-      label: 'Public Display',
-      port: 5177,
-      command: 'npm',
-      args: ['run', 'dev', '--workspace', '@vovinam/public-display', '--', '--port', '5177', '--host'],
-      cwd: repoRoot(),
-    },
-  ];
-
-  if (frontendsFromDocker) {
-    return frontends.map(({ id, label, port }) => ({ id, label, port, managedByDocker: true }));
-  }
 
   return [...(useDocker ? [] : [backendDef]), ...frontends];
 }
