@@ -2,7 +2,18 @@ import React, { useState, useEffect, useContext, useCallback, useRef } from 'rea
 import { useParams } from 'react-router-dom';
 import { CentralizatorContext, GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { api, MEDIA_BASE_URL, fieldAPI, matchFieldAssignmentAPI, matchEventAPI } from '@shared';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, formatGroupBadgeLabel } from '../components/ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  formatGroupBadgeLabel,
+} from '../components/ui';
 import ExcelJS from 'exceljs';
 import { useToast } from '../contexts/ToastContext';
 
@@ -93,7 +104,6 @@ export default function BracketPage() {
   const ctx = useContext(CentralizatorContext);
   const { id: eventId } = useParams();
   const [matchDetailModal, setMatchDetailModal] = useState(null); // match object or null
-  const [searchTerm, setSearchTerm] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
   // categoryId -> that CategoryBracket's own fetchMatches, so the drawer can
   // refresh just the affected category's cards after a quick-schedule action.
@@ -178,49 +188,48 @@ export default function BracketPage() {
   };
 
   const groupOptions = Array.from(new Set(orderedCats.map(cat => cat.groupName).filter(Boolean)));
-  const normalizedSearch = searchTerm.trim().toLowerCase();
-  const filteredCats = orderedCats.filter(cat => {
-    const matchesGroup = groupFilter === 'all' || cat.groupName === groupFilter;
-    const label = shortLabel(cat).toLowerCase();
-    const group = (cat.groupName || '').toLowerCase();
-    const matchesSearch = !normalizedSearch || label.includes(normalizedSearch) || group.includes(normalizedSearch);
-    return matchesGroup && matchesSearch;
-  });
+  const filteredCats = groupFilter === 'all'
+    ? orderedCats
+    : orderedCats.filter(cat => cat.groupName === groupFilter);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-background p-3">
       <div className={`flex w-full flex-col gap-4 ${isEditLocked ? 'opacity-95' : ''}`} inert={isEditLocked ? '' : undefined}>
-        <div className="border border-border bg-muted px-3 py-2">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <label className="text-sm font-bold uppercase tracking-wide text-foreground">Caută categorie sau grupă</label>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Ex: Juniori, -60kg, Feminin"
-                className="rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground outline-none"
-              />
-            </div>
-            <div className="flex w-full flex-col gap-1 lg:w-64">
-              <label className="text-sm font-bold uppercase tracking-wide text-foreground">Filtru grupă</label>
-              <select
-                value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
-                className="rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground outline-none"
+        {/* Doar grupa, in aceeasi forma ca filtrele din Tehnica. Cautarea
+            de text se uita doar la numele categoriei si al grupei, nu si la
+            sportivi, asa ca un nume cautat acolo raspundea mereu "nicio
+            categorie" - mai rau decat sa lipseasca. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={groupFilter} onValueChange={setGroupFilter}>
+            <SelectTrigger aria-label="Filtrează după grupă" className="h-8 w-56 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Grupă</SelectItem>
+              {groupOptions.map(group => (
+                <SelectItem key={group} value={group}>{group}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {groupFilter !== 'all' && (
+            <>
+              <span className="text-xs text-muted-foreground">
+                {filteredCats.length} din {orderedCats.length} categorii
+              </span>
+              <button
+                type="button"
+                onClick={() => setGroupFilter('all')}
+                className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
               >
-                <option value="all">Toate grupele</option>
-                {groupOptions.map(group => (
-                  <option key={group} value={group}>{group}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+                Resetează filtrele
+              </button>
+            </>
+          )}
         </div>
 
         {filteredCats.length === 0 ? (
           <div className="border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-            Nu există categorii care să corespundă filtrului curent.
+            Grupa aleasă nu are categorii de luptă.
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -1665,8 +1674,10 @@ function MatchCard({ match: m, eventId, onAdvance, isDroppable, dragOverSlot, se
   const showBlueMedal = m.match_type === 'finals' || (m.match_type === 'semi-finals' && placeByAthleteId?.[m.blue_corner] === 3);
   const assignedFieldId = m.field_id || m.field || null;
   const hasAssignedField = Boolean(assignedFieldId || m.field_number || m.field_name);
+  // Linkul duce in tab-ul Live, nu direct in ecranul terenului: ce se
+  // afiseaza in sala se porneste din Live, dintr-un singur loc.
   const fullscreenHref = assignedFieldId
-    ? `/competitions/${eventId}/live-fullscreen?field=${assignedFieldId}&panel=match&id=${m.id}`
+    ? `/competitions/${eventId}/categories/live`
     : null;
 
   const handleMoreInfoClick = (e) => {

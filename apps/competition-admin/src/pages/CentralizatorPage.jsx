@@ -1,8 +1,17 @@
 import React, { useContext, useMemo, useState } from 'react';
-import { ArrowUp, GripVertical, Plus, X } from 'lucide-react';
+import { ArrowUp, GripVertical, Plus, Settings, X } from 'lucide-react';
 import { api } from '@shared';
 import { CentralizatorContext, GENDER_BG, GENDER_LABELS, TYPE_LABELS } from './CategoriesLayout';
-import { Button, Input } from '../components/ui';
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+} from '../components/ui';
 import { buildFullCompetitionWorkbook, downloadWorkbook } from '../lib/fullExport';
 import { useToast } from '../contexts/ToastContext';
 
@@ -69,9 +78,7 @@ export default function CentralizatorPage() {
     isEditLocked,
     canUnlockEdit,
     generatingDefaults,
-    showStandardStructureBanner,
     handleGenerateStandardStructure,
-    dismissStandardStructureBanner,
   } = ctx;
 
   const handleExportComplet = async () => {
@@ -119,36 +126,6 @@ const filteredToNothing = visibleCatCount === 0 && totalCatCount > 0;
 
   return (
     <div className="flex-1 overflow-auto bg-background">
-      {canUnlockEdit && showStandardStructureBanner && (
-        <div className="border-b-2 border-border bg-accent px-3 py-3 md:px-5 lg:px-7 xl:px-8 2xl:px-10">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start justify-between gap-3 md:flex-1">
-              <div>
-              <div className="text-sm font-black uppercase tracking-wide text-foreground">Structură standard competiție</div>
-              <p className="mt-1 text-sm text-foreground/80">
-                Generează doar grupele și categoriile standard care lipsesc. Elementele existente rămân neschimbate și nu se duplică.
-              </p>
-              </div>
-              <button
-                type="button"
-                onClick={dismissStandardStructureBanner}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-card text-lg font-black text-foreground/80 transition hover:bg-accent/80"
-                title="Ascunde această secțiune"
-                aria-label="Ascunde această secțiune"
-              >
-                ×
-              </button>
-            </div>
-            <Button
-              onClick={handleGenerateStandardStructure}
-              disabled={busy || generatingDefaults}
-              className="w-full justify-center md:w-auto"
-            >
-              {generatingDefaults ? 'Se generează...' : 'Generează categorii și grupe standard'}
-            </Button>
-          </div>
-        </div>
-      )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-card px-3 py-2 md:px-5 lg:px-7 xl:px-8 2xl:px-10">
         <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Grupă
@@ -189,7 +166,7 @@ const filteredToNothing = visibleCatCount === 0 && totalCatCount > 0;
           </span>
         )}
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -198,6 +175,34 @@ const filteredToNothing = visibleCatCount === 0 && totalCatCount > 0;
           >
             {exportingComplet ? 'Se exportă...' : '⬇ Export complet (Excel)'}
           </Button>
+
+          {/* Generarea structurii standard se face o data, la inceput de
+              competitie, dar statea intr-o banda lata cat ecranul deasupra
+              tabelului, in fiecare zi. Acum e unde-i stau treburile rare. */}
+          {canUnlockEdit && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" aria-label="Setări competiție">
+                  <Settings className="h-4 w-4" />
+                  Setări
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel>Structură standard</DropdownMenuLabel>
+                <p className="px-2 pb-2 text-xs leading-snug text-muted-foreground">
+                  Generează doar grupele și categoriile standard care lipsesc.
+                  Elementele existente rămân neschimbate și nu se duplică.
+                </p>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={handleGenerateStandardStructure}
+                  disabled={busy || generatingDefaults}
+                >
+                  {generatingDefaults ? 'Se generează...' : 'Generează categorii și grupe standard'}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 

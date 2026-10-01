@@ -291,7 +291,32 @@ function FieldPanel({
   })();
   // Breaks aren't a real per-item status - keep them visible alongside
   // whatever's still ahead rather than stranding them in "Finalizate".
-  const activeScheduleItems = scheduleItems.filter(i => i.status !== 'completed');
+  // Ce e pe TV acum poate sa nu fie in programul terenului: proba se poate
+  // deschide si din Clasament sau din Piramide, fara sa fi trecut prin
+  // Programare. Pana acum capul coloanei spunea "in desfasurare" iar lista
+  // dedesubt era goala - singurul loc unde scria ce se vede pe ecranul din
+  // sala era chiar ecranul din sala.
+  const displayedItem = (() => {
+    if (!session || session.status === 'idle') return null;
+    const inSchedule = scheduleItems.some(i =>
+      (i.type === 'category' && session.current_category === i.id && !session.current_match)
+      || (i.type === 'match' && session.current_match === i.id));
+    if (inSchedule) return null;
+    if (session.current_match) {
+      const m = matches.find(mm => mm.id === session.current_match);
+      return m ? { type: 'match', id: m.id, assignmentId: null, data: m, order: -1, status: 'in_progress', unscheduled: true } : null;
+    }
+    if (session.current_category) {
+      const c = allCats.find(cc => cc.id === session.current_category);
+      return c ? { type: 'category', id: c.id, assignmentId: null, data: c, order: -1, status: 'in_progress', unscheduled: true } : null;
+    }
+    return null;
+  })();
+
+  const activeScheduleItems = [
+    ...(displayedItem ? [displayedItem] : []),
+    ...scheduleItems.filter(i => i.status !== 'completed'),
+  ];
   const completedScheduleItems = scheduleItems.filter(i => i.status === 'completed');
   const visibleScheduleItems = scheduleTab === 'completed' ? completedScheduleItems : activeScheduleItems;
 
@@ -408,6 +433,15 @@ function FieldPanel({
 
                       {/* Status dot */}
                       <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${item.status === 'completed' ? 'bg-muted-foreground/40' : st.dot}`} />
+
+                      {/* Ajunsa pe TV fara sa treaca prin Programare - se vede
+                          in sala, deci trebuie sa se vada si aici, dar marcata
+                          ca atare, ca nimeni sa n-o caute in program. */}
+                      {item.unscheduled && (
+                        <span className="shrink-0 rounded-full border border-amber-400 bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900">
+                          Neprogramată
+                        </span>
+                      )}
 
                       {/* Name + info */}
                       <div className="flex-1 min-w-0">

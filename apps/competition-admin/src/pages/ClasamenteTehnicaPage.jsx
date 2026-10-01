@@ -397,15 +397,14 @@ export default function ClasamenteTehnicaPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => {
-                          const fieldId = fieldByCategory.get(cat.id);
-                          if (!fieldId) return;
-                          navigate(`/competitions/${eventId}/live-fullscreen?field=${fieldId}&panel=category&id=${cat.id}`);
-                        }}
+                        onClick={() => navigate(`/competitions/${eventId}/categories/live`)}
                         disabled={!fieldByCategory.get(cat.id)}
                         className="w-full border-blue-200 bg-blue-50 text-xs text-blue-700 hover:bg-blue-100 disabled:border-border disabled:bg-muted disabled:text-muted-foreground"
                       >
-                        {fieldByCategory.get(cat.id) ? 'Vezi informații' : 'Vezi informații indisponibil'}
+                        {/* Ducea direct in ecranul de operare al terenului, de
+                            unde proba ajunge pe ecranul din sala. Ce se arata
+                            pe teren se hotaraste din Live, deci acolo duce. */}
+                        {fieldByCategory.get(cat.id) ? 'Vezi pe Live' : 'Nu e programată pe teren'}
                       </Button>
                     </TableCell>
                   </TableRow>

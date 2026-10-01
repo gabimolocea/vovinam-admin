@@ -16,7 +16,10 @@ import {
   competitionRefereeAPI, refereePresenceAPI, refereeQrLoginAPI, recordingAPI, scoreTimelineAPI,
   systemAPI,
 } from '@shared/lib/api';
-import { formatGroupBadgeLabel, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '../components/ui';
+import {
+  formatGroupBadgeLabel,
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+} from '../components/ui';
 import { GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 import RefereeAccessModal from '../components/RefereeAccessModal';
@@ -50,14 +53,9 @@ function refereeScoringOrigin() {
 }
 
 const formatFieldLabel = (name = '') => String(name).replace(/\bfield\b/gi, 'TEREN').replace(/\btatami\b/gi, 'TEREN').toUpperCase();
-const CATEGORY_TYPE_BADGES = {
-  solo: { label: 'Solo', bg: 'rounded-full border border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
-  team: { label: 'Echipă', bg: 'rounded-full border border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
-  teams: { label: 'Echipă', bg: 'rounded-full border border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
-  fight: { label: 'Luptă', bg: 'rounded-full border border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
-};
 const TOPNAV_SECONDARY_BUTTON = 'text-xs rounded-md border border-white/30 bg-white/10 px-2.5 py-1 font-medium text-white transition hover:bg-white/20 disabled:opacity-40';
 const TOPNAV_GREEN_BUTTON = 'text-xs rounded-md border border-emerald-500 bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1 font-bold text-white transition disabled:opacity-40';
+const TOPNAV_DANGER_BUTTON = 'text-xs rounded-md border border-red-400/60 bg-red-500/15 px-2.5 py-1 font-medium text-red-200 transition hover:bg-red-500/30 disabled:opacity-40';
 const MODAL_SECONDARY_BUTTON = 'rounded-md border border-input bg-background px-4 py-2.5 font-semibold text-foreground transition hover:bg-accent disabled:opacity-40';
 const MODAL_DANGER_BUTTON = 'rounded-md bg-destructive px-4 py-2.5 font-bold text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-40';
 const MODAL_SUCCESS_BUTTON = 'rounded-md bg-emerald-600 px-4 py-2.5 font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40';
@@ -536,10 +534,15 @@ export default function LiveFullscreenPage() {
     setBusy(false);
   };
 
-  const switchDisplay = wrap(async (catId, matchId, athleteId, status = 'displaying') => {
+  // `allowCreate` este ce porneste un teren. Doar butonul AFIȘEAZĂ PE TV
+  // il trimite adevarat; restul (prezinta sportivul, dezvaluie scorul,
+  // ascunde castigatorul) doar schimba ce se vede pe un teren deja pornit.
+  // Altfel, un "Prezintă" apasat pe un teren oprit il aprindea pe tacute,
+  // iar in Live aparea o proba care nu fusese pusa de nimeni acolo.
+  const switchDisplay = wrap(async (catId, matchId, athleteId, status = 'displaying', { allowCreate = false } = {}) => {
     const data = { current_category: catId || null, current_match: matchId || null, current_athlete: athleteId || null, status };
     if (session) await monitorAPI.sessions.update(session.id, data);
-    else await monitorAPI.sessions.create({ field: fieldId, ...data });
+    else if (allowCreate) await monitorAPI.sessions.create({ field: fieldId, ...data });
   });
   const startRecordingSession = async ({ auto = false } = {}) => {
     if (isRecordingActive || !ensureOperationalWrite()) return;
@@ -759,7 +762,11 @@ export default function LiveFullscreenPage() {
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
       {/* ── Top bar ── */}
       <div className="shrink-0 border-b-2 border-sidebar-accent bg-sidebar px-3 py-1.5 text-sidebar-foreground sm:px-4 lg:px-5">
-        <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between">
+        {/* Un singur rand cat timp incape, nu pana la un prag fix: pe un
+            ecran de 920px butoanele aveau loc langa numele terenului, dar
+            `lg:flex-row` le rupea oricum pe doua randuri si manca din
+            inaltimea utila. Acum se rup doar cand chiar nu mai au loc. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={goBack} className={TOPNAV_SECONDARY_BUTTON} title="Înapoi">&#8592;</button>
           <span className="text-base font-black uppercase tracking-wide text-sidebar-accent">{formatFieldLabel(field.name)}</span>
@@ -775,29 +782,16 @@ export default function LiveFullscreenPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
-          {/* Match control buttons in top nav */}
-          {panelType === 'match' && currentMatch && (
-            <button onClick={() => setShowResetConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Reset</button>
-          )}
-          {panelType === 'match' && currentMatch && (
-            <button
-              onClick={() => openMatchSettingsRef.current?.()}
-              disabled={busy}
-              className={TOPNAV_SECONDARY_BUTTON}
-              title="Mod de afișare și durata reprizelor"
-            >⚙ Setări meci</button>
-          )}
-          {panelType === 'match' && currentMatch && isSessionActive && (
-            <>
-              <button onClick={() => setShowStopConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Nu afișa pe TV</button>
-            </>
-          )}
-          {/* START / ÎNCHEIE for matches */}
+          {/* Doar actiunea principala sta afara; restul intra in meniu.
+              Inainte erau pana la sase butoane care se schimbau la pornirea
+              probei, asa ca bara sarea pe doua randuri exact cand incepea
+              treaba. Asa ramane de aceeasi latime indiferent de stare, iar
+              Reset nu mai sta lipit de ÎNCHEIE PROBA. */}
           {panelType === 'match' && currentMatch && !isSessionActive && (
             <button
               onClick={async () => {
                 await startRecordingSession({ auto: true });
-                await switchDisplay(currentMatch.category, currentMatch.id, null);
+                await switchDisplay(currentMatch.category, currentMatch.id, null, 'displaying', { allowCreate: true });
                 if (currentAssignment) {
                   setBusy(true);
                   try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
@@ -815,19 +809,11 @@ export default function LiveFullscreenPage() {
               className={`${TOPNAV_GREEN_BUTTON} ${session?.current_match === currentMatch.id && session?.status === 'winner_revealed' ? 'ring-2 ring-emerald-400 animate-pulse' : ''}`}
             >ÎNCHEIE PROBA</button>
           )}
-          {/* Category control buttons in top nav */}
-          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
-            <button onClick={() => setShowResetCategoryConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON}>Reset</button>
-          )}
-          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
-            <button onClick={() => exportExcelRef.current?.()} disabled={busy} className={TOPNAV_SECONDARY_BUTTON} title="Exportă în Excel">⬇ Excel</button>
-          )}
-          {/* START / ÎNCHEIE for categories */}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
             <button
               onClick={async () => {
                 await startRecordingSession({ auto: true });
-                await switchDisplay(currentCat.id, null, null);
+                await switchDisplay(currentCat.id, null, null, 'displaying', { allowCreate: true });
                 if (currentAssignment) {
                   setBusy(true);
                   try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
@@ -845,16 +831,45 @@ export default function LiveFullscreenPage() {
               className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted ? 'ring-2 ring-emerald-400 animate-pulse' : ''}`}
             >ÎNCHEIE PROBA</button>
           )}
+
+          {panelType === 'match' && currentMatch && isSessionActive && (
+            <button onClick={() => setShowStopConfirm(true)} disabled={busy} className={TOPNAV_SECONDARY_BUTTON} title="Scoate proba de pe ecranul din sală">Stop TV</button>
+          )}
+          {panelType === 'match' && currentMatch && (
+            <button
+              onClick={() => openMatchSettingsRef.current?.()}
+              disabled={busy}
+              className={TOPNAV_SECONDARY_BUTTON}
+              title="Mod de afișare și durata reprizelor"
+              aria-label="Setări meci"
+            >⚙</button>
+          )}
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
+            <button onClick={() => exportExcelRef.current?.()} disabled={busy} className={TOPNAV_SECONDARY_BUTTON} title="Exportă rezultatele în Excel">⬇ Excel</button>
+          )}
+
           <a href={`${publicDisplayOrigin()}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
-            className={`${TOPNAV_SECONDARY_BUTTON} text-center`}>
-            TV PUBLIC
+            className={`${TOPNAV_SECONDARY_BUTTON} text-center`} title="Deschide ecranul public într-o filă nouă">
+            TV
           </a>
           <button
             onClick={() => preview.togglePreview(fieldId)}
             className={`${TOPNAV_SECONDARY_BUTTON} ${preview.isOpen(fieldId) ? 'bg-sidebar-accent hover:bg-sidebar-accent/80 text-sidebar-accent-foreground border-sidebar-accent' : ''}`}
+            title={preview.isOpen(fieldId) ? 'Ascunde previzualizarea ecranului public' : 'Arată previzualizarea ecranului public'}
           >
-            {preview.isOpen(fieldId) ? 'Ascunde Preview TV' : 'Preview TV'}
+            Preview
           </button>
+
+          {/* Resetul sterge scoruri, deci sta ultimul si arata altfel - cat
+              mai departe de butonul verde, cu care nu vrei sa-l confunzi. */}
+          {((panelType === 'match' && currentMatch) || (panelType === 'category' && currentCat && currentCat.type !== 'fight')) && (
+            <button
+              onClick={() => (panelType === 'match' ? setShowResetConfirm(true) : setShowResetCategoryConfirm(true))}
+              disabled={busy}
+              className={TOPNAV_DANGER_BUTTON}
+              title="Șterge scorurile acestei probe"
+            >Reset</button>
+          )}
         </div>
         </div>
       </div>
@@ -1122,8 +1137,19 @@ export default function LiveFullscreenPage() {
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
 function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, recordingSession, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, exportExcelRef }) {
-  const navigate = useNavigate();
+  const toast = useToast();
   const isTeamCategory = cat.type === 'team';
+
+  // Terenul se aprinde doar cu AFIȘEAZĂ PE TV. Fara asta, "Prezintă" n-are
+  // pe ce ecran sa puna sportivul.
+  const fieldIsLive = Boolean(session && session.status !== 'idle');
+  const presentAthlete = (athleteId) => {
+    if (!fieldIsLive) {
+      toast.info('Terenul nu e pornit. Apasă întâi AFIȘEAZĂ PE TV.');
+      return;
+    }
+    switchDisplay(cat.id, null, athleteId);
+  };
   const enrolled = isTeamCategory ? (cat.enrolled_teams || []) : (cat.enrolled_athletes || []);
 
   // Modal state for admin score input per referee
@@ -1621,7 +1647,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     return !refSlots.some(r => r.id === athleteId);
   });
 
-  const typeBadge = CATEGORY_TYPE_BADGES[cat.type] || CATEGORY_TYPE_BADGES.solo;
   const spotlightRow = rows.find(r => r.isActive)
     || rows.find(r => highlightAthleteId === r.athleteId)
     || rows.find(r => !r.isDisqualified)
@@ -1643,7 +1668,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
         if (!row.allScoresIn) { setStopConfirmRow(row); return; }
         stopPresenting(row);
       } else if (highlightAction === 'present') {
-        switchDisplay(cat.id, null, row.athleteId);
+        presentAthlete(row.athleteId);
       }
     },
     '?': () => setShowShortcuts(true),
@@ -1687,7 +1712,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           </button>
         ) : (
           <button
-            onClick={() => switchDisplay(cat.id, null, row.athleteId)}
+            onClick={() => presentAthlete(row.athleteId)}
             disabled={busy || row.isDisqualified || row.allScoresIn}
             title={row.isDisqualified ? 'Sportiv descalificat' : row.allScoresIn ? 'A prezentat deja - toate notele au fost introduse' : undefined}
             className={`${buttonBase} ${presentButtonWidth} rounded-md border font-bold transition disabled:opacity-40 whitespace-nowrap ${
@@ -1758,9 +1783,8 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
               <div className="w-full max-w-3xl px-2 py-1">
                 <h1 className="break-words text-xl font-black leading-tight text-foreground sm:text-2xl">{cat.name}</h1>
                 <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1.5">
-                  <span className={`inline-flex px-2 py-0.5 text-xs font-bold uppercase ${typeBadge.bg}`}>{typeBadge.label}</span>
-                  {cat.gender && <span className={`inline-flex border border-border px-2 py-0.5 text-xs font-bold text-foreground ${GENDER_BG[cat.gender] || 'bg-muted'}`}>{GENDER_LABELS[cat.gender] || cat.gender}</span>}
                   {cat.groupName && <span className="inline-flex border border-border bg-card px-2 py-0.5 text-xs font-medium text-foreground/80">{cat.groupName}</span>}
+                  {cat.gender && <span className={`inline-flex border border-border px-2 py-0.5 text-xs font-bold text-foreground ${GENDER_BG[cat.gender] || 'bg-muted'}`}>{GENDER_LABELS[cat.gender] || cat.gender}</span>}
                 </div>
               </div>
             </div>
@@ -1769,23 +1793,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           <div className="w-full xl:col-start-3 xl:justify-self-end xl:max-w-md">
             <>
               <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</span>
-              {/* Sloturile de aici arata alocarea facuta in Programare, si
-                  se pot schimba pe loc cand un arbitru nu ajunge. Daca sunt
-                  goale, nimeni nu le-a alocat inca - si fara randul asta
-                  arata ca si cum nu s-ar fi alocat nicaieri. */}
-              {refSlots.every(r => !r.id) && (
-                <p className="mb-1 text-[11px] leading-snug text-muted-foreground">
-                  Niciun arbitru alocat acestei probe.{' '}
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/competitions/${eventId}/categories/programare`)}
-                    className="font-semibold text-primary underline-offset-2 hover:underline"
-                  >
-                    Alocă din Programare
-                  </button>{' '}
-                  sau alege unul mai jos.
-                </p>
-              )}
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 xl:grid-cols-1">
                 {refSlots.map(r => {
                   const isConnected = r.id ? connectedRefIds.has(r.id) : false;

@@ -273,7 +273,10 @@ function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScore
   })();
 
   const genderLabel = category?.gender === 'male' ? 'Masculin' : category?.gender === 'female' ? 'Feminin' : category?.gender === 'mixt' ? 'Mixt' : '';
-  const categoryDisplay = [category?.name, genderLabel].filter(Boolean).join(', ');
+  // Numele probei primul - el se cauta in sala; grupa si genul il
+  // precizeaza. Inainte se citea "grupa | proba, gen", adica tocmai
+  // informatia cautata era la mijloc.
+  const probaDisplay = [category?.name, groupDisplay, genderLabel].filter(Boolean).join(' | ');
   const typeLabel = isTeamCategoryType(category?.type) ? 'ECHIPE' : 'SOLO';
 
   return (
@@ -292,10 +295,10 @@ function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScore
       </div>
 
       {/* ═══ PROBA (group & category) — above athlete ═══ */}
-      {(groupDisplay || categoryDisplay) && (
+      {probaDisplay && (
         <div className="text-left mt-[0.5vh] shrink-0 px-[3vw]">
           <p className="text-[2vw] text-gray-950 font-semibold leading-tight">
-            Proba: <span className="ml-3 italic">{[groupDisplay, categoryDisplay].filter(Boolean).join(' | ')}</span>
+            Proba: <span className="ml-3 italic">{probaDisplay}</span>
           </p>
         </div>
       )}

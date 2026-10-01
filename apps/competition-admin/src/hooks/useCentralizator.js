@@ -91,7 +91,6 @@ export default function useCentralizator() {
   const [fightWeights, setFightWeights] = useState([]);
   const [isEditLocked, setIsEditLocked] = useState(false);
   const [generatingDefaults, setGeneratingDefaults] = useState(false);
-  const [showStandardStructureBanner, setShowStandardStructureBanner] = useState(true);
 
   useEffect(() => {
     if (!eventId) return;
@@ -101,20 +100,8 @@ export default function useCentralizator() {
 
   useEffect(() => {
     if (!eventId) return;
-    const stored = localStorage.getItem(`competition-admin-standard-structure-banner:${eventId}`);
-    setShowStandardStructureBanner(stored !== 'hidden');
-  }, [eventId]);
-
-  useEffect(() => {
-    if (!eventId) return;
     localStorage.setItem(`competition-admin-edit-lock:${eventId}`, isEditLocked ? '1' : '0');
   }, [eventId, isEditLocked]);
-
-  const dismissStandardStructureBanner = useCallback(() => {
-    if (!eventId) return;
-    localStorage.setItem(`competition-admin-standard-structure-banner:${eventId}`, 'hidden');
-    setShowStandardStructureBanner(false);
-  }, [eventId]);
 
   const toggleEditLock = useCallback(() => {
     if (!isAdmin) return;
@@ -628,8 +615,7 @@ export default function useCentralizator() {
           const { data } = await competitionAPI.generateStandardGroupsCategories(eventId);
           await refreshStructureData();
           const result = data?.result || {};
-          dismissStandardStructureBanner();
-          toast.error(
+          toast.success(
             `Sincronizare finalizată. Grupe create: ${result.groups_created || 0}, actualizate: ${result.groups_updated || 0}; categorii create: ${result.categories_created || 0}, actualizate: ${result.categories_updated || 0}.`
           );
         } catch (err) {
@@ -674,11 +660,9 @@ export default function useCentralizator() {
     editingWeight, setEditingWeight,
     isEditLocked, toggleEditLock, canUnlockEdit: isAdmin,
     generatingDefaults,
-    showStandardStructureBanner,
     // Handlers
     fetchAll, refreshCategoriesOnly, refreshStructureData,
     handleGenerateStandardStructure,
-    dismissStandardStructureBanner,
     handleCustomGroup, handleDeleteGroup,
     handleAddCustomCat, handleDeleteCat,
     handleUnenroll, handleTeamUnenroll, handleWeightSave,
