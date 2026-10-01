@@ -337,6 +337,18 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+// Pe macOS inchiderea ferestrei nu inchide aplicatia (vezi mai sus - asa e
+// obiceiul pe mac). Fara asta insa, aplicatia ramane in Dock fara nicio
+// fereastra: un click pe iconita, sau un `open` din terminal, trimite doar
+// evenimentul `activate`, pe care nu-l asculta nimeni, si nu se mai
+// deschide nimic pana la fortarea inchiderii.
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+    buildMenu();
+  }
+});
+
 app.on('before-quit', () => {
   getServiceManager().stopAll();
 });

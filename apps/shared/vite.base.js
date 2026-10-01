@@ -9,9 +9,10 @@ const sharedDir = path.dirname(fileURLToPath(import.meta.url));
  * Shared Vite configuration for every FRVV frontend app.
  * Apps pass their dev `port` and any extra `plugins` (e.g. PWA).
  */
-export function createAppViteConfig({ port, appDir, plugins = [], proxyMedia = true } = {}) {
+export function createAppViteConfig({ port, appDir, plugins = [], proxyMedia = true, extraProxy = {} } = {}) {
   const proxy = { '/api': 'http://localhost:8000' };
   if (proxyMedia) proxy['/media'] = 'http://localhost:8000';
+  Object.assign(proxy, extraProxy);
 
   return defineConfig({
     plugins: [react(), ...plugins],

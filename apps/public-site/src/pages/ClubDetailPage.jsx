@@ -49,7 +49,11 @@ export default function ClubDetailPage() {
   const [athletes, setAthletes] = useState([]);
   const [athletesCount, setAthletesCount] = useState(0);
   const [athletesHasNext, setAthletesHasNext] = useState(false);
-  const [athletesLoading, setAthletesLoading] = useState(false);
+  // Porneste pe `true`: lista de sportivi se cere abia dupa ce vine clubul
+  // (ii trebuie id-ul), iar intre primul randare al tab-ului si pornirea
+  // cererii se vedea o clipa „Niciun sportiv legitimat" pentru un club
+  // care are sportivi.
+  const [athletesLoading, setAthletesLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;

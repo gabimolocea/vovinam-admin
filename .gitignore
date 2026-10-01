@@ -57,6 +57,7 @@ dist/
 dev-dist/
 logs/
 apps/launcher/release/
+apps/launcher/main.js
 
 # Playwright (e2e) local run output
 playwright-report/

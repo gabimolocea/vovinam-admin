@@ -4,43 +4,95 @@
     {
       "name": "public-site",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/public-site", "--", "--host"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@vovinam/public-site",
+        "--",
+        "--host"
+      ],
       "port": 5179
     },
     {
       "name": "app",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/app", "--", "--host"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@vovinam/app",
+        "--",
+        "--host"
+      ],
       "port": 5175
     },
     {
       "name": "competition-admin",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/competition-admin", "--", "--port", "5191", "--host"],
-      "port": 5191
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@vovinam/competition-admin",
+        "--",
+        "--port",
+        "5191",
+        "--host"
+      ],
+      "port": 5191,
+      "env": {
+        "VITE_API_BASE_URL": "/api"
+      }
     },
     {
       "name": "referee-scoring",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/referee-scoring", "--", "--port", "5176", "--host"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@vovinam/referee-scoring",
+        "--",
+        "--port",
+        "5176",
+        "--host"
+      ],
       "port": 5176
     },
     {
       "name": "public-display",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@vovinam/public-display", "--", "--port", "5177", "--host"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@vovinam/public-display",
+        "--",
+        "--port",
+        "5177",
+        "--host"
+      ],
       "port": 5177
     },
     {
       "name": "launcher-renderer",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:renderer", "--workspace", "@vovinam/launcher"],
+      "runtimeArgs": [
+        "run",
+        "dev:renderer",
+        "--workspace",
+        "@vovinam/launcher"
+      ],
       "port": 5178
     },
     {
       "name": "backend",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "cd /Users/gabimolocea/vovinam-admin/backend && LAN_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo 127.0.0.1) IS_LOCAL_EVENT_SERVER=True python3 manage.py runserver 0.0.0.0:8000"],
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/gabimolocea/vovinam-admin/backend && LAN_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo 127.0.0.1) IS_LOCAL_EVENT_SERVER=True python3 manage.py runserver 0.0.0.0:8000"
+      ],
       "port": 8000
     }
   ]

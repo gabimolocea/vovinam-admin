@@ -18,7 +18,7 @@ mkdir -p "$LOG_DIR"
 # app_name port
 APPS=(
   "competition-admin 5173"
-  "coach-dashboard 5175"
+  "app 5175"
   "referee-scoring 5176"
   "public-display 5177"
   "public-registry 5178"
@@ -70,6 +70,10 @@ for entry in "${APPS[@]}"; do
   port="${entry##* }"
   if lsof -ti tcp:"$port" >/dev/null 2>&1; then
     echo "  $name → port $port already in use, skipping"
+    continue
+  fi
+  if [ ! -d "$APPS_DIR/$name" ]; then
+    echo "  $name → NU EXISTĂ ($APPS_DIR/$name) - sari peste"
     continue
   fi
   printf "  %-18s → http://localhost:%s (logs/%s.log)\n" "$name" "$port" "$name"

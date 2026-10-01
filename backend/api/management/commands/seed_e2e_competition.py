@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from api.models import (
     Athlete,
@@ -35,7 +35,11 @@ from api.models import (
     TeamCategory,
     TeamMember,
 )
-from api.views import (
+# Direct din modulul care le defineste, nu din pachetul `api.views`: cand
+# views-ul a fost spart pe domenii, re-exportul s-a facut cu `import *`,
+# care sare peste numele ce incep cu underscore. Comanda asta a ramas sa
+# ceara `_advance_to_next` de la pachet si crapa la pornire de atunci.
+from api.views.matches import (
     _advance_to_next,
     _sync_match_event_to_legacy,
     _sync_match_referee_score_to_legacy,
@@ -67,6 +71,16 @@ class Command(BaseCommand):
             self.stdout.write(self.style.NOTICE(f"Seeding data for event {event.id} - {event.title}"))
             self.prefix = prefix
             self.factory = APIRequestFactory()
+            # Generarea tabloului si avansarea castigatorului trec prin
+            # view-urile reale, care cer un admin autentificat. Fara asta,
+            # comanda se opreste la prima categorie de lupta cu
+            # "Datele de autentificare nu au fost furnizate".
+            self.admin = User.objects.filter(is_superuser=True).order_by('id').first()
+            if self.admin is None:
+                raise CommandError(
+                    'Nu exista niciun cont de administrator. Creeaza unul intai '
+                    '(de exemplu cu `manage.py ensure_local_admin`).'
+                )
             self.base_now = timezone.now().replace(second=0, microsecond=0)
 
             self.cleanup_existing_seed(event, prefix)
@@ -449,6 +463,7 @@ class Command(BaseCommand):
             {"bracket_type": "consolation"},
             format="json",
         )
+        force_authenticate(request, user=self.admin)
         response = generate_brackets(request, category.id)
         if response.status_code >= 400:
             raise CommandError(f"Bracket generation failed for category {category.id}: {response.data}")
@@ -485,6 +500,7 @@ class Command(BaseCommand):
             winner_corner = "red" if (match.bracket_position % 2 == 0 or match.match_type == "finals") else "blue"
             self.score_match(match, referees, winner_corner)
             request = self.factory.post(f"/api/matches/{match.id}/advance-winner/", {}, format="json")
+            force_authenticate(request, user=self.admin)
             response = advance_match_winner(request, match.id)
             if response.status_code >= 400:
                 raise CommandError(f"Winner advancement failed for match {match.id}: {response.data}")
@@ -543,12 +559,18 @@ class Command(BaseCommand):
         start_time = self.base_now + timedelta(minutes=match.id % 15)
         round_objs = []
         for round_number in range(1, 4):
-            round_obj = MatchRound.objects.create(
+            # Reprizele se creeaza singure odata cu meciul, iar `create` le
+            # lovea in constrangerea de unicitate (match, round_number) -
+            # comanda crapa la primul meci punctat. Le luam pe cele
+            # existente si le completam.
+            round_obj, _ = MatchRound.objects.update_or_create(
                 match=match,
                 round_number=round_number,
-                status="completed",
-                started_at=start_time + timedelta(minutes=round_number - 1),
-                ended_at=start_time + timedelta(minutes=round_number),
+                defaults={
+                    "status": "completed",
+                    "started_at": start_time + timedelta(minutes=round_number - 1),
+                    "ended_at": start_time + timedelta(minutes=round_number),
+                },
             )
             round_objs.append(round_obj)
 
