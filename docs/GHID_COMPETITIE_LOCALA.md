@@ -69,6 +69,28 @@ refăcut acest pas.
 
 ## 🔧 Partea tehnică — pornirea în ziua competiției
 
+### Varianta scurtă: un singur dublu-clic
+
+În folderul proiectului există fișierul **`Porneste competitia.command`**.
+Dublu-clic pe el și gata: pornește Docker Desktop dacă nu merge deja,
+așteaptă să fie pregătit, apoi deschide launcherul. Din launcher se face
+tot restul, prin click-uri.
+
+Lucruri de știut:
+
+- Fișierul trebuie să rămână în folderul proiectului — de acolo își află
+  singur calea. Dacă vrei o scurtătură pe birou, fă un **alias** (clic
+  dreapta → „Creează alias"), nu o copie.
+- Prima pornire durează mai mult: Docker își construiește imaginile.
+- După prima pornire, launcherul ține minte unde e proiectul, deci îl poți
+  deschide și direct din Dock.
+- Launcherul pornește aplicația de administrare pe portul **5191**, nu
+  5173. Portul 5173 din tabelul de mai jos e pentru varianta manuală.
+
+Dacă rămâi la varianta cu dublu-clic, mai ai nevoie doar de pașii **1** și
+**2** de mai jos (rețeaua Wi-Fi și adresa laptopului). Pașii 3 și 4 îi face
+launcherul în locul tău.
+
 ### 1. Rețeaua Wi-Fi a evenimentului
 
 - Un router Wi-Fi dedicat evenimentului, cu nume propriu de rețea (ex.

@@ -4,6 +4,7 @@ const path = require('path');
 
 const { getLanIp } = require('./network');
 const { ServiceManager, buildServiceDefs, ensureLocalAdmin } = require('./services');
+const { getRepoRoot, setRepoRoot, isRepoRoot } = require('./repoRoot');
 const dockerBackend = require('./dockerBackend');
 const cloudSync = require('./cloudSync');
 
@@ -320,13 +321,81 @@ async function waitForBackend(baseUrl, { timeoutMs = 30000, intervalMs = 500 } =
   throw new Error('Backendul local nu a pornit la timp.');
 }
 
-app.whenReady().then(() => {
+// Fara sa stim unde e proiectul, launcherul nu poate porni nimic: nici
+// backendul, nici interfetele, nici stiva Docker. Rulat din sursa se
+// deduce singur; aplicatia impachetata insa nu are de unde sti, asa ca
+// intrebam o data si tinem minte raspunsul.
+//
+// Intrebam inainte sa apara fereastra principala, altfel operatorul ar
+// vedea un panou de control care esueaza la fiecare apasare.
+async function ensureRepoRootKnown() {
+  if (getRepoRoot()) return true;
+
+  const { response } = await dialog.showMessageBox({
+    type: 'question',
+    title: 'Unde este proiectul?',
+    message: 'Nu găsesc proiectul pe acest calculator.',
+    detail:
+      'Launcherul pornește baza de date, backendul și cele trei aplicații '
+      + 'din folderul proiectului, așa că trebuie să știe unde se află.\n\n'
+      + 'Alege folderul în care ai descărcat proiectul — cel care conține '
+      + 'folderul "backend".',
+    buttons: ['Alege folderul', 'Închide'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response !== 0) return false;
+
+  // Se repeta pana cand folderul ales e chiar proiectul: un folder gresit
+  // ales din graba ar duce la erori de pornire fara nicio legatura vizibila
+  // cu alegerea de aici.
+  for (;;) {
+    const picked = await dialog.showOpenDialog({
+      title: 'Alege folderul proiectului',
+      properties: ['openDirectory'],
+      buttonLabel: 'Folosește folderul',
+    });
+    if (picked.canceled || !picked.filePaths.length) return false;
+
+    const chosen = picked.filePaths[0];
+    if (setRepoRoot(chosen)) return true;
+
+    const { response: retry } = await dialog.showMessageBox({
+      type: 'error',
+      title: 'Nu este folderul potrivit',
+      message: 'Folderul ales nu pare să fie proiectul.',
+      detail: `${chosen}\n\nAștept un folder care conține "backend", `
+        + '"docker-compose.local.yml" și "package.json".',
+      buttons: ['Încearcă din nou', 'Închide'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (retry !== 0) return false;
+  }
+}
+
+app.whenReady().then(async () => {
   // The packaged .app already carries the federation logo as its bundle
   // icon (build/icon.icns, wired into electron-builder's mac config) -
   // this only matters for `npm run dev`, which runs unpackaged and would
   // otherwise show Electron's own default icon in the dock.
-  if (process.platform === 'darwin') {
-    app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
+  //
+  // `isPackaged` nu e de ornament: build/icon.png nu intra in pachet, iar
+  // setIcon arunca pe o cale inexistenta. Cum asta e prima instructiune de
+  // la pornire, aplicatia construita se oprea aici si nu mai ajungea sa
+  // deschida nicio fereastra - de afara arata ca o aplicatie care sta in
+  // Dock si nu raspunde la clic. Tot in `try` a ramas: o iconita lipsa nu
+  // e motiv sa nu porneasca programul.
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    try {
+      app.dock.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
+    } catch (error) {
+      console.warn('Nu am putut pune iconita in Dock:', error.message);
+    }
+  }
+  if (!(await ensureRepoRootKnown())) {
+    app.quit();
+    return;
   }
   createWindow();
   buildMenu();
@@ -354,9 +423,13 @@ app.on('before-quit', () => {
 });
 
 ipcMain.handle('auth:login', async (_event, { baseUrl, email, password }) => {
-  const { user, access } = await cloudSync.login(baseUrl, email, password);
-  session = { ...session, cloudBaseUrl: baseUrl, cloudToken: access, email, password };
-  return { user };
+  // Lucram cu adresa asa cum a iesit dupa indreptare (schema completata,
+  // "/" de la coada scos, http trecut la https daca serverul a cerut-o),
+  // nu cu ce s-a tastat: altfel fiecare cerere de mai tarziu ar porni din
+  // nou pe drumul gresit.
+  const { user, access, baseUrl: adresaFolosita } = await cloudSync.login(baseUrl, email, password);
+  session = { ...session, cloudBaseUrl: adresaFolosita, cloudToken: access, email, password };
+  return { user, baseUrl: adresaFolosita };
 });
 
 ipcMain.handle('events:list', async () => {

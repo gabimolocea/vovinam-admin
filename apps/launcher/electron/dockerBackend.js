@@ -16,11 +16,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { REPO_ROOT } = require('./services');
+const { repoRoot } = require('./services');
 
-const COMPOSE_FILE = path.join(REPO_ROOT, 'docker-compose.local.yml');
-const ENV_LOCAL_FILE = path.join(REPO_ROOT, '.env.local');
-const ENV_EXAMPLE_FILE = path.join(REPO_ROOT, '.env.local.example');
+// Functii, nu constante: radacina proiectului poate fi aleasa dupa ce a
+// pornit aplicatia (vezi repoRoot.js).
+const composeFile = () => path.join(repoRoot(), 'docker-compose.local.yml');
+const envLocalFile = () => path.join(repoRoot(), '.env.local');
+const envExampleFile = () => path.join(repoRoot(), '.env.local.example');
 
 // A GUI-launched Electron app (double-clicked, or even `npm run dev` from
 // some terminal/shell setups) doesn't reliably inherit the same PATH an
@@ -41,7 +43,7 @@ function spawnEnv() {
 
 function run(command, args, { onLog } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: REPO_ROOT, env: spawnEnv() });
+    const child = spawn(command, args, { cwd: repoRoot(), env: spawnEnv() });
     let stdout = '';
     let stderr = '';
     child.stdout?.on('data', (chunk) => { stdout += chunk.toString(); onLog?.(chunk.toString()); });
@@ -74,14 +76,14 @@ async function isDockerAvailable() {
 // keep LAN_HOST and the secret key current automatically so the operator
 // never has to hand-edit it before an event.
 function ensureEnvLocal(lanIp) {
-  if (!fs.existsSync(ENV_LOCAL_FILE)) {
-    if (!fs.existsSync(ENV_EXAMPLE_FILE)) {
+  if (!fs.existsSync(envLocalFile())) {
+    if (!fs.existsSync(envExampleFile())) {
       throw new Error('.env.local.example lipsește din proiect - nu pot pregăti configurația Docker.');
     }
-    fs.copyFileSync(ENV_EXAMPLE_FILE, ENV_LOCAL_FILE);
+    fs.copyFileSync(envExampleFile(), envLocalFile());
   }
 
-  let content = fs.readFileSync(ENV_LOCAL_FILE, 'utf8');
+  let content = fs.readFileSync(envLocalFile(), 'utf8');
   content = /^LAN_HOST=/m.test(content)
     ? content.replace(/^LAN_HOST=.*$/m, `LAN_HOST=${lanIp}`)
     : `${content}\nLAN_HOST=${lanIp}\n`;
@@ -91,10 +93,10 @@ function ensureEnvLocal(lanIp) {
     content = content.replace(/^DJANGO_SECRET_KEY=.*$/m, `DJANGO_SECRET_KEY=${generated}`);
   }
 
-  fs.writeFileSync(ENV_LOCAL_FILE, content);
+  fs.writeFileSync(envLocalFile(), content);
 }
 
-const composeArgs = (...rest) => ['compose', '-f', COMPOSE_FILE, '--env-file', ENV_LOCAL_FILE, ...rest];
+const composeArgs = (...rest) => ['compose', '-f', composeFile(), '--env-file', envLocalFile(), ...rest];
 
 async function startDockerBackend({ lanIp, onLog }) {
   ensureEnvLocal(lanIp);
@@ -108,7 +110,7 @@ async function startDockerBackend({ lanIp, onLog }) {
 // `docker compose exec` instead of a direct venv spawn.
 function ensureLocalAdminDocker({ email, password, firstName, lastName }) {
   return new Promise((resolve, reject) => {
-    const child = spawn('docker', composeArgs('exec', '-T', 'backend', 'python', 'manage.py', 'ensure_local_admin'), { cwd: REPO_ROOT, env: spawnEnv() });
+    const child = spawn('docker', composeArgs('exec', '-T', 'backend', 'python', 'manage.py', 'ensure_local_admin'), { cwd: repoRoot(), env: spawnEnv() });
     let stderr = '';
     child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
     child.on('error', (err) => {

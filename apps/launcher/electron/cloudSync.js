@@ -6,15 +6,90 @@
 // with the admin's own login instead of the fixed service-account flow
 // pull_from_cloud.py uses.
 
+// Adresa serverului, asa cum o scrie operatorul, adusa la o forma folosibila.
+//
+// Fara asta, doua greseli marunte de tastare dadeau erori fara nicio
+// legatura cu cauza: un "/" in plus la sfarsit facea adresa sa aiba doua
+// slash-uri la mijloc, iar lipsa lui "https://" trimitea cererea pe http.
+// Serverele care ne-au trimis o data de la http la https. Tinem minte, ca
+// sa nu mai pornim de fiecare data pe drumul gresit si sa platim o cerere in
+// plus pentru aceeasi corectura.
+const trecuteLaHttps = new Set();
+
+function normalizeBaseUrl(raw) {
+  const trimmed = String(raw || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  // Fara schema scrisa, presupunem https. Cine vrea backendul local scrie
+  // explicit http://localhost:8000, si ramane asa.
+  const cuSchema = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const u = new URL(cuSchema);
+    if (u.protocol === 'http:' && trecuteLaHttps.has(u.host)) {
+      u.protocol = 'https:';
+      return u.toString().replace(/\/+$/, '');
+    }
+  } catch {
+    // Adresa nu se poate interpreta - o lasam asa cum e, ca `fetch` sa dea
+    // el eroarea lui, care spune mai limpede ce anume e gresit.
+  }
+  return cuSchema;
+}
+
+// Un redirect inseamna aproape sigur ca adresa scrisa nu e chiar cea buna.
+//
+// Conteaza mai mult decat pare: cand urmeaza un 301, `fetch` schimba POST-ul
+// in GET - asa cere standardul - iar serverul raspunde atunci "Metoda GET nu
+// este permisa", un mesaj care nu spune nimic despre adevarata problema.
+// Deci nu lasam redirectul sa fie urmat pe tacute.
+//
+// Singurul caz pe care il reparam singuri e trecerea de la http la https
+// catre exact acelasi server si aceeasi cale - adica adresa buna, scrisa cu
+// schema gresita. Orice alt redirect poate duce catre alt server, si acolo
+// nu trimitem parola nimanui fara sa intrebam: spunem ce adresa cere
+// serverul si lasam operatorul sa decida.
+function redirectTarget(requestUrl, location) {
+  if (!location) return null;
+  let from;
+  let to;
+  try {
+    from = new URL(requestUrl);
+    to = new URL(location, requestUrl);
+  } catch {
+    return null;
+  }
+  const doarSchema = from.protocol === 'http:' && to.protocol === 'https:'
+    && from.host === to.host && from.pathname === to.pathname && from.search === to.search;
+  return { to, doarSchema };
+}
+
 async function apiCall(baseUrl, path, { method = 'GET', token, body } = {}) {
-  const res = await fetch(`${baseUrl}${path}`, {
+  const url = `${normalizeBaseUrl(baseUrl)}${path}`;
+  const request = {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+    redirect: 'manual',
+  };
+
+  let res = await fetch(url, request);
+
+  if (res.status >= 300 && res.status < 400) {
+    const target = redirectTarget(url, res.headers.get('location'));
+    if (target?.doarSchema) {
+      trecuteLaHttps.add(target.to.host);
+      res = await fetch(target.to.href, request);
+    } else {
+      throw new Error(
+        target
+          ? `Serverul trimite cererea mai departe, catre ${target.to.origin}. `
+            + 'Scrie chiar acea adresa in campul "Server".'
+          : 'Serverul a raspuns cu o redirectionare. Verifica adresa din campul "Server".',
+      );
+    }
+  }
 
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await res.json().catch(() => null) : null;
@@ -35,6 +110,10 @@ async function login(baseUrl, email, password) {
     user: data.user,
     access: data.tokens?.access,
     refresh: data.tokens?.refresh,
+    // Adresa asa cum a iesit dupa indreptare - cu ea lucreaza mai departe
+    // restul sesiunii, si tot ea se salveaza pentru data viitoare, ca sa nu
+    // fie corectata la fiecare pornire.
+    baseUrl: normalizeBaseUrl(baseUrl),
   };
 }
 
@@ -281,7 +360,7 @@ function restoreBackup({ localBaseUrl, localToken, filename }) {
 }
 
 module.exports = {
-  login, listCompetitionEvents, getOverview,
+  login, listCompetitionEvents, getOverview, normalizeBaseUrl,
   fetchResultsPack, fetchEventPack,
   listBackups, createBackup, restoreBackup,
   syncEventLocal, syncEventToCloud, completeSyncOnCloud, verifyEventSync,

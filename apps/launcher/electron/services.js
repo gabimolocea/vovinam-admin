@@ -3,6 +3,8 @@ const fs = require('fs');
 const net = require('net');
 const path = require('path');
 
+const { getRepoRoot } = require('./repoRoot');
+
 // Used to detect a port that's already serving (e.g. the admin's own dev
 // servers left running, or a leftover process from a launcher instance
 // that didn't shut down cleanly) so we reuse it instead of crash-looping
@@ -22,14 +24,24 @@ function isPortOpen(port, host = '127.0.0.1', timeoutMs = 400) {
   });
 }
 
-// This launcher lives at apps/launcher inside the monorepo - always run
-// against *this* checkout's own backend/frontends, never a Claude-session
-// worktree or anything path-dependent on how the app happened to be built.
-const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
-const BACKEND_DIR = path.join(REPO_ROOT, 'backend');
+// Unde e proiectul pe disc - vezi repoRoot.js pentru cum se afla.
+//
+// Se cere la fiecare folosire, nu o data la incarcarea modulului: intr-o
+// aplicatie impachetata, radacina poate fi aleasa de operator abia dupa ce
+// a pornit programul, iar o constanta calculata la `require` ar ramane
+// pentru totdeauna cea gresita.
+function repoRoot() {
+  const root = getRepoRoot();
+  if (!root) throw new Error('Nu stiu unde este proiectul pe acest calculator.');
+  return root;
+}
+
+function backendDir() {
+  return path.join(repoRoot(), 'backend');
+}
 
 function backendPython() {
-  const venvPython = path.join(BACKEND_DIR, 'venv', 'bin', 'python3');
+  const venvPython = path.join(backendDir(), 'venv', 'bin', 'python3');
   return fs.existsSync(venvPython) ? venvPython : 'python3';
 }
 
@@ -49,7 +61,7 @@ function buildServiceDefs(lanIp, { useDocker = false } = {}) {
     port: 8000,
     command: backendPython(),
     args: ['manage.py', 'runserver', '0.0.0.0:8000'],
-    cwd: BACKEND_DIR,
+    cwd: backendDir(),
     // IS_LOCAL_EVENT_SERVER exempts this instance from the operational
     // lock a synced event carries (see api/views/_common.py) - without
     // it, this backend is indistinguishable from the cloud instance the
@@ -66,7 +78,7 @@ function buildServiceDefs(lanIp, { useDocker = false } = {}) {
       port: 5191,
       command: 'npm',
       args: ['run', 'dev', '--workspace', '@vovinam/competition-admin', '--', '--port', '5191', '--host'],
-      cwd: REPO_ROOT,
+      cwd: repoRoot(),
     },
     {
       id: 'referee-scoring',
@@ -74,7 +86,7 @@ function buildServiceDefs(lanIp, { useDocker = false } = {}) {
       port: 5176,
       command: 'npm',
       args: ['run', 'dev', '--workspace', '@vovinam/referee-scoring', '--', '--port', '5176', '--host'],
-      cwd: REPO_ROOT,
+      cwd: repoRoot(),
     },
     {
       id: 'public-display',
@@ -82,7 +94,7 @@ function buildServiceDefs(lanIp, { useDocker = false } = {}) {
       port: 5177,
       command: 'npm',
       args: ['run', 'dev', '--workspace', '@vovinam/public-display', '--', '--port', '5177', '--host'],
-      cwd: REPO_ROOT,
+      cwd: repoRoot(),
     },
   ];
 }
@@ -162,7 +174,7 @@ class ServiceManager {
 // stdin, never as an argv value, so it never shows up in `ps`.
 function ensureLocalAdmin({ email, password, firstName, lastName }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(backendPython(), ['manage.py', 'ensure_local_admin'], { cwd: BACKEND_DIR });
+    const child = spawn(backendPython(), ['manage.py', 'ensure_local_admin'], { cwd: backendDir() });
     let stderr = '';
     child.stderr?.on('data', (chunk) => {
       stderr += chunk.toString();
@@ -177,4 +189,4 @@ function ensureLocalAdmin({ email, password, firstName, lastName }) {
   });
 }
 
-module.exports = { ServiceManager, buildServiceDefs, ensureLocalAdmin, REPO_ROOT, BACKEND_DIR };
+module.exports = { ServiceManager, buildServiceDefs, ensureLocalAdmin, repoRoot, backendDir };

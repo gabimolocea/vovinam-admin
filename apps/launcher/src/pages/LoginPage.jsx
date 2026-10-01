@@ -30,9 +30,14 @@ export default function LoginPage({ onLoggedIn }) {
     setLoading(true);
     try {
       const url = cloudUrl.trim().replace(/\/+$/, '') || DEFAULT_CLOUD_URL;
-      await window.launcher.login(url, email, password);
-      try { window.localStorage.setItem(CLOUD_URL_KEY, url); } catch { /* fara persistenta */ }
-      onLoggedIn(url);
+      // Salvam adresa pe care a folosit-o chiar cererea, nu pe cea tastata:
+      // daca serverul ne-a trimis de la http la https, data viitoare pornim
+      // direct corect. Vezi normalizeBaseUrl din electron/cloudSync.js.
+      const { baseUrl } = await window.launcher.login(url, email, password);
+      const adresaFolosita = baseUrl || url;
+      setCloudUrl(adresaFolosita);
+      try { window.localStorage.setItem(CLOUD_URL_KEY, adresaFolosita); } catch { /* fara persistenta */ }
+      onLoggedIn(adresaFolosita);
     } catch (err) {
       setError(cleanErrorMessage(err, 'Autentificarea a eșuat.'));
     } finally {
