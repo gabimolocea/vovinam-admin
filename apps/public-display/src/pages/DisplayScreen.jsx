@@ -561,8 +561,9 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
     : ''
   );
 
-  // Category display with gender
-  const categoryDisplay = [category?.name, genderLabel].filter(Boolean).join(', ');
+  // Aceeasi ordine ca pe ecranul de proba: intai numele probei, apoi
+  // grupa si genul care o precizeaza.
+  const probaDisplay = [category?.name, groupDisplay, genderLabel].filter(Boolean).join(' | ');
 
   const isPaused = !!activeRound?.is_paused;
   // Timer box bg: yellow during active round, white during break
@@ -600,10 +601,9 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
             )}
           </div>
         </div>
-        {/* Group + Category — positioned absolute to the left */}
-        <div className="absolute left-[3vw] top-1/2 -translate-y-1/2 text-left">
-          {groupDisplay && <p className="text-[1.6vw] font-bold leading-tight" style={{ color: '#000000' }}>{groupDisplay}</p>}
-          {categoryDisplay && <p className="text-[1.6vw] font-bold leading-tight mt-[0.2vh]" style={{ color: '#000000' }}>{categoryDisplay}</p>}
+        {/* Proba — positioned absolute to the left */}
+        <div className="absolute left-[3vw] top-1/2 -translate-y-1/2 max-w-[30vw] text-left">
+          {probaDisplay && <p className="text-[1.6vw] font-bold leading-tight" style={{ color: '#000000' }}>{probaDisplay}</p>}
         </div>
         {/* Match type (Semifinală etc.) — positioned absolute to the right */}
         <div className="absolute right-[3vw] top-1/2 -translate-y-1/2 text-right">
