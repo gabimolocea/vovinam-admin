@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import {
-  AlertTriangle, Check, Copy, Database, HardDrive, Image, Monitor,
-  Server, Tablet, Timer, Wifi,
+  AlertTriangle, Apple, Check, Copy, Database, Download, HardDrive, Image,
+  Monitor, MonitorPlay, Server, Tablet, Timer, Wifi,
 } from 'lucide-react';
 import { Alert, Badge, Card, CardContent } from '../components/ui';
 
@@ -10,15 +10,19 @@ import { Alert, Badge, Card, CardContent } from '../components/ui';
  *
  * Nu e documentatie pentru dezvoltatori: e scris pentru persoana care
  * pregateste laptopul si care, de regula, nu a deschis niciodata un
- * terminal. De aceea fiecare comanda are buton de copiere (nimeni nu
- * transcrie corect o comanda lunga de pe ecran), fiecare pas spune si ce
- * trebuie sa vezi dupa ce l-ai facut, iar sectiunea despre Docker explica
- * ce e fiecare rand de acolo - altfel ferestrele alea par un zgomot pe
- * care nu stii daca e in regula sau nu.
+ * terminal. De aceea fiecare pas spune si ce trebuie sa vezi dupa ce l-ai
+ * facut, iar sectiunea despre Docker explica ce e fiecare rand de acolo -
+ * altfel ferestrele alea par un zgomot pe care nu stii daca e in regula.
+ *
+ * Instructiunile difera intre Mac si Windows mai ales la deschiderea unei
+ * aplicatii nesemnate, asa ca pagina are un comutator in loc sa insire
+ * ambele variante una sub alta si sa lase omul sa ghiceasca.
  *
  * Perechea lui scrisa e docs/GHID_COMPETITIE_LOCALA.md; cand se schimba
  * ceva aici, trebuie schimbat si acolo.
  */
+
+const RELEASES_URL = 'https://github.com/gabimolocea/vovinam-admin/releases/latest';
 
 const CONTAINERE = [
   {
@@ -30,7 +34,7 @@ const CONTAINERE = [
       'Aici stau toate datele competiției cât ține ziua: sportivii, categoriile, '
       + 'cântarul, scorurile, clasamentele. În sală, acesta este adevărul — nu '
       + 'site-ul din internet.',
-    semn: 'Trebuie să scrie „healthy". Până nu e sănătoasă, celelalte două nici nu pornesc.',
+    semn: 'Trebuie să scrie „healthy”. Până nu e sănătoasă, celelalte nici nu pornesc.',
   },
   {
     nume: 'backend',
@@ -40,7 +44,18 @@ const CONTAINERE = [
     deCe:
       'Tot ce apasă cineva pe o tabletă ajunge aici, iar de aici în baza de date. '
       + 'Dacă acest container e oprit, tabletele nu mai pot trimite scoruri.',
-    semn: 'Trebuie să scrie „running", cu portul 8000 afișat lângă.',
+    semn: 'Trebuie să scrie „running”, cu portul 8000 afișat lângă.',
+  },
+  {
+    nume: 'frontends',
+    icon: MonitorPlay,
+    titlu: 'Cele trei ecrane',
+    ce: 'Administrarea competiției, arbitrajul și ecranul public, ca pagini gata făcute.',
+    deCe:
+      'Paginile pe care le deschid oamenii în browser. Ele vin de aici, din '
+      + 'container — de asta pe laptopul din sală nu mai trebuie instalat nimic '
+      + 'altceva în afară de Docker.',
+    semn: 'Trebuie să scrie „running”, cu trei porturi lângă: 5191, 5176 și 5177.',
   },
   {
     nume: 'backup-scheduler',
@@ -52,7 +67,7 @@ const CONTAINERE = [
       + 'greșeală, un scor greșit propagat — te poți întoarce la o copie de acum '
       + '15 minute, din launcher. Rulează separat de aplicație tocmai ca să '
       + 'continue să salveze chiar dacă aplicația e repornită.',
-    semn: 'Trebuie să scrie „running". Nu are port — nu-l accesează nimeni direct.',
+    semn: 'Trebuie să scrie „running”. Nu are port — nu-l accesează nimeni direct.',
   },
 ];
 
@@ -158,7 +173,7 @@ function Pas({ numar, titlu, durata, children }) {
   );
 }
 
-/** &bdquo;Dupa pasul asta trebuie sa vezi X&rdquo; - fara reperele astea, cineva care
+/** „Dupa pasul asta trebuie sa vezi X” - fara reperele astea, cineva care
  * nu cunoaste programele merge mai departe cu un pas nereusit si descopera
  * abia la final, cand e greu de spus care dintre ei a fost. */
 function Verifica({ children }) {
@@ -170,6 +185,9 @@ function Verifica({ children }) {
 }
 
 export default function VenueSetupPage() {
+  const [sistem, setSistem] = useState('mac');
+  const eMac = sistem === 'mac';
+
   return (
     <div className="flex max-w-4xl flex-col gap-6">
       <div>
@@ -184,8 +202,8 @@ export default function VenueSetupPage() {
         <AlertTriangle className="h-4 w-4" />
         <div>
           <strong className="font-semibold">Fă asta cu o săptămână înainte, nu în dimineața competiției.</strong>
-          {' '}Prima instalare durează aproape o oră, din care cea mai mare parte e
-          așteptare, iar unii pași cer internet — pe care în sală s-ar putea să nu-l ai.
+          {' '}Instalarea cere internet bun — se descarcă vreun gigabyte — iar în sală
+          s-ar putea să nu-l ai.
         </div>
       </Alert>
 
@@ -194,14 +212,38 @@ export default function VenueSetupPage() {
         <Card>
           <CardContent className="pt-6">
             <ul className="flex flex-col gap-2 text-sm">
-              <li><strong>Un laptop Mac</strong> care rămâne în sală toată ziua, cu încărcătorul lui. Nu se închide capacul în timpul competiției.</li>
+              <li><strong>Un laptop</strong> — Mac sau Windows — care rămâne în sală toată ziua, cu încărcătorul lui. Nu se închide capacul în timpul competiției.</li>
               <li><strong>Internet</strong> — doar acum, la instalare. În ziua competiției nu mai e nevoie.</li>
               <li><strong>Un router Wi-Fi propriu</strong> pentru eveniment, la care se leagă tabletele și ecranele.</li>
               <li><strong>Contul tău de administrator</strong> — același cu care ești autentificat acum.</li>
             </ul>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Două programe se instalează, atât: Docker Desktop și aplicația
+              federației. Nu e nevoie de nimic altceva.
+            </p>
           </CardContent>
         </Card>
       </section>
+
+      <div className="flex items-center gap-2" role="tablist" aria-label="Sistemul laptopului">
+        <span className="text-sm text-muted-foreground">Laptopul din sală are:</span>
+        {[['mac', 'macOS', Apple], ['windows', 'Windows', Monitor]].map(([id, nume, Icon]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={sistem === id}
+            onClick={() => setSistem(id)}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium ${
+              sistem === id
+                ? 'border-brand-red bg-brand-red text-white'
+                : 'border-border text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <Icon className="h-4 w-4" /> {nume}
+          </button>
+        ))}
+      </div>
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl font-bold">Instalarea, pas cu pas</h2>
@@ -214,90 +256,128 @@ export default function VenueSetupPage() {
           <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
             <li>
               Intră pe <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer" className="font-medium text-brand-red underline">docker.com</a> și
-              descarcă <strong>Docker Desktop pentru Mac</strong>.
+              descarcă <strong>Docker Desktop pentru {eMac ? 'Mac' : 'Windows'}</strong>.
             </li>
+            {eMac ? (
+              <li>
+                Alege varianta potrivită: <strong>Apple Silicon</strong> pentru Mac-urile din 2020
+                încoace (M1, M2, M3, M4), <strong>Intel</strong> pentru cele mai vechi. Dacă nu
+                știi, meniul Apple → &bdquo;Despre acest Mac&rdquo; îți spune.
+              </li>
+            ) : (
+              <li>
+                La instalare lasă bifată opțiunea <strong>WSL 2</strong>. Dacă Windows cere o
+                repornire, fă-o acum — altfel Docker nu pornește.
+              </li>
+            )}
             <li>
-              Alege varianta potrivită: <strong>Apple Silicon</strong> pentru Mac-urile din 2020 încoace
-              (M1, M2, M3, M4), <strong>Intel</strong> pentru cele mai vechi. Dacă nu știi: meniul{' '}
-              <span aria-hidden="true"></span> Apple → &bdquo;Despre acest Mac&rdquo; îți spune.
+              {eMac
+                ? 'Deschide fișierul descărcat și trage iconița Docker peste folderul Applications.'
+                : 'Deschide fișierul descărcat și apasă prin instalare până la final.'}
             </li>
-            <li>Deschide fișierul descărcat și trage iconița Docker peste folderul Applications.</li>
-            <li>Pornește Docker din Applications. Prima dată cere parola Mac-ului și acceptarea condițiilor.</li>
-            <li>Așteaptă până balena din bara de sus stă nemișcată — cât se mișcă, încă pornește.</li>
+            <li>Pornește Docker. Prima dată cere parola calculatorului și acceptarea condițiilor.</li>
+            <li>
+              Așteaptă până balena din {eMac ? 'bara de sus' : 'colțul din dreapta jos'} stă
+              nemișcată — cât se mișcă, încă pornește.
+            </li>
           </ol>
           <Verifica>
-            o balenă în bara de sus a ecranului, iar în fereastra Docker, jos în stânga,
-            un punct verde cu textul &bdquo;Engine running&rdquo;.
+            în fereastra Docker, jos în stânga, un punct verde cu textul &bdquo;Engine running&rdquo;.
           </Verifica>
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <div>
-              Lasă Docker să pornească odată cu Mac-ul (Settings → General → &bdquo;Start Docker
-              Desktop when you sign in&rdquo;). Altfel, dacă laptopul se restartează în ziua
-              competiției, nimic nu mai pornește singur.
+              Lasă Docker să pornească odată cu calculatorul (Settings → General →
+              &bdquo;Start Docker Desktop when you sign in&rdquo;). Altfel, dacă laptopul se
+              restartează în ziua competiției, nimic nu mai pornește singur.
             </div>
           </Alert>
         </Pas>
 
-        <Pas numar={2} titlu="Instalează Node.js" durata="~5 minute">
+        <Pas numar={2} titlu="Descarcă aplicația federației" durata="~2 minute">
           <p className="text-sm text-muted-foreground">
-            E nevoie de el pentru cele trei aplicații din sală — administrare,
-            arbitraj, ecran public. Alege versiunea <strong>LTS</strong>, cea
-            recomandată pe prima pagină.
+            De aici se conduce toată ziua: aduci competiția din site, pornești sala,
+            iar la final trimiți rezultatele înapoi.
           </p>
-          <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
-            <li>
-              Intră pe <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer" className="font-medium text-brand-red underline">nodejs.org</a> și
-              descarcă varianta LTS pentru macOS.
-            </li>
-            <li>Deschide fișierul și apasă &bdquo;Continue&rdquo; până la final.</li>
-            <li>
-              Verifică: deschide <strong>Terminal</strong> (Command+Space, scrii &bdquo;Terminal&rdquo;, Enter)
-              și rulează:
-            </li>
-          </ol>
-          <Comanda>node --version</Comanda>
-          <Verifica>un număr, de exemplu <code className="font-mono">v22.14.0</code>. Dacă scrie &bdquo;command not found&rdquo;, instalarea n-a reușit.</Verifica>
+          <a
+            href={RELEASES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex w-fit items-center gap-2 rounded-md bg-brand-red px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            <Download className="h-4 w-4" />
+            Descarcă pentru {eMac ? 'Mac' : 'Windows'}
+          </a>
+          <p className="text-sm text-muted-foreground">
+            Pe pagina care se deschide, la <strong>Assets</strong>, alege fișierul{' '}
+            {eMac ? (
+              <>
+                care se termină în <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.dmg</code>.
+                Sunt două: <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">arm64</code> pentru
+                Mac-urile cu procesor Apple, <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">x64</code> pentru
+                cele cu Intel — aceeași alegere ca la Docker.
+              </>
+            ) : (
+              <>
+                care se termină în <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.exe</code>.
+              </>
+            )}
+          </p>
         </Pas>
 
-        <Pas numar={3} titlu="Adu proiectul pe laptop" durata="~10 minute">
-          <p className="text-sm text-muted-foreground">
-            Cere-i unei persoane tehnice din federație arhiva proiectului, sau
-            descarc-o cu comanda de mai jos dacă ai acces la depozitul de cod.
-            Pune-l într-un loc stabil — de exemplu direct în folderul tău de acasă —
-            și nu-l mai muta după aceea.
-          </p>
-          <Comanda>git clone &lt;adresa-depozitului&gt; ~/vovinam-admin</Comanda>
-          <p className="text-sm text-muted-foreground">Apoi instalează ce are nevoie aplicația:</p>
-          <Comanda>cd ~/vovinam-admin &amp;&amp; npm install</Comanda>
-          <Verifica>
-            la final, un rând de forma &bdquo;added 1234 packages&rdquo;. Durează câteva minute și
-            pare că stă degeaba — e normal.
-          </Verifica>
-        </Pas>
-
-        <Pas numar={4} titlu="Pornește prima dată" durata="~20 minute, o singură dată">
-          <p className="text-sm text-muted-foreground">
-            În folderul proiectului găsești fișierul{' '}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">Porneste competitia.command</code>.
-            Dublu-clic pe el. Pornește Docker dacă nu merge deja, apoi deschide launcherul.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Prima pornire e lungă: Docker își construiește imaginile. Lasă-l în pace
-            până se deschide fereastra launcherului.
-          </p>
+        <Pas numar={3} titlu="Deschide-o prima dată" durata="~5 minute">
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <div>
+              <strong className="font-semibold">Calculatorul o să te avertizeze. E normal.</strong>{' '}
+              Aplicația nu e cumpărată de la {eMac ? 'Apple' : 'Microsoft'} cu un certificat
+              plătit, iar sistemul nu recunoaște cine a făcut-o. Pașii de mai jos se fac{' '}
+              <strong>o singură dată</strong>; după aceea se deschide normal.
+            </div>
+          </Alert>
+          {eMac ? (
+            <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
+              <li>Deschide fișierul <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.dmg</code> și trage aplicația peste folderul Applications.</li>
+              <li>
+                În Applications, <strong>clic dreapta</strong> pe ea (nu dublu-clic) și alege{' '}
+                <strong>Deschide</strong>. Apare o fereastră care întreabă dacă ești sigur —
+                apasă tot <strong>Deschide</strong>.
+              </li>
+              <li>
+                Dacă scrie că aplicația <em>&bdquo;este deteriorată și nu poate fi deschisă&rdquo;</em>,
+                deschide Terminal și rulează o singură dată:
+              </li>
+            </ol>
+          ) : (
+            <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
+              <li>Dublu-clic pe fișierul <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.exe</code> descărcat.</li>
+              <li>
+                Windows arată un ecran albastru, <strong>&bdquo;Windows protected your PC&rdquo;</strong>.
+                Apasă <strong>More info</strong>, apoi butonul <strong>Run anyway</strong> care
+                apare dedesubt.
+              </li>
+              <li>Mergi prin instalare până la final și lasă bifată scurtătura pe desktop.</li>
+            </ol>
+          )}
+          {eMac && (
+            <Comanda>xattr -dr com.apple.quarantine &quot;/Applications/FRVV Competition Launcher.app&quot;</Comanda>
+          )}
           <Verifica>
             o fereastră cu sigla federației, care îți cere adresa serverului și datele
             tale de autentificare. Adresa se scrie cu <code className="font-mono">https://</code> în față.
           </Verifica>
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <div>
-              Fișierul trebuie să rămână în folderul proiectului — de acolo își află
-              singur calea. Pentru o scurtătură pe birou fă un <strong>alias</strong>{' '}
-              (clic dreapta → &bdquo;Creează alias&rdquo;), nu o copie.
-            </div>
-          </Alert>
+        </Pas>
+
+        <Pas numar={4} titlu="Prima pornire a sălii" durata="~20 minute, o singură dată">
+          <p className="text-sm text-muted-foreground">
+            Autentifică-te cu contul tău, alege competiția și apasă pornirea. Prima
+            dată launcherul descarcă din internet tot ce îi trebuie — de asta durează.
+            La competițiile următoare pornește în mai puțin de un minut, fără internet.
+          </p>
+          <Verifica>
+            în Docker, la <strong>Containers</strong>, patru rânduri pornite. Ce
+            înseamnă fiecare scrie mai jos.
+          </Verifica>
         </Pas>
 
         <Pas numar={5} titlu="Pregătește rețeaua sălii" durata="~10 minute">
@@ -327,7 +407,7 @@ export default function VenueSetupPage() {
         <h2 className="font-display text-xl font-bold">Ce trebuie să vezi în Docker</h2>
         <p className="text-sm text-muted-foreground">
           Deschide Docker Desktop și intră în secțiunea <strong>Containers</strong>.
-          Trebuie să vezi trei rânduri, toate pornite. Dacă unul lipsește sau e roșu,
+          Trebuie să vezi patru rânduri, toate pornite. Dacă unul lipsește sau e roșu,
           competiția nu merge — iar aici scrie ce înseamnă fiecare.
         </p>
 
@@ -400,8 +480,8 @@ export default function VenueSetupPage() {
             <div>
               <p className="font-semibold">Launcherul spune că nu găsește Docker</p>
               <p className="text-muted-foreground">
-                Docker Desktop nu e pornit. Deschide-l din Applications, așteaptă punctul
-                verde &bdquo;Engine running&rdquo;, apoi încearcă din nou.
+                Docker Desktop nu e pornit. Deschide-l, așteaptă punctul verde
+                &bdquo;Engine running&rdquo;, apoi încearcă din nou.
               </p>
             </div>
             <div>
@@ -412,6 +492,13 @@ export default function VenueSetupPage() {
               </p>
             </div>
             <div>
+              <p className="font-semibold">Prima pornire se oprește la descărcare</p>
+              <p className="text-muted-foreground">
+                Nu are internet, sau e prea slab. Prima pornire trebuie făcută acasă
+                sau la federație, nu în sală — după aceea totul e deja pe laptop.
+              </p>
+            </div>
+            <div>
               <p className="font-semibold">Tabletele nu se conectează la laptop</p>
               <p className="text-muted-foreground">
                 Aproape întotdeauna: ori sunt pe alt Wi-Fi, ori routerul are &bdquo;client
@@ -419,7 +506,7 @@ export default function VenueSetupPage() {
               </p>
             </div>
             <div>
-              <p className="font-semibold">Containerul <code className="font-mono">backend</code> apare roșu sau repornește mereu</p>
+              <p className="font-semibold">Un container apare roșu sau repornește mereu</p>
               <p className="text-muted-foreground">
                 Apasă pe el în Docker și citește ultimele rânduri din &bdquo;Logs&rdquo; — acolo scrie
                 motivul. Trimite acele rânduri persoanei tehnice; fără ele nu se poate ghici.

@@ -42,54 +42,58 @@ Pentru detalii tehnice de arhitectură (pentru dezvoltatori), vezi
 ## 🔧 Partea tehnică — pregătire (o singură dată, cu mult înainte de eveniment)
 
 Această secțiune se face **o singură dată**, nu la fiecare competiție. Ai
-nevoie de un laptop dedicat, care va deveni „serverul din sală".
+nevoie de un laptop dedicat — Mac sau Windows — care va deveni „serverul din
+sală".
+
+Se instalează **două programe**, atât. Nu e nevoie de Node.js, de terminal
+sau de codul sursă: tot ce ține competiția vine gata făcut, în containere.
 
 1. Instalează [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-   pe acel laptop (e un program gratuit, ca orice altă aplicație — următor,
-   următor, finish).
-2. Copiază proiectul pe laptop (cere ajutorul dezvoltatorului dacă nu ești
-   sigur cum, e un singur `git clone`).
-3. Instalează dependențele frontend, o singură dată, deschizând un terminal
-   în folderul proiectului și rulând:
-   ```bash
-   npm ci
-   ```
-4. Copiază fișierul de configurare:
-   ```bash
-   cp .env.local.example .env.local
-   ```
-5. Deschide fișierul `.env.local` cu un editor de text simplu (Notepad,
-   TextEdit) și pune orice valoare deocamdată la `LAN_HOST` — o vei corecta
-   ușor în ziua competiției, la pasul următor.
+   pe acel laptop (program gratuit, se instalează ca orice altul). Pornește-l
+   și lasă-l să pornească odată cu calculatorul.
+2. Descarcă aplicația federației de la
+   [Releases](https://github.com/gabimolocea/vovinam-admin/releases/latest) —
+   fișierul `.dmg` pentru Mac, `.exe` pentru Windows.
+3. Deschide-o o dată. Aplicația nu e semnată, deci prima dată sistemul
+   avertizează: pe Mac **clic dreapta → Deschide**, pe Windows **More info →
+   Run anyway**. Se face o singură dată.
+4. Autentifică-te cu contul tău de administrator și pornește o dată sala, cu
+   internet. Prima pornire descarcă tot ce trebuie (aproape un gigabyte) și
+   durează ~20 de minute; următoarele pornesc în mai puțin de un minut, fără
+   internet.
 
 Gata — laptopul e pregătit pentru orice competiție viitoare, nu mai trebuie
 refăcut acest pas.
+
+> **Pentru dezvoltatori**: pe un calculator care are depozitul descărcat,
+> launcherul folosește `docker-compose.local.yml` și construiește imaginile
+> din codul de pe disc, iar interfețele pornesc cu `npm run dev`. Varianta de
+> mai sus, cu `docker-compose.venue.yml` și imagini descărcate, se foloseste
+> doar acolo unde nu există cod. Pasul de instalare cu `git clone` + `npm
+> install` rămâne valabil pentru acel caz; vezi
+> `apps/launcher/electron/dockerBackend.js`.
 
 ---
 
 ## 🔧 Partea tehnică — pornirea în ziua competiției
 
-### Varianta scurtă: un singur dublu-clic
+### Varianta scurtă: deschizi aplicația
 
-În folderul proiectului există fișierul **`Porneste competitia.command`**.
-Dublu-clic pe el și gata: pornește Docker Desktop dacă nu merge deja,
-așteaptă să fie pregătit, apoi deschide launcherul. Din launcher se face
-tot restul, prin click-uri.
+Deschizi **FRVV Competition Launcher**, te autentifici, alegi competiția și
+apeși pornirea. Atât. Launcherul pornește singur baza de date, aplicația și
+cele trei ecrane, și îți arată adresele pe care le scrii pe tablete.
 
-Lucruri de știut:
+Mai ai nevoie doar de pașii **1** și **2** de mai jos — rețeaua Wi-Fi a
+sălii și adresa laptopului. Pașii 3 și 4 îi face launcherul în locul tău.
 
-- Fișierul trebuie să rămână în folderul proiectului — de acolo își află
-  singur calea. Dacă vrei o scurtătură pe birou, fă un **alias** (clic
-  dreapta → „Creează alias"), nu o copie.
-- Prima pornire durează mai mult: Docker își construiește imaginile.
-- După prima pornire, launcherul ține minte unde e proiectul, deci îl poți
-  deschide și direct din Dock.
-- Launcherul pornește aplicația de administrare pe portul **5191**, nu
-  5173. Portul 5173 din tabelul de mai jos e pentru varianta manuală.
+Launcherul pornește aplicația de administrare pe portul **5191**, nu 5173.
+Portul 5173 din tabelul de mai jos e pentru varianta manuală, de dedesubt.
 
-Dacă rămâi la varianta cu dublu-clic, mai ai nevoie doar de pașii **1** și
-**2** de mai jos (rețeaua Wi-Fi și adresa laptopului). Pașii 3 și 4 îi face
-launcherul în locul tău.
+> Pe un calculator de dezvoltare, cu depozitul descărcat, există și fișierul
+> **`Porneste competitia.command`**: dublu-clic pe el pornește Docker Desktop
+> dacă nu merge deja și apoi deschide launcherul. Trebuie să rămână în
+> folderul proiectului — pentru o scurtătură pe birou fă un **alias**, nu o
+> copie.
 
 ### 1. Rețeaua Wi-Fi a evenimentului
 
