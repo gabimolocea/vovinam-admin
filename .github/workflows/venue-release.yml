@@ -9,10 +9,17 @@ name: Venue release
 # trebuie sa reinstaleze aplicatia pe laptopul din sala, deci nu vrem una
 # la fiecare commit.
 #
-# Imaginile si instalatoarele poarta aceeasi eticheta, si asta nu e o
-# coincidenta: launcherul cere imaginile cu versiunea cu care a fost
-# construit (FRVV_IMAGE_TAG), ca sa nu ajunga o aplicatie veche sa porneasca
-# un backend nou, sau invers.
+# Imaginile primesc si eticheta versiunii, si `latest`. Launcherul le cere
+# pe cele `latest`, nu pe cele cu versiunea lui: asa, un laptop din sala ia
+# ultimele imagini chiar daca aplicatia instalata pe el e mai veche, fara
+# ca cineva sa trebuiasca sa tina package.json si etichetele git in pas.
+#
+# Pretul e ca o aplicatie veche poate ajunge sa porneasca un backend nou.
+# Launcherul e doar un dirijor - porneste containere, cheama cateva
+# endpointuri de sincronizare - deci nu e un pret mare, dar daca vreodata
+# se schimba ceva in intelegerea dintre ele, aici e locul de schimbat:
+# scrie FRVV_IMAGE_TAG in .env.local din versiunea aplicatiei
+# (dockerBackend.js, ensureEnvLocal) si etichetele devin fixe.
 
 # DE FACUT O SINGURA DATA, dupa prima rulare: pachetele publicate in GHCR
 # sunt private la inceput. Pe github.com/users/<cont>/packages, la fiecare
