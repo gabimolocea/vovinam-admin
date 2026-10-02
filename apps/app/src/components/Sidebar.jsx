@@ -8,7 +8,6 @@ import Logo from '@shared/components/Logo';
 import { Trophy, Building2, User, Bell, LogOut, ExternalLink, ShieldCheck, Sparkles, Wifi } from 'lucide-react';
 
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5179';
-const COMPETITION_ADMIN_URL = import.meta.env.VITE_COMPETITION_ADMIN_URL || 'http://localhost:5191';
 const POLL_INTERVAL_MS = 60000;
 
 function imgUrl(path) {
@@ -19,10 +18,7 @@ function imgUrl(path) {
 
 /** Nav items differ by role: an admin manages the whole federation (no
  * athlete profile of their own), a coach also has a club roster and
- * competitions, a plain athlete only has their own profile. Competition
- * operation itself (brackets, live scoring, sync) stays in the separate
- * competition-admin app - "Competiții" for an admin just links out to it
- * rather than duplicating it here. */
+ * competitions, a plain athlete only has their own profile. */
 function useNavItems({ isAdmin, isCoach }) {
   if (isAdmin) {
     return [
@@ -30,7 +26,7 @@ function useNavItems({ isAdmin, isCoach }) {
       { to: '/aprobari', label: 'Aprobări', icon: ShieldCheck, badgeKey: 'approvals' },
       { to: '/competitions', label: 'Centralizator', icon: Trophy },
       { to: '/asistent-ai', label: 'Asistent AI', icon: Sparkles },
-      { to: '/competitie-in-sala', label: 'Competiție în sală', icon: Wifi },
+      { to: '/competitie-in-sala', label: 'Competiție LAN', icon: Wifi },
     ];
   }
   if (isCoach) {
@@ -115,18 +111,6 @@ function NavLinks({ navItems, onNavigate }) {
           )}
         </NavLink>
       ))}
-      {navItems.some((item) => item.to === '/cluburi') && (
-        <a
-          href={COMPETITION_ADMIN_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-md px-3 py-2 text-base font-bold uppercase tracking-wide text-sidebar-foreground/80 transition-colors hover:bg-white/5 hover:text-sidebar-foreground"
-        >
-          <Trophy className="h-5 w-5 shrink-0" />
-          Competiții
-          <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0" />
-        </a>
-      )}
     </nav>
   );
 }
