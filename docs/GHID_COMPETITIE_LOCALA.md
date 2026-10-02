@@ -122,11 +122,11 @@ se întorc datele în cloud la final:
 
 ```mermaid
 flowchart TD
-    A{"Exista în cloud<br/>înainte de pornire?"}
-    A -- "Da<br/><i>(îi schimbi greutatea,<br/>rezultatul, categoria)</i>" --> B["✅ Se sincronizează singur.<br/>Nu faci nimic."]
-    A -- "Nu<br/><i>(înscriere de ultim moment)</i>" --> C{"Ai un pic de internet?<br/><i>chiar și de pe telefon</i>"}
-    C -- Da --> D["Îl adaugi în cloud, apoi<br/><b>Sync → Web → Local</b>"]
-    C -- Nu --> E["Lucrezi local toată ziua.<br/>La final îl adaugi manual în cloud<br/>și îi introduci rezultatul."]
+    A{"Există în cloud<br/>înainte de pornire?"}
+    A -- "Da<br/><i>(greutate, rezultat,<br/>categorie)</i>" --> B["✅ Se sincronizează<br/>singur. Nu faci nimic."]
+    A -- "Nu<br/><i>(de ultim moment)</i>" --> C{"Ai un pic<br/>de internet?"}
+    C -- Da --> D["Îl adaugi în cloud,<br/>apoi <b>Sync → Web → Local</b>"]
+    C -- Nu --> E["Lucrezi local toată ziua.<br/>La final îl adaugi în cloud<br/>și îi introduci rezultatul."]
 ```
 
 Sincronizarea de final **nu creează date noi în cloud**, intenționat — doar
