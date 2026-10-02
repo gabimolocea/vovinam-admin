@@ -6,12 +6,15 @@ laptop din sală. La final, rezultatele se întorc în cloud.
 ```mermaid
 flowchart TD
     C(["☁️ Cloud<br/>app.vovinam.ro"])
-    L["💻 Laptopul din sală<br/><i>serverul competiției</i>"]
-    D["📱 Tablete arbitri<br/>📺 Ecran public"]
+    L["💻 Laptopul central<br/><i>serverul competiției</i>"]
+    D["💻 Laptop teren<br/>📱 Device/telefon arbitru<br/>📺 Ecran/TV public"]
     C -- "① aduci competiția<br/><i>cu internet</i>" --> L
     L -- "③ trimiți rezultatele<br/><i>cu internet</i>" --> C
     L <-- "② toată ziua<br/><i>pe Wi-Fi-ul sălii</i>" --> D
 ```
+
+Înainte de toate astea, laptopul se pregătește **o singură dată** — vezi
+secțiunea „Pregătirea laptopului" de mai jos.
 
 | Rol | Ce face | Când |
 |---|---|---|
@@ -21,7 +24,7 @@ flowchart TD
 > 🧑‍💼 Dacă ești operator, sari direct la secțiunea **Ziua competiției**.
 >
 > 🔧 Pregătirea laptopului are o **variantă ilustrată, pas cu pas**, în aplicație:
-> **Competiție în sală** (`/competitie-in-sala`). Acolo sunt desenate ferestrele
+> **Competiție LAN** (`/competitie-in-sala`). Acolo sunt desenate ferestrele
 > pe care le vezi — folosește-o pe aceea, nu secțiunea de aici.
 >
 > Pentru arhitectură (dezvoltatori): `docs/LOCAL_EVENT_TECHNICAL_PLAN.md`.
@@ -48,7 +51,7 @@ sursă.
 1. **Docker Desktop** — [docker.com](https://www.docker.com/products/docker-desktop/).
    Lasă-l să pornească odată cu calculatorul.
 2. **FRVV Competition Launcher** — butonul de descărcare din pagina
-   **Competiție în sală** a aplicației.
+   **Competiție LAN** a aplicației.
 3. **Deschide-l o dată.** Nefiind semnată, prima dată sistemul avertizează:
    Mac → clic dreapta → *Deschide*; Windows → *More info* → *Run anyway*.
 4. **Pornește sala o dată, cu internet.** Prima pornire descarcă ~1 GB și
@@ -98,6 +101,27 @@ Adresa laptopului o afișează launcherul, mare, în mijlocul panoului.
 
 Device-urile Arbitru găsesc laptopul singure, ca `frvv-sala.local` — pe ele nu
 se configurează nimic.
+
+### Panoul Competiție — cele nouă file
+
+Aplicația de pe portul 5191 ocupă tot ecranul: sus numele competiției, jos o
+bară cu file. Fiecare filă e o bucată din zi.
+
+| Filă | Ce ține |
+|---|---|
+| **Centralizator** | Tabloul mare: cluburile pe rânduri, categoriile pe coloane. De aici înscrii sportivii, celulă cu celulă. |
+| **Tehnica** | Câte un cartonaș pentru fiecare probă tehnică — grupă, probă, gen — cu cine e înscris. Echipele de Sincron tot de aici. |
+| **Lupta** | Toți sportivii înscriși la luptă, cu greutatea de la cântar, categoria sugerată și cea aleasă. |
+| **Piramide** | Arborele fiecărei categorii de luptă. Se tipărește sau se scoate în Excel. |
+| **Programare** | Câte terenuri sunt și ce categorie intră pe fiecare, cu ora de start și durata. Poate muta categoriile și asigna arbitrii automat. |
+| **Arbitri** | Cine e în sală și pe ce rol delegat, plus foaia de delegare în PDF. Alocarea pe probe se face în Programare, nu aici. |
+| **Live** | Ce se întâmplă pe fiecare teren: probele în curs și cele finalizate. |
+| **Clasament** | Patru clasamente: tehnica, lupta, cluburi și sportivi înscriși. |
+| **Diplome** | Șabloanele de diplomă — locul 1, 2, 3 și participare — pentru solo, echipă și luptă. |
+
+În dreapta barei e un **lacăt**: închis, nimeni nu mai poate modifica din
+greșeală. Sus, în dreapta, sunt legăturile **Ecran TEREN 1** și **TEREN 2** — de
+acolo deschizi ce se vede pe televizorul din sală.
 
 ### În timpul competiției
 

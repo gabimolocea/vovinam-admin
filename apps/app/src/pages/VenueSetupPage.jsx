@@ -4,10 +4,10 @@ import {
   KeyRound, Laptop, Monitor, MonitorPlay, Router, Server, Timer, Wifi,
 } from 'lucide-react';
 import { API_BASE_URL } from '@shared/lib/api';
-import { Alert, Badge, Card, CardContent, Skeleton } from '../components/ui';
+import { Alert, Badge, Skeleton } from '../components/ui';
 import {
   ContainereDocker, DeschidereMac, DeschidereWindows, DockerPornit, HartaZilei,
-  IconEcran, IconLaptop, IconTableta, LauncherPornit, RouterIzolare,
+  IconEcran, IconLaptop, IconTableta, LauncherPornit, PanouCompetitie, RouterIzolare,
 } from '../components/VenueSetupIlustratii';
 
 /**
@@ -90,6 +90,46 @@ const ADRESE = [
   { icon: IconTableta, ce: 'Arbitraj', port: '5176', cine: 'Tabletele arbitrilor' },
   { icon: IconEcran, ce: 'Ecranul public', port: '5177', cine: 'Televizorul din sală' },
 ];
+
+// Filele Panoului Competitie, in ordinea din bara lui (apps/competition-admin,
+// CategoriesLayout.jsx). Explicatiile spun ce tine fiecare fila, nu cum se
+// apasa: pagina asta pregateste laptopul, nu tine loc de instruire pe aplicatie.
+// Filele nu sunt noua lucruri deopotriva: vin in trei valuri, cam in ordinea
+// din bara. Culoarea tine valul, nu fila - asa se vede dintr-o privire unde
+// esti in zi, in loc sa citesti noua titluri egale.
+const FAZE = [
+  {
+    nume: 'Înainte: cine concurează',
+    accent: 'border-l-sky-400 bg-sky-50/70',
+    punct: 'bg-sky-400',
+    file: [
+      ['Centralizator', 'Tabloul mare: cluburile pe rânduri, categoriile pe coloane. De aici înscrii sportivii, celulă cu celulă, și vezi câți participanți are fiecare categorie.'],
+      ['Tehnica', 'Câte un cartonaș pentru fiecare probă tehnică — grupă, probă, gen — cu cine e înscris. Echipele de Sincron tot de aici se adaugă.'],
+      ['Lupta', 'Toți sportivii înscriși la luptă, cu greutatea de la cântar, categoria sugerată și cea aleasă.'],
+    ],
+  },
+  {
+    nume: 'Apoi: cum se desfășoară',
+    accent: 'border-l-amber-400 bg-amber-50/70',
+    punct: 'bg-amber-400',
+    file: [
+      ['Piramide', 'Arborele fiecărei categorii de luptă. Se tipărește sau se scoate în Excel.'],
+      ['Programare', 'Câte terenuri sunt și ce categorie intră pe fiecare, cu ora de start și durata. Poate muta categoriile și asigna arbitrii automat.'],
+      ['Arbitri', 'Cine e în sală și pe ce rol delegat, plus foaia de delegare în PDF. Alocarea pe probe se face în Programare, nu aici.'],
+    ],
+  },
+  {
+    nume: 'În timpul zilei și la final',
+    accent: 'border-l-emerald-400 bg-emerald-50/70',
+    punct: 'bg-emerald-400',
+    file: [
+      ['Live', 'Ce se întâmplă pe fiecare teren: probele în curs și cele finalizate.'],
+      ['Clasament', 'Patru clasamente: tehnica, lupta, cluburi și sportivi înscriși.'],
+      ['Diplome', 'Șabloanele de diplomă — locul 1, 2, 3 și participare — pentru solo, echipă și luptă.'],
+    ],
+  },
+];
+
 
 const PROBLEME = [
   ['Launcherul spune că nu găsește Docker', 'Docker Desktop nu e pornit. Deschide-l, așteaptă punctul verde.'],
@@ -197,7 +237,7 @@ function Descarcari({ sistem }) {
     return (
       <div className="flex flex-col gap-2">
         <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             Nu pot afla acum ultima versiune. Descarc-o de pe pagina de versiuni și
             alege fișierul care se termină în{' '}
@@ -243,39 +283,57 @@ function Descarcari({ sistem }) {
   );
 }
 
-function Pas({ numar, titlu, durata, children }) {
+/** Pasii nu stau in chenare - o cutie in jurul unui desen care are el
+ * insusi chenarul ferestrei infatisate dadea trei rame una in alta. Ii
+ * leaga in schimb o linie verticala prin numere, ca pe o cronologie: se
+ * vede dintr-o privire ca sunt o insiruire, nu cinci lucruri separate. */
+function Pas({ numar, titlu, durata, children, ultim }) {
   return (
-    <Card>
-      <CardContent className="flex gap-4 pt-6">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-red text-sm font-bold text-white">
-          {numar}
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-display text-lg font-bold">{titlu}</h3>
-            {durata && <Badge variant="secondary">{durata}</Badge>}
-          </div>
-          {children}
+    <div className="relative flex gap-4">
+      {!ultim && (
+        <span aria-hidden="true" className="absolute bottom-0 left-4 top-9 -ml-px w-0.5 bg-border" />
+      )}
+      <span className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-red text-sm font-bold text-white ring-4 ring-background">
+        {numar}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-display text-lg font-bold">{titlu}</h3>
+          {durata && <Badge variant="secondary">{durata}</Badge>}
         </div>
-      </CardContent>
-    </Card>
+        {children}
+      </div>
+    </div>
   );
 }
 
-/** Rama desenelor. Ce se vede in ele nu e pagina asta, ci alt program, si
- * fara o rama in jur jumatate din cititori cauta pe ecran butonul desenat.
+/** Desenele n-au rama proprie: fiecare poarta deja, inauntru, chenarul
+ * ferestrei pe care o infatiseaza, iar doua rame concentrice nu spun nimic
+ * in plus.
  *
  * Latimea minima plus derularea pe orizontala sunt pentru telefon: sub ea,
  * scrisul din ferestrele desenate ajunge de cinci pixeli si desenul nu mai
  * ajuta cu nimic. Mai bine il tragi intr-o parte decat sa te uiti la el. */
 function Desen({ children, nota }) {
   return (
-    <figure className="m-0 flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3">
+    <figure className="m-0 flex flex-col gap-1.5">
       <div className="overflow-x-auto">
         <div className="min-w-[460px]">{children}</div>
       </div>
-      {nota && <figcaption className="text-center text-xs text-muted-foreground">{nota}</figcaption>}
+      {nota && <figcaption className="text-xs text-muted-foreground">{nota}</figcaption>}
     </figure>
+  );
+}
+
+/** Alertele neutre erau tot niste cutii cu chenar. Ce aveau de spus se
+ * spune la fel de bine cu semnul si textul, fara rama; culoarea a ramas
+ * doar unde chiar avertizeaza (Alert variant="destructive"). */
+function Nota({ children }) {
+  return (
+    <div className="flex gap-3 text-sm">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div>{children}</div>
+    </div>
   );
 }
 
@@ -296,22 +354,18 @@ export default function VenueSetupPage() {
 
   return (
     <div className="flex max-w-4xl flex-col gap-8">
-      <div>
-        <h1 className="font-display text-2xl font-bold">Competiție în sală — instalare</h1>
-        <p className="mt-1 text-muted-foreground">
-          Pregătești laptopul care ține competiția când sala nu are internet.
-        </p>
-      </div>
+      <h1 className="font-display text-2xl font-bold">Competiție LAN — instalare</h1>
 
       <section className="flex flex-col gap-2">
         <HartaZilei />
-        <p className="text-center text-xs text-muted-foreground">
-          Pregătirea de mai jos se face o singură dată, înainte de prima competiție.
+        <p className="text-xs text-muted-foreground">
+          Ghidul de mai jos acoperă pasul 1, instalarea. Pașii 2–4 se fac din aplicație,
+          la fiecare competiție.
         </p>
       </section>
 
-      <Alert>
-        <AlertTriangle className="h-4 w-4" />
+      <Alert variant="warning">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <div>
           <strong className="font-semibold">Fă asta cu o săptămână înainte, nu în dimineața competiției.</strong>
           {' '}Se descarcă vreun gigabyte, iar în sală s-ar putea să nu ai internet bun.
@@ -319,20 +373,18 @@ export default function VenueSetupPage() {
       </Alert>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl font-bold">Ai nevoie de</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <h2 className="border-b border-border pb-2 font-display text-xl font-bold">Ai nevoie de</h2>
+        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
           {NECESARE.map(({ icon: Icon, titlu, ce }) => (
-            <Card key={titlu}>
-              <CardContent className="flex items-start gap-3 pt-6">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <Icon className="h-5 w-5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="font-semibold">{titlu}</p>
-                  <p className="text-sm text-muted-foreground">{ce}</p>
-                </div>
-              </CardContent>
-            </Card>
+            <div key={titlu} className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Icon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold">{titlu}</p>
+                <p className="text-sm text-muted-foreground">{ce}</p>
+              </div>
+            </div>
           ))}
         </div>
         <p className="text-sm text-muted-foreground">
@@ -360,8 +412,8 @@ export default function VenueSetupPage() {
         ))}
       </div>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl font-bold">Instalarea, pas cu pas</h2>
+      <section className="flex flex-col gap-8">
+        <h2 className="border-b border-border pb-2 font-display text-xl font-bold">Instalarea, pas cu pas</h2>
 
         <Pas numar={1} titlu="Instalează Docker Desktop" durata="~15 minute">
           <p className="text-sm text-muted-foreground">
@@ -392,7 +444,7 @@ export default function VenueSetupPage() {
           </Desen>
           <Verifica>punctul verde din desen. Cât se mișcă balena, Docker încă pornește.</Verifica>
           <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
               Settings → General → &bdquo;Start Docker Desktop when you sign in&rdquo;. Altfel, un
               restart în ziua competiției nu mai pornește nimic singur.
@@ -406,8 +458,8 @@ export default function VenueSetupPage() {
             rezultatele înapoi.
           </p>
           <Descarcari sistem={sistem} />
-          <Alert>
-            <Download className="h-4 w-4" />
+          <div className="flex gap-3 text-sm">
+            <Download className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div>
               {eMac ? (
                 <>
@@ -423,18 +475,15 @@ export default function VenueSetupPage() {
                 </>
               )}
             </div>
-          </Alert>
+          </div>
         </Pas>
 
         <Pas numar={3} titlu="Deschide-o prima dată" durata="~5 minute">
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <div>
-              <strong className="font-semibold">Calculatorul o să te avertizeze. E normal.</strong>{' '}
-              Aplicația nu are certificat plătit de la {eMac ? 'Apple' : 'Microsoft'}, iar sistemul
-              nu recunoaște cine a făcut-o. Se face <strong>o singură dată</strong>.
-            </div>
-          </Alert>
+          <Nota>
+            <strong className="font-semibold">Calculatorul o să te avertizeze. E normal.</strong>{' '}
+            Aplicația nu are certificat plătit de la {eMac ? 'Apple' : 'Microsoft'}, iar sistemul
+            nu recunoaște cine a făcut-o. Se face <strong>o singură dată</strong>.
+          </Nota>
           <Desen nota={eMac
             ? 'Clic dreapta pe aplicație, nu dublu-clic — altfel nu te lasă deloc.'
             : 'Întâi „More info”, apoi butonul alb care apare dedesubt.'}>
@@ -476,7 +525,7 @@ export default function VenueSetupPage() {
           <Verifica>în Docker, patru rânduri pornite — exact cele de mai jos.</Verifica>
         </Pas>
 
-        <Pas numar={5} titlu="Pregătește rețeaua sălii" durata="~10 minute">
+        <Pas numar={5} titlu="Pregătește rețeaua sălii" durata="~10 minute" ultim>
           <Desen>
             <RouterIzolare />
           </Desen>
@@ -490,7 +539,7 @@ export default function VenueSetupPage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl font-bold">Ce trebuie să vezi în Docker</h2>
+        <h2 className="border-b border-border pb-2 font-display text-xl font-bold">Ce trebuie să vezi în Docker</h2>
         <p className="text-sm text-muted-foreground">
           Docker Desktop → secțiunea <strong>Containers</strong>. Dacă un rând lipsește sau e
           roșu, competiția nu merge.
@@ -499,40 +548,36 @@ export default function VenueSetupPage() {
           <ContainereDocker />
         </Desen>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
           {CONTAINERE.map(({ nume, icon: Icon, titlu, ce, semn }) => (
-            <Card key={nume}>
-              <CardContent className="flex gap-3 pt-6">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div className="flex min-w-0 flex-col gap-1">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <code className="font-mono text-sm font-bold">{nume}</code>
-                    <span className="text-xs text-muted-foreground">{titlu}</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{ce}</p>
-                  <Badge variant="secondary" className="w-fit font-mono text-xs">{semn}</Badge>
+            <div key={nume} className="flex gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Icon className="h-4 w-4" />
+              </span>
+              <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <code className="font-mono text-sm font-bold">{nume}</code>
+                  <span className="text-xs text-muted-foreground">{titlu}</span>
                 </div>
-              </CardContent>
-            </Card>
+                <p className="text-sm text-muted-foreground">{ce}</p>
+                <Badge variant="secondary" className="w-fit font-mono text-xs">{semn}</Badge>
+              </div>
+            </div>
           ))}
         </div>
 
         <h3 className="mt-2 font-display text-lg font-bold">Volumele (unde stau datele)</h3>
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-6">
-            {VOLUME.map(({ nume, icon: Icon, ce }) => (
-              <div key={nume} className="flex items-center gap-3">
-                <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <code className="font-mono text-sm font-bold">{nume}</code>
-                <span className="text-sm text-muted-foreground">{ce}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <div className="flex flex-col gap-3">
+          {VOLUME.map(({ nume, icon: Icon, ce }) => (
+            <div key={nume} className="flex items-center gap-3">
+              <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <code className="font-mono text-sm font-bold">{nume}</code>
+              <span className="text-sm text-muted-foreground">{ce}</span>
+            </div>
+          ))}
+        </div>
         <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             Containerele se pot opri și reporni fără pierderi, fiindcă datele stau aici.
             <strong> Nu șterge niciodată nimic din Volumes în ziua competiției.</strong>
@@ -541,50 +586,80 @@ export default function VenueSetupPage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl font-bold">Adresele din sală</h2>
+        <h2 className="border-b border-border pb-2 font-display text-xl font-bold">Adresele din sală</h2>
         <p className="text-sm text-muted-foreground">
           Pe fiecare dispozitiv se deschide browserul și se scrie adresa laptopului, urmată de
           două puncte și port. Launcherul le afișează gata scrise — de acolo e mai sigur să le iei.
         </p>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-3">
           {ADRESE.map(({ icon: Icon, ce, port, cine }) => (
-            <Card key={port}>
-              <CardContent className="flex flex-col items-center gap-2 pt-6 text-center">
-                <Icon />
-                <p className="font-semibold">{ce}</p>
-                <code className="break-all rounded bg-muted px-2 py-1 font-mono text-xs">
-                  {`http://<adresa-laptopului>:${port}`}
-                </code>
-                <p className="text-xs text-muted-foreground">{cine}</p>
-              </CardContent>
-            </Card>
+            <div key={port} className="flex flex-col items-start gap-2">
+              <Icon />
+              <p className="font-semibold">{ce}</p>
+              <code className="break-all rounded bg-muted px-2 py-1 font-mono text-xs">
+                {`http://<adresa-laptopului>:${port}`}
+              </code>
+              <p className="text-xs text-muted-foreground">{cine}</p>
+            </div>
           ))}
         </div>
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl font-bold">Când ceva nu merge</h2>
-        <Card>
-          <CardContent className="flex flex-col gap-4 pt-6 text-sm">
-            {PROBLEME.map(([simptom, rezolvare]) => (
-              <div key={simptom} className="flex gap-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                <div>
-                  <p className="font-semibold">{simptom}</p>
-                  <p className="text-muted-foreground">{rezolvare}</p>
-                </div>
-              </div>
-            ))}
-            <div className="flex gap-3 rounded-md bg-muted px-3 py-2">
-              <Wifi className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <p className="text-muted-foreground">
-                Datele nu se pierd dacă se oprește ceva: baza de date are copii din 15 în 15
-                minute, iar laptopul repornit le aduce înapoi singur. Chiar și o pană de curent
-                costă, în cel mai rău caz, ultimele 15 minute de lucru.
-              </p>
+        <h2 className="border-b border-border pb-2 font-display text-xl font-bold">Panoul Competiție — ce vei găsi acolo</h2>
+        <p className="text-sm text-muted-foreground">
+          E aplicația de pe portul 5191, deschisă pe laptopul central. Ocupă tot ecranul:
+          sus numele competiției, jos o bară cu file. Fiecare filă e o bucată din zi.
+        </p>
+        <Desen nota="Fila deschisă e cea aprinsă. Bara se trage lateral când nu încap toate.">
+          <PanouCompetitie />
+        </Desen>
+        {FAZE.map(({ nume, accent, punct, file }) => (
+          <div key={nume} className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${punct}`} />
+              <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">{nume}</h3>
             </div>
-          </CardContent>
-        </Card>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {file.map(([numeFila, ce]) => (
+                <div key={numeFila} className={`rounded-md border-l-4 px-3 py-2 ${accent}`}>
+                  <p className="text-sm font-semibold">{numeFila}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{ce}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <Nota>
+          În dreapta barei e un <strong className="font-semibold">lacăt</strong>: închis, nimeni nu
+          mai poate modifica din greșeală. Sus, în dreapta, sunt legăturile
+          <strong className="font-semibold"> Ecran TEREN 1</strong> și
+          <strong className="font-semibold"> TEREN 2</strong> — de acolo deschizi ce se vede pe
+          televizorul din sală.
+        </Nota>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="border-b border-border pb-2 font-display text-xl font-bold">Când ceva nu merge</h2>
+        <div className="flex flex-col gap-3 text-sm">
+          {PROBLEME.map(([simptom, rezolvare]) => (
+            <div key={simptom} className="flex gap-3 rounded-md border-l-4 border-l-red-300 bg-red-50/60 px-3 py-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+              <div>
+                <p className="font-semibold">{simptom}</p>
+                <p className="text-muted-foreground">{rezolvare}</p>
+              </div>
+            </div>
+          ))}
+          <div className="flex gap-3">
+            <Wifi className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <p className="text-muted-foreground">
+              Datele nu se pierd dacă se oprește ceva: baza de date are copii din 15 în 15
+              minute, iar laptopul repornit le aduce înapoi singur. Chiar și o pană de curent
+              costă, în cel mai rău caz, ultimele 15 minute de lucru.
+            </p>
+          </div>
+        </div>
       </section>
     </div>
   );

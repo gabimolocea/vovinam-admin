@@ -97,9 +97,36 @@ function PanouHarta({ numar, titlu, subtitlu, viewBox, eticheta, children }) {
 
 export function HartaZilei() {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Pasul care lipsea: pagina asta e chiar despre el, dar harta
+          incepea de la ce se intampla dupa. Si e singurul care se face o
+          data - de aceea subtitlurile spun cadenta fiecaruia, altfel cele
+          patru par ca se repeta toate la fel. */}
       <PanouHarta
-        numar="1" titlu="Aduci competiția" subtitlu="o dată, cu internet" viewBox="22 20 210 206"
+        numar="1" titlu="Instalezi programele" subtitlu="o singură dată" viewBox="0 0 210 206"
+        eticheta="Cele două programe — Docker și aplicația federației — se instalează pe laptop."
+      >
+        <g fill="#e7eefb" stroke="#9db4dd" strokeWidth="1.5">
+          <rect x="62" y="36" width="40" height="40" rx="9" />
+        </g>
+        <g fill="#9db4dd">
+          <rect x="70" y="48" width="24" height="5" rx="2" />
+          <rect x="70" y="56" width="24" height="5" rx="2" />
+          <rect x="70" y="64" width="24" height="5" rx="2" />
+        </g>
+        <rect x="108" y="36" width="40" height="40" rx="9" fill="#e7eefb" stroke="#9db4dd" strokeWidth="1.5" />
+        {/* Sigla reala, nu o litera: fisierul e acelasi pe care il serveste
+            si componenta Logo din bara laterala (public/frvv-logo.png). */}
+        <image href="/frvv-logo.png" x="112" y="40" width="32" height="32" preserveAspectRatio="xMidYMid meet" />
+        <text x="82" y="88" textAnchor="middle" fontSize="8.5" fill={GRI}>Docker</text>
+        <text x="128" y="88" textAnchor="middle" fontSize="8.5" fill={GRI}>Aplicația</text>
+        <CapSageata id="harta-sageata-0" />
+        <line x1="105" y1="98" x2="105" y2="128" stroke={ROSU} strokeWidth="2.5" markerEnd="url(#harta-sageata-0)" />
+        <LaptopMic x={70} y={134} />
+      </PanouHarta>
+
+      <PanouHarta
+        numar="2" titlu="Aduci competiția" subtitlu="înainte, cu internet" viewBox="22 20 210 206"
         eticheta="Competiția coboară din site pe laptopul din sală."
       >
         <CapSageata id="harta-sageata-1" />
@@ -110,47 +137,66 @@ export function HartaZilei() {
       </PanouHarta>
 
       <PanouHarta
-        numar="2" titlu="Toată ziua, local" subtitlu="fără internet" viewBox="271 8 210 206"
-        eticheta="Laptopul, tabletele și ecranul, toate legate la routerul propriu al sălii."
+        numar="3" titlu="Toată ziua, local" subtitlu="fără internet" viewBox="271 8 210 206"
+        eticheta="Laptopul central, laptopul de la teren, device-ul sau telefonul arbitrului și ecranul public, toate legate la routerul propriu al sălii."
       >
+        {/* Antenele si undele, mutate cu 4 in sus fata de desenul cu trei
+            aparate: al patrulea aparat are nevoie de randul de jos. */}
         <g fill="none" stroke={VERDE} strokeWidth="2.5" strokeLinecap="round">
-          <path d="M368,56 a 12,12 0 0 1 24,0" />
-          <path d="M360,48 a 20,20 0 0 1 40,0" />
-          <path d="M352,40 a 28,28 0 0 1 56,0" />
+          <path d="M368,52 a 12,12 0 0 1 24,0" />
+          <path d="M360,44 a 20,20 0 0 1 40,0" />
+          <path d="M352,36 a 28,28 0 0 1 56,0" />
         </g>
         <g fill={SUPRAFATA} stroke={NAVY} strokeWidth="1.8">
-          <rect x="355" y="64" width="50" height="22" rx="5" />
-          <line x1="364" y1="64" x2="358" y2="50" />
-          <line x1="396" y1="64" x2="402" y2="50" />
+          <rect x="355" y="60" width="50" height="22" rx="5" />
+          <line x1="364" y1="60" x2="358" y2="46" />
+          <line x1="396" y1="60" x2="402" y2="46" />
         </g>
-        <circle cx="368" cy="75" r="2.2" fill={VERDE} />
-        <circle cx="378" cy="75" r="2.2" fill={VERDE} />
-        <circle cx="388" cy="75" r="2.2" fill={LINIE} />
-        <text x="380" y="104" textAnchor="middle" fontSize="10.5" fill={GRI}>Router Wi-Fi propriu</text>
+        <circle cx="368" cy="71" r="2.2" fill={VERDE} />
+        <circle cx="378" cy="71" r="2.2" fill={VERDE} />
+        <circle cx="388" cy="71" r="2.2" fill={LINIE} />
+        <text x="380" y="100" textAnchor="middle" fontSize="10.5" fill={GRI}>Router Wi-Fi propriu</text>
         <g stroke="#9db4dd" strokeWidth="1.5" fill="none">
-          <path d="M380,110 V 130" />
-          <path d="M305,130 H 455" />
-          <path d="M305,130 V 156" />
-          <path d="M380,130 V 156" />
-          <path d="M455,130 V 156" />
+          <path d="M380,106 V 124" />
+          <path d="M305,124 H 455" />
+          <path d="M305,124 V 146" />
+          <path d="M355,124 V 146" />
+          <path d="M405,124 V 144" />
+          <path d="M455,124 V 146" />
         </g>
         <g fill={SUPRAFATA} stroke={NAVY} strokeWidth="1.6">
-          <rect x="282" y="156" width="46" height="28" rx="3" />
-          <polygon points="277,186 333,186 337,192 273,192" />
-          <rect x="366" y="156" width="28" height="40" rx="4" />
-          <rect x="430" y="156" width="50" height="32" rx="3" />
-          <polygon points="448,188 462,188 466,196 444,196" />
+          {/* laptopul central */}
+          <rect x="288" y="146" width="34" height="24" rx="3" />
+          <polygon points="284,172 326,172 329,177 281,177" />
+          {/* laptopul de la teren */}
+          <rect x="338" y="146" width="34" height="24" rx="3" />
+          <polygon points="334,172 376,172 379,177 331,177" />
+          {/* device-ul sau telefonul arbitrului */}
+          <rect x="395" y="144" width="20" height="34" rx="4" />
+          {/* ecranul public */}
+          <rect x="432" y="146" width="46" height="26" rx="3" />
+          <polygon points="448,172 462,172 465,178 445,178" />
         </g>
-        <rect x="286" y="159" width="38" height="22" fill={ECRAN} />
-        <rect x="369" y="160" width="22" height="30" fill={ECRAN} />
-        <rect x="433" y="159" width="44" height="26" fill={ECRAN} />
-        <text x="305" y="208" textAnchor="middle" fontSize="9.5" fill={GRI}>Laptop</text>
-        <text x="380" y="210" textAnchor="middle" fontSize="9.5" fill={GRI}>Tablete</text>
-        <text x="455" y="210" textAnchor="middle" fontSize="9.5" fill={GRI}>Ecran</text>
+        <rect x="291" y="149" width="28" height="18" fill={ECRAN} />
+        <rect x="341" y="149" width="28" height="18" fill={ECRAN} />
+        <rect x="398" y="148" width="14" height="24" fill={ECRAN} />
+        <circle cx="405" cy="174.5" r="1.3" fill={NAVY} />
+        <rect x="435" y="149" width="40" height="20" fill={ECRAN} />
+        <line x1="441" y1="178" x2="469" y2="178" stroke={NAVY} strokeWidth="1.6" strokeLinecap="round" />
+        <g textAnchor="middle" fontSize="7.5" fill={GRI}>
+          <text x="305" y="190">Laptop</text>
+          <text x="305" y="199">central</text>
+          <text x="355" y="190">Laptop</text>
+          <text x="355" y="199">teren</text>
+          <text x="405" y="190">Device/telefon</text>
+          <text x="405" y="199">arbitru</text>
+          <text x="455" y="190">Ecran/TV</text>
+          <text x="455" y="199">public</text>
+        </g>
       </PanouHarta>
 
       <PanouHarta
-        numar="3" titlu="Trimiți rezultatele" subtitlu="la final, cu internet" viewBox="528 20 210 206"
+        numar="4" titlu="Trimiți rezultatele" subtitlu="la final, cu internet" viewBox="528 20 210 206"
         eticheta="Rezultatele urcă de pe laptop înapoi în site."
       >
         <CapSageata id="harta-sageata-3" />
@@ -213,8 +259,8 @@ export function DeschidereMac() {
       <text x="32" y="29" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">1</text>
       <text x="54" y="29" fontSize="11.5" fontWeight="700" fill={GRI}>Nu dublu-clic</text>
       <rect x="20" y="48" width="250" height="214" rx="10" fill="#fff" stroke={LINIE} />
-      <rect x="44" y="68" width="40" height="40" rx="9" fill={NAVY} />
-      <text x="64" y="94" textAnchor="middle" fontSize="15" fontWeight="700" fill="#edb654">V</text>
+      <rect x="44" y="68" width="40" height="40" rx="9" fill="#e7eefb" stroke="#9db4dd" strokeWidth="1.5" />
+      <image href="/frvv-logo.png" x="48" y="72" width="32" height="32" preserveAspectRatio="xMidYMid meet" />
       <text x="96" y="84" fontSize="11" fontWeight="700" fill={NAVY}>FRVV Competition</text>
       <text x="96" y="99" fontSize="11" fontWeight="700" fill={NAVY}>Launcher</text>
       <rect x="44" y="122" width="190" height="122" rx="8" fill="#fff" stroke="#c6cedb" />
@@ -383,6 +429,105 @@ export function LauncherPornit() {
           </g>
         );
       })}
+    </svg>
+  );
+}
+
+/** Ecranul Panoului Competitie, cel de pe :5191.
+ *
+ * Nu explica filele - alea sunt scrise langa, in pagina. Desenul are un
+ * singur rol: sa recunoasca omul ecranul cand il deschide, si mai ales
+ * bara de jos, fiindca acolo se trece de la o bucata a zilei la alta si
+ * nu seamana cu un meniu obisnuit.
+ *
+ * Etichetele si ordinea sunt cele din apps/competition-admin
+ * (CategoriesLayout.jsx); daca se schimba acolo, se schimba si aici.
+ */
+const FILE_PANOU = [
+  'CENTRALIZATOR', 'TEHNICA', 'LUPTA', 'PIRAMIDE', 'PROGRAMARE',
+  'ARBITRI', 'LIVE', 'CLASAMENT', 'DIPLOME',
+];
+
+export function PanouCompetitie() {
+  // Chip-urile se asaza unul dupa altul, ca in bara reala. Latimea fiecaruia
+  // se aproximeaza din numarul de litere - la majuscule de 6.5 iese destul
+  // de exact, si oricum nimic nu depinde de precizie: daca ultimul ar iesi
+  // din bara, asa face si in aplicatie, unde bara se deruleaza lateral.
+  let x = 22;
+  const chipuri = FILE_PANOU.map((eticheta) => {
+    const latime = eticheta.length * 4.3 + 18;
+    const chip = { eticheta, x, latime };
+    x += latime + 4;
+    return chip;
+  });
+
+  const coloane = [96, 156, 216, 276, 336, 396, 456, 516];
+
+  return (
+    <svg viewBox="0 0 620 300" xmlns="http://www.w3.org/2000/svg" role="img" className="h-auto w-full"
+      aria-label="Panoul Competiție pe tot ecranul: sus numele competiției și legăturile către ecranele de teren, la mijloc tabloul cluburi–categorii, jos bara cu cele nouă file și lacătul.">
+      <rect x="10" y="10" width="600" height="280" rx="10" fill="#fff" stroke={LINIE} />
+
+      {/* bara de sus: sigla, numele competitiei, ecranele de teren */}
+      <path d="M10,20 a10,10 0 0 1 10,-10 h580 a10,10 0 0 1 10,10 v22 h-600 z" fill={NAVY} />
+      <rect x="10" y="42" width="600" height="2" fill="#edb654" />
+      <image href="/frvv-logo.png" x="22" y="16" width="18" height="18" preserveAspectRatio="xMidYMid meet" />
+      <text x="48" y="29" fontSize="9" fontWeight="700" fill="#fff" letterSpacing="0.02em">CAMPIONATUL NAȚIONAL — 30 MAI 2026</text>
+      <text x="520" y="29" textAnchor="end" fontSize="7" fill="#c3cddf">Ecran TEREN 1</text>
+      <text x="592" y="29" textAnchor="end" fontSize="7" fill="#c3cddf">Ecran TEREN 2</text>
+
+      {/* bara de filtre si butoanele de export */}
+      <text x="24" y="60" fontSize="7" fontWeight="700" fill={GRI} letterSpacing="0.06em">GRUPĂ</text>
+      <rect x="54" y="50" width="72" height="14" rx="3" fill={SUPRAFATA} stroke={LINIE} />
+      <text x="60" y="60" fontSize="6.5" fill={GRI}>Toate grupele</text>
+      <rect x="462" y="50" width="82" height="14" rx="3" fill={SUPRAFATA} stroke={LINIE} />
+      <text x="470" y="60" fontSize="6.5" fill={GRI}>Export (Excel)</text>
+      <rect x="550" y="50" width="46" height="14" rx="3" fill={SUPRAFATA} stroke={LINIE} />
+      <text x="558" y="60" fontSize="6.5" fill={GRI}>Setări</text>
+      <line x1="10" y1="70" x2="610" y2="70" stroke="#e3e8f0" />
+
+      {/* tabloul: cluburi pe randuri, categorii pe coloane */}
+      <rect x="96" y="76" width="236" height="11" rx="2" fill="#fdf1dd" />
+      <rect x="336" y="76" width="240" height="11" rx="2" fill="#fdf1dd" />
+      <text x="100" y="85" fontSize="6" fontWeight="700" fill="#a97c2a">GRUPA 0</text>
+      <text x="340" y="85" fontSize="6" fontWeight="700" fill="#a97c2a">GRUPA 1</text>
+      <text x="24" y="99" fontSize="6.5" fontWeight="700" fill={GRI} letterSpacing="0.06em">CLUB</text>
+      {coloane.map((cx) => <rect key={cx} x={cx} y={93} width="54" height="6" rx="3" fill={LINIE_FINA} />)}
+      <line x1="20" y1="104" x2="600" y2="104" stroke="#e3e8f0" />
+      <line x1="92" y1="76" x2="92" y2="236" stroke="#e3e8f0" />
+
+      {[0, 1, 2, 3, 4].map((rand) => {
+        const y = 110 + rand * 22;
+        return (
+          <g key={rand}>
+            <rect x="24" y={y + 5} width="60" height="7" rx="3.5" fill={LINIE_FINA} />
+            {coloane.map((cx, i) => (
+              (rand + i) % 4 === 0
+                ? <rect key={cx} x={cx} y={y + 3} width="54" height="11" rx="2" fill="#e7eefb" stroke="#c9d8f0" />
+                : <rect key={cx} x={cx} y={y + 3} width="54" height="11" rx="2" fill="#f7f9fc" />
+            ))}
+            <line x1="20" y1={y + 19} x2="600" y2={y + 19} stroke="#f1f4f9" />
+          </g>
+        );
+      })}
+      <text x="24" y="229" fontSize="6.5" fill={GRI}>Nr. participanți</text>
+      {coloane.map((cx, i) => (
+        <text key={cx} x={cx + 27} y="229" textAnchor="middle" fontSize="6.5" fill={NAVY}>{i === 2 ? '1' : '0'}</text>
+      ))}
+
+      {/* bara de jos, cu filele */}
+      <rect x="10" y="238" width="600" height="2" fill="#edb654" />
+      <path d="M10,240 h600 v40 a10,10 0 0 1 -10,10 h-580 a10,10 0 0 1 -10,-10 z" fill={NAVY} />
+      {chipuri.map(({ eticheta, x: cx, latime }, i) => (
+        <g key={eticheta}>
+          <rect x={cx} y={250} width={latime} height="20" rx="3"
+            fill={i === 0 ? '#edb654' : 'none'} stroke={i === 0 ? '#edb654' : '#2c3f63'} />
+          <text x={cx + latime / 2} y={264} textAnchor="middle" fontSize="6.5" fontWeight="700"
+            letterSpacing="0.05em" fill={i === 0 ? NAVY : '#c3cddf'}>{eticheta}</text>
+        </g>
+      ))}
+      <rect x="566" y="250" width="24" height="20" rx="3" fill="#fef3c7" stroke="#fcd34d" />
+      <text x="578" y="265" textAnchor="middle" fontSize="11">🔒</text>
     </svg>
   );
 }
