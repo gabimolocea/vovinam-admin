@@ -563,6 +563,11 @@ button {
   margin-bottom: 6px;
 }
 
+.app-view-errors-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .app-view-errors-head button {
   background: rgba(255, 255, 255, 0.15);
   border: none;
@@ -572,6 +577,14 @@ button {
   font: inherit;
   padding: 3px 10px;
   text-transform: none;
+}
+
+/* Reincercarea e ce vrei sa faci cand vezi caseta asta; "Inchide" doar o
+   ascunde. Deci se vede care e care, fara sa le citesti pe amandoua. */
+.app-view-errors-head .app-view-errors-reload {
+  background: #fee2e2;
+  color: #7f1d1d;
+  font-weight: 700;
 }
 
 .app-view-errors pre {
@@ -678,4 +691,139 @@ button {
 
 .back-link:hover {
   opacity: 1;
+}
+
+/* ── Ghidul interactiv din Panoul Competitie (TutorialPanel.jsx) ──────────
+   Panoul sta langa aplicatie, nu peste ea: tot rostul lui e ca operatorul sa
+   vada ecranul adevarat in timp ce citeste pasul, si sa poata lucra in el
+   fara sa inchida ghidul. */
+.app-view--cu-ghid {
+  flex-direction: row;
+}
+
+.app-view-ghid-buton {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 5;
+  border: none;
+  border-radius: 999px;
+  background: #172642;
+  color: #fff;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(23, 37, 64, 0.28);
+}
+
+.app-view-ghid-buton:hover {
+  background: #0f1c33;
+}
+
+.tutorial {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 340px;
+  flex: 0 0 340px;
+  padding: 18px;
+  overflow-y: auto;
+  border-left: 1px solid #d7dde8;
+  background: #fff;
+}
+
+.tutorial-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tutorial-contor {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b6779;
+}
+
+.tutorial-x {
+  border: none;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #5b6779;
+  cursor: pointer;
+}
+
+.tutorial-faza {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #a97c2a;
+}
+
+.tutorial-titlu {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.3;
+  color: #172642;
+}
+
+.tutorial-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #41506b;
+}
+
+/* Un pas care n-a gasit ce cauta trebuie sa se vada, nu sa treaca neobservat
+   - vezi comentariul din TutorialPanel.jsx. */
+.tutorial-rateu {
+  margin: 0;
+  border-left: 3px solid #da3b26;
+  background: #fef2f2;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #8f2a1c;
+}
+
+.tutorial-progres {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.tutorial-bulina {
+  height: 4px;
+  flex: 1;
+  border-radius: 2px;
+  background: #e3e8f0;
+}
+
+.tutorial-bulina.trecut {
+  background: #9db4dd;
+}
+
+.tutorial-bulina.e-acum {
+  background: #da3b26;
+}
+
+.tutorial-butoane {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.tutorial-butoane button {
+  flex: 1;
+}
+
+.tutorial-nota {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #5b6779;
 }
