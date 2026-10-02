@@ -5,6 +5,35 @@ const path = require('path');
 
 const { getRepoRoot } = require('./repoRoot');
 
+// Node si npm nu exista pe PATH-ul unei aplicatii pornite din Finder: acolo
+// PATH e doar /usr/bin:/bin:/usr/sbin:/sbin, pe cand npm sta in Homebrew, in
+// /usr/local/bin sau sub nvm. Fara completarea asta, aplicatia impachetata
+// cadea cu "spawn npm ENOENT" si nu pornea niciun ecran - iar in sala asta
+// arata ca o fereastra alba, fiindca webview-ul cerea un port pe care nu
+// asculta nimeni. dockerBackend.js avea deja nevoie de acelasi lucru pentru
+// `docker`; aici e versiunea pentru node.
+function nvmBinDirs() {
+  try {
+    const radacina = path.join(process.env.HOME || '', '.nvm', 'versions', 'node');
+    return fs.readdirSync(radacina)
+      .sort()
+      .reverse()
+      .map((versiune) => path.join(radacina, versiune, 'bin'))
+      .filter((dir) => fs.existsSync(path.join(dir, 'npm')));
+  } catch {
+    return [];
+  }
+}
+
+function spawnEnv(extra = {}) {
+  const candidate = process.platform === 'win32'
+    ? []
+    : ['/usr/local/bin', '/opt/homebrew/bin', ...nvmBinDirs()];
+  const existing = (process.env.PATH || '').split(path.delimiter);
+  const PATH = [...new Set([...existing, ...candidate])].join(path.delimiter);
+  return { ...process.env, PATH, ...extra };
+}
+
 // Used to detect a port that's already serving (e.g. the admin's own dev
 // servers left running, or a leftover process from a launcher instance
 // that didn't shut down cleanly) so we reuse it instead of crash-looping
@@ -161,12 +190,23 @@ class ServiceManager {
 
     const child = spawn(def.command, def.args, {
       cwd: def.cwd,
-      env: { ...process.env, ...(def.env || {}) },
+      env: spawnEnv(def.env || {}),
       shell: process.platform === 'win32',
     });
 
     child.stdout?.on('data', (chunk) => this.onLog(def.id, chunk.toString()));
     child.stderr?.on('data', (chunk) => this.onLog(def.id, chunk.toString()));
+    // Fara asta, un executabil negasit ajungea exceptie netratata si ducea
+    // tot launcherul, cu stiva pe ecran, in loc sa raporteze un singur
+    // serviciu cazut. In ziua competitiei diferenta e intre "un ecran nu
+    // porneste" si "nu mai am aplicatie".
+    child.on('error', (err) => {
+      this.processes.delete(def.id);
+      this.onStatusChange(def.id, 'crashed');
+      this.onLog(def.id, err.code === 'ENOENT'
+        ? `Nu am găsit „${def.command}” pe acest calculator. Dacă launcherul a fost deschis din Finder, pornește-l prin „Porneste competitia.command”, care îi dă calea către node.`
+        : `Pornirea a eșuat: ${err.message}`);
+    });
     child.on('exit', (code) => {
       this.processes.delete(def.id);
       this.onStatusChange(def.id, code === 0 ? 'stopped' : 'crashed');
