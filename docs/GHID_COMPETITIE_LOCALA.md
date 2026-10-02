@@ -4,13 +4,13 @@ Când sala **nu are internet** (sau are unul nesigur), competiția rulează pe u
 laptop din sală. La final, rezultatele se întorc în cloud.
 
 ```mermaid
-flowchart LR
+flowchart TD
     C(["☁️ Cloud<br/>app.vovinam.ro"])
     L["💻 Laptopul din sală<br/><i>serverul competiției</i>"]
     D["📱 Tablete arbitri<br/>📺 Ecran public"]
     C -- "① aduci competiția<br/><i>cu internet</i>" --> L
-    L <-- "② toată ziua<br/><i>pe Wi-Fi-ul sălii</i>" --> D
     L -- "③ trimiți rezultatele<br/><i>cu internet</i>" --> C
+    L <-- "② toată ziua<br/><i>pe Wi-Fi-ul sălii</i>" --> D
 ```
 
 | Rol | Ce face | Când |
@@ -144,7 +144,7 @@ strică nimic, doar acel import nu se face.
 ## După competiție
 
 ```mermaid
-flowchart LR
+flowchart TD
     A["<b>Sync → Local → Web</b><br/>trimite rezultatele"] --> B["Launcherul verifică<br/>ce a ajuns efectiv în cloud"]
     B --> C["Verifici clasamentele<br/>și diplomele"]
     C --> D["<b>Finalizează</b><br/>evenimentul se deblochează"]
