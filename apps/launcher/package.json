@@ -1,7 +1,7 @@
 {
   "name": "@vovinam/launcher",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "FRVV Competition Launcher - runs the full competition stack locally, syncing an event down from the cloud before the day starts and back up afterwards.",
   "main": "electron/main.js",
   "type": "commonjs",
@@ -77,7 +77,8 @@
         "owner": "gabimolocea",
         "repo": "vovinam-admin"
       }
-    ]
+    ],
+    "afterPack": "build/afterPack.js"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
