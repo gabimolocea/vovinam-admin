@@ -1,19 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, Apple, Check, Copy, Database, Download, HardDrive, Image,
-  Monitor, MonitorPlay, Server, Tablet, Timer, Wifi,
+  AlertTriangle, Apple, Check, Copy, Database, Download, Globe, HardDrive, Image,
+  KeyRound, Laptop, Monitor, MonitorPlay, Router, Server, Timer, Wifi,
 } from 'lucide-react';
 import { API_BASE_URL } from '@shared/lib/api';
 import { Alert, Badge, Card, CardContent, Skeleton } from '../components/ui';
+import {
+  ContainereDocker, DeschidereMac, DeschidereWindows, DockerPornit, HartaZilei,
+  IconEcran, IconLaptop, IconTableta, LauncherPornit, RouterIzolare,
+} from '../components/VenueSetupIlustratii';
 
 /**
  * Ghidul de instalare a laptopului din sala de concurs.
  *
  * Nu e documentatie pentru dezvoltatori: e scris pentru persoana care
  * pregateste laptopul si care, de regula, nu a deschis niciodata un
- * terminal. De aceea fiecare pas spune si ce trebuie sa vezi dupa ce l-ai
- * facut, iar sectiunea despre Docker explica ce e fiecare rand de acolo -
- * altfel ferestrele alea par un zgomot pe care nu stii daca e in regula.
+ * terminal. De aceea pagina arata, nu povesteste: fiecare pas are desenul
+ * ferestrei pe care omul o are in fata si al lucrului la care se uita in
+ * ea, iar textul de langa e doar atat cat sa spuna ce apesi. Desenele sunt
+ * in components/VenueSetupIlustratii.jsx.
+ *
+ * Fiindca desenele poarta instructiunea, textul nu o mai repeta - nici
+ * pentru cititor, care ar incepe sa caute diferenta dintre cele doua
+ * formulari, nici pentru teste, care cauta fiecare instructiune o singura
+ * data in pagina.
  *
  * Instructiunile difera intre Mac si Windows mai ales la deschiderea unei
  * aplicatii nesemnate, asa ca pagina are un comutator in loc sa insire
@@ -31,75 +41,62 @@ import { Alert, Badge, Card, CardContent, Skeleton } from '../components/ui';
 // singur dintre cinci fisiere cu nume aproape identice.
 const DOWNLOAD_URL = (cheie) => `${API_BASE_URL}/public/launcher/download/${cheie}/`;
 
+const NECESARE = [
+  { icon: Laptop, titlu: 'Un laptop', ce: 'Mac sau Windows. Stă în sală toată ziua, în priză, cu capacul deschis.' },
+  { icon: Globe, titlu: 'Internet', ce: 'Doar acum, la instalare. În ziua competiției, nu mai e nevoie.' },
+  { icon: Router, titlu: 'Un router Wi-Fi', ce: 'Al evenimentului. La el se leagă tabletele și ecranele.' },
+  { icon: KeyRound, titlu: 'Contul tău', ce: 'Același cont de administrator cu care ești autentificat acum.' },
+];
+
 const CONTAINERE = [
   {
     nume: 'db',
     icon: Database,
     titlu: 'Baza de date',
-    ce: 'PostgreSQL 17 — aceeași versiune ca pe site-ul federației.',
-    deCe:
-      'Aici stau toate datele competiției cât ține ziua: sportivii, categoriile, '
-      + 'cântarul, scorurile, clasamentele. În sală, acesta este adevărul — nu '
-      + 'site-ul din internet.',
-    semn: 'Trebuie să scrie „healthy”. Până nu e sănătoasă, celelalte nici nu pornesc.',
+    ce: 'Sportivii, categoriile, cântarul, scorurile. În sală, aici e adevărul — nu în site.',
+    semn: 'healthy',
   },
   {
     nume: 'backend',
     icon: Server,
-    titlu: 'Aplicația propriu-zisă',
-    ce: 'Programul care răspunde tabletelor de arbitraj și ecranelor din sală.',
-    deCe:
-      'Tot ce apasă cineva pe o tabletă ajunge aici, iar de aici în baza de date. '
-      + 'Dacă acest container e oprit, tabletele nu mai pot trimite scoruri.',
-    semn: 'Trebuie să scrie „running”, cu portul 8000 afișat lângă.',
+    titlu: 'Aplicația',
+    ce: 'Primește tot ce apasă arbitrii pe tablete. Oprit, tabletele nu mai pot trimite scoruri.',
+    semn: 'running · 8000',
   },
   {
     nume: 'frontends',
     icon: MonitorPlay,
     titlu: 'Cele trei ecrane',
-    ce: 'Administrarea competiției, arbitrajul și ecranul public, ca pagini gata făcute.',
-    deCe:
-      'Paginile pe care le deschid oamenii în browser. Ele vin de aici, din '
-      + 'container — de asta pe laptopul din sală nu mai trebuie instalat nimic '
-      + 'altceva în afară de Docker.',
-    semn: 'Trebuie să scrie „running”, cu trei porturi lângă: 5191, 5176 și 5177.',
+    ce: 'Paginile gata făcute. De asta pe laptop nu se mai instalează nimic altceva.',
+    semn: 'running · 5191 · 5176 · 5177',
   },
   {
     nume: 'backup-scheduler',
     icon: Timer,
     titlu: 'Salvările automate',
-    ce: 'Face o copie completă a bazei de date la fiecare 15 minute.',
-    deCe:
-      'Plasa de siguranță a zilei. Dacă se încurcă ceva — o categorie ștearsă din '
-      + 'greșeală, un scor greșit propagat — te poți întoarce la o copie de acum '
-      + '15 minute, din launcher. Rulează separat de aplicație tocmai ca să '
-      + 'continue să salveze chiar dacă aplicația e repornită.',
-    semn: 'Trebuie să scrie „running”. Nu are port — nu-l accesează nimeni direct.',
+    ce: 'Copiază toată baza de date din 15 în 15 minute. Plasa de siguranță a zilei.',
+    semn: 'running, fără port',
   },
 ];
 
 const VOLUME = [
-  {
-    nume: 'frvv_local_db_data',
-    icon: Database,
-    ce: 'Datele competiției. Ăsta e volumul care nu trebuie șters niciodată în ziua competiției.',
-  },
-  {
-    nume: 'frvv_local_media',
-    icon: Image,
-    ce: 'Pozele de profil ale sportivilor, aduse odată cu competiția.',
-  },
-  {
-    nume: 'frvv_local_backups',
-    icon: HardDrive,
-    ce: 'Copiile făcute din 15 în 15 minute. De aici le ia launcherul când ceri o restaurare.',
-  },
+  { nume: 'frvv_local_db_data', icon: Database, ce: 'Datele competiției.' },
+  { nume: 'frvv_local_media', icon: Image, ce: 'Pozele de profil ale sportivilor.' },
+  { nume: 'frvv_local_backups', icon: HardDrive, ce: 'Copiile din 15 în 15 minute.' },
 ];
 
 const ADRESE = [
-  { icon: Monitor, ce: 'Administrarea competiției', port: '5191', cine: 'Laptopul secretariatului' },
-  { icon: Tablet, ce: 'Arbitraj', port: '5176', cine: 'Tabletele arbitrilor' },
-  { icon: Monitor, ce: 'Ecranul public', port: '5177', cine: 'Televizorul sau proiectorul din sală' },
+  { icon: IconLaptop, ce: 'Administrarea competiției', port: '5191', cine: 'Laptopul secretariatului' },
+  { icon: IconTableta, ce: 'Arbitraj', port: '5176', cine: 'Tabletele arbitrilor' },
+  { icon: IconEcran, ce: 'Ecranul public', port: '5177', cine: 'Televizorul din sală' },
+];
+
+const PROBLEME = [
+  ['Launcherul spune că nu găsește Docker', 'Docker Desktop nu e pornit. Deschide-l, așteaptă punctul verde.'],
+  ['La autentificare apare „Metoda GET nu este permisă”', 'Lipsește https:// din adresa serverului.'],
+  ['Prima pornire se oprește la descărcare', 'Internet prea slab. Fă prima pornire acasă, nu în sală.'],
+  ['Tabletele nu se conectează la laptop', 'Ori sunt pe alt Wi-Fi, ori routerul izolează clienții. În ordinea asta.'],
+  ['Un container e roșu sau repornește mereu', 'Apasă pe el în Docker → „Logs” și trimite ultimele rânduri persoanei tehnice.'],
 ];
 
 function Comanda({ children }) {
@@ -265,6 +262,23 @@ function Pas({ numar, titlu, durata, children }) {
   );
 }
 
+/** Rama desenelor. Ce se vede in ele nu e pagina asta, ci alt program, si
+ * fara o rama in jur jumatate din cititori cauta pe ecran butonul desenat.
+ *
+ * Latimea minima plus derularea pe orizontala sunt pentru telefon: sub ea,
+ * scrisul din ferestrele desenate ajunge de cinci pixeli si desenul nu mai
+ * ajuta cu nimic. Mai bine il tragi intr-o parte decat sa te uiti la el. */
+function Desen({ children, nota }) {
+  return (
+    <figure className="m-0 flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3">
+      <div className="overflow-x-auto">
+        <div className="min-w-[460px]">{children}</div>
+      </div>
+      {nota && <figcaption className="text-center text-xs text-muted-foreground">{nota}</figcaption>}
+    </figure>
+  );
+}
+
 /** „Dupa pasul asta trebuie sa vezi X” - fara reperele astea, cineva care
  * nu cunoaste programele merge mai departe cu un pas nereusit si descopera
  * abia la final, cand e greu de spus care dintre ei a fost. */
@@ -281,40 +295,49 @@ export default function VenueSetupPage() {
   const eMac = sistem === 'mac';
 
   return (
-    <div className="flex max-w-4xl flex-col gap-6">
+    <div className="flex max-w-4xl flex-col gap-8">
       <div>
         <h1 className="font-display text-2xl font-bold">Competiție în sală — instalare</h1>
         <p className="mt-1 text-muted-foreground">
-          Cum pregătești laptopul care ține competiția când sala nu are internet.
-          Se face o singură dată, cu mult înainte de eveniment.
+          Pregătești laptopul care ține competiția când sala nu are internet.
         </p>
       </div>
+
+      <section className="flex flex-col gap-2">
+        <HartaZilei />
+        <p className="text-center text-xs text-muted-foreground">
+          Pregătirea de mai jos se face o singură dată, înainte de prima competiție.
+        </p>
+      </section>
 
       <Alert>
         <AlertTriangle className="h-4 w-4" />
         <div>
           <strong className="font-semibold">Fă asta cu o săptămână înainte, nu în dimineața competiției.</strong>
-          {' '}Instalarea cere internet bun — se descarcă vreun gigabyte — iar în sală
-          s-ar putea să nu-l ai.
+          {' '}Se descarcă vreun gigabyte, iar în sală s-ar putea să nu ai internet bun.
         </div>
       </Alert>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl font-bold">De ce ai nevoie</h2>
-        <Card>
-          <CardContent className="pt-6">
-            <ul className="flex flex-col gap-2 text-sm">
-              <li><strong>Un laptop</strong> — Mac sau Windows — care rămâne în sală toată ziua, cu încărcătorul lui. Nu se închide capacul în timpul competiției.</li>
-              <li><strong>Internet</strong> — doar acum, la instalare. În ziua competiției nu mai e nevoie.</li>
-              <li><strong>Un router Wi-Fi propriu</strong> pentru eveniment, la care se leagă tabletele și ecranele.</li>
-              <li><strong>Contul tău de administrator</strong> — același cu care ești autentificat acum.</li>
-            </ul>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Două programe se instalează, atât: Docker Desktop și aplicația
-              federației. Nu e nevoie de nimic altceva.
-            </p>
-          </CardContent>
-        </Card>
+        <h2 className="font-display text-xl font-bold">Ai nevoie de</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {NECESARE.map(({ icon: Icon, titlu, ce }) => (
+            <Card key={titlu}>
+              <CardContent className="flex items-start gap-3 pt-6">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="font-semibold">{titlu}</p>
+                  <p className="text-sm text-muted-foreground">{ce}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Se instalează două programe, atât: Docker Desktop și aplicația federației.
+        </p>
       </section>
 
       <div className="flex items-center gap-2" role="tablist" aria-label="Sistemul laptopului">
@@ -342,54 +365,45 @@ export default function VenueSetupPage() {
 
         <Pas numar={1} titlu="Instalează Docker Desktop" durata="~15 minute">
           <p className="text-sm text-muted-foreground">
-            Docker e programul care ține baza de date și aplicația competiției,
-            fiecare în &bdquo;cutia&rdquo; ei, fără să încurce nimic altceva de pe laptop.
+            Docker ține baza de date și aplicația competiției, fiecare în
+            &bdquo;cutia&rdquo; ei, fără să încurce nimic altceva de pe laptop.
           </p>
-          <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
+          <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-sm">
             <li>
-              Intră pe <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer" className="font-medium text-brand-red underline">docker.com</a> și
-              descarcă <strong>Docker Desktop pentru {eMac ? 'Mac' : 'Windows'}</strong>.
+              Descarcă-l de pe <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer" className="font-medium text-brand-red underline">docker.com</a>.
             </li>
             {eMac ? (
               <li>
-                Alege varianta potrivită: <strong>Apple Silicon</strong> pentru Mac-urile din 2020
-                încoace (M1, M2, M3, M4), <strong>Intel</strong> pentru cele mai vechi. Dacă nu
-                știi, meniul Apple → &bdquo;Despre acest Mac&rdquo; îți spune.
+                Alege <strong>Apple Silicon</strong> (Mac din 2020 încoace) sau <strong>Intel</strong>.
+                Meniul Apple → &bdquo;Despre acest Mac&rdquo; îți spune care e.
               </li>
             ) : (
-              <li>
-                La instalare lasă bifată opțiunea <strong>WSL 2</strong>. Dacă Windows cere o
-                repornire, fă-o acum — altfel Docker nu pornește.
-              </li>
+              <li>Lasă bifată opțiunea <strong>WSL 2</strong>. Dacă cere o repornire, fă-o acum.</li>
             )}
             <li>
               {eMac
-                ? 'Deschide fișierul descărcat și trage iconița Docker peste folderul Applications.'
-                : 'Deschide fișierul descărcat și apasă prin instalare până la final.'}
+                ? 'Trage iconița peste folderul Applications și pornește-l.'
+                : 'Treci prin instalare până la final și pornește-l.'}
             </li>
-            <li>Pornește Docker. Prima dată cere parola calculatorului și acceptarea condițiilor.</li>
-            <li>
-              Așteaptă până balena din {eMac ? 'bara de sus' : 'colțul din dreapta jos'} stă
-              nemișcată — cât se mișcă, încă pornește.
-            </li>
+            <li>Prima dată cere parola calculatorului și acceptarea condițiilor.</li>
           </ol>
-          <Verifica>
-            în fereastra Docker, jos în stânga, un punct verde cu textul &bdquo;Engine running&rdquo;.
-          </Verifica>
+          <Desen>
+            <DockerPornit />
+          </Desen>
+          <Verifica>punctul verde din desen. Cât se mișcă balena, Docker încă pornește.</Verifica>
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <div>
-              Lasă Docker să pornească odată cu calculatorul (Settings → General →
-              &bdquo;Start Docker Desktop when you sign in&rdquo;). Altfel, dacă laptopul se
-              restartează în ziua competiției, nimic nu mai pornește singur.
+              Settings → General → &bdquo;Start Docker Desktop when you sign in&rdquo;. Altfel, un
+              restart în ziua competiției nu mai pornește nimic singur.
             </div>
           </Alert>
         </Pas>
 
         <Pas numar={2} titlu="Descarcă aplicația federației" durata="~2 minute">
           <p className="text-sm text-muted-foreground">
-            De aici se conduce toată ziua: aduci competiția din site, pornești sala,
-            iar la final trimiți rezultatele înapoi.
+            De aici se conduce toată ziua: aduci competiția, pornești sala, trimiți
+            rezultatele înapoi.
           </p>
           <Descarcari sistem={sistem} />
           <Alert>
@@ -397,17 +411,15 @@ export default function VenueSetupPage() {
             <div>
               {eMac ? (
                 <>
-                  <strong className="font-semibold">Despre versiunile următoare:</strong> aplicația
-                  îți spune singură când apare una nouă și îți deschide pagina de descarcare.
-                  Pe Mac instalarea nu se poate face automat, așa că o tragi din nou peste
-                  folderul Applications — e nevoie de un certificat Apple pentru ca pasul
-                  ăsta să dispară.
+                  <strong className="font-semibold">Versiunile următoare:</strong> aplicația îți
+                  spune când apare una nouă și îți deschide pagina de descarcare. Pe Mac o tragi
+                  din nou peste Applications — automat nu se poate fără un certificat Apple.
                 </>
               ) : (
                 <>
-                  <strong className="font-semibold">Despre versiunile următoare:</strong> aplicația
-                  le descarcă singură și te întreabă când vrei să repornești. Dacă ești în
-                  mijlocul unei competiții, alegi &bdquo;Mai târziu&rdquo; și nu se întrerupe nimic.
+                  <strong className="font-semibold">Versiunile următoare:</strong> aplicația le
+                  descarcă singură și te întreabă când vrei să repornești. În mijlocul unei
+                  competiții alegi &bdquo;Mai târziu&rdquo; și nu se întrerupe nimic.
                 </>
               )}
             </div>
@@ -419,102 +431,88 @@ export default function VenueSetupPage() {
             <AlertTriangle className="h-4 w-4" />
             <div>
               <strong className="font-semibold">Calculatorul o să te avertizeze. E normal.</strong>{' '}
-              Aplicația nu e cumpărată de la {eMac ? 'Apple' : 'Microsoft'} cu un certificat
-              plătit, iar sistemul nu recunoaște cine a făcut-o. Pașii de mai jos se fac{' '}
-              <strong>o singură dată</strong>; după aceea se deschide normal.
+              Aplicația nu are certificat plătit de la {eMac ? 'Apple' : 'Microsoft'}, iar sistemul
+              nu recunoaște cine a făcut-o. Se face <strong>o singură dată</strong>.
             </div>
           </Alert>
+          <Desen nota={eMac
+            ? 'Clic dreapta pe aplicație, nu dublu-clic — altfel nu te lasă deloc.'
+            : 'Întâi „More info”, apoi butonul alb care apare dedesubt.'}>
+            {eMac ? <DeschidereMac /> : <DeschidereWindows />}
+          </Desen>
           {eMac ? (
-            <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
-              <li>Deschide fișierul <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.dmg</code> și trage aplicația peste folderul Applications.</li>
-              <li>
-                În Applications, <strong>clic dreapta</strong> pe ea (nu dublu-clic) și alege{' '}
-                <strong>Deschide</strong>. Apare o fereastră care întreabă dacă ești sigur —
-                apasă tot <strong>Deschide</strong>.
-              </li>
-              <li>
+            <>
+              <p className="text-sm">
+                Deschizi <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.dmg</code>-ul,
+                tragi aplicația peste Applications, apoi o deschizi ca în desen.
+              </p>
+              <p className="text-sm text-muted-foreground">
                 Dacă scrie că aplicația <em>&bdquo;este deteriorată și nu poate fi deschisă&rdquo;</em>,
-                deschide Terminal și rulează o singură dată:
-              </li>
-            </ol>
+                rulează o singură dată în Terminal:
+              </p>
+              <Comanda>xattr -dr com.apple.quarantine &quot;/Applications/FRVV Competition Launcher.app&quot;</Comanda>
+            </>
           ) : (
-            <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
-              <li>Dublu-clic pe fișierul <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.exe</code> descărcat.</li>
-              <li>
-                Windows arată un ecran albastru, <strong>&bdquo;Windows protected your PC&rdquo;</strong>.
-                Apasă <strong>More info</strong>, apoi butonul <strong>Run anyway</strong> care
-                apare dedesubt.
-              </li>
-              <li>Mergi prin instalare până la final și lasă bifată scurtătura pe desktop.</li>
-            </ol>
-          )}
-          {eMac && (
-            <Comanda>xattr -dr com.apple.quarantine &quot;/Applications/FRVV Competition Launcher.app&quot;</Comanda>
+            <p className="text-sm">
+              Dublu-clic pe <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">.exe</code>-ul
+              descărcat, treci de ecranul albastru ca în desen, apoi mergi prin instalare până la
+              final și lasă bifată scurtătura de pe desktop.
+            </p>
           )}
           <Verifica>
-            o fereastră cu sigla federației, care îți cere adresa serverului și datele
-            tale de autentificare. Adresa se scrie cu <code className="font-mono">https://</code> în față.
+            o fereastră cu sigla federației, care cere adresa serverului — scrisă cu{' '}
+            <code className="font-mono">https://</code> în față — și datele tale.
           </Verifica>
         </Pas>
 
         <Pas numar={4} titlu="Prima pornire a sălii" durata="~20 minute, o singură dată">
           <p className="text-sm text-muted-foreground">
-            Autentifică-te cu contul tău, alege competiția și apasă pornirea. Prima
-            dată launcherul descarcă din internet tot ce îi trebuie — de asta durează.
-            La competițiile următoare pornește în mai puțin de un minut, fără internet.
+            Te autentifici, alegi competiția și apeși pornirea. Acum se descarcă tot ce
+            trebuie — de asta durează. Data viitoare pornește în sub un minut, fără internet.
           </p>
-          <Verifica>
-            în Docker, la <strong>Containers</strong>, patru rânduri pornite. Ce
-            înseamnă fiecare scrie mai jos.
-          </Verifica>
+          <Desen nota="Adresa din mijloc e cea pe care o tastezi pe tablete și pe ecran.">
+            <LauncherPornit />
+          </Desen>
+          <Verifica>în Docker, patru rânduri pornite — exact cele de mai jos.</Verifica>
         </Pas>
 
         <Pas numar={5} titlu="Pregătește rețeaua sălii" durata="~10 minute">
-          <ul className="flex flex-col gap-2 text-sm">
-            <li>
-              <strong>Un router propriu evenimentului</strong>, cu nume și parolă proprii
-              (de exemplu <code className="font-mono">FRVV-EVENT</code>). Internetul pe el e opțional.
-            </li>
-            <li>
-              <strong>Oprește &bdquo;client isolation&rdquo;</strong> (sau &bdquo;AP isolation&rdquo;) din setările
-              routerului, dacă există. Cu ea pornită, tabletele nu văd laptopul și nimic
-              nu funcționează, deși totul pare pornit.
-            </li>
-            <li>
-              <strong>Toate</strong> dispozitivele — laptop, tablete, ecrane — se leagă la
-              acest Wi-Fi, nu la altul.
-            </li>
+          <Desen>
+            <RouterIzolare />
+          </Desen>
+          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm">
+            <li>Router propriu evenimentului, cu nume și parolă ale lui. Internet pe el: opțional.</li>
+            <li>Oprește &bdquo;client isolation&rdquo; (sau &bdquo;AP isolation&rdquo;), dacă routerul o are.</li>
+            <li><strong>Toate</strong> dispozitivele pe acest Wi-Fi — laptop, tablete, ecrane.</li>
           </ul>
-          <Verifica>
-            adresa laptopului în rețea, pe care launcherul o afișează mare după pornire.
-            Arată de forma <code className="font-mono">192.168.1.50</code>.
-          </Verifica>
+          <Verifica>adresa laptopului, afișată mare în launcher după pornire.</Verifica>
         </Pas>
       </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl font-bold">Ce trebuie să vezi în Docker</h2>
         <p className="text-sm text-muted-foreground">
-          Deschide Docker Desktop și intră în secțiunea <strong>Containers</strong>.
-          Trebuie să vezi patru rânduri, toate pornite. Dacă unul lipsește sau e roșu,
-          competiția nu merge — iar aici scrie ce înseamnă fiecare.
+          Docker Desktop → secțiunea <strong>Containers</strong>. Dacă un rând lipsește sau e
+          roșu, competiția nu merge.
         </p>
+        <Desen>
+          <ContainereDocker />
+        </Desen>
 
-        <div className="flex flex-col gap-3">
-          {CONTAINERE.map(({ nume, icon: Icon, titlu, ce, deCe, semn }) => (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {CONTAINERE.map(({ nume, icon: Icon, titlu, ce, semn }) => (
             <Card key={nume}>
-              <CardContent className="flex gap-4 pt-6">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <Icon className="h-5 w-5" />
+              <CardContent className="flex gap-3 pt-6">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <Icon className="h-4 w-4" />
                 </span>
-                <div className="flex min-w-0 flex-col gap-2">
+                <div className="flex min-w-0 flex-col gap-1">
                   <div className="flex flex-wrap items-baseline gap-2">
                     <code className="font-mono text-sm font-bold">{nume}</code>
-                    <span className="text-sm text-muted-foreground">— {titlu}</span>
+                    <span className="text-xs text-muted-foreground">{titlu}</span>
                   </div>
-                  <p className="text-sm">{ce}</p>
-                  <p className="text-sm text-muted-foreground">{deCe}</p>
-                  <p className="text-sm"><strong className="font-semibold">Stare normală:</strong> {semn}</p>
+                  <p className="text-sm text-muted-foreground">{ce}</p>
+                  <Badge variant="secondary" className="w-fit font-mono text-xs">{semn}</Badge>
                 </div>
               </CardContent>
             </Card>
@@ -522,91 +520,67 @@ export default function VenueSetupPage() {
         </div>
 
         <h3 className="mt-2 font-display text-lg font-bold">Volumele (unde stau datele)</h3>
-        <p className="text-sm text-muted-foreground">
-          În secțiunea <strong>Volumes</strong> din Docker sunt trei intrări. Containerele
-          se pot opri și reporni fără pierderi, fiindcă datele stau aici, nu în ele.
-          <strong> Nu șterge niciodată nimic de aici în ziua competiției.</strong>
-        </p>
         <Card>
           <CardContent className="flex flex-col gap-3 pt-6">
             {VOLUME.map(({ nume, icon: Icon, ce }) => (
-              <div key={nume} className="flex gap-3">
-                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0">
-                  <code className="font-mono text-sm font-bold">{nume}</code>
-                  <p className="text-sm text-muted-foreground">{ce}</p>
-                </div>
+              <div key={nume} className="flex items-center gap-3">
+                <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <code className="font-mono text-sm font-bold">{nume}</code>
+                <span className="text-sm text-muted-foreground">{ce}</span>
               </div>
             ))}
           </CardContent>
         </Card>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <div>
+            Containerele se pot opri și reporni fără pierderi, fiindcă datele stau aici.
+            <strong> Nu șterge niciodată nimic din Volumes în ziua competiției.</strong>
+          </div>
+        </Alert>
       </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl font-bold">Adresele din sală</h2>
         <p className="text-sm text-muted-foreground">
-          Pe fiecare dispozitiv se deschide browserul și se scrie adresa laptopului,
-          urmată de două puncte și port. Launcherul le afișează pe toate, gata scrise —
-          de acolo e mai sigur să le iei decât să le tastezi.
+          Pe fiecare dispozitiv se deschide browserul și se scrie adresa laptopului, urmată de
+          două puncte și port. Launcherul le afișează gata scrise — de acolo e mai sigur să le iei.
         </p>
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-6">
-            {ADRESE.map(({ icon: Icon, ce, port, cine }) => (
-              <div key={port} className="flex flex-wrap items-center gap-3">
-                <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <code className="font-mono text-sm font-bold">{`http://<adresa-laptopului>:${port}`}</code>
-                <span className="text-sm text-muted-foreground">{ce} — {cine}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {ADRESE.map(({ icon: Icon, ce, port, cine }) => (
+            <Card key={port}>
+              <CardContent className="flex flex-col items-center gap-2 pt-6 text-center">
+                <Icon />
+                <p className="font-semibold">{ce}</p>
+                <code className="break-all rounded bg-muted px-2 py-1 font-mono text-xs">
+                  {`http://<adresa-laptopului>:${port}`}
+                </code>
+                <p className="text-xs text-muted-foreground">{cine}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-xl font-bold">Când ceva nu merge</h2>
         <Card>
           <CardContent className="flex flex-col gap-4 pt-6 text-sm">
-            <div>
-              <p className="font-semibold">Launcherul spune că nu găsește Docker</p>
-              <p className="text-muted-foreground">
-                Docker Desktop nu e pornit. Deschide-l, așteaptă punctul verde
-                &bdquo;Engine running&rdquo;, apoi încearcă din nou.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold">La autentificare apare &bdquo;Metoda GET nu este permisă&rdquo;</p>
-              <p className="text-muted-foreground">
-                Adresa serverului e scrisă fără <code className="font-mono">https://</code>.
-                Scrie-o întreagă și reîncearcă.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold">Prima pornire se oprește la descărcare</p>
-              <p className="text-muted-foreground">
-                Nu are internet, sau e prea slab. Prima pornire trebuie făcută acasă
-                sau la federație, nu în sală — după aceea totul e deja pe laptop.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold">Tabletele nu se conectează la laptop</p>
-              <p className="text-muted-foreground">
-                Aproape întotdeauna: ori sunt pe alt Wi-Fi, ori routerul are &bdquo;client
-                isolation&rdquo; pornită. Verifică-le în ordinea asta.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold">Un container apare roșu sau repornește mereu</p>
-              <p className="text-muted-foreground">
-                Apasă pe el în Docker și citește ultimele rânduri din &bdquo;Logs&rdquo; — acolo scrie
-                motivul. Trimite acele rânduri persoanei tehnice; fără ele nu se poate ghici.
-              </p>
-            </div>
-            <div className="flex gap-2 rounded-md bg-muted px-3 py-2">
+            {PROBLEME.map(([simptom, rezolvare]) => (
+              <div key={simptom} className="flex gap-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div>
+                  <p className="font-semibold">{simptom}</p>
+                  <p className="text-muted-foreground">{rezolvare}</p>
+                </div>
+              </div>
+            ))}
+            <div className="flex gap-3 rounded-md bg-muted px-3 py-2">
               <Wifi className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               <p className="text-muted-foreground">
-                Datele nu se pierd dacă se oprește ceva: baza de date are copii din 15 în
-                15 minute, iar laptopul repornit le aduce înapoi singur. Până și o pană de
-                curent costă, în cel mai rău caz, ultimele 15 minute de lucru.
+                Datele nu se pierd dacă se oprește ceva: baza de date are copii din 15 în 15
+                minute, iar laptopul repornit le aduce înapoi singur. Chiar și o pană de curent
+                costă, în cel mai rău caz, ultimele 15 minute de lucru.
               </p>
             </div>
           </CardContent>

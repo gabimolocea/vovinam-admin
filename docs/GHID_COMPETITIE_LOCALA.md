@@ -1,284 +1,166 @@
-# Ghid: cum organizezi o competiție pe rețea locală (LAN)
+# Competiție pe rețea locală (LAN)
 
-Acest ghid explică, în limbaj simplu, cum se desfășoară o competiție atunci
-când sala **nu are internet** (sau internetul e nesigur): toate datele
-folosite în timpul competiției rulează pe un laptop din sală, iar la final
-rezultatele sunt aduse înapoi în aplicația din cloud.
+Când sala **nu are internet** (sau are unul nesigur), competiția rulează pe un
+laptop din sală. La final, rezultatele se întorc în cloud.
 
-Ghidul are **două roluri diferite**, marcate clar peste tot:
+```mermaid
+flowchart LR
+    C(["☁️ Cloud<br/>app.vovinam.ro"])
+    L["💻 Laptopul din sală<br/><i>serverul competiției</i>"]
+    D["📱 Tablete arbitri<br/>📺 Ecran public"]
+    C -- "① aduci competiția<br/><i>cu internet</i>" --> L
+    L <-- "② toată ziua<br/><i>pe Wi-Fi-ul sălii</i>" --> D
+    L -- "③ trimiți rezultatele<br/><i>cu internet</i>" --> C
+```
 
-- 🔧 **Rol tehnic** — o persoană cu cunoștințe minime de calculator, care
-  pregătește laptopul **o singură dată**, cu mult înainte de eveniment, și
-  care îl pornește/oprește în ziua competiției. Nu trebuie să știe
-  programare — doar să copieze/lipească niște comenzi exact cum sunt scrise.
-- 🧑‍💼 **Rol operator** — persoana care lucrează efectiv în aplicație în ziua
-  competiției (secretariat, arbitru șef, organizator). Tot ce face acest rol
-  se întâmplă **doar prin click-uri în aplicație**, fără nicio comandă.
+| Rol | Ce face | Când |
+|---|---|---|
+| 🔧 **Tehnic** | Pregătește laptopul. Două programe, niciun terminal. | O singură dată, cu mult înainte |
+| 🧑‍💼 **Operator** | Lucrează în aplicație: secretariat, arbitru șef, organizator. | În ziua competiției |
 
-Dacă ești operator, poți sări direct la secțiunea **„Ziua competiției"**.
-
-Pentru detalii tehnice de arhitectură (pentru dezvoltatori), vezi
-`docs/LOCAL_EVENT_TECHNICAL_PLAN.md`.
+> 🧑‍💼 Dacă ești operator, sari direct la secțiunea **Ziua competiției**.
+>
+> 🔧 Pregătirea laptopului are o **variantă ilustrată, pas cu pas**, în aplicație:
+> **Competiție în sală** (`/competitie-in-sala`). Acolo sunt desenate ferestrele
+> pe care le vezi — folosește-o pe aceea, nu secțiunea de aici.
+>
+> Pentru arhitectură (dezvoltatori): `docs/LOCAL_EVENT_TECHNICAL_PLAN.md`.
 
 ---
 
-## Glosar rapid (fără termeni tehnici)
+## Glosar
 
-- **Cloud** = aplicația de zi cu zi, de pe internet, pe care o folosești
-  acum (`https://...`). Aici stau toate datele permanent.
-- **Server local** = un laptop din sala de concurs care, în ziua
-  competiției, ține o **copie completă** a datelor evenimentului și
-  funcționează exact ca aplicația din cloud, dar fără nevoie de internet.
-- **Export event pack** = „trimite o copie a evenimentului din cloud spre
-  laptopul din sală".
-- **Import rezultate** = „trimite rezultatele adunate în sală înapoi în
-  cloud, la final".
-- **Backup** = o „poză" completă a datelor, salvată automat, la care te
-  poți întoarce oricând dacă ceva merge greșit.
-- **Restaurare** = „revino la o poză (backup) salvată mai devreme".
-
----
-
-## 🔧 Partea tehnică — pregătire (o singură dată, cu mult înainte de eveniment)
-
-Această secțiune se face **o singură dată**, nu la fiecare competiție. Ai
-nevoie de un laptop dedicat — Mac sau Windows — care va deveni „serverul din
-sală".
-
-Se instalează **două programe**, atât. Nu e nevoie de Node.js, de terminal
-sau de codul sursă: tot ce ține competiția vine gata făcut, în containere.
-
-1. Instalează [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-   pe acel laptop (program gratuit, se instalează ca orice altul). Pornește-l
-   și lasă-l să pornească odată cu calculatorul.
-2. Descarcă aplicația federației de la
-   [Releases](https://github.com/gabimolocea/vovinam-admin/releases/latest) —
-   fișierul `.dmg` pentru Mac, `.exe` pentru Windows.
-3. Deschide-o o dată. Aplicația nu e semnată, deci prima dată sistemul
-   avertizează: pe Mac **clic dreapta → Deschide**, pe Windows **More info →
-   Run anyway**. Se face o singură dată.
-4. Autentifică-te cu contul tău de administrator și pornește o dată sala, cu
-   internet. Prima pornire descarcă tot ce trebuie (aproape un gigabyte) și
-   durează ~20 de minute; următoarele pornesc în mai puțin de un minut, fără
-   internet.
-
-Gata — laptopul e pregătit pentru orice competiție viitoare, nu mai trebuie
-refăcut acest pas.
-
-> **Pentru dezvoltatori**: pe un calculator care are depozitul descărcat,
-> launcherul folosește `docker-compose.local.yml` și construiește imaginile
-> din codul de pe disc, iar interfețele pornesc cu `npm run dev`. Varianta de
-> mai sus, cu `docker-compose.venue.yml` și imagini descărcate, se foloseste
-> doar acolo unde nu există cod. Pasul de instalare cu `git clone` + `npm
-> install` rămâne valabil pentru acel caz; vezi
-> `apps/launcher/electron/dockerBackend.js`.
-
----
-
-## 🔧 Partea tehnică — pornirea în ziua competiției
-
-### Varianta scurtă: deschizi aplicația
-
-Deschizi **FRVV Competition Launcher**, te autentifici, alegi competiția și
-apeși pornirea. Atât. Launcherul pornește singur baza de date, aplicația și
-cele trei ecrane, și îți arată adresele pe care le scrii pe tablete.
-
-Mai ai nevoie doar de pașii **1** și **2** de mai jos — rețeaua Wi-Fi a
-sălii și adresa laptopului. Pașii 3 și 4 îi face launcherul în locul tău.
-
-Launcherul pornește aplicația de administrare pe portul **5191**, nu 5173.
-Portul 5173 din tabelul de mai jos e pentru varianta manuală, de dedesubt.
-
-> Pe un calculator de dezvoltare, cu depozitul descărcat, există și fișierul
-> **`Porneste competitia.command`**: dublu-clic pe el pornește Docker Desktop
-> dacă nu merge deja și apoi deschide launcherul. Trebuie să rămână în
-> folderul proiectului — pentru o scurtătură pe birou fă un **alias**, nu o
-> copie.
-
-### 1. Rețeaua Wi-Fi a evenimentului
-
-- Un router Wi-Fi dedicat evenimentului, cu nume propriu de rețea (ex.
-  `FRVV-EVENT`) și parolă.
-- **Important**: dezactivează opțiunea „client isolation" / „AP isolation"
-  din setările routerului (dacă există) — altfel dispozitivele din sală nu
-  se vor putea vedea între ele.
-- Internetul pe acest router e opțional — totul funcționează și fără el.
-- Toate dispozitivele din sală (tablete arbitri, ecrane de afișaj, laptopul
-  operatorului) se conectează la acest Wi-Fi.
-
-### 2. Află adresa laptopului în rețea
-
-- macOS: deschide Terminal → `ipconfig getifaddr en0` (sau `en1` pentru
-  Wi-Fi, dacă `en0` nu dă rezultat).
-- Windows: deschide „Command Prompt" → `ipconfig` → caută „IPv4 Address" la
-  adaptorul conectat la routerul de eveniment.
-- Pune acea adresă (ex. `192.168.1.50`) în `.env.local`, la `LAN_HOST=`.
-
-### 3. Pornește serverul local
-
-Din folderul proiectului, pe laptopul din sală:
-
-```bash
-docker compose -f docker-compose.local.yml --env-file .env.local up -d --build
-```
-
-Așteaptă ~30 de secunde (prima dată durează mai mult). Verifică că a pornit:
-
-```bash
-docker compose -f docker-compose.local.yml ps
-curl http://localhost:8000/health/
-```
-
-Ar trebui să vezi `{"status": "ok", ...}`.
-
-### 4. Pornește aplicațiile din browser
-
-```bash
-./scripts/start-all-apps.sh
-```
-
-De acum, tot ce urmează (exportul evenimentului, lucrul din timpul
-competiției, sincronizarea rezultatelor) se face **doar din aplicație**, de
-către operator — nu mai e nevoie de niciun terminal, decât la final, pentru
-oprirea serverului (vezi ultima secțiune).
-
-Adresele pentru dispozitivele din sală (nu `localhost`, ci adresa aflată la
-pasul 2, de ex. `192.168.1.50`):
-
-| Ce deschizi | Adresă |
+| Termen | Înseamnă |
 |---|---|
-| Aplicația de administrare | `http://<LAN_HOST>:5173` |
-| Aplicația de arbitraj (tablete) | `http://<LAN_HOST>:5176` |
-| Ecran public de afișaj | `http://<LAN_HOST>:5177` |
+| **Cloud** | Aplicația de pe internet, cea de zi cu zi. Aici stau datele permanent. |
+| **Server local** | Laptopul din sală. Ține o copie completă a evenimentului și funcționează fără internet. |
+| **Event pack** | Copia evenimentului, trimisă din cloud spre laptop. |
+| **Backup** | O „poză" completă a datelor, salvată automat din 15 în 15 minute. |
+| **Restaurare** | Revii la o poză salvată mai devreme. |
 
 ---
 
-## 🧑‍💼 Ziua competiției — ce face operatorul
+## 🔧 Pregătirea laptopului (o singură dată)
 
-### Pasul 1 — Verifică datele în cloud, **înainte** de a trimite spre local
+Se instalează **două programe**, atât — fără Node.js, fără terminal, fără codul
+sursă.
 
-- [ ] Toți sportivii, cluburile, categoriile, brackets-urile, programarea
-      terenurilor și arbitrii sunt complete în **cloud**.
-- [ ] Laptopul „server local" e pornit (vezi partea tehnică de mai sus).
+1. **Docker Desktop** — [docker.com](https://www.docker.com/products/docker-desktop/).
+   Lasă-l să pornească odată cu calculatorul.
+2. **FRVV Competition Launcher** — butonul de descărcare din pagina
+   **Competiție în sală** a aplicației.
+3. **Deschide-l o dată.** Nefiind semnată, prima dată sistemul avertizează:
+   Mac → clic dreapta → *Deschide*; Windows → *More info* → *Run anyway*.
+4. **Pornește sala o dată, cu internet.** Prima pornire descarcă ~1 GB și
+   durează ~20 de minute. Următoarele: sub un minut, fără internet.
 
-### Pasul 2 — Trimite evenimentul din cloud spre laptopul din sală
+Gata. Pasul ăsta nu se mai reface la competițiile viitoare.
 
-1. În aplicația **cloud**, deschide evenimentul → tab **Sincronizare**.
-2. Apasă **„1. Exportă event pack"**. Se descarcă un fișier.
-   Evenimentul se **blochează automat în cloud** — nimeni nu mai poate
-   edita acolo date operaționale (sportivi în categorii, meciuri, arbitri)
-   cât timp lucrezi local, ca să nu apară două versiuni diferite ale
-   aceleiași informații.
-3. Apasă **„2. Marchează operarea locală"**.
-4. Deschide aplicația **locală** (`http://localhost:5173` sau
-   `http://<LAN_HOST>:5173`), intră în evenimentul importat local, tab
-   Sincronizare → secțiunea **„Acest server local (import event pack)"** →
-   **„Importă event pack (fișier)"** → alege fișierul descărcat la pasul 2.
+### Rețeaua sălii
 
-De acum, laptopul din sală are toate datele necesare și e complet
-independent de internet.
-
-### Pasul 3 — Lucrezi normal, toată competiția
-
-Folosești aplicația exact ca de obicei (introduci rezultate, actualizezi
-scoruri, gestionezi meciuri) — doar că acum vorbești cu laptopul din sală,
-nu cu internetul.
-
-**Backup automat**: la fiecare 15 minute se salvează automat o „poză"
-completă a datelor. Nu trebuie să faci nimic, rulează singur.
-
-**Dacă greșești ceva și vrei să te întorci în timp:**
-
-1. Tab Sincronizare → secțiunea **„Backup & restaurare (mașina timpului)"**.
-2. Vezi lista de „poze" salvate, fiecare cu „acum X minute/ore" și tipul ei
-   (Automat / Manual / Înainte de import / Siguranță).
-3. Apasă **„Restaurează"** pe poza de dinainte de greșeală → confirmă.
-4. Înainte de restaurare se salvează automat o poză nouă a stării actuale —
-   deci dacă te răzgândești, poți restaura din nou și reveni exact unde
-   erai, fără să pierzi nimic.
-
-Recomandare: înainte de o operațiune riscantă (ex. regenerare brackets),
-apasă întâi **„Backup acum"** manual, ca reper clar.
-
-### Pasul 4 — Ai nevoie să adaugi un sportiv nou sau să modifici o categorie, în timpul competiției? ⚠️
-
-**Da, poți face asta direct pe laptopul din sală, normal, din aplicație —
-nimic nu blochează asta local.** Laptopul rulează aceeași aplicație completă
-ca în cloud, nu doar o listă statică.
-
-Există însă o singură regulă importantă de reținut, legată de cum se aduc
-datele **înapoi** în cloud la final:
-
-- Dacă editezi ceva ce **exista deja în cloud** înainte de export (ex. adaugi
-  la o categorie un sportiv care era deja înregistrat, îi modifici greutatea,
-  schimbi rezultatul unui meci existent) → **totul se sincronizează perfect
-  înapoi în cloud**, fără nicio problemă.
-- Dacă adaugi un sportiv **complet nou** (care nu exista deloc în cloud
-  înainte de export — ex. un sportiv „de rezervă" înscris chiar în ziua
-  competiției) sau creezi o **categorie complet nouă** local → acel
-  sportiv/acea categorie **nu vor fi aduse automat înapoi în cloud** la
-  sincronizarea de final. Sistemul de sincronizare a rezultatelor e făcut
-  intenționat să nu creeze date noi în cloud automat (ca să nu apară din
-  greșeală date duplicate sau greșite) — el doar actualizează ce exista deja.
-
-**Ce faci în acest caz — două opțiuni:**
-
-- **Opțiune recomandată, dacă ai puțin internet (chiar și de pe telefon,
-  câteva minute):** adaugă rapid sportivul nou (sau categoria nouă) direct
-  în aplicația **cloud** — se poate face oricând, editarea unui sportiv nu
-  e blocată de sincronizare. Apoi, din aplicația **locală**, tab
-  Sincronizare → secțiunea **„Acest server local"** → apasă
-  **„Resincronizează din cloud"**. Cu un singur click, laptopul din sală
-  preia automat cea mai recentă versiune din cloud (fără să mai descarci/
-  încarci manual niciun fișier) și o importă. E sigur să repeți acest pas
-  oricând în timpul competiției — nu se pierde nimic din ce ai lucrat deja
-  local (meciuri, scoruri introduse rămân neatinse), iar înainte de import
-  se salvează automat un backup de siguranță.
-  - Butonul „Resincronizează din cloud" trebuie configurat o singură dată de
-    partea tehnică (🔧), completând `CLOUD_SYNC_BASE_URL`,
-    `CLOUD_SYNC_USERNAME` și `CLOUD_SYNC_PASSWORD` în `.env.local` (vezi
-    `.env.local.example`). Dacă nu e configurat, folosește varianta manuală
-    de mai jos (descarcă fișierul din cloud, apoi „Importă event pack
-    (fișier)" pe laptopul local).
-- **Dacă nu ai deloc internet:** continuă normal, adaugă sportivul/categoria
-  direct local și lucrează cu ei toată ziua. La final, când te reconectezi la
-  internet, **adaugă manual acel sportiv/acea categorie și în cloud** (ca de
-  obicei, prin formularul normal), apoi introdu manual rezultatul lui —
-  pentru că sincronizarea automată nu îl va aduce singură. E un pas în plus,
-  dar apare rar (doar la înscrieri de ultim moment) și durează 1-2 minute per
-  sportiv.
-
-Dacă încerci totuși să imporți rezultate care se referă la un sportiv sau o
-categorie complet nouă, aplicația va afișa o eroare clară de tipul „acest
-sportiv/categorie nu există în cloud" — nu se strică nimic, doar acel import
-nu se face până nu rezolvi manual (opțiunile de mai sus).
+- Router Wi-Fi propriu evenimentului, cu nume și parolă ale lui (ex. `FRVV-EVENT`).
+  Internetul pe el e opțional.
+- ⚠️ **Oprește „client isolation" / „AP isolation"** din setările routerului.
+  Cu ea pornită, tabletele nu văd laptopul — deși totul pare în regulă.
+- Toate dispozitivele pe acest Wi-Fi: laptop, tablete, ecrane.
 
 ---
 
-## 🧑‍💼 După competiție — aduci rezultatele înapoi în cloud
+## 🧑‍💼 Ziua competiției
 
-1. Din aplicația **locală**, tab Sincronizare → **„Exportă rezultate
-   locale"**. Se descarcă un fișier.
-2. Trimite acel fișier (ex. pe email, WhatsApp, USB) către un calculator cu
-   acces la internet.
-3. Din aplicația **cloud**, același eveniment → tab Sincronizare →
-   **„3. Import rezultate în cloud"** → alege fișierul.
-4. Verifică rezultatele importate (clasamente, diplome).
-5. Apasă **„4. Finalizează și deblochează"**. Evenimentul redevine normal,
-   editabil în cloud ca înainte.
+### Pornirea
 
-## 🔧 Partea tehnică — oprirea serverului local
-
-După ce ai finalizat sincronizarea (pasul 5 de mai sus), pe laptopul din
-sală:
-
-```bash
-docker compose -f docker-compose.local.yml down
+```mermaid
+flowchart TD
+    A["Deschizi FRVV Competition Launcher"] --> B["Te autentifici cu contul tău"]
+    B --> C["Alegi competiția"]
+    C --> D["Launcherul aduce datele din cloud<br/>și pornește sala"]
+    D --> E["Panoul: adresa laptopului<br/>+ cele trei aplicații"]
 ```
 
-Datele rămân salvate pentru orice eventualitate, dar nu mai sunt necesare —
-poți oricând porni un ciclu nou pentru următoarea competiție cu un export
-nou de event pack.
+Launcherul face singur tot ce înainte se făcea din terminal. Când aduce
+evenimentul, **îl blochează automat în cloud** — nimeni nu mai poate edita acolo
+date operaționale (sportivi în categorii, meciuri, arbitri) cât timp lucrezi
+local, ca să nu existe două versiuni ale aceluiași lucru.
+
+- [ ] Înainte de pornire: sportivii, cluburile, categoriile, brackets-urile,
+      programarea terenurilor și arbitrii sunt complete **în cloud**.
+
+### Adresele din sală
+
+Adresa laptopului o afișează launcherul, mare, în mijlocul panoului.
+
+| Ce deschizi | Adresă | Pe ce |
+|---|---|---|
+| Administrarea competiției | `http://<adresa-laptopului>:5191` | Laptopul secretariatului |
+| Arbitraj | `http://<adresa-laptopului>:5176` | Tabletele arbitrilor |
+| Ecran public | `http://<adresa-laptopului>:5177` | Televizorul din sală |
+
+Device-urile Arbitru găsesc laptopul singure, ca `frvv-sala.local` — pe ele nu
+se configurează nimic.
+
+### În timpul competiției
+
+Lucrezi exact ca de obicei, doar că vorbești cu laptopul din sală, nu cu
+internetul.
+
+**Backup automat la fiecare 15 minute.** Nu faci nimic, rulează singur.
+
+**Dacă greșești și vrei înapoi:** meniul **Sync → Backup-uri și restaurare**,
+alegi poza de dinainte de greșeală, *Restaurează*. Înainte de restaurare se
+salvează automat starea actuală — deci te poți răzgândi și reveni exact unde erai.
+
+> Înaintea unei operațiuni riscante (ex. regenerare brackets): **Sync → Backup
+> acum**, ca reper clar.
+
+---
+
+## ⚠️ Sportiv sau categorie nouă, în timpul competiției
+
+Poți adăuga normal, din aplicație — local nu te oprește nimic. Contează doar cum
+se întorc datele în cloud la final:
+
+```mermaid
+flowchart TD
+    A{"Exista în cloud<br/>înainte de pornire?"}
+    A -- "Da<br/><i>(îi schimbi greutatea,<br/>rezultatul, categoria)</i>" --> B["✅ Se sincronizează singur.<br/>Nu faci nimic."]
+    A -- "Nu<br/><i>(înscriere de ultim moment)</i>" --> C{"Ai un pic de internet?<br/><i>chiar și de pe telefon</i>"}
+    C -- Da --> D["Îl adaugi în cloud, apoi<br/><b>Sync → Web → Local</b>"]
+    C -- Nu --> E["Lucrezi local toată ziua.<br/>La final îl adaugi manual în cloud<br/>și îi introduci rezultatul."]
+```
+
+Sincronizarea de final **nu creează date noi în cloud**, intenționat — doar
+actualizează ce exista deja, ca să nu apară duplicate. Dacă încerci totuși,
+primești o eroare clară („acest sportiv/categorie nu există în cloud"); nu se
+strică nimic, doar acel import nu se face.
+
+> 🔧 Mai există și un buton **„Resincronizează din cloud"** în Sync Center-ul
+> aplicației web, care face același lucru de pe server. Cere configurare o
+> singură dată: `CLOUD_SYNC_BASE_URL`, `CLOUD_SYNC_USERNAME`,
+> `CLOUD_SYNC_PASSWORD` în `.env.local` (vezi `.env.local.example`).
+
+---
+
+## După competiție
+
+```mermaid
+flowchart LR
+    A["<b>Sync → Local → Web</b><br/>trimite rezultatele"] --> B["Launcherul verifică<br/>ce a ajuns efectiv în cloud"]
+    B --> C["Verifici clasamentele<br/>și diplomele"]
+    C --> D["<b>Finalizează</b><br/>evenimentul se deblochează"]
+```
+
+**Local → Web se poate repeta oricât** în timpul zilei — trimiți rezultatele de
+câte ori vrei, pe măsură ce se termină meciuri.
+
+⚠️ **„Finalizează" se apasă o singură dată, la sfârșit de tot.** După el,
+evenimentul se deblochează în cloud și nu mai poți trimite rezultate.
+
+### Dacă sala n-a avut deloc internet
+
+Meniul **Sync → Exportă rezultatele (JSON)…** salvează un fișier. Îl duci pe un
+calculator cu internet (email, WhatsApp, stick) și îl încarci din Sync Center-ul
+aplicației cloud.
 
 ---
 
@@ -286,20 +168,61 @@ nou de event pack.
 
 | Problemă | Soluție |
 |---|---|
-| O tabletă de arbitraj nu se conectează | Verifică că e pe Wi-Fi-ul evenimentului și că folosește `http://<LAN_HOST>:5176`, nu `localhost`. |
-| `docker compose ... up` eșuează la pornire | (🔧 tehnic) Rulează `docker compose -f docker-compose.local.yml logs backend`; verifică că portul 8000/5432 nu e deja ocupat de alt program. |
-| Ai restaurat un backup greșit | Restaurează din nou, de data asta poza cu eticheta „Siguranță (înainte de restaurare)" creată automat chiar înainte. |
-| Vrei să repornești de la zero un test local | (🔧 tehnic) `docker compose -f docker-compose.local.yml down -v` — șterge și datele/backup-urile. **Nu folosi în timpul unui eveniment real.** |
-| Importul de event pack eșuează | Citește mesajul de eroare afișat — de obicei lipsește o referință (club/sportiv) care nu exista în cloud la momentul exportului. Reexportă din cloud după ce corectezi acolo. |
-| Importul de rezultate refuză un sportiv/categorie | Normal — vezi secțiunea „Ai nevoie să adaugi un sportiv nou..." de mai sus. Adaugă manual acel sportiv/categorie în cloud, apoi introdu manual rezultatul. |
+| O tabletă nu se conectează | E pe alt Wi-Fi, sau routerul are „client isolation" pornită. În ordinea asta. |
+| Launcherul nu găsește Docker | Docker Desktop nu e pornit. Deschide-l, așteaptă punctul verde „Engine running". |
+| Prima pornire se oprește la descărcare | Internet prea slab. Fă prima pornire acasă, nu în sală. |
+| Ai restaurat un backup greșit | Restaurează din nou, de data asta poza „Siguranță (înainte de restaurare)", creată automat chiar atunci. |
+| Importul de rezultate refuză un sportiv | Normal — vezi secțiunea **Sportiv sau categorie nouă**. |
+| Un container e roșu sau repornește mereu | 🔧 În Docker, apasă pe el → *Logs* și trimite ultimele rânduri persoanei tehnice. |
 
 ---
 
-## Rezumat pe scurt (cheat-sheet)
+## Pe scurt
 
 ```
-ÎNAINTE:   cloud → Exportă event pack → server local → Importă event pack
-ÎN TIMPUL: totul rulează local, backup automat la 15 min, poți restaura oricând
-           sportivi/categorii NOI local → nu se sincronizează automat (vezi FAQ)
-DUPĂ:      server local → Exportă rezultate → cloud → Importă rezultate → Finalizează
+ÎNAINTE:   launcher → alegi competiția → pornește sala  (cloud se blochează singur)
+ÎN TIMPUL: totul local, backup automat la 15 min, restaurare oricând
+           sportivi/categorii NOI local → nu urcă singuri (vezi secțiunea ⚠️)
+DUPĂ:      Sync → Local → Web  →  verifici  →  Finalizează
 ```
+
+---
+
+## 🔧 Anexă: varianta manuală (calculator cu codul sursă)
+
+Doar pentru un calculator de dezvoltare, care are depozitul descărcat. Pe
+laptopul din sală **nu e nevoie de nimic de aici** — launcherul face tot.
+
+Pe un astfel de calculator launcherul folosește `docker-compose.local.yml` și
+construiește imaginile din codul de pe disc, iar interfețele pornesc cu
+`npm run dev`. Varianta cu `docker-compose.venue.yml` și imagini gata făcute se
+folosește acolo unde nu există cod. Vezi `apps/launcher/electron/dockerBackend.js`.
+
+Există și **`Porneste competitia.command`**: dublu-clic pornește Docker Desktop
+dacă nu merge deja, apoi deschide launcherul. Trebuie să rămână în folderul
+proiectului — pentru o scurtătură pe birou fă un **alias**, nu o copie.
+
+Pornire fără launcher:
+
+```bash
+# adresa laptopului în rețea → LAN_HOST în .env.local
+ipconfig getifaddr en0                 # macOS   (Windows: ipconfig → IPv4 Address)
+
+docker compose -f docker-compose.local.yml --env-file .env.local up -d --build
+docker compose -f docker-compose.local.yml ps
+curl http://localhost:8000/health/     # trebuie: {"status": "ok", ...}
+
+./scripts/start-all-apps.sh
+```
+
+Atenție: pe ruta asta administrarea e pe **5173**, nu pe 5191 ca la launcher.
+Arbitrajul (5176) și ecranul public (5177) rămân aceleași.
+
+Oprire, după finalizarea sincronizării:
+
+```bash
+docker compose -f docker-compose.local.yml down
+```
+
+Datele rămân salvate. `down -v` le șterge, inclusiv backup-urile — **nu în
+timpul unui eveniment real**.
