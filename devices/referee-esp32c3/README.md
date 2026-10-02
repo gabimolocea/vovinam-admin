@@ -103,12 +103,23 @@ orice lungime, `PIN_DIGITS` din `.ino` trebuie pus la fel.
   SuperMini* sau *Nologo ESP32C3 Super Mini*; merge la fel de bine
   *ESP32C3 Dev Module*).
 - Partition Scheme: **Huge APP (3MB No OTA/1MB SPIFFS)** — cu schema
-  implicită sketch-ul intră în 91% din flash şi nu mai ai loc de manevră;
-  cu asta stă la 37%. Pe *ESP32C3 Dev Module* echivalentul e
-  *Minimal SPIFFS*.
-- USB CDC On Boot: **Enabled** (e deja implicit pe plăcile SuperMini) —
-  placa nu are chip separat de USB-serial, deci fără asta nu vezi nimic
-  pe Serial Monitor.
+  implicită sketch-ul **nu mai intră deloc** (`text section exceeds
+  available space in board`); cu asta stă pe la 40%. Pe *ESP32C3 Dev
+  Module* echivalentul e *Minimal SPIFFS*.
+
+  **Se resetează la actualizarea nucleului ESP32, odată cu USB CDC de mai
+  jos.** Dacă după o actualizare primeşti întâi eroarea cu
+  `setTxTimeoutMs` şi apoi pe asta, sunt amândouă acelaşi lucru: setările
+  de placă au sărit pe implicite.
+- USB CDC On Boot: **Enabled** — nu e optional, deşi aşa sună în meniu.
+  Placa nu are chip separat de USB-serial, deci fără el `Serial` devine
+  UART0, adică GPIO20 şi GPIO21 — exact pinii pe care stau două dintre
+  butoane. Şi nici nu compilează: `setTxTimeoutMs` există doar pe clasa de
+  USB.
+
+  **Se resetează la actualizarea nucleului ESP32.** Dacă o compilare care
+  mergea până ieri se opreşte cu `'class HardwareSerial' has no member
+  named 'setTxTimeoutMs'`, asta e.
 - Biblioteci: `GFX Library for Arduino` (Arduino_GFX) şi `ArduinoJson` v7.
 
 ### Dacă apare `'digitalPinToGPIONumber' is not a type`

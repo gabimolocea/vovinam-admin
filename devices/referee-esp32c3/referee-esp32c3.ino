@@ -17,8 +17,14 @@
 // Nu e nevoie de HTTPS: totul sta in LAN-ul salii.
 //
 // Biblioteci (Library Manager): Arduino_GFX, ArduinoJson (v7).
-// Placa: "ESP32C3 Dev Module", cu "USB CDC On Boot: Enabled" daca vrei
-// Serial pe USB.
+// Placa: "ESP32C3 Dev Module", cu "USB CDC On Boot: ENABLED".
+//
+// Setarea aia nu e optionala, desi asa suna in meniu. Fara ea `Serial` nu
+// mai e USB-ul, ci UART0 - adica GPIO20 si GPIO21, exact pinii pe care stau
+// doua dintre butoane. Si nici nu compileaza: `setTxTimeoutMs` exista doar
+// pe clasa de USB. Se reseteaza la actualizarea nucleului ESP32, deci merita
+// verificata cand o compilare care mergea pana ieri se opreste cu
+// "'class HardwareSerial' has no member named 'setTxTimeoutMs'".
 
 #include <Arduino_GFX_Library.h>
 #include <WiFi.h>
