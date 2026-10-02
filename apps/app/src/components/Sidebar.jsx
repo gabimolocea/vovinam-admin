@@ -25,7 +25,7 @@ function useNavItems({ isAdmin, isCoach }) {
       { to: '/cluburi', label: 'Cluburi', icon: Building2 },
       { to: '/aprobari', label: 'Aprobări', icon: ShieldCheck, badgeKey: 'approvals' },
       { to: '/competitions', label: 'Centralizator', icon: Trophy },
-      { to: '/competitie-in-sala', label: 'Competiție LAN', icon: Wifi },
+      { to: '/competitie-in-sala', label: 'LAN', icon: Wifi },
     ];
   }
   if (isCoach) {

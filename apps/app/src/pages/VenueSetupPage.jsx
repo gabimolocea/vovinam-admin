@@ -362,7 +362,7 @@ function Antet({ ecran, indicePas }) {
   return (
     <header className="flex flex-col gap-3">
       <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-        Competiție LAN
+        LAN
       </p>
       {indicePas > 0 && (
         <div className="flex items-center gap-3">
@@ -387,21 +387,29 @@ function Antet({ ecran, indicePas }) {
 
 /** Referinta, mereu la vedere. Nu e un meniu ascuns: in ziua competitiei
  * omul cauta "adresele" sau "nu merge", si trebuie sa le vada de pe orice
- * ecran, fara sa stie ca exista un cuprins. */
+ * ecran, fara sa stie ca exista un cuprins.
+ *
+ * Pe ecran lat sta in dreapta, lipita la derulare: asa ramane acolo si cand
+ * pasul e lung, in loc sa fuga in josul paginii exact cand cineva o cauta.
+ * Sub `lg` nu mai e loc pentru doua coloane, si se intoarce sub continut,
+ * pe un rand de butoane - acolo e firesc sa vina dupa, nu inainte. */
 function Referinta({ mergiLa, curent }) {
   return (
-    <nav className="flex flex-col gap-2 border-t border-border pt-4">
+    <nav
+      aria-label="Referință"
+      className="flex shrink-0 flex-col gap-2 border-t border-border pt-4 lg:sticky lg:top-8 lg:w-56 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"
+    >
       <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
         Referință — pentru ziua competiției
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 lg:flex-col">
         {ECRANE.filter((e) => e.grup === 'referinta').map((e) => (
           <button
             key={e.id}
             type="button"
             onClick={() => mergiLa(e.id)}
             aria-current={curent === e.id ? 'page' : undefined}
-            className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+            className={`rounded-md border px-3 py-1.5 text-sm font-medium lg:text-left ${
               curent === e.id
                 ? 'border-brand-red bg-brand-red text-white'
                 : 'border-border text-muted-foreground hover:bg-muted'
@@ -518,23 +526,12 @@ function PasDocker({ sistem }) {
 }
 
 function PasDescarca({ sistem }) {
-  const eMac = sistem === 'mac';
   return (
     <>
       <p className="text-muted-foreground">
-        De aici se conduce toată ziua: aduci competiția, pornești sala, trimiți
-        rezultatele înapoi.
+        De aici se administrează competiția, device-urile arbitrilor, rezultatele.
       </p>
       <Descarcari sistem={sistem} />
-      <div className="flex gap-3 text-sm">
-        <Download className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-        <div>
-          <strong className="font-semibold">Versiunile următoare:</strong>{' '}
-          {eMac
-            ? 'aplicația îți spune când apare una nouă și îți deschide pagina de descarcare. Pe Mac o tragi din nou peste Applications — automat nu se poate fără un certificat Apple.'
-            : 'aplicația le descarcă singură și te întreabă când vrei să repornești. În mijlocul unei competiții alegi „Mai târziu”.'}
-        </div>
-      </div>
     </>
   );
 }
@@ -813,45 +810,47 @@ export default function VenueSetupPage() {
   }[ecran.id];
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <Antet ecran={ecran} indicePas={indicePas} />
+    <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+      <div className="flex min-w-0 max-w-3xl flex-1 flex-col gap-6">
+        <Antet ecran={ecran} indicePas={indicePas} />
 
-      {CU_SISTEM.includes(ecran.id) && <Sistem sistem={sistem} setSistem={setSistem} />}
+        {CU_SISTEM.includes(ecran.id) && <Sistem sistem={sistem} setSistem={setSistem} />}
 
-      <div className="flex flex-col gap-4">{continut}</div>
+        <div className="flex flex-col gap-4">{continut}</div>
 
-      {eAsistent ? (
-        <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
-          {inapoi ? (
+        {eAsistent ? (
+          <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+            {inapoi ? (
+              <button
+                type="button"
+                onClick={() => mergiLa(inapoi.id)}
+                className="rounded-md border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
+              >
+                ← Înapoi
+              </button>
+            ) : <span />}
+            {inainte && (
+              <button
+                type="button"
+                onClick={() => mergiLa(inainte.id)}
+                className="rounded-md bg-brand-red px-5 py-2 text-sm font-semibold text-white hover:opacity-90"
+              >
+                {ecran.id === 'start' ? 'Începe instalarea' : 'Următorul'} →
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="border-t border-border pt-4">
             <button
               type="button"
-              onClick={() => mergiLa(inapoi.id)}
+              onClick={() => mergiLa('start')}
               className="rounded-md border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
             >
-              ← Înapoi
+              ← Înapoi la instalare
             </button>
-          ) : <span />}
-          {inainte && (
-            <button
-              type="button"
-              onClick={() => mergiLa(inainte.id)}
-              className="rounded-md bg-brand-red px-5 py-2 text-sm font-semibold text-white hover:opacity-90"
-            >
-              {ecran.id === 'start' ? 'Începe instalarea' : 'Următorul'} →
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="border-t border-border pt-4">
-          <button
-            type="button"
-            onClick={() => mergiLa('start')}
-            className="rounded-md border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
-          >
-            ← Înapoi la instalare
-          </button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       <Referinta mergiLa={mergiLa} curent={ecran.id} />
     </div>

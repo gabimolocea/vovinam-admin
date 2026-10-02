@@ -24,7 +24,7 @@ secțiunea „Pregătirea laptopului" de mai jos.
 > 🧑‍💼 Dacă ești operator, sari direct la secțiunea **Ziua competiției**.
 >
 > 🔧 Pregătirea laptopului are o **variantă ilustrată, pas cu pas**, în aplicație:
-> **Competiție LAN** (`/competitie-in-sala`). Acolo sunt desenate ferestrele
+> **LAN** (`/competitie-in-sala`). Acolo sunt desenate ferestrele
 > pe care le vezi — folosește-o pe aceea, nu secțiunea de aici.
 >
 > Pentru arhitectură (dezvoltatori): `docs/LOCAL_EVENT_TECHNICAL_PLAN.md`.
@@ -51,7 +51,7 @@ sursă.
 1. **Docker Desktop** — [docker.com](https://www.docker.com/products/docker-desktop/).
    Lasă-l să pornească odată cu calculatorul.
 2. **FRVV Competition Launcher** — butonul de descărcare din pagina
-   **Competiție LAN** a aplicației.
+   **LAN** a aplicației.
 3. **Deschide-l o dată.** Nefiind semnată, prima dată sistemul avertizează:
    Mac → clic dreapta → *Deschide*; Windows → *More info* → *Run anyway*.
 4. **Pornește sala o dată, cu internet.** Prima pornire descarcă ~1 GB și
