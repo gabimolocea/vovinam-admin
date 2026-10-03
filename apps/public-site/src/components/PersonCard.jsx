@@ -9,10 +9,13 @@ import BeltBadge from './BeltBadge';
  * is present, so it degrades gracefully for lists that don't expose an
  * id. Styled like the rest of the site's card grids (NewsCard, EventCard)
  * rather than the generic shadcn Card, for a consistent look. */
-// Oglinda laterala: intoarsa pe orizontala si estompata. Neclara, fiindca
-// in clar umerii se triplau si cardul citea ca un om cu patru brate - acelasi
-// motiv pentru care fac asta si playerele video.
-const OGLINDA = { transform: 'scaleX(-1)', filter: 'blur(6px)' };
+// Fundalul care umple caseta: aceeasi poza, estompata si putin marita.
+//
+// `scale(1.12)`, nu 1: `filter: blur()` face transparente chiar marginile
+// elementului, iar transparenta aia lasa sa se vada fundalul casetei - adica
+// patru dungi verticale. Marita, marginile estompate cad in afara cadrului,
+// si nu mai exista nicio cusatura de vazut.
+const FUNDAL = { filter: 'blur(14px)', transform: 'scale(1.12)' };
 
 export default function PersonCard({ person }) {
   const initials = person.full_name
@@ -25,14 +28,20 @@ export default function PersonCard({ person }) {
     <div className="group flex h-full flex-col overflow-hidden rounded-xl border border-[#dce0e5] bg-white p-2 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-[#0a4c75] hover:shadow-lg">
       <div className="relative flex aspect-[15/8] w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#e9ecef]">
         {person.profile_image ? (
-          // Poza intreaga, iar golul lateral umplut cu ea insasi, oglindita.
+          // Poza intreaga, pe un fundal facut din ea insasi.
           //
           // Caseta e lata (15/8), pozele de profil sunt aproape toate
           // portret. Taiata ca sa umple, se pierde capul sau bustul; lasata
-          // sa incapa, raman doua benzi goale care arata a greseala. Trei
-          // copii puse cap la cap - oglinda, poza, oglinda - rezolva
-          // amandoua: nimic nu se taie pe verticala, si marginile se continua
-          // din poza, nu dintr-o culoare inventata.
+          // sa incapa, raman doua benzi goale care arata a greseala. Asa,
+          // poza se vede intreaga, iar restul casetei il umple o copie a ei,
+          // estompata - deci marginile se continua din fotografie, nu dintr-o
+          // culoare inventata.
+          //
+          // Au fost intai doua copii oglindite, cate una de fiecare parte.
+          // Mergea, dar se vedea ca atare: la cusatura, umarul aparea a doua
+          // oara, intors - iar ochiul citeste imediat dublura. Un singur
+          // fundal intins peste toata caseta n-are nici cusatura, nici
+          // simetrie de observat.
           //
           // `absolute inset-0`, nu `h-full`: altfel inaltimea se sprijina pe
           // un lant de procente care se prabuseste. Prima versiune a ajuns
@@ -50,10 +59,9 @@ export default function PersonCard({ person }) {
           // Daca fotografia e mai lata decat caseta, cea din mijloc o umple
           // singura si oglinzile ies din cadru - adica exact purtarea de
           // dinainte, fara nimic in plus.
-          <div className="absolute inset-0 flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
-            <img src={person.profile_image} alt="" aria-hidden="true" style={OGLINDA} className="h-full w-auto max-w-none" />
-            <img src={person.profile_image} alt={person.full_name} className="h-full w-auto max-w-none" />
-            <img src={person.profile_image} alt="" aria-hidden="true" style={OGLINDA} className="h-full w-auto max-w-none" />
+          <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
+            <img src={person.profile_image} alt="" aria-hidden="true" style={FUNDAL} className="absolute inset-0 h-full w-full object-cover" />
+            <img src={person.profile_image} alt={person.full_name} className="relative mx-auto h-full w-auto max-w-none" />
           </div>
         ) : (
           <span className="text-2xl font-display font-bold text-[#00334d]/40">{initials}</span>
