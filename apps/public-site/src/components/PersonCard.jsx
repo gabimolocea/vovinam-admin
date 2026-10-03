@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Award } from 'lucide-react';
 import BeltBadge from './BeltBadge';
+import { stilFocus } from '@shared/lib/profileImage';
 
 /** Portrait card for a person directory (Staff, Arbitri, club coaches).
  * Shows the photo inside a fixed-ratio box, then name, the belt graphic,
@@ -9,29 +10,6 @@ import BeltBadge from './BeltBadge';
  * is present, so it degrades gracefully for lists that don't expose an
  * id. Styled like the rest of the site's card grids (NewsCard, EventCard)
  * rather than the generic shadcn Card, for a consistent look. */
-// Fundalul care umple caseta: aceeasi poza, estompata si putin marita.
-//
-// `scale(1.12)`, nu 1: `filter: blur()` face transparente chiar marginile
-// elementului, iar transparenta aia lasa sa se vada fundalul casetei - adica
-// patru dungi verticale. Marita, marginile estompate cad in afara cadrului,
-// si nu mai exista nicio cusatura de vazut.
-const FUNDAL = { filter: 'blur(14px)', transform: 'scale(1.12)' };
-
-// Marginile laterale ale fotografiei, topite in fundal.
-//
-// Fara asta, poza clara se termina brusc si se vede exact unde - doua muchii
-// verticale. Masca o face sa se stinga spre transparent pe ultimii 12% din
-// latime, deci trecerea spre fundalul neclar nu mai are un loc anume.
-// Numai pe orizontala: sus si jos poza atinge oricum marginea casetei.
-//
-// Prefixul -webkit- nu e de prisos: Safari inca nu accepta `mask-image`
-// nici azi fara el, iar fara masca marginile ar reaparea exact pe
-// telefoanele pe care au fost reclamate.
-const TOPIRE = (() => {
-  const gradient = 'linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%)';
-  return { maskImage: gradient, WebkitMaskImage: gradient };
-})();
-
 export default function PersonCard({ person }) {
   const initials = person.full_name
     .split(' ')
@@ -43,41 +21,25 @@ export default function PersonCard({ person }) {
     <div className="group flex h-full flex-col overflow-hidden rounded-xl border border-[#dce0e5] bg-white p-2 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-[#0a4c75] hover:shadow-lg">
       <div className="relative flex aspect-[15/8] w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#e9ecef]">
         {person.profile_image ? (
-          // Poza intreaga, pe un fundal facut din ea insasi.
+          // Taiata ca sa umple caseta, cu punctul de focus ca ancora.
           //
-          // Caseta e lata (15/8), pozele de profil sunt aproape toate
-          // portret. Taiata ca sa umple, se pierde capul sau bustul; lasata
-          // sa incapa, raman doua benzi goale care arata a greseala. Asa,
-          // poza se vede intreaga, iar restul casetei il umple o copie a ei,
-          // estompata - deci marginile se continua din fotografie, nu dintr-o
-          // culoare inventata.
+          // S-au incercat pe rand: doua copii oglindite pe laterale, apoi un
+          // fundal estompat intins peste toata caseta. Amandoua rezolvau o
+          // problema care, masurata, aproape nu exista: din cele 14 fotografii
+          // din pagina, 13 au raportul 1.7, foarte aproape de 1.875 al casetei
+          // - taiate, pierd vreo 9%. Una singura e aproape patrata (3241x2937),
+          // si tocmai pentru ea umplutura nu merge: marginile ei sunt un perete
+          // gol, iar gri estompat langa gri estompat arata tot a spatiu gol.
           //
-          // Au fost intai doua copii oglindite, cate una de fiecare parte.
-          // Mergea, dar se vedea ca atare: la cusatura, umarul aparea a doua
-          // oara, intors - iar ochiul citeste imediat dublura. Un singur
-          // fundal intins peste toata caseta n-are nici cusatura, nici
-          // simetrie de observat.
-          //
-          // `absolute inset-0`, nu `h-full`: altfel inaltimea se sprijina pe
-          // un lant de procente care se prabuseste. Prima versiune a ajuns
-          // in productie cu poze de 3241x2937 px, fiindca parintele isi lua
-          // inaltimea din continut iar copilul cerea 100% din ea - circular.
-          // Pozitionata absolut, cutia are inaltime proprie, iar continutul
-          // n-o mai poate umfla.
-          //
-          // Oglindirea si neclaritatea sunt scrise ca stil, nu ca utilitare
-          // Tailwind. Tot prima versiune le-a pierdut pe drum: markup-ul nou
-          // a ajuns in productie cu CSS care nu continea clasele, si atunci
-          // `transform` si `filter` erau pur si simplu `none`. Scrise aici,
-          // nu depind de ce a apucat sa fie generat.
-          //
-          // Daca fotografia e mai lata decat caseta, cea din mijloc o umple
-          // singura si oglinzile ies din cadru - adica exact purtarea de
-          // dinainte, fara nimic in plus.
-          <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
-            <img src={person.profile_image} alt="" aria-hidden="true" style={FUNDAL} className="absolute inset-0 h-full w-full object-cover" />
-            <img src={person.profile_image} alt={person.full_name} style={TOPIRE} className="relative mx-auto h-full w-auto max-w-none" />
-          </div>
+          // Deci taiem, si alegem de unde: `object-position` primeste punctul
+          // ales la incarcare (implicit sus-centru), care tine capul in cadru
+          // inclusiv la poza aproape patrata - verificat pe productie.
+          <img
+            src={person.profile_image}
+            alt={person.full_name}
+            style={stilFocus(person)}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
         ) : (
           <span className="text-2xl font-display font-bold text-[#00334d]/40">{initials}</span>
         )}
