@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import { publicContentAPI } from '@shared/lib/api';
-import { Alert, Card, CardDescription, CardHeader, CardTitle, Skeleton } from '../components/ui';
+import { Alert, Card, CardHeader, CardTitle, Skeleton } from '../components/ui';
 import { getYouTubeId, toEmbedUrl } from '../lib/video';
 import HeroCarousel from '../components/HeroCarousel';
 import NewsCard from '../components/NewsCard';
