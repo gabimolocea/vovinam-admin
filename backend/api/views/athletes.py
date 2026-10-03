@@ -62,6 +62,24 @@ def athlete_detail(request, pk):
     return Response(serializer.data)
 
 
+def _focus_din(date):
+    """Punctul de focus trimis odata cu poza, ca pereche de procente.
+
+    Intoarce None cand nu s-a trimis nimic sau cand valorile nu sunt
+    numere intre 0 si 100 - atunci ramane centrul, adica incadrarea
+    dinainte. Preferam asta unei erori de validare: o poza buna nu merita
+    refuzata fiindca a venit cu un procent stricat.
+    """
+    try:
+        x = int(date.get('profile_image_focus_x'))
+        y = int(date.get('profile_image_focus_y'))
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= x <= 100 and 0 <= y <= 100):
+        return None
+    return (x, y)
+
+
 class AthleteViewSet(viewsets.ModelViewSet):
     """Public athlete endpoints plus profile creation and admin actions.
 
@@ -331,6 +349,13 @@ class AthleteViewSet(viewsets.ModelViewSet):
             if pending_image is not None:
                 data = request.data.copy()
                 del data['profile_image']
+                # Punctul de focus apartine pozei noi, nu celei publice.
+                # Daca ar ramane in payload, serializatorul l-ar scrie peste
+                # incadrarea fotografiei care se vede acum pe site, desi noua
+                # fotografie inca asteapta aprobarea.
+                pending_focus = _focus_din(data)
+                data.pop('profile_image_focus_x', None)
+                data.pop('profile_image_focus_y', None)
 
         serializer_class = AthleteSerializer if is_admin else AthleteProfileSerializer
         serializer = serializer_class(athlete, data=data, partial=partial, context={'request': request})
@@ -351,7 +376,7 @@ class AthleteViewSet(viewsets.ModelViewSet):
 
             updated = serializer.save()
             if pending_image is not None:
-                updated.submit_profile_image(pending_image)
+                updated.submit_profile_image(pending_image, focus=pending_focus)
                 try:
                     notify_profile_image_submitted(updated)
                 except Exception:

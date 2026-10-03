@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@shared';
 import { withSsoHandoff } from '@shared/lib/sso';
 import { User } from 'lucide-react';
+import { stilFocus } from '@shared/lib/profileImage';
 
 // The coach/athlete/admin dashboard is one app (role-based views), not two
 // separate ones - see apps/app. Both roles link to the same URL here, only
@@ -52,7 +53,7 @@ export function isAdmin(user) {
 export function AccountAvatar({ user, size = 'h-6 w-6' }) {
   const profileImage = user?.athlete?.profile_image;
   if (profileImage) {
-    return <img src={profileImage} alt="" className={`${size} rounded-full object-cover`} />;
+    return <img src={profileImage} alt="" style={stilFocus(user?.athlete)} className={`${size} rounded-full object-cover`} />;
   }
   return (
     <span className={`flex ${size} items-center justify-center rounded-full bg-white/20`}>

@@ -18,6 +18,8 @@ import Lightbox from '../components/Lightbox';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RejectReasonDialog from '../components/RejectReasonDialog';
 import { ArrowLeft, Award, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, Eye, LogOut, Pencil, Plus, Sparkles, X } from 'lucide-react';
+import AlegeFocus from '@shared/components/AlegeFocus';
+import { FOCUS_IMPLICIT, stilFocus, stilFocusInAsteptare } from '@shared/lib/profileImage';
 
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'http://localhost:5179';
 
@@ -1072,7 +1074,7 @@ function AddVisaDialog({ open, onOpenChange, athlete, visaType, onCreated }) {
 /** Preview dialog shown after picking a new profile photo - matches the
  * "confirm before it's applied/sent for approval" flow used everywhere
  * else this photo-edit affordance appears (public site, athlete dashboard). */
-function PhotoPreviewDialog({ preview, uploading, error, onConfirm, onCancel }) {
+function PhotoPreviewDialog({ preview, focus, onFocusChange, uploading, error, onConfirm, onCancel }) {
   return (
     <Dialog open={!!preview} onOpenChange={(v) => !v && onCancel()}>
       <DialogContent fullScreen>
@@ -1080,13 +1082,7 @@ function PhotoPreviewDialog({ preview, uploading, error, onConfirm, onCancel }) 
           <DialogTitle>Previzualizare poză de profil</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col items-center gap-4">
-          {preview && (
-            <img
-              src={preview.url}
-              alt="Previzualizare poză de profil"
-              className="aspect-[3/2] w-full max-w-sm rounded-lg object-cover"
-            />
-          )}
+          {preview && <AlegeFocus src={preview.url} focus={focus} onChange={onFocusChange} />}
           <Alert>Orice schimbare a pozei de profil necesită aprobarea unui admin sau antrenor înainte de a deveni vizibilă public.</Alert>
           {error && <Alert variant="destructive">{error}</Alert>}
           <div className="flex w-full gap-3">
@@ -1126,6 +1122,7 @@ export default function AthleteDetail() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [focusPoza, setFocusPoza] = useState(FOCUS_IMPLICIT);
   const [certificatePreview, setCertificatePreview] = useState(null);
   const photoInputRef = useRef(null);
 
@@ -1233,7 +1230,7 @@ export default function AthleteDetail() {
     setUploadingPhoto(true);
     setPhotoError('');
     try {
-      await athleteAPI.updatePhoto(athlete.id, photoPreview.file);
+      await athleteAPI.updatePhoto(athlete.id, photoPreview.file, focusPoza);
       URL.revokeObjectURL(photoPreview.url);
       setPhotoPreview(null);
       await load();
@@ -1374,13 +1371,13 @@ export default function AthleteDetail() {
                   title="Vezi poza la dimensiune completă"
                   className="block h-full w-full"
                 >
-                  <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
+                  <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} style={stilFocusInAsteptare(athlete)} className="h-full w-full rounded-lg object-cover" />
                 </button>
               ) : (
-                <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover opacity-50 grayscale" />
+                <img src={imgUrl(athlete.pending_profile_image)} alt={athlete.full_name} style={stilFocusInAsteptare(athlete)} className="h-full w-full rounded-lg object-cover opacity-50 grayscale" />
               )
             ) : athlete.profile_image ? (
-              <img src={imgUrl(athlete.profile_image)} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
+              <img src={imgUrl(athlete.profile_image)} alt={athlete.full_name} style={stilFocus(athlete)} className="h-full w-full rounded-lg object-cover" />
             ) : (
               <div className="flex h-full w-full items-center justify-center rounded-lg text-2xl font-display font-bold text-white/40">
                 {athlete.first_name?.[0]}{athlete.last_name?.[0]}
@@ -1805,6 +1802,8 @@ export default function AthleteDetail() {
       <AddVisaDialog open={!!addVisaType} onOpenChange={(v) => !v && setAddVisaType(null)} athlete={athlete} visaType={addVisaType} onCreated={load} />
       <PhotoPreviewDialog
         preview={photoPreview}
+        focus={focusPoza}
+        onFocusChange={setFocusPoza}
         uploading={uploadingPhoto}
         error={photoError}
         onConfirm={confirmPhotoUpload}

@@ -186,9 +186,16 @@ export const athleteAPI = {
   getPublic: (id) => api.get(`/athletes/${id}/public/`),
   create: (data) => api.post('/athletes/', data),
   update: (id, data) => api.patch(`/athletes/${id}/`, data),
-  updatePhoto: (id, file) => {
+  // `focus` e punctul ales de om pe poza ({x, y} in procente). Merge in
+  // aceeasi cerere ca fisierul: altfel ar exista o clipa in care poza e
+  // salvata fara incadrarea ei, si daca a doua cerere pica, ramane asa.
+  updatePhoto: (id, file, focus) => {
     const formData = new FormData();
     formData.append('profile_image', file);
+    if (focus) {
+      formData.append('profile_image_focus_x', String(Math.round(focus.x)));
+      formData.append('profile_image_focus_y', String(Math.round(focus.y)));
+    }
     return api.patch(`/athletes/${id}/`, formData);
   },
   extractLicense: (formData) => api.post('/athletes/extract_license/', formData),

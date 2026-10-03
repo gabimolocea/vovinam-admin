@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
 import { Award } from 'lucide-react';
+import { stilFocus } from '@shared/lib/profileImage';
 import BeltBadge from './BeltBadge';
 
 /** Portrait card for a person directory (Staff, Arbitri, club coaches).
- * Shows the full photo (never cropped) inside a fixed-height placeholder,
- * then name, the belt graphic, and role/title/club underneath. Wraps the
+ * Shows the photo inside a fixed-ratio box, then name, the belt graphic,
+ * and role/title/club underneath. Wraps the
  * whole card in a Link to the athlete's public profile when `person.id`
  * is present, so it degrades gracefully for lists that don't expose an
  * id. Styled like the rest of the site's card grids (NewsCard, EventCard)
@@ -23,6 +24,9 @@ export default function PersonCard({ person }) {
           <img
             src={person.profile_image}
             alt={person.full_name}
+            // Incadrarea vine din punctul ales de om la incarcare, nu din
+            // centrul casetei - vezi shared/lib/profileImage.js.
+            style={stilFocus(person)}
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (

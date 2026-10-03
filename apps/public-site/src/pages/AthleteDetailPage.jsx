@@ -10,6 +10,9 @@ import MedalIcon from '../components/MedalIcon';
 import ResponsiveTable from '../components/ResponsiveTable';
 import Lightbox from '../components/Lightbox';
 import { Award, ChevronLeft, ChevronRight, Clock, Eye, Pencil, X } from 'lucide-react';
+import { stilFocus, stilFocusInAsteptare } from '@shared/lib/profileImage';
+import AlegeFocus from '@shared/components/AlegeFocus';
+import { FOCUS_IMPLICIT } from '@shared/lib/profileImage';
 
 // Resolves a media path returned by the API into an absolute URL - needed
 // in dev where the API and this app run on different ports, and harmless
@@ -281,6 +284,10 @@ export default function AthleteDetailPage({ showSeo = true }) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
+  // Punctul ales pe poza noua, pana la trimitere. Porneste de la
+  // implicit, ca cineva care nu atinge nimic sa trimita tot o incadrare
+  // buna, nu una centrata.
+  const [focusPoza, setFocusPoza] = useState(FOCUS_IMPLICIT);
   const [resultsLevel, setResultsLevel] = useState('national');
   const [reviewBusyKey, setReviewBusyKey] = useState(null);
   const [reviewError, setReviewError] = useState('');
@@ -401,7 +408,7 @@ export default function AthleteDetailPage({ showSeo = true }) {
     setUploadingPhoto(true);
     setPhotoError('');
     try {
-      const response = await athleteAPI.updatePhoto(athlete.id, photoPreview.file);
+      const response = await athleteAPI.updatePhoto(athlete.id, photoPreview.file, focusPoza);
       setAthlete((prev) => ({
         ...prev,
         profile_image: response.data.profile_image,
@@ -478,6 +485,7 @@ export default function AthleteDetailPage({ showSeo = true }) {
                     <img
                       src={athlete.pending_profile_image}
                       alt={athlete.full_name}
+                      style={stilFocusInAsteptare(athlete)}
                       className="h-full w-full rounded-lg object-cover"
                     />
                   </a>
@@ -486,11 +494,12 @@ export default function AthleteDetailPage({ showSeo = true }) {
                     src={athlete.pending_profile_image}
                     alt={athlete.full_name}
                     title="Poză în așteptarea aprobării"
+                    style={stilFocusInAsteptare(athlete)}
                     className="h-full w-full rounded-lg object-cover opacity-50 grayscale"
                   />
                 )
               ) : athlete.profile_image ? (
-                <img src={athlete.profile_image} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
+                <img src={athlete.profile_image} alt={athlete.full_name} style={stilFocus(athlete)} className="h-full w-full rounded-lg object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center rounded-lg text-2xl font-display font-bold text-white/40">
                   {athlete.first_name?.[0]}{athlete.last_name?.[0]}
@@ -584,11 +593,7 @@ export default function AthleteDetailPage({ showSeo = true }) {
         {photoPreview && (
           <FullScreenModal title="Previzualizare poză de profil" onClose={cancelPhotoUpload}>
             <div className="flex flex-col items-center gap-4">
-              <img
-                src={photoPreview.url}
-                alt="Previzualizare poză de profil"
-                className="aspect-[3/2] w-full max-w-sm rounded-lg object-cover"
-              />
+              <AlegeFocus src={photoPreview.url} focus={focusPoza} onChange={setFocusPoza} />
               <Alert>Orice schimbare a pozei de profil necesită aprobarea unui admin înainte de a deveni vizibilă public.</Alert>
               {photoError && <Alert variant="destructive">{photoError}</Alert>}
               <div className="flex w-full gap-3">

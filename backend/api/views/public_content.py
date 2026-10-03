@@ -243,6 +243,8 @@ class PublicClubDetailSerializer(PublicClubSerializer):
                 ),
                 'grade': coach.current_grade.name if coach.current_grade else '',
                 'title': coach.title.name if coach.title else '',
+                'profile_image_focus_x': coach.profile_image_focus_x,
+                'profile_image_focus_y': coach.profile_image_focus_y,
             }
             for coach in coaches
         ]
@@ -261,7 +263,8 @@ class PublicStaffSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Athlete
-        fields = ['id', 'full_name', 'federation_role', 'title', 'grade', 'club', 'profile_image']
+        fields = ['id', 'full_name', 'federation_role', 'title', 'grade', 'club', 'profile_image',
+                  'profile_image_focus_x', 'profile_image_focus_y']
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
@@ -281,7 +284,8 @@ class PublicRefereeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Athlete
-        fields = ['id', 'full_name', 'title', 'grade', 'club', 'profile_image', 'referee_category']
+        fields = ['id', 'full_name', 'title', 'grade', 'club', 'profile_image', 'referee_category',
+                  'profile_image_focus_x', 'profile_image_focus_y']
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()

@@ -46,6 +46,8 @@ class AthleteDetailSerializer(serializers.ModelSerializer):
             'admin_notes', 'approved_date', 'approved_by', 'profile_image', 'medical_certificate',
             'pending_profile_image', 'profile_image_status', 'profile_image_submitted_date',
             'profile_image_reviewed_date', 'profile_image_admin_notes',
+            'profile_image_focus_x', 'profile_image_focus_y',
+            'pending_profile_image_focus_x', 'pending_profile_image_focus_y',
             'grade_history', 'visas', 'event_participations',
             'created_at', 'updated_at'
         ]
@@ -280,7 +282,8 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
             'address', 'mobile_number', 'club', 'city', 'previous_experience', 'is_coach', 'is_instructor', 'is_referee',
             'emergency_contact_name', 'emergency_contact_phone', 'status',
             'submitted_date', 'reviewed_date', 'reviewed_by', 'admin_notes',
-            'profile_image', 'medical_certificate'
+            'profile_image', 'medical_certificate',
+            'profile_image_focus_x', 'profile_image_focus_y',
         ]
         # `status` is deliberately read-only here: it must only ever change
         # through the approve/reject/request_revision/resubmit workflow

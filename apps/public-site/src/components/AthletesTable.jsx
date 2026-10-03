@@ -3,6 +3,7 @@ import { Badge } from './ui';
 import BeltBadge from './BeltBadge';
 import ResponsiveTable from './ResponsiveTable';
 import { ATHLETE_STATUS_LABELS, medalSummary } from '../lib/athletes';
+import { stilFocus } from '@shared/lib/profileImage';
 
 /** Athlete photo in the same wide (3:2) format used on the athlete's own
  * profile hero, with the club crest overlaid top-right - rather than a
@@ -13,7 +14,8 @@ function AthletePhoto({ athlete, className }) {
   return (
     <div className={`relative aspect-[3/2] shrink-0 bg-muted ${className}`}>
       {athlete.profile_image ? (
-        <img src={athlete.profile_image} alt={athlete.full_name} className="h-full w-full rounded-lg object-cover" />
+        <img src={athlete.profile_image} alt={athlete.full_name} style={stilFocus(athlete)}
+             className="h-full w-full rounded-lg object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center rounded-lg text-xs font-semibold text-muted-foreground">
           {athlete.first_name?.[0]}{athlete.last_name?.[0]}

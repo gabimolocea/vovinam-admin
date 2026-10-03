@@ -125,7 +125,7 @@ class AthleteMinimalSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'full_name',
             'date_of_birth',
             'club', 'current_grade', 'is_coach', 'is_referee',
-            'status', 'profile_image'
+            'status', 'profile_image', 'profile_image_focus_x', 'profile_image_focus_y'
         ]
     
     def get_full_name(self, obj):
@@ -178,7 +178,8 @@ class PublicAthleteSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'full_name', 'gender',
             'club', 'city', 'current_grade', 'is_coach', 'is_instructor', 'is_referee',
             'referee_level', 'referee_category',
-            'profile_image', 'medals', 'international_medals',
+            'profile_image', 'profile_image_focus_x', 'profile_image_focus_y',
+            'medals', 'international_medals',
         ]
 
     def get_full_name(self, obj):
@@ -241,6 +242,7 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
         fields = PublicAthleteSerializer.Meta.fields + [
             'date_of_birth', 'status', 'grade_history', 'results', 'seminars', 'annual_visas', 'medical_visas', 'can_edit',
             'profile_image_status', 'pending_profile_image', 'profile_image_admin_notes',
+            'pending_profile_image_focus_x', 'pending_profile_image_focus_y',
             'cnp', 'license_series', 'license_number', 'license_image', 'mobile_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
             'previous_experience', 'registered_date', 'expiration_date', 'nationality', 'email',
         ]

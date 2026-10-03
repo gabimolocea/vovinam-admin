@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.contrib.auth.models import AbstractUser
 from datetime import date, timedelta
 import secrets
@@ -9,6 +10,11 @@ from django.utils import timezone
 from django.utils.text import slugify
 from ..mixins import TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin
 from ..managers import AthleteManager
+
+# Unde se uita ochiul intr-o poza de profil, cand nimeni n-a ales inca.
+# Vezi `profile_image_focus_x/y` pe Athlete pentru de ce nu e centrul.
+FOCUS_IMPLICIT_X = 50
+FOCUS_IMPLICIT_Y = 25
 
 # Create your models here.
 
@@ -496,6 +502,49 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         _('Stare imagine profil'), max_length=20, choices=PROFILE_IMAGE_STATUS_CHOICES, default='approved',
         help_text=_('"pending" cât timp o poză nouă trimisă de sportiv așteaptă aprobare.')
     )
+    # Unde se uita ochiul in poza, in procente din latime si inaltime.
+    #
+    # Aceeasi fotografie apare pe site in patru forme diferite: cardul lat
+    # de arbitru/staff (15/8), tabelul de sportivi si pagina de sportiv
+    # (3/2), si bulina rotunda din meniul de cont. `object-fit: cover` taie
+    # ce nu incape, si taie din mijloc - ceea ce, pentru un portret, lasa
+    # bustul si retrage capul din cadru. O taiere fixa la incarcare n-ar
+    # rezolva: ce incadreaza bine cardul lat iese gresit in bulina.
+    #
+    # Asa ca nu taiem nimic. Tinem minte un punct - omul apasa pe fata cand
+    # incarca - si fiecare loc de afisare il da mai departe lui
+    # `object-position`. Poza ramane intreaga, iar incadrarea se potriveste
+    # singura oricarei forme, inclusiv uneia care nu exista inca.
+    #
+    # Implicit nu e centrul, ci sus-centru (50/25). Centrul ar fi insemnat
+    # ca toate fotografiile deja incarcate raman taiate pana cand cineva le
+    # deschide pe rand si apasa pe fiecare fata - adica, practic, pentru
+    # totdeauna. Pe orizontala ramane mijlocul: subiectul unei poze de
+    # profil e aproape mereu centrat lateral.
+    #
+    # Nu atinge decat fotografiile mai inalte decat caseta - adica exact
+    # portretele, cazul pe care a venit sa-l repare. Pentru o poza lata,
+    # `object-fit: cover` taie pe orizontala, si atunci procentul vertical
+    # n-are ce misca.
+    profile_image_focus_x = models.PositiveSmallIntegerField(
+        _('Focus imagine - orizontal (%)'), default=FOCUS_IMPLICIT_X,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    profile_image_focus_y = models.PositiveSmallIntegerField(
+        _('Focus imagine - vertical (%)'), default=FOCUS_IMPLICIT_Y,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    # Pereche proprie pentru poza in asteptare, ca si fisierul ei: altfel,
+    # cat timp noua poza asteapta aprobarea, poza publica ar fi incadrata
+    # dupa un punct ales pentru alta fotografie.
+    pending_profile_image_focus_x = models.PositiveSmallIntegerField(
+        _('Focus imagine în așteptare - orizontal (%)'), default=FOCUS_IMPLICIT_X,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    pending_profile_image_focus_y = models.PositiveSmallIntegerField(
+        _('Focus imagine în așteptare - vertical (%)'), default=FOCUS_IMPLICIT_Y,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
     profile_image_submitted_date = models.DateTimeField(_('Data trimiterii imaginii'), blank=True, null=True)
     profile_image_reviewed_date = models.DateTimeField(_('Data revizuirii imaginii'), blank=True, null=True)
     profile_image_reviewed_by = models.ForeignKey(
@@ -659,7 +708,7 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
                 warnings.append(f'Viza {label.lower()} este {status_label.lower()}.')
         return warnings
 
-    def submit_profile_image(self, image_file):
+    def submit_profile_image(self, image_file, focus=None):
         """Stage a newly-uploaded profile picture for approval instead of
         overwriting `profile_image` directly. Called when the athlete
         themselves uploads a new picture (admin uploads still apply
@@ -667,6 +716,10 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         from django.utils import timezone
 
         self.pending_profile_image = image_file
+        # Punctul de focus vine impreuna cu poza si asteapta langa ea. Daca
+        # nu l-a ales nimeni, centrul - adica incadrarea de dinainte.
+        self.pending_profile_image_focus_x = FOCUS_IMPLICIT_X if focus is None else focus[0]
+        self.pending_profile_image_focus_y = FOCUS_IMPLICIT_Y if focus is None else focus[1]
         self.profile_image_status = 'pending'
         self.profile_image_submitted_date = timezone.now()
         self.profile_image_reviewed_date = None
@@ -698,6 +751,12 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         self.profile_image.save(content.name, content, save=False)
         self.pending_profile_image = None
         old_pending_file.delete(save=False)
+        # Focusul merge cu poza, nu ramane in urma: altfel noua fotografie
+        # ar fi incadrata dupa punctul ales pentru cea veche.
+        self.profile_image_focus_x = self.pending_profile_image_focus_x
+        self.profile_image_focus_y = self.pending_profile_image_focus_y
+        self.pending_profile_image_focus_x = FOCUS_IMPLICIT_X
+        self.pending_profile_image_focus_y = FOCUS_IMPLICIT_Y
         self.profile_image_status = 'approved'
         self.profile_image_reviewed_date = timezone.now()
         self.profile_image_reviewed_by = admin_user
@@ -709,6 +768,8 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
         from django.utils import timezone
 
         self.pending_profile_image = None
+        self.pending_profile_image_focus_x = FOCUS_IMPLICIT_X
+        self.pending_profile_image_focus_y = FOCUS_IMPLICIT_Y
         self.profile_image_status = 'rejected'
         self.profile_image_reviewed_date = timezone.now()
         self.profile_image_reviewed_by = admin_user
