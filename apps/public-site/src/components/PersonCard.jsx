@@ -9,6 +9,11 @@ import BeltBadge from './BeltBadge';
  * is present, so it degrades gracefully for lists that don't expose an
  * id. Styled like the rest of the site's card grids (NewsCard, EventCard)
  * rather than the generic shadcn Card, for a consistent look. */
+// Oglinda laterala: intoarsa pe orizontala si estompata. Neclara, fiindca
+// in clar umerii se triplau si cardul citea ca un om cu patru brate - acelasi
+// motiv pentru care fac asta si playerele video.
+const OGLINDA = { transform: 'scaleX(-1)', filter: 'blur(6px)' };
+
 export default function PersonCard({ person }) {
   const initials = person.full_name
     .split(' ')
@@ -29,14 +34,26 @@ export default function PersonCard({ person }) {
           // amandoua: nimic nu se taie pe verticala, si marginile se continua
           // din poza, nu dintr-o culoare inventata.
           //
-          // Fiecare copie are inaltimea casetei si latimea pe masura, deci
-          // cea din mijloc e poza adevarata, nedeformata. Daca fotografia e
-          // mai lata decat caseta, ea singura o umple si oglinzile ies din
-          // cadru - adica exact purtarea de dinainte, fara nimic in plus.
-          <div className="flex h-full w-full items-center justify-center transition-transform duration-300 group-hover:scale-105">
-            <img src={person.profile_image} alt="" aria-hidden="true" className="h-full w-auto max-w-none -scale-x-100 blur-md" />
-            <img src={person.profile_image} alt={person.full_name} className="relative h-full w-auto max-w-none" />
-            <img src={person.profile_image} alt="" aria-hidden="true" className="h-full w-auto max-w-none -scale-x-100 blur-md" />
+          // `absolute inset-0`, nu `h-full`: altfel inaltimea se sprijina pe
+          // un lant de procente care se prabuseste. Prima versiune a ajuns
+          // in productie cu poze de 3241x2937 px, fiindca parintele isi lua
+          // inaltimea din continut iar copilul cerea 100% din ea - circular.
+          // Pozitionata absolut, cutia are inaltime proprie, iar continutul
+          // n-o mai poate umfla.
+          //
+          // Oglindirea si neclaritatea sunt scrise ca stil, nu ca utilitare
+          // Tailwind. Tot prima versiune le-a pierdut pe drum: markup-ul nou
+          // a ajuns in productie cu CSS care nu continea clasele, si atunci
+          // `transform` si `filter` erau pur si simplu `none`. Scrise aici,
+          // nu depind de ce a apucat sa fie generat.
+          //
+          // Daca fotografia e mai lata decat caseta, cea din mijloc o umple
+          // singura si oglinzile ies din cadru - adica exact purtarea de
+          // dinainte, fara nimic in plus.
+          <div className="absolute inset-0 flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
+            <img src={person.profile_image} alt="" aria-hidden="true" style={OGLINDA} className="h-full w-auto max-w-none" />
+            <img src={person.profile_image} alt={person.full_name} className="h-full w-auto max-w-none" />
+            <img src={person.profile_image} alt="" aria-hidden="true" style={OGLINDA} className="h-full w-auto max-w-none" />
           </div>
         ) : (
           <span className="text-2xl font-display font-bold text-[#00334d]/40">{initials}</span>
