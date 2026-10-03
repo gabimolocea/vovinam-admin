@@ -17,6 +17,21 @@ import BeltBadge from './BeltBadge';
 // si nu mai exista nicio cusatura de vazut.
 const FUNDAL = { filter: 'blur(14px)', transform: 'scale(1.12)' };
 
+// Marginile laterale ale fotografiei, topite in fundal.
+//
+// Fara asta, poza clara se termina brusc si se vede exact unde - doua muchii
+// verticale. Masca o face sa se stinga spre transparent pe ultimii 12% din
+// latime, deci trecerea spre fundalul neclar nu mai are un loc anume.
+// Numai pe orizontala: sus si jos poza atinge oricum marginea casetei.
+//
+// Prefixul -webkit- nu e de prisos: Safari inca nu accepta `mask-image`
+// nici azi fara el, iar fara masca marginile ar reaparea exact pe
+// telefoanele pe care au fost reclamate.
+const TOPIRE = (() => {
+  const gradient = 'linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%)';
+  return { maskImage: gradient, WebkitMaskImage: gradient };
+})();
+
 export default function PersonCard({ person }) {
   const initials = person.full_name
     .split(' ')
@@ -61,7 +76,7 @@ export default function PersonCard({ person }) {
           // dinainte, fara nimic in plus.
           <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
             <img src={person.profile_image} alt="" aria-hidden="true" style={FUNDAL} className="absolute inset-0 h-full w-full object-cover" />
-            <img src={person.profile_image} alt={person.full_name} className="relative mx-auto h-full w-auto max-w-none" />
+            <img src={person.profile_image} alt={person.full_name} style={TOPIRE} className="relative mx-auto h-full w-auto max-w-none" />
           </div>
         ) : (
           <span className="text-2xl font-display font-bold text-[#00334d]/40">{initials}</span>
