@@ -39,6 +39,15 @@ Dacă nu este deja urcat:
 
 Nu trebuie să scrii manual comanda dacă DigitalOcean vede [backend/Procfile](backend/Procfile).
 
+> **Un singur Procfile, și acesta e.** A existat o vreme și unul în rădăcina
+> depozitului. Nu era citit niciodată: cu **Source Directory** pus pe
+> `backend`, acela devine rădăcina contextului de build, deci App Platform
+> caută `Procfile` acolo. Mai rău, conținutul lui ajunsese să presupună că
+> directorul de lucru conține `manage.py` — adevărat doar în `backend/` —
+> așa că dacă cineva ar fi mutat vreodată Source Directory pe rădăcină, ar
+> fi picat la prima comandă. A fost șters, ca să nu mai existe un al doilea
+> fișier care arată a configurație de deploy fără să fie.
+
 Acum el conține:
 - `release`: colectează static + rulează migrări
 - `web`: pornește `gunicorn`
