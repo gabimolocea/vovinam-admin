@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { Award } from 'lucide-react';
-import { stilFocus } from '@shared/lib/profileImage';
 import BeltBadge from './BeltBadge';
 
 /** Portrait card for a person directory (Staff, Arbitri, club coaches).
@@ -21,14 +20,24 @@ export default function PersonCard({ person }) {
     <div className="group flex h-full flex-col overflow-hidden rounded-xl border border-[#dce0e5] bg-white p-2 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-[#0a4c75] hover:shadow-lg">
       <div className="relative flex aspect-[15/8] w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#e9ecef]">
         {person.profile_image ? (
-          <img
-            src={person.profile_image}
-            alt={person.full_name}
-            // Incadrarea vine din punctul ales de om la incarcare, nu din
-            // centrul casetei - vezi shared/lib/profileImage.js.
-            style={stilFocus(person)}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
+          // Poza intreaga, iar golul lateral umplut cu ea insasi, oglindita.
+          //
+          // Caseta e lata (15/8), pozele de profil sunt aproape toate
+          // portret. Taiata ca sa umple, se pierde capul sau bustul; lasata
+          // sa incapa, raman doua benzi goale care arata a greseala. Trei
+          // copii puse cap la cap - oglinda, poza, oglinda - rezolva
+          // amandoua: nimic nu se taie pe verticala, si marginile se continua
+          // din poza, nu dintr-o culoare inventata.
+          //
+          // Fiecare copie are inaltimea casetei si latimea pe masura, deci
+          // cea din mijloc e poza adevarata, nedeformata. Daca fotografia e
+          // mai lata decat caseta, ea singura o umple si oglinzile ies din
+          // cadru - adica exact purtarea de dinainte, fara nimic in plus.
+          <div className="flex h-full w-full items-center justify-center transition-transform duration-300 group-hover:scale-105">
+            <img src={person.profile_image} alt="" aria-hidden="true" className="h-full w-auto max-w-none -scale-x-100 blur-md" />
+            <img src={person.profile_image} alt={person.full_name} className="relative h-full w-auto max-w-none" />
+            <img src={person.profile_image} alt="" aria-hidden="true" className="h-full w-auto max-w-none -scale-x-100 blur-md" />
+          </div>
         ) : (
           <span className="text-2xl font-display font-bold text-[#00334d]/40">{initials}</span>
         )}
