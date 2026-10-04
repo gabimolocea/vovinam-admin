@@ -215,7 +215,7 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     fields, plus (reviewer-only, see _can_review) the private/administrative
     fields a coach or admin managing this athlete needs (CNP, address,
     emergency contact, etc.) - a public/anonymous viewer never sees these."""
-    date_of_birth = serializers.DateField(read_only=True)
+    date_of_birth = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
     grade_history = serializers.SerializerMethodField()
     results = serializers.SerializerMethodField()
@@ -224,6 +224,8 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
     medical_visas = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     pending_profile_image = serializers.SerializerMethodField()
+    profile_image_status = serializers.SerializerMethodField()
+    profile_image_admin_notes = serializers.SerializerMethodField()
     cnp = serializers.SerializerMethodField()
     license_series = serializers.SerializerMethodField()
     license_number = serializers.SerializerMethodField()
@@ -310,8 +312,26 @@ class PublicAthleteDetailSerializer(PublicAthleteSerializer):
         # reviewer-only approve/reject controls on /sportivi/:id).
         return obj.status if self._can_review(obj) else None
 
+    def get_date_of_birth(self, obj):
+        # Data completa a nasterii e data personala, si o buna parte dintre
+        # sportivii federatiei sunt copii. Pagina publica o arata, pana acum,
+        # oricui era autentificat.
+        return self._reviewer_only(obj, _safe_scalar(obj.date_of_birth))
+
     def get_pending_profile_image(self, obj):
-        return _safe_file_url(getattr(obj, 'pending_profile_image', None))
+        # Poza trimisa si neaprobata inca. Nu e publica prin definitie - omul
+        # a cerut sa fie pusa, nu a primit inca raspuns - iar adresa fisierului
+        # deschide direct imaginea, fiindca spatiul de stocare e public.
+        return self._reviewer_only(obj, _safe_file_url(getattr(obj, 'pending_profile_image', None)))
+
+    def get_profile_image_status(self, obj):
+        # Starea de moderare a pozei: treaba intre om si cine ii aproba poza.
+        return self._reviewer_only(obj, obj.profile_image_status)
+
+    def get_profile_image_admin_notes(self, obj):
+        # Note interne despre om, scrise de moderator ("poza neclara",
+        # "trimite alta"). Nu erau niciodata menite altcuiva.
+        return self._reviewer_only(obj, obj.profile_image_admin_notes)
 
     def get_grade_history(self, obj):
         can_review = self._can_review(obj)

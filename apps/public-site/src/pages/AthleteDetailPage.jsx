@@ -613,7 +613,7 @@ export default function AthleteDetailPage({ showSeo = true }) {
           <InfoRow label="Status cont" value={RESULT_STATUS_LABELS[athlete.status] || athlete.status} private visible={isSelf || canReview} />
           <InfoRow label="Club" value={athlete.club?.name} />
           <InfoRow label="Oraș" value={athlete.city?.name} />
-          <InfoRow label="Data nașterii" value={athlete.date_of_birth ? formatDate(athlete.date_of_birth) : null} />
+          <InfoRow label="Data nașterii" value={athlete.date_of_birth ? formatDate(athlete.date_of_birth) : null} private visible={isSelf || canReview} />
           <InfoRow label="Rol" value={[athlete.is_coach && 'Antrenor', athlete.is_referee && 'Arbitru'].filter(Boolean).join(', ') || 'Sportiv'} />
           <InfoRow label="CNP" value={athlete.cnp} private visible={isSelf || canReview} />
           <InfoRow label="Serie legitimație" value={athlete.license_series} private visible={isSelf || canReview} />
