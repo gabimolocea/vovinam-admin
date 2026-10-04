@@ -325,7 +325,6 @@ export default function AthleteProfilePage() {
       current_grade: getRelatedId(athlete.current_grade),
       federation_role: getRelatedId(athlete.federation_role),
       title: getRelatedId(athlete.title),
-      team_place: athlete.team_place || '',
       registered_date: athlete.registered_date || '',
       expiration_date: athlete.expiration_date || '',
       status: athlete.status || 'approved',
@@ -618,7 +617,6 @@ export default function AthleteProfilePage() {
           { label: 'Data expirării', value: formatDate(athlete.expiration_date) },
           { label: 'Este antrenor', value: athlete.is_coach },
           { label: 'Este arbitru', value: athlete.is_referee },
-          { label: 'Loc echipă', value: athlete.team_place },
         ]} />
         {isAdmin && profileForm && activeSectionForm === 'sport' && (
           <div className="mt-4">
@@ -630,7 +628,6 @@ export default function AthleteProfilePage() {
               <SelectField label="Titlu" value={profileForm.title} onChange={(value) => setProfileForm({ ...profileForm, title: value })} options={options.titles} />
               <TextField label="Data înregistrării" type="date" value={profileForm.registered_date} onChange={(value) => setProfileForm({ ...profileForm, registered_date: value })} />
               <TextField label="Data expirării" type="date" value={profileForm.expiration_date} onChange={(value) => setProfileForm({ ...profileForm, expiration_date: value })} />
-              <TextField label="Loc echipă" value={profileForm.team_place} onChange={(value) => setProfileForm({ ...profileForm, team_place: value })} />
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                 <input type="checkbox" checked={profileForm.is_coach} onChange={(event) => setProfileForm({ ...profileForm, is_coach: event.target.checked })} /> Este antrenor
               </label>
