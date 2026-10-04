@@ -1,3 +1,15 @@
+// Incorporarea YouTube trece prin `youtube-nocookie.com`, nu prin
+// `youtube.com`. E acelasi player, servit de YouTube in modul fara urmarire:
+// nu pune cookie-uri de publicitate pana cand omul nu apasa play.
+//
+// Doua motive. Primul e al oamenilor din poze: site-ul federatiei e vizitat
+// si de copii si de parintii lor, iar un vizitator care doar deruleaza
+// pagina nu trebuie sa plece de acolo cu identificatori de publicitate.
+// Al doilea e practic: domeniul asta e taiat mult mai rar de extensiile
+// care blocheaza reclame, iar cand sunt taiate cererile de urmarire,
+// playerul se opreste cu erori care par defecte ale site-ului.
+const YOUTUBE_EMBED = 'https://www.youtube-nocookie.com/embed';
+
 /**
  * Converts a YouTube or Vimeo watch/share URL into an embeddable iframe URL.
  * Falls back to the original URL if the host isn't recognized (rare, since
@@ -12,14 +24,14 @@ export function toEmbedUrl(url) {
 
     if (host === 'youtube.com' || host === 'm.youtube.com') {
       const videoId = parsed.searchParams.get('v');
-      if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+      if (videoId) return `${YOUTUBE_EMBED}/${videoId}`;
       const shortsMatch = parsed.pathname.match(/\/shorts\/([^/]+)/);
-      if (shortsMatch) return `https://www.youtube.com/embed/${shortsMatch[1]}`;
+      if (shortsMatch) return `${YOUTUBE_EMBED}/${shortsMatch[1]}`;
     }
 
     if (host === 'youtu.be') {
       const videoId = parsed.pathname.replace('/', '');
-      if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+      if (videoId) return `${YOUTUBE_EMBED}/${videoId}`;
     }
 
     if (host === 'vimeo.com') {

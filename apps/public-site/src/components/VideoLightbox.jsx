@@ -44,7 +44,19 @@ export default function VideoLightbox({ videos, index, onClose, onIndexChange })
           </button>
         )}
         <div className="video-embed w-full max-w-4xl">
-          <iframe src={toEmbedUrl(video.url)} title={video.title} allowFullScreen />
+          {/* `referrerPolicy` explicit, nu implicitul browserului: playerul
+              YouTube refuza sa porneasca si arata "Video player configuration
+              error (153)" daca nu afla de pe ce site e incorporat. Implicitul
+              trimite originea azi, dar e o politica a browserului, nu a
+              noastra - iar un antet `Referrer-Policy: no-referrer` adaugat
+              candva la o trecere de securitate ar opri toate filmuletele
+              dintr-odata, fara ca nimeni sa lege cele doua lucruri. */}
+          <iframe
+            src={toEmbedUrl(video.url)}
+            title={video.title}
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+          />
         </div>
         {index < videos.length - 1 && (
           <button

@@ -225,6 +225,8 @@ function HomeVideoCard({ video }) {
             src={`${toEmbedUrl(video.url)}?autoplay=1`}
             title={video.title}
             allow="autoplay; encrypted-media; fullscreen"
+            // Vezi VideoLightbox pentru de ce e scris explicit.
+            referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
           />
         ) : (

@@ -7,23 +7,37 @@ describe('toEmbedUrl', () => {
   });
 
   it('converts a youtube.com watch URL', () => {
-    expect(toEmbedUrl('https://www.youtube.com/watch?v=abc123')).toBe('https://www.youtube.com/embed/abc123');
+    expect(toEmbedUrl('https://www.youtube.com/watch?v=abc123')).toBe('https://www.youtube-nocookie.com/embed/abc123');
   });
 
   it('converts a youtu.be short link', () => {
-    expect(toEmbedUrl('https://youtu.be/abc123')).toBe('https://www.youtube.com/embed/abc123');
+    expect(toEmbedUrl('https://youtu.be/abc123')).toBe('https://www.youtube-nocookie.com/embed/abc123');
   });
 
   it('converts a youtube shorts URL', () => {
-    expect(toEmbedUrl('https://www.youtube.com/shorts/abc123')).toBe('https://www.youtube.com/embed/abc123');
+    expect(toEmbedUrl('https://www.youtube.com/shorts/abc123')).toBe('https://www.youtube-nocookie.com/embed/abc123');
   });
 
   it('converts an m.youtube.com URL', () => {
-    expect(toEmbedUrl('https://m.youtube.com/watch?v=abc123')).toBe('https://www.youtube.com/embed/abc123');
+    expect(toEmbedUrl('https://m.youtube.com/watch?v=abc123')).toBe('https://www.youtube-nocookie.com/embed/abc123');
   });
 
   it('converts a vimeo.com URL', () => {
     expect(toEmbedUrl('https://vimeo.com/12345678')).toBe('https://player.vimeo.com/video/12345678');
+  });
+
+  it('never sends a viewer to the tracking domain', () => {
+    // Nu e o preferinta de stil: youtube-nocookie nu pune cookie-uri de
+    // publicitate pana la apasarea pe play, iar pagina e vizitata si de
+    // copii. Daca cineva reintroduce `youtube.com` undeva, se vede aici.
+    for (const link of [
+      'https://www.youtube.com/watch?v=abc123',
+      'https://youtu.be/abc123',
+      'https://www.youtube.com/shorts/abc123',
+      'https://m.youtube.com/watch?v=abc123',
+    ]) {
+      expect(toEmbedUrl(link)).toContain('youtube-nocookie.com');
+    }
   });
 
   it('falls back to the original URL for an unrecognized host', () => {
