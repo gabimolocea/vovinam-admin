@@ -390,7 +390,6 @@ class Athlete(TimestampMixin, SyncMixin, SoftDeleteMixin, AuditMixin, ApprovalWo
     cnp = models.CharField(_('CNP'), max_length=13, blank=True, null=True)
     nationality = models.CharField(_('Naționalitate'), max_length=100, blank=True, null=True, default='Română')
     date_of_birth = models.DateField(_('Data nașterii'), blank=True, null=True)
-    team_place = models.CharField(_('Loc obținut cu echipa'), max_length=50, blank=True, null=True)  # Place awarded to the athlete in a team competition
     address = models.TextField(_('Adresă'), blank=True, null=True)
     mobile_number = models.CharField(_('Telefon mobil'), max_length=15, blank=True, null=True)
     

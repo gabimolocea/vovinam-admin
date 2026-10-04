@@ -182,7 +182,6 @@ class AthleteSerializer(serializers.ModelSerializer):
                 'license_series': getattr(instance, 'license_series', None),
                 'cnp': getattr(instance, 'cnp', None),
                 'date_of_birth': _safe_scalar(getattr(instance, 'date_of_birth', None)),
-                'team_place': getattr(instance, 'team_place', None),
                 'address': getattr(instance, 'address', None),
                 'mobile_number': getattr(instance, 'mobile_number', None),
                 'emergency_contact_name': getattr(instance, 'emergency_contact_name', None),
