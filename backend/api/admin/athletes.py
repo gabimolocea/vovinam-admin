@@ -270,7 +270,6 @@ class AthleteAdminForm(forms.ModelForm):
         'admin_notes': _('Notițe administrator'),
         'medical_certificate': _('Certificat medical'),
         'previous_experience': _('Experiență anterioară'),
-        'team_place': _('Loc obținut cu echipa'),
     }
 
     def __init__(self, *args, **kwargs):
@@ -342,8 +341,17 @@ class AthleteAdmin(admin.ModelAdmin):
             ),
             'fields': ('profile_image_status', 'pending_profile_image_preview', 'profile_image_admin_notes'),
         }),
+        # `team_place` nu e aici intentionat. E un camp ramas din schema
+        # initiala: text liber, unul singur pe sportiv, nelegat de vreo
+        # competitie - deci al doilea rezultat de echipa l-ar suprascrie pe
+        # primul, fara sa spuna unde si cand. Rezultatele de echipa se tin de
+        # mult in CategoryAthleteScore (type='teams', team_members,
+        # placement_claimed), de unde se si calculeaza medaliile; vezi
+        # medal_counts_for_athlete. Coloana a ramas in baza de date, dar nu
+        # mai are ce cauta intr-un formular, unde nu facea decat sa para ca
+        # trebuie completata.
         ('Informații sportive și club', {
-            'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'team_place', 'is_coach', 'is_instructor', 'is_referee')
+            'fields': ('club', 'city', 'current_grade_display_readonly', 'federation_role', 'title', 'registered_date', 'expiration_date', 'is_coach', 'is_instructor', 'is_referee')
         }),
         ('Arbitraj', {
             'description': 'Doar pentru sportivii bifați ca arbitru mai sus. Categoria se aplică doar arbitrilor naționali.',
