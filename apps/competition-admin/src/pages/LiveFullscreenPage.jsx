@@ -24,6 +24,7 @@ import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
 import RefereeAccessModal from '../components/RefereeAccessModal';
 import { exportMatchExcel } from '../lib/exportMatchExcel';
 import { useToast } from '../contexts/ToastContext';
+import { citesteMasa } from '../lib/masaCentrala';
 
 /* ═══════════════════════════════════════════════════════
    LIVE FULLSCREEN PAGE — full-screen view for a field
@@ -162,24 +163,23 @@ function ChenarPulsand({ rotunjit = 'rounded-lg' }) {
   );
 }
 
-function Indrumare({ text, onGata, eticheta = 'Am verificat', className = '' }) {
+function Indrumare({ text, onGata, eticheta = 'Da', className = '' }) {
   return (
-    <div className={`z-30 flex items-stretch gap-2 ${className}`}>
-      {/* Butonul la STANGA bulei, pe acelasi rand, si amandoua in afara ramei
-          galbene.
-          Inauntrul ramei arata ca o parte a atentionarii - ceva de citit, nu
-          de apasat. Langa ea si verde, se vede ca e actiunea care duce mai
-          departe, si ramane lipit de lucrul la care se refera. */}
+    // Pe ecrane inguste raspunsul sta LANGA intrebare, pe acelasi rand: acolo
+    // bula atarna deasupra blocului si fiecare rand in plus o inalta peste
+    // continutul de deasupra. Pe ecrane late sta DEDESUBT si la dreapta, unde
+    // bula e ingusta si inalta si randul suplimentar nu deranjeaza pe nimeni.
+    <div className={`z-40 flex items-center gap-2 xl:flex-col xl:items-end ${className}`}>
+      <div className="min-w-0 flex-1 rounded-md border-2 border-amber-500 bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950 shadow-lg xl:w-full xl:flex-none">
+        {text}
+      </div>
       {onGata && (
         <button
           type="button"
           onClick={onGata}
-          className="shrink-0 animate-pulse self-stretch rounded-md border-2 border-emerald-700 bg-emerald-600 px-4 text-xs font-bold uppercase tracking-wide text-white shadow-md transition hover:bg-emerald-700"
+          className="shrink-0 animate-pulse rounded-md border-2 border-emerald-700 bg-emerald-600 px-5 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-md transition hover:bg-emerald-700"
         >{eticheta}</button>
       )}
-      <div className="rounded-md border-2 border-amber-500 bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950 shadow-lg">
-        {text}
-      </div>
     </div>
   );
 }
@@ -477,6 +477,34 @@ export default function LiveFullscreenPage() {
     }
   }, [session?.current_match, session?.current_category, panelType, itemId, setSearchParams]);
 
+  // Fara `panel` in adresa, pagina nu avea ce arata - si ramanea goala.
+  //
+  // Un admin ajunge aici dintr-un clic pe o anume proba, deci adresa vine
+  // gata completata. Masa centrala ajunge direct pe teren, prin PIN, si nu are
+  // de unde sti ce proba sa ceara: ea stie doar atat, "terenul meu". Deci o
+  // afla pagina, din starea terenului - ce e pe ecran acum, altfel proba
+  // inceputa, altfel urmatoarea din program.
+  useEffect(() => {
+    if (panelType || !fieldId) return;
+    const alege = (tip, id) => setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('panel', tip);
+      next.set('id', String(id));
+      return next;
+    }, { replace: true });
+
+    if (session?.current_match) return alege('match', session.current_match);
+    if (session?.current_category) return alege('category', session.current_category);
+
+    const aleTerenului = catAssignments.filter((a) => a.field === fieldId);
+    const inCurs = aleTerenului.find((a) => a.status === 'in_progress');
+    if (inCurs) return alege('category', inCurs.category);
+    const urmatoarea = aleTerenului
+      .filter((a) => a.status !== 'completed')
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
+    if (urmatoarea) return alege('category', urmatoarea.category);
+  }, [panelType, fieldId, session?.current_match, session?.current_category, catAssignments, setSearchParams]);
+
   const currentFieldRecordingSession = recordingSessions.find(rs => rs.field === fieldId && rs.status === 'recording')
     || recordingSessions.find(rs => rs.field === fieldId)
     || null;
@@ -519,7 +547,11 @@ export default function LiveFullscreenPage() {
     });
   const isCurrentMatchFinalized = !!currentMatch
     && (currentMatch.status === 'completed' || currentAssignment?.status === 'completed');
-  useEffect(() => { setPreviewVazut(false); }, [itemId]);
+  // Raportat de jos, din tabel: toti sportivii sunt gata, chiar daca unii
+  // au fost opriti fara setul complet de note.
+  const [totiTerminati, setTotiTerminati] = useState(false);
+  const [istoricDeschis, setIstoricDeschis] = useState(false);
+  useEffect(() => { setPreviewVazut(false); setTotiTerminati(false); }, [itemId]);
 
 
   const isCurrentCategoryFinalized = !!currentCat
@@ -760,7 +792,16 @@ export default function LiveFullscreenPage() {
     );
   }
 
-  const goBack = () => navigate(`/competitions/${eventId}/categories/live`);
+  // "Inapoi" duce la lista de probe a zilei - o pagina de admin. Masa
+  // centrala n-are acces acolo (si nici n-ar avea ce cauta), deci ar fi ramas
+  // blocata pe ecranul de acces interzis exact dupa ce incheia o proba. Pentru
+  // ea, inapoi inseamna "terenul meu, fara nicio proba aleasa" - iar de acolo
+  // pagina alege singura ce urmeaza.
+  const goBack = () => navigate(
+    citesteMasa()
+      ? `/competitions/${eventId}/live-fullscreen?field=${fieldId}`
+      : `/competitions/${eventId}/categories/live`,
+  );
 
   const finishAndReturnToSchedule = async () => {
     setShowFinishConfirm(false);
@@ -864,14 +905,14 @@ export default function LiveFullscreenPage() {
               <button
                 onClick={() => setShowFinishConfirm(true)}
                 disabled={busy}
-                className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
+                className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted || totiTerminati ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
               >ÎNCHEIE PROBA</button>
               {/* Ultimul pas. Chenarul era verde ca restul butonului; galben,
                   e aceeasi culoare ca toate indrumarile dinainte, deci se
                   citeste ca "urmatorul lucru de facut", nu ca o stare. */}
-              {isCurrentCategoryCompleted && (
+              {(isCurrentCategoryCompleted || totiTerminati) && (
                 <Indrumare
-                  text="Toți sportivii au note - încheie proba"
+                  text="Toți sportivii au terminat - încheie proba"
                   className="absolute right-0 top-full mt-2 whitespace-nowrap"
                 />
               )}
@@ -893,6 +934,9 @@ export default function LiveFullscreenPage() {
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
             <button onClick={() => exportExcelRef.current?.()} disabled={busy} className={TOPNAV_SECONDARY_BUTTON} title="Exportă rezultatele în Excel">⬇ Excel</button>
           )}
+          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
+            <button onClick={() => setIstoricDeschis(true)} className={TOPNAV_SECONDARY_BUTTON} title="Desfășurarea probei și fiecare modificare de notă">Istoric</button>
+          )}
 
           <a href={`${publicDisplayOrigin()}/display/${fieldId}`} target="_blank" rel="noopener noreferrer"
             className={`${TOPNAV_SECONDARY_BUTTON} text-center`} title="Deschide ecranul public într-o filă nouă">
@@ -906,11 +950,12 @@ export default function LiveFullscreenPage() {
             >
               Preview
             </button>
+            {/* Fara buton de confirmare: apasarea pe Preview E actiunea ceruta,
+                si ea inchide pasul singura. Un buton separat care spune acelasi
+                lucru e inca o decizie de luat pentru nimic. */}
             {pasPreview && (
               <Indrumare
                 text="Deschide Preview și verifică ce se vede pe ecranul din sală"
-                onGata={() => setPreviewVazut(true)}
-                eticheta="Am văzut"
                 className="absolute right-0 top-full mt-2 w-64"
               />
             )}
@@ -1016,6 +1061,15 @@ export default function LiveFullscreenPage() {
       })()}
 
       {/* All athletes done - nudge towards ÎNCHEIE PROBA, in case the pulsing button goes unnoticed */}
+      {istoricDeschis && currentCat && (
+        <IstoricProba
+          categoryId={currentCat.id}
+          categoryName={currentCat.name}
+          onClose={() => setIstoricDeschis(false)}
+          onRestaurat={fetchMatchState}
+        />
+      )}
+
       {showAllDoneModal && (
         <FullscreenModal
           onClose={() => setShowAllDoneModal(false)}
@@ -1121,6 +1175,7 @@ export default function LiveFullscreenPage() {
             refreshCategories={refreshCategories}
             isCategoryCompleted={isCurrentCategoryCompleted}
             onLastAthleteStopped={() => setShowAllDoneModal(true)}
+            onTotiTerminati={setTotiTerminati}
             exportExcelRef={exportExcelRef}
           />
         ) : panelType === 'match' && currentMatch ? (
@@ -1193,7 +1248,7 @@ export default function LiveFullscreenPage() {
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
-function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, busy, setBusy, switchDisplay, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, exportExcelRef }) {
+function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, busy, setBusy, switchDisplay, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, onTotiTerminati, exportExcelRef }) {
   const toast = useToast();
   const isTeamCategory = cat.type === 'team';
 
@@ -1214,9 +1269,8 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
   // lucru pe care operatorul il face cu ochii. Deci il confirma el, o data pe
   // proba.
   const [arbitriVerificati, setArbitriVerificati] = useState(false);
-  const [opresteVazut, setOpresteVazut] = useState(false);
   // Alta proba inseamna alti arbitri: confirmarea nu se poarta mai departe.
-  useEffect(() => { setArbitriVerificati(false); setOpresteVazut(false); }, [cat?.id]);
+  useEffect(() => { setArbitriVerificati(false); }, [cat?.id]);
 
   const [catRefModalData, setCatRefModalData] = useState(null); // { refId, refName, refPos, athleteId, athleteName, athleteScoreId, currentScore, existingScoreId }
   const [catScoreInput, setCatScoreInput] = useState('');
@@ -1313,13 +1367,37 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
     const rScores = catScoreId ? refScores.filter(rs => rs.athlete_score === catScoreId) : [];
     const scoreByRef = {};
     const scoreIdByRef = {};
-    for (const rs of rScores) { scoreByRef[rs.referee] = rs.score; scoreIdByRef[rs.referee] = rs.id; }
+    const scoreDateByRef = {};
+    for (const rs of rScores) {
+      scoreByRef[rs.referee] = rs.score;
+      scoreIdByRef[rs.referee] = rs.id;
+      scoreDateByRef[rs.referee] = rs.submitted_date;
+    }
     const vals = refCols.map(r => r.id ? scoreByRef[r.id] : undefined);
     const scoreIds = refCols.map(r => r.id ? scoreIdByRef[r.id] : undefined);
-    const audits = refCols.map(r => {
+    // Steagul "pusa de un admin" descrie o nota anume, nu un sportiv.
+    //
+    // Evenimentele de notare traiesc mai mult decat notele: resetarea probei
+    // sterge notele, dar nu si istoricul lor. Fara verificarile de mai jos
+    // ramaneau doua urme false - un colt rosu pe o celula goala dupa resetare,
+    // si, dupa ce arbitrul renota si un admin corecta, un "scor arbitru: N"
+    // luat din evenimentele de dinaintea resetarii.
+    //
+    // Deci: fara nota, niciun steag; si doar evenimentele notei care exista
+    // acum, nu ale celor sterse inaintea ei.
+    const audits = refCols.map((r, ri) => {
       if (!r.id || !catScoreId) return null;
-      const events = scoreEventsByKey.get(`${catScoreId}_${r.id}`);
-      if (!events || events.length === 0) return null;
+      if (vals[ri] == null) return null;
+
+      const toate = scoreEventsByKey.get(`${catScoreId}_${r.id}`);
+      if (!toate || toate.length === 0) return null;
+
+      // O secunda de toleranta: evenimentul si randul de nota se scriu la
+      // momente apropiate, si nu intotdeauna in aceeasi ordine.
+      const notaDinMs = scoreDateByRef[r.id] ? new Date(scoreDateByRef[r.id]).getTime() - 1000 : 0;
+      const events = toate.filter(ev => new Date(ev.timestamp).getTime() >= notaDinMs);
+      if (events.length === 0) return null;
+
       const latest = events[events.length - 1];
       if (latest.source !== 'competition_admin') return null;
       const firstEvent = events[0];
@@ -1383,15 +1461,28 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
   // Cine reia pagina la mijloc - sau o deschide pe alt laptop - e prins acolo
   // unde e, nu purtat de la inceput. Si cand proba merge deja, indrumarea
   // dispare singura, fara sa fie inchisa de nimeni.
+  // Butonul "Incheie proba" din bara de sus se aprinde cand nu mai e nimic de
+  // facut in tabel. Pagina stia doar de `isCategoryCompleted`, care cere setul
+  // complet de note de la toti - dar un sportiv oprit fara toate notele ramane
+  // "Terminat" fara sa le aiba, si atunci butonul nu se aprindea niciodata,
+  // tocmai in proba in care operatorul avea mai mare nevoie sa i se spuna ca a
+  // terminat. Starea asta o stie doar tabelul, deci o raporteaza in sus.
+  const totiTerminati = rows.length > 0 && rows.every(r => r.isDisqualified
+    || r.allScoresIn
+    || (finishedAthletes.has(r.athleteId) && !r.isActive));
+  useEffect(() => { onTotiTerminati?.(totiTerminati); }, [totiTerminati, onTotiTerminati]);
+
   const sesiuneaMerge = !!session && session.status !== 'idle';
   const pasIndrumare = (() => {
     if (!sesiuneaMerge || isCategoryCompleted) return null;
     // Cat timp indrumarea din bara de sus arata inca spre Preview, panoul
     // tace: doua indrumari deodata nu spun care e urmatorul pas.
     if (!previewVazut) return null;
-    // Cineva prezinta: urmatorul lucru de stiut e cum se opreste. O singura
-    // data pe proba, nu la fiecare sportiv - dupa primul, operatorul stie.
-    if (session?.current_athlete) return opresteVazut ? null : 'opreste';
+    // Cineva prezinta: urmatorul lucru de stiut e cum se opreste. La fiecare
+    // sportiv, nu doar la primul: indrumarea nu spune doar unde e butonul, ci
+    // si cand se apasa - dupa ce nota a stat destul pe ecran - iar asta e o
+    // decizie care se ia din nou la fiecare sportiv.
+    if (session?.current_athlete) return 'opreste';
     return arbitriVerificati ? 'prezinta' : 'arbitri';
   })();
 
@@ -1430,7 +1521,12 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
   // urmatorul sportiv, si el nu stie de indrumare: pulsa si cat timp proba
   // nici nu era pe TV. Doua chemari deodata nu spun "fa astea doua", spun
   // "nu stiu care e urmatorul pas".
-  if (highlightAction === 'present' && (!sesiuneaMerge || pasIndrumare === 'arbitri')) {
+  //
+  // `!previewVazut` prinde pasul Preview, care e in bara de sus, deci la
+  // nivelul paginii: acolo `pasIndrumare` e null - panoul tace intentionat -
+  // si fara conditia asta verdele pulsa tocmai cat timp indrumarea arata in
+  // alta parte.
+  if (highlightAction === 'present' && (!sesiuneaMerge || !previewVazut || pasIndrumare === 'arbitri')) {
     highlightAthleteId = null;
     highlightAction = null;
   }
@@ -1780,7 +1876,13 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
     if (isCategoryCompleted) onLastAthleteStopped?.();
   };
 
-  const renderActionButtons = (row, compact = false) => {
+  // `ultimulRand`: bula de indrumare sta sub buton, iar tabelul de pe
+  // desktop e intr-un container cu overflow - la ultimul sportiv bula cadea
+  // in afara lui si se taia. Acolo, si doar acolo, o intoarcem deasupra.
+  const renderActionButtons = (row, compact = false, ultimulRand = false) => {
+    const bulaPozitie = !compact && ultimulRand
+      ? 'absolute bottom-full left-0 mb-1'
+      : 'absolute top-full left-0 mt-1';
     const buttonBase = compact
       ? 'flex-1 min-w-[130px] px-3 py-2 text-xs'
       : 'px-4 py-2 text-sm';
@@ -1791,6 +1893,17 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
     return (
       <div className={`flex items-center ${compact ? 'justify-stretch' : 'justify-center'} gap-1.5 flex-wrap`}>
         {row.isActive ? (
+          <span className="relative inline-flex">
+          {/* Deasupra butonului, ca suprapunere - nu in flux.
+              In flux, bula impingea tabelul in jos cand aparea si il trage
+              inapoi cand dispare, iar randul pe care operatorul tocmai se
+              uita isi schimba locul sub ochii lui. */}
+          {pasIndrumare === 'opreste' && (
+            <Indrumare
+              text="Oprește după ce nota a stat 5-10 secunde pe ecran"
+              className={`${bulaPozitie} w-[24rem] max-w-[92vw] xl:w-80`}
+            />
+          )}
           <button
             onClick={() => {
               // Oprit prea devreme, nota unui arbitru care inca nu a
@@ -1805,11 +1918,21 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
             }}
             disabled={busy}
             className={`${buttonBase} ${presentButtonWidth} rounded-md border border-amber-500 font-bold transition disabled:opacity-40 bg-amber-400 text-amber-950 hover:bg-amber-300 whitespace-nowrap ${
-              highlightAthleteId === row.athleteId && highlightAction === 'active' ? 'ring-2 ring-amber-600 ring-offset-1' : ''
+              pasIndrumare === 'opreste'
+                ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse'
+                : (highlightAthleteId === row.athleteId && highlightAction === 'active' ? 'ring-2 ring-amber-600 ring-offset-1' : '')
             }`}>
             Oprește
           </button>
+          </span>
         ) : (
+          <span className="relative inline-flex">
+          {pasIndrumare === 'prezinta' && highlightAthleteId === row.athleteId && (
+            <Indrumare
+              text="Apasă Prezintă pentru a afișa sportivul pe ecran și pentru a-l chema la teren"
+              className={`${bulaPozitie} w-[24rem] max-w-[92vw] xl:w-80`}
+            />
+          )}
           <button
             onClick={() => presentAthlete(row.athleteId)}
             disabled={busy || row.isDisqualified || row.allScoresIn}
@@ -1817,20 +1940,20 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
             className={`${buttonBase} ${presentButtonWidth} rounded-md border font-bold transition disabled:opacity-40 whitespace-nowrap ${
               row.isDisqualified || row.allScoresIn
                 ? 'border-border bg-muted text-muted-foreground'
-                : highlightAthleteId === row.athleteId && highlightAction === 'present'
-                  ? 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 ring-2 ring-emerald-400 ring-offset-1 animate-pulse'
-                  : 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+                : pasIndrumare === 'prezinta' && highlightAthleteId === row.athleteId
+                  ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 ring-4 ring-amber-400 ring-offset-2 animate-pulse'
+                  : highlightAthleteId === row.athleteId && highlightAction === 'present'
+                    ? 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 ring-2 ring-emerald-400 ring-offset-1 animate-pulse'
+                    : 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
             }`}>
             Prezintă
           </button>
+          </span>
         )}
         <button
           onClick={() => setResetConfirmData({ athleteId: row.athleteId, athleteName: row.athleteName, row })}
-          disabled={busy || row.scoreCount === 0}
-          title={row.scoreCount === 0 ? 'Nicio notă introdusă încă' : undefined}
-          className={`${buttonBase} rounded-md border font-bold transition disabled:opacity-40 whitespace-nowrap ${
-            row.scoreCount === 0 ? 'border-border bg-muted text-muted-foreground cursor-not-allowed' : 'border-border bg-card text-red-700 hover:bg-red-100'
-          }`}
+          disabled={busy}
+          className={`${buttonBase} rounded-md border font-bold transition disabled:opacity-40 whitespace-nowrap border-border bg-card text-red-700 hover:bg-red-100`}
         >
           Resetează
         </button>
@@ -1889,14 +2012,17 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
             </div>
           </div>
 
-          <div className="w-full xl:col-start-3 xl:justify-self-end xl:max-w-md">
-            {/* Indrumarea DEASUPRA ramei, nu inauntrul ei: chenarul incadreaza
-                doar ce e de verificat - lista de arbitri. */}
+          <div className="relative w-full xl:col-start-3 xl:justify-self-end xl:max-w-md">
+            {/* La STANGA blocului, ca suprapunere - acolo e spatiu gol in
+                grila, si asa nu impinge nimic.
+                Deasupra intra sub bara fixa de sus; in flux, coboara tot
+                blocul de arbitri cand apare si il urca la loc cand dispare. */}
             {pasIndrumare === 'arbitri' && (
               <Indrumare
-                text="Verifică toți arbitrii sunt asignați și conectați"
+                text="Sunt arbitrii asignați și conectați?"
                 onGata={() => setArbitriVerificati(true)}
-                className="mb-2"
+                eticheta="Da"
+                className="absolute bottom-full right-0 mb-1 w-[24rem] max-w-[92vw] xl:bottom-auto xl:right-full xl:top-0 xl:mb-0 xl:mr-4 xl:w-72"
               />
             )}
             <div className="relative">
@@ -2055,7 +2181,9 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
         <FullscreenModal
           onClose={() => setResetConfirmData(null)}
           title="Confirmă resetarea"
-          description={`Ești sigur că vrei să resetezi toate scorurile pentru ${resetConfirmData.athleteName}?`}
+          description={resetConfirmData.row.scoreCount === 0
+            ? `${resetConfirmData.athleteName} nu are nicio notă. Resetarea îl scoate din starea "Terminat" și îl ascunde de pe ecran.`
+            : `Ești sigur că vrei să resetezi toate scorurile pentru ${resetConfirmData.athleteName}?`}
           actions={[
             <button key="cancel" onClick={() => setResetConfirmData(null)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
             <button key="confirm" onClick={() => { resetAthleteScores(resetConfirmData.row); setResetConfirmData(null); }} className={MODAL_DANGER_BUTTON}>Da, resetează</button>,
@@ -2083,21 +2211,13 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
           deja evidentiat cu inel verde pulsand de mecanismul care alege
           urmatorul sportiv, iar o bula inauntrul unui rand de tabel ar strica
           latimile coloanelor. */}
-      {pasIndrumare === 'prezinta' && (
-        <Indrumare
-          text="Apasă Prezintă pentru a afișa sportivul pe ecran și pentru a-l chema la teren"
-          className="mb-2"
-        />
-      )}
-      {pasIndrumare === 'opreste' && (
-        <Indrumare
-          text="După ce sportivul a terminat, apasă Oprește - abia atunci arbitrii pot trimite notele"
-          onGata={() => setOpresteVazut(true)}
-          className="mb-2"
-        />
-      )}
-      <div className="relative overflow-hidden border-2 border-border bg-card shadow-sm">
-        {(pasIndrumare === 'prezinta' || pasIndrumare === 'opreste') && <ChenarPulsand rotunjit="rounded-none" />}
+      {/* `overflow-hidden` taia bulele de indrumare care ies din randul lor.
+          Ele exista doar cat tine un pas, deci taierea se opreste atunci si
+          revine imediat ce indrumarea dispare. */}
+      {/* Fara chenar pe tabel: evidentierea sta pe butonul care trebuie apasat,
+          nu pe tot ce il contine. `overflow-hidden` cade doar cat tine pasul,
+          ca bula de indrumare sa poata iesi din randul ei. */}
+      <div className={`relative border-2 border-border bg-card shadow-sm ${pasIndrumare ? '' : 'overflow-hidden'}`}>
         <div className="space-y-3 p-3 lg:hidden">
           {rows.map((row, idx) => {
             const rank = getRank(row.athleteId);
@@ -2246,7 +2366,7 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
                       ) : rank ? <span className="text-xs text-muted-foreground/60">{rank}</span> : '—'}
                     </td>
                     <td className="border border-border/20 px-2 py-2.5">
-                      {renderActionButtons(row)}
+                      {renderActionButtons(row, false, idx === rows.length - 1)}
                     </td>
                   </tr>
                 );
@@ -3780,6 +3900,221 @@ function FullscreenModal({ onClose, title, description, actions, children }) {
         {actions ? <DialogFooter>{actions}</DialogFooter> : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Istoricul unei probe ───────────────────────────────────────────────
+//
+// Doua jurnale, o singura relatare: desfasurarea (cand a inceput proba, cine a
+// prezentat si cand) si notele (cine ce a dat, ce s-a schimbat, ce s-a sters).
+// Separat, niciunul nu raspunde la intrebarea care se pune de fapt dupa
+// competitie - "ce s-a intamplat la sportivul asta?" - pentru ca raspunsul se
+// afla intre ele.
+//
+// Si un drum inapoi: orice rand de nota poate readuce sportivul la cum era
+// atunci. Restaurarea se scrie si ea in jurnal, deci se poate anula la randul
+// ei; nimic nu se pierde definitiv dintr-o apasare gresita.
+
+const ISTORIC_FLUX = {
+  start: { eticheta: 'Proba a început', culoare: 'bg-emerald-100 text-emerald-800' },
+  present: { eticheta: 'A intrat pe saltea', culoare: 'bg-sky-100 text-sky-800' },
+  stop: { eticheta: 'A terminat', culoare: 'bg-amber-100 text-amber-900' },
+  finish: { eticheta: 'Proba s-a încheiat', culoare: 'bg-muted text-foreground/70' },
+};
+
+const ISTORIC_SURSA = {
+  referee_app: 'de pe dispozitiv',
+  competition_admin: 'din masa centrală',
+  system: 'restaurare',
+};
+
+function ceasul(valoare) {
+  const d = new Date(valoare);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString('ro-RO', { hour12: false });
+}
+
+function nota(valoare) {
+  return valoare == null ? '—' : Math.round(Number(valoare));
+}
+
+function IstoricProba({ categoryId, categoryName, onClose, onRestaurat }) {
+  const [flux, setFlux] = useState([]);
+  const [note, setNote] = useState([]);
+  const [incarca, setIncarca] = useState(true);
+  const [eroare, setEroare] = useState(null);
+  const [confirmare, setConfirmare] = useState(null);
+  const [lucreaza, setLucreaza] = useState(false);
+  const toast = useToast();
+
+  const adu = useCallback(async () => {
+    setIncarca(true);
+    setEroare(null);
+    try {
+      const [f, n] = await Promise.all([
+        scoreTimelineAPI.categoryFlowEvents.list({ category: categoryId }),
+        scoreTimelineAPI.categoryRefereeEvents.list({ category: categoryId }),
+      ]);
+      setFlux(f.data || []);
+      setNote(n.data || []);
+    } catch (e) {
+      console.error(e);
+      setEroare('Nu am putut citi istoricul.');
+    }
+    setIncarca(false);
+  }, [categoryId]);
+
+  useEffect(() => { adu(); }, [adu]);
+
+  // Cele doua jurnale, impletite dupa ceas.
+  const randuri = useMemo(() => {
+    const toate = [
+      ...flux.map(e => ({ ...e, fel: 'flux' })),
+      ...note.map(e => ({ ...e, fel: 'nota' })),
+    ];
+    return toate.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime();
+      const tb = new Date(b.timestamp).getTime();
+      return ta !== tb ? ta - tb : (a.id || 0) - (b.id || 0);
+    });
+  }, [flux, note]);
+
+  const restaureaza = async () => {
+    if (!confirmare) return;
+    setLucreaza(true);
+    try {
+      const { data } = await scoreTimelineAPI.categoryRefereeEvents.restore({
+        athlete_score: confirmare.athlete_score,
+        to_event: confirmare.id,
+      });
+      const neatinse = (data.untouched_referees || []).length;
+      toast.success(
+        `Notele au fost readuse la ${ceasul(confirmare.timestamp)}.`
+        + (neatinse ? ` ${neatinse} notă/note fără urmă în istoric au rămas neatinse.` : '')
+      );
+      setConfirmare(null);
+      await adu();
+      await onRestaurat?.();
+    } catch (e) {
+      console.error(e);
+      toast.error('Restaurarea nu a reușit.');
+    }
+    setLucreaza(false);
+  };
+
+  return (
+    <FullscreenModal
+      onClose={onClose}
+      title={`Istoric — ${categoryName || 'probă'}`}
+      description="Desfășurarea probei și fiecare modificare de notă, în ordinea în care s-au petrecut."
+      actions={[
+        <button key="inchide" onClick={onClose} className={MODAL_SECONDARY_BUTTON}>Închide</button>,
+      ]}
+    >
+      {incarca && <p className="text-sm text-muted-foreground">Se încarcă…</p>}
+      {eroare && <p className="text-sm text-red-700">{eroare}</p>}
+      {!incarca && !eroare && randuri.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Nu există încă nimic înregistrat pentru această probă.
+        </p>
+      )}
+
+      {!incarca && randuri.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-muted text-left text-xs uppercase tracking-wide text-foreground/70">
+                <th className="border border-border px-3 py-2">Ora</th>
+                <th className="border border-border px-3 py-2">Ce s-a întâmplat</th>
+                <th className="border border-border px-3 py-2">Sportiv</th>
+                <th className="border border-border px-3 py-2">Cine</th>
+                <th className="border border-border px-3 py-2 text-right">Acțiune</th>
+              </tr>
+            </thead>
+            <tbody>
+              {randuri.map(r => {
+                if (r.fel === 'flux') {
+                  const f = ISTORIC_FLUX[r.action] || { eticheta: r.action, culoare: 'bg-muted' };
+                  return (
+                    <tr key={`f-${r.id}`} className="bg-muted/30">
+                      <td className="border border-border/30 px-3 py-2 tabular-nums">{ceasul(r.timestamp)}</td>
+                      <td className="border border-border/30 px-3 py-2">
+                        <span className={`inline-flex rounded px-2 py-0.5 text-xs font-bold ${f.culoare}`}>{f.eticheta}</span>
+                      </td>
+                      <td className="border border-border/30 px-3 py-2">{r.athlete_name || '—'}</td>
+                      <td className="border border-border/30 px-3 py-2 text-muted-foreground">{r.created_by_name || '—'}</td>
+                      <td className="border border-border/30 px-3 py-2" />
+                    </tr>
+                  );
+                }
+                const sters = r.action === 'delete';
+                const descriere = sters
+                  ? `Notă ștearsă (era ${nota(r.previous_score)})`
+                  : r.action === 'create'
+                    ? `Notă trimisă: ${nota(r.score_value)}`
+                    : r.action === 'reveal'
+                      ? 'Note dezvăluite'
+                      : `Notă schimbată: ${nota(r.previous_score)} → ${nota(r.score_value)}`;
+                return (
+                  <tr key={`n-${r.id}`}>
+                    <td className="border border-border/30 px-3 py-2 tabular-nums">{ceasul(r.timestamp)}</td>
+                    <td className={`border border-border/30 px-3 py-2 ${sters ? 'text-red-700' : ''}`}>
+                      {descriere}
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({r.referee_name || 'arbitru'}, {ISTORIC_SURSA[r.source] || r.source})
+                      </span>
+                    </td>
+                    <td className="border border-border/30 px-3 py-2">{r.athlete_name || '—'}</td>
+                    <td className="border border-border/30 px-3 py-2 text-muted-foreground">{r.created_by_name || '—'}</td>
+                    <td className="border border-border/30 px-3 py-2 text-right">
+                      {r.action !== 'reveal' && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmare(r)}
+                          className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-bold text-foreground transition hover:bg-accent"
+                        >
+                          Restaurează până aici
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {confirmare && (
+        <div className="rounded-md border border-amber-400 bg-amber-50 p-4">
+          <p className="font-bold text-amber-950">
+            Readuc notele lui {confirmare.athlete_name || 'acest sportiv'} la cum erau
+            la {ceasul(confirmare.timestamp)}?
+          </p>
+          <p className="mt-1 text-sm text-amber-900">
+            Se schimbă doar notele acestui sportiv, nu toată proba. Restaurarea intră
+            și ea în istoric, deci o poți anula la fel.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={lucreaza}
+              onClick={restaureaza}
+              className="rounded-md bg-amber-500 px-4 py-2 font-bold text-amber-950 transition hover:bg-amber-400 disabled:opacity-40"
+            >
+              {lucreaza ? 'Se restaurează…' : 'Da, restaurează'}
+            </button>
+            <button
+              type="button"
+              disabled={lucreaza}
+              onClick={() => setConfirmare(null)}
+              className={MODAL_SECONDARY_BUTTON}
+            >
+              Renunță
+            </button>
+          </div>
+        </div>
+      )}
+    </FullscreenModal>
   );
 }
 
