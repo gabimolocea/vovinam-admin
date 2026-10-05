@@ -114,7 +114,13 @@ function FloatingPreview({ fieldId, label, index, onClose }) {
 
   return (
     <div
-      className="fixed z-[9999] shadow-2xl border-2 border-gray-700 bg-black overflow-hidden rounded"
+      /* z-40: deasupra continutului paginii, dar SUB dialoguri.
+         La z-[9999] statea peste orice, inclusiv peste un dialog deschis - si
+         atunci acoperea butoanele lui, care la un dialog pe tot ecranul sunt
+         jos de tot. Iar dialogul fiind modal blocheaza clicurile din afara lui,
+         deci nici drawer-ul nu mai raspundea: se vedea deasupra si nu se putea
+         nici muta, nici inchide. */
+      className="fixed z-40 shadow-2xl border-2 border-gray-700 bg-black overflow-hidden rounded"
       style={{ ...placement, width: `${PREVIEW_W}px`, height: `${PREVIEW_H}px` }}
     >
       <div
