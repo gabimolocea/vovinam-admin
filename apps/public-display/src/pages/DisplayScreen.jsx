@@ -176,7 +176,7 @@ export default function DisplayScreen() {
     return (
       <div className="h-screen w-screen bg-white flex flex-col items-center justify-center gap-[3vh]">
         <img src="/frvv-logo.png" alt="FRVV" className="w-auto object-contain opacity-80" style={{ height: 'min(18vh, 10vw)' }} />
-        <h1 className="text-[3.5vw] font-black text-gray-900 tracking-tight text-center uppercase" style={{ hyphens: 'none' }}>
+        <h1 className="text-[2.8vw] font-black text-gray-900 tracking-tight text-center uppercase" style={{ hyphens: 'none' }}>
           {event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM'}
         </h1>
         {category && (
@@ -213,7 +213,7 @@ function IdleScreen({ event }) {
   return (
     <div className="h-screen w-screen bg-black flex flex-col items-center justify-center">
       <img src="/frvv-logo.png" alt="FRVV" className="w-80 h-80 object-contain mb-8" />
-      <h1 className="text-[4vw] font-black text-yellow-400 tracking-tight text-center uppercase">
+      <h1 className="text-[3vw] font-black text-yellow-400 tracking-tight text-center uppercase">
         {event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM'}
       </h1>
       <p className="text-[1.5vw] text-yellow-300/70 mt-3">Federația Română de Vovinam Viet-Vo-Dao</p>
@@ -285,7 +285,7 @@ function SoloTeamDisplay({ event, category, group, athlete, activeTeam, refScore
       <div className="flex items-center justify-between px-[3vw] py-[3vh] shrink-0">
         <img src="/frvv-logo.png" alt="FRVV" className="w-auto object-contain" style={{ height: 'min(17vh, 9vw)' }} />
         <div className="flex flex-col items-center text-center flex-1 px-[2vw]">
-          <h1 className="text-[3.2vw] text-gray-900 font-semibold leading-tight tracking-normal uppercase" style={{ hyphens: 'none', wordBreak: 'keep-all', overflowWrap: 'normal' }}>
+          <h1 className="text-[2.5vw] text-gray-900 font-semibold leading-tight tracking-normal uppercase" style={{ hyphens: 'none', wordBreak: 'keep-all', overflowWrap: 'normal' }}>
             {(event?.name || 'CAMPIONATUL NATIONAL DE VOVINAM')
               .replace(/-/g, '\u2011')
               .replace(/\s+(\S*\u2011\S*)/g, '\u00a0$1')}
