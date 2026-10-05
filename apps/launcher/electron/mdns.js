@@ -23,8 +23,10 @@ const os = require('os');
 const makeMdns = require('multicast-dns');
 
 // Numele pe care il cauta device-urile. Daca se schimba aici, trebuie schimbat
-// si in devices/referee-esp32c3/referee-esp32c3.ino (API_MDNS_NAME) - si
-// atunci toate device-urile trebuie reprogramate, deci nu se schimba.
+// in API_MDNS_NAME din FIECARE firmware de device - devices/referee-esp32c3
+// (varianta cu encoder), devices/referee-esp32s3-touch (ecran tactil 2.8) si
+// devices/referee-esp32s3-28b (ecran tactil 2.8B) - si atunci toate
+// device-urile trebuie reprogramate, deci nu se schimba.
 const NUME = 'frvv-sala';
 const NUME_COMPLET = `${NUME}.local`;
 

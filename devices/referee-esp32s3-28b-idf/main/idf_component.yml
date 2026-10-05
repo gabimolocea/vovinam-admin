@@ -1,0 +1,9 @@
+dependencies:
+  # Nucleul Arduino ca component ESP-IDF. Asta e ce face portarea ieftina:
+  # WiFi, HTTPClient, Preferences si Arduino_GFX raman exact cum sunt scrise,
+  # dar componentele ESP-IDF de sub ele se compileaza din sursa cu sdkconfig-ul
+  # nostru. Versiunea 3.3.12 e cea compatibila cu ESP-IDF v5.5.
+  espressif/arduino-esp32:
+    version: "^3.3.12"
+  idf:
+    version: ">=5.5"
