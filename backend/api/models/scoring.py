@@ -178,6 +178,73 @@ class CategoryRefereeScoreEvent(models.Model):
         return f"Category score event #{self.pk} ({self.action})"
 
 
+class CategoryFlowEvent(models.Model):
+    """Cronologia unei probe: cand a inceput, cine a prezentat si cand, cand
+    s-a oprit, cand s-a incheiat.
+
+    Notele aveau deja jurnal (CategoryRefereeScoreEvent), dar desfasurarea nu:
+    dupa competitie se putea spune ce nota a dat fiecare arbitru, nu si la ce
+    ora a intrat pe salteaua sportivul. Asta se cere la contestatii, la
+    sincronizarea cu inregistrarea video, si cand cineva intreaba de ce o proba
+    a durat cat a durat.
+
+    Doar se adauga - nimic nu se modifica si nimic nu se sterge, ca sa poata fi
+    citit ca o relatare a zilei.
+    """
+
+    ACTION_CHOICES = [
+        ('start', 'Proba a inceput'),
+        ('present', 'Sportivul prezinta'),
+        ('stop', 'Sportivul a terminat'),
+        ('finish', 'Proba s-a incheiat'),
+    ]
+
+    category = models.ForeignKey(
+        'Category',
+        on_delete=models.CASCADE,
+        verbose_name=_('Categorie'),
+        related_name='flow_events',
+    )
+    action = models.CharField(_('Acțiune'), max_length=20, choices=ACTION_CHOICES)
+    athlete = models.ForeignKey(
+        'Athlete',
+        on_delete=models.SET_NULL,
+        verbose_name=_('Sportiv'),
+        null=True,
+        blank=True,
+        related_name='category_flow_events',
+        help_text=_('Doar la prezentare și la oprire.'),
+    )
+    # Numele echipei, scris la momentul respectiv: o echipa se poate schimba
+    # dupa competitie, iar cronologia trebuie sa spuna cine era atunci.
+    team_name = models.CharField(_('Echipă'), max_length=255, blank=True)
+    timestamp = models.DateTimeField(_('Moment'), auto_now_add=True)
+    created_by = models.ForeignKey(
+        'User', on_delete=models.SET_NULL, verbose_name=_('Creat de'), null=True, blank=True,
+        related_name='category_flow_events',
+    )
+    recording_session = models.ForeignKey(
+        'FieldRecordingSession',
+        on_delete=models.SET_NULL,
+        verbose_name=_('Sesiune înregistrare'),
+        null=True, blank=True,
+        related_name='category_flow_events',
+    )
+    video_offset_ms = models.IntegerField(_('Decalaj video (ms)'), null=True, blank=True)
+    metadata = models.JSONField(_('Metadate'), default=dict, blank=True)
+
+    class Meta:
+        ordering = ['timestamp', 'id']
+        indexes = [
+            models.Index(fields=['category', 'timestamp']),
+        ]
+        verbose_name = _('Eveniment din desfășurarea probei')
+        verbose_name_plural = _('Evenimente din desfășurarea probelor')
+
+    def __str__(self):
+        return f"{self.category_id}: {self.action} @ {self.timestamp:%H:%M:%S}"
+
+
 class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
     """
     Stores athlete results for a category with approval workflow.

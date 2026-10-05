@@ -24,6 +24,7 @@ from django.db import IntegrityError
 
 # Ensure logger output appears in the console for debugging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(name)s %(message)s')
+logger = logging.getLogger(__name__)
 
 
 def _get_effective_coach_registration_deadline(event):
@@ -320,6 +321,35 @@ def _auto_validate_real_time_point_event(event):
     ).update(validation_status='validated', validated_at=validated_at)
 
     return list(RefereePointEvent.objects.filter(id__in=[item.id for item in matched_events]).order_by('timestamp', 'id'))
+
+
+def terenul_categoriei(category):
+    """Terenul pe care se desfasoara o proba, sau None daca nu e alocata."""
+    return getattr(getattr(category, 'field_assignment', None), 'field_id', None)
+
+
+def _log_category_flow_event(*, category, action, athlete=None, athlete_id=None, team_name='', created_by=None, recording_session=None, metadata=None):
+    """Scrie un moment din desfasurarea probei. Nu arunca niciodata.
+
+    Cronologia e utila, dar nu e motiv sa pice o apasare in mijlocul
+    competitiei: daca scrierea ei da gres, proba merge mai departe fara ea.
+    """
+    try:
+        CategoryFlowEvent.objects.create(
+            category=category,
+            action=action,
+            # Doar una din cele doua forme ajunge la create: cu amandoua,
+            # Django refuza obiectul, iar `except`-ul de mai jos ar inghiti
+            # refuzul si cronologia ar ramane goala fara ca nimeni sa afle.
+            athlete_id=athlete.pk if athlete is not None else athlete_id,
+            team_name=team_name or '',
+            created_by=created_by,
+            recording_session=recording_session,
+            video_offset_ms=_compute_video_offset_ms(recording_session),
+            metadata=metadata or {},
+        )
+    except Exception:
+        logger.exception('Nu am putut scrie evenimentul de desfasurare %s pentru categoria %s', action, getattr(category, 'pk', None))
 
 
 def _log_category_score_event(*, athlete_score, referee, action, source, created_by=None, score_value=None, previous_score=None, notes=None, recording_session=None, metadata=None):

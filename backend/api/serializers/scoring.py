@@ -91,6 +91,31 @@ class CategoryRefereeScoreEventSerializer(serializers.ModelSerializer):
         return None
 
 
+class CategoryFlowEventSerializer(serializers.ModelSerializer):
+    athlete_name = serializers.SerializerMethodField(read_only=True)
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CategoryFlowEvent
+        fields = [
+            'id', 'category', 'action', 'athlete', 'athlete_name', 'team_name',
+            'timestamp', 'created_by', 'created_by_name', 'recording_session',
+            'video_offset_ms', 'metadata',
+        ]
+        read_only_fields = ['timestamp', 'created_by', 'video_offset_ms']
+
+    def get_athlete_name(self, obj):
+        if obj.team_name:
+            return obj.team_name
+        return _person_name(obj.athlete) if obj.athlete else None
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return None
+        full_name = f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+        return full_name or obj.created_by.email
+
+
 class FieldRecordingSessionSerializer(serializers.ModelSerializer):
     field_name = serializers.CharField(source='field.name', read_only=True)
     field_number = serializers.IntegerField(source='field.field_number', read_only=True)

@@ -376,6 +376,15 @@ export const scoreTimelineAPI = {
   categoryRefereeEvents: {
     list: (params) => api.get('/category-referee-score-events/', { params }),
     create: (data) => api.post('/category-referee-score-events/', data),
+    // Readuce notele unui sportiv la cum erau la un moment din jurnal.
+    // Jurnalul nu se rescrie: restaurarea se scrie si ea in el, deci se poate
+    // la randul ei anula. { athlete_score, to_event }
+    restore: (data) => api.post('/category-referee-score-events/restore/', data),
+  },
+  // Desfasurarea probei: cand a inceput, cine a prezentat si cand, cand s-a
+  // oprit, cand s-a incheiat.
+  categoryFlowEvents: {
+    list: (params) => api.get('/category-flow-events/', { params }),
   },
 };
 

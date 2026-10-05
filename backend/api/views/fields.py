@@ -22,7 +22,11 @@ import logging
 from pathlib import Path
 from django.db import IntegrityError
 
-from ._common import _event_operational_lock_response
+from ._common import (
+    _event_operational_lock_response,
+    _log_category_flow_event,
+    _resolve_recording_session,
+)
 from .matches import MatchViewSet
 from .competitions import CompetitionViewSet
 
@@ -270,13 +274,57 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(assignment, 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            stare_veche = assignment.status
             serializer = CategoryFieldAssignmentSerializer(assignment, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
-                return Response(serializer.data)
+                assignment.refresh_from_db()
+                # Ora de inceput si de sfarsit se scriu aici, unde se schimba
+                # starea, nu se cer de la cel care apasa: campurile existau de
+                # mult pe model, dar nimic din fluxul live nu le completa, deci
+                # ramaneau goale pe toate probele.
+                self._marcheaza_trecerea(request, assignment, stare_veche)
+                return Response(CategoryFieldAssignmentSerializer(assignment).data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except CategoryFieldAssignment.DoesNotExist:
             return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    @staticmethod
+    def _marcheaza_trecerea(request, assignment, stare_veche):
+        """Scrie ora si evenimentul cand proba porneste sau se incheie."""
+        if assignment.status == stare_veche:
+            return
+        campuri = []
+        if assignment.status == 'in_progress':
+            # Doar prima pornire. O proba reluata dupa o intrerupere nu si-a
+            # inceput a doua oara: ora de inceput ar sari in fata si durata
+            # masurata ar iesi mai mica decat a fost.
+            if not assignment.actual_start_time:
+                assignment.actual_start_time = timezone.now()
+                campuri.append('actual_start_time')
+            if assignment.actual_end_time:
+                assignment.actual_end_time = None
+                campuri.append('actual_end_time')
+            actiune = 'start'
+        elif assignment.status == 'completed':
+            assignment.actual_end_time = timezone.now()
+            campuri.append('actual_end_time')
+            actiune = 'finish'
+        else:
+            return
+        if campuri:
+            assignment.save(update_fields=campuri)
+        _log_category_flow_event(
+            category=assignment.category,
+            action=actiune,
+            created_by=request.user if request.user.is_authenticated else None,
+            recording_session=_resolve_recording_session(
+                request,
+                event=getattr(assignment.category, 'event', None),
+                field=assignment.field,
+            ),
+            metadata={'from_status': stare_veche, 'to_status': assignment.status},
+        )
 
     def partial_update(self, request, pk=None):
         """Partial update a category-field assignment (PATCH)"""
@@ -700,13 +748,47 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(session, 'field', None), 'event', None))
             if locked is not None:
                 return locked
+            sportiv_vechi_id = session.current_athlete_id
+            categorie_veche = session.current_category
             serializer = DisplayMonitorSessionSerializer(session, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
-                return Response(serializer.data)
+                session.refresh_from_db()
+                # Cine a intrat pe saltea si la ce ora, cine a iesit si cand.
+                # Momentele astea nu se pastrau nicaieri: dupa competitie se
+                # stia ce nota a luat fiecare, nu si cand a concurat.
+                self._marcheaza_sportivul(request, session, sportiv_vechi_id, categorie_veche)
+                return Response(DisplayMonitorSessionSerializer(session).data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except DisplayMonitorSession.DoesNotExist:
             return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    @staticmethod
+    def _marcheaza_sportivul(request, session, sportiv_vechi_id, categorie_veche):
+        sportiv_nou_id = session.current_athlete_id
+        if sportiv_vechi_id == sportiv_nou_id:
+            return
+        autor = request.user if request.user.is_authenticated else None
+        inregistrare = _resolve_recording_session(
+            request,
+            event=getattr(getattr(session, 'field', None), 'event', None),
+            field=getattr(session, 'field', None),
+        )
+        # Plecarea se scrie pe categoria de atunci: cand masa centrala trece
+        # direct la proba urmatoare, oprirea apartine probei pe care sportivul
+        # tocmai a terminat-o, nu celei care abia incepe.
+        if sportiv_vechi_id and categorie_veche:
+            _log_category_flow_event(
+                category=categorie_veche, action='stop',
+                athlete_id=sportiv_vechi_id, created_by=autor,
+                recording_session=inregistrare,
+            )
+        if sportiv_nou_id and session.current_category:
+            _log_category_flow_event(
+                category=session.current_category, action='present',
+                athlete_id=sportiv_nou_id, created_by=autor,
+                recording_session=inregistrare,
+            )
 
     def partial_update(self, request, pk=None):
         """Partial update (PATCH) a monitor session"""

@@ -26,6 +26,7 @@ from django.db import IntegrityError
 
 from ._common import (
     _compute_video_offset_ms,
+    terenul_categoriei,
     _event_operational_lock_response,
     _is_category_assigned_referee,
     _log_category_score_event,
@@ -524,6 +525,157 @@ class CategoryRefereeScoreEventViewSet(viewsets.ViewSet):
             )
             return Response(CategoryRefereeScoreEventSerializer(instance).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+    @action(detail=False, methods=['post'])
+    def restore(self, request):
+        """Readuce notele unui sportiv la cum erau la un moment din jurnal.
+
+        Jurnalul nu se rescrie: restaurarea se face prin scrieri noi, marcate
+        `source='system'`, deci apare si ea in istoric si poate fi la randul ei
+        anulata. Nu exista "pierdut definitiv" dupa o apasare gresita.
+
+        Corp: {"athlete_score": <id>, "to_event": <id>}
+        `to_event` e evenimentul PANA LA CARE se restaureaza, inclusiv.
+        """
+        athlete_score_id = request.data.get('athlete_score')
+        to_event_id = request.data.get('to_event')
+        if not athlete_score_id or not to_event_id:
+            return Response(
+                {'error': 'athlete_score si to_event sunt obligatorii'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            athlete_score = CategoryAthleteScore.objects.select_related('category').get(pk=athlete_score_id)
+        except CategoryAthleteScore.DoesNotExist:
+            return Response({'error': 'Rezultatul nu exista'}, status=status.HTTP_404_NOT_FOUND)
+
+        locked = _event_operational_lock_response(getattr(getattr(athlete_score, 'category', None), 'event', None))
+        if locked is not None:
+            return locked
+
+        try:
+            tinta = CategoryRefereeScoreEvent.objects.get(pk=to_event_id, athlete_score_id=athlete_score.pk)
+        except CategoryRefereeScoreEvent.DoesNotExist:
+            return Response(
+                {'error': 'Evenimentul nu exista sau nu apartine acestui sportiv'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        istoric = list(
+            CategoryRefereeScoreEvent.objects
+            .filter(athlete_score_id=athlete_score.pk)
+            .order_by('timestamp', 'id')
+        )
+
+        # Starea de atunci, reconstruita ruland jurnalul pana la tinta inclusiv.
+        # `reveal` nu schimba nicio nota, deci nu intra in reconstructie.
+        dorit = {}
+        for ev in istoric:
+            if (ev.timestamp, ev.id) > (tinta.timestamp, tinta.id):
+                break
+            if ev.action == 'reveal':
+                continue
+            if ev.action == 'delete':
+                dorit[ev.referee_id] = None
+            else:
+                dorit[ev.referee_id] = {'score': ev.score_value, 'notes': ev.notes}
+
+        # Un arbitru care nu apare deloc in jurnal are o nota despre care
+        # jurnalul nu stie nimic - pusa inainte sa existe jurnalul, sau adusa
+        # printr-un import. Nu o stergem: o restaurare nu are voie sa distruga
+        # tocmai ce nu poate reface.
+        stiuti = {ev.referee_id for ev in istoric}
+        curente = {s.referee_id: s for s in CategoryRefereeScore.objects.filter(athlete_score=athlete_score)}
+        neatinse = [rid for rid in curente if rid not in stiuti]
+
+        recording_session = _resolve_recording_session(
+            request,
+            event=getattr(getattr(athlete_score, 'category', None), 'event', None),
+            field=getattr(getattr(getattr(athlete_score, 'category', None), 'field_assignment', None), 'field', None),
+        )
+        autor = request.user if request.user.is_authenticated else None
+        nota_restaurare = f'Restaurat la evenimentul #{tinta.pk}'
+        puse, sterse = 0, 0
+
+        with transaction.atomic():
+            for referee_id, tinta_nota in dorit.items():
+                existent = curente.get(referee_id)
+
+                if tinta_nota is None:
+                    if existent is None:
+                        continue
+                    _log_category_score_event(
+                        athlete_score=athlete_score, referee=existent.referee,
+                        action='delete', source='system', created_by=autor,
+                        score_value=None, previous_score=existent.score,
+                        notes=nota_restaurare, recording_session=recording_session,
+                        metadata={'restored_to_event': tinta.pk},
+                    )
+                    existent.delete()
+                    sterse += 1
+                    continue
+
+                valoare = tinta_nota['score']
+                if valoare is None:
+                    continue
+                if existent is not None:
+                    if existent.score == valoare and existent.notes == tinta_nota['notes']:
+                        continue
+                    anterior = existent.score
+                    existent.score = valoare
+                    existent.notes = tinta_nota['notes']
+                    existent.save()
+                    actiune = 'update'
+                else:
+                    existent = CategoryRefereeScore.objects.create(
+                        athlete_score=athlete_score, referee_id=referee_id,
+                        score=valoare, notes=tinta_nota['notes'],
+                    )
+                    anterior = None
+                    actiune = 'create'
+                _log_category_score_event(
+                    athlete_score=athlete_score, referee=existent.referee,
+                    action=actiune, source='system', created_by=autor,
+                    score_value=existent.score, previous_score=anterior,
+                    notes=nota_restaurare, recording_session=recording_session,
+                    metadata={'restored_to_event': tinta.pk},
+                )
+                puse += 1
+
+        return Response({
+            'athlete_score': athlete_score.pk,
+            'restored_to_event': tinta.pk,
+            'restored_to': tinta.timestamp,
+            'scores_set': puse,
+            'scores_deleted': sterse,
+            'untouched_referees': neatinse,
+        })
+
+
+class CategoryFlowEventViewSet(viewsets.ViewSet):
+    """Cronologia probelor: inceput, prezentari, opriri, incheiere."""
+
+    permission_classes = [IsAdminOrReadOnly]
+
+    def list(self, request):
+        queryset = CategoryFlowEvent.objects.select_related('category', 'athlete', 'created_by', 'recording_session')
+
+        category_id = request.query_params.get('category')
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+
+        event_id = request.query_params.get('event_id')
+        if event_id:
+            queryset = queryset.filter(category__event_id=event_id)
+
+        field_id = request.query_params.get('field')
+        if field_id:
+            queryset = queryset.filter(category__field_assignment__field_id=field_id)
+
+        serializer = CategoryFlowEventSerializer(queryset.order_by('timestamp', 'id'), many=True)
+        return Response(serializer.data)
 
 
 class FieldRecordingSessionViewSet(viewsets.ViewSet):
