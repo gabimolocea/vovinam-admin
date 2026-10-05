@@ -59,13 +59,47 @@ class RefereeAssignedCategoriesView(APIView):
         except Exception:
             return Response([], status=status.HTTP_200_OK)
 
+        # Dispozitivele de arbitraj cer `?slim=1`: din tot ce urmează ele
+        # folosesc trei câmpuri — id, type și referee_position — iar restul îl
+        # aruncă la parsare. Pe un link de sală la -75 dBm răspunsul complet
+        # înseamnă ~11 KB și aproape două secunde de așteptare chiar după PIN,
+        # cu ecranul blocat.
+        #
+        # Modul subțire sare și peste cele două interogări de mai jos, care
+        # există numai ca să calculeze `field_status`.
+        slim = str(request.query_params.get('slim', '')).lower() in ('1', 'true', 'yes')
+
         assignments = CategoryRefereeAssignment.objects.filter(
             Q(referee_1=athlete) |
             Q(referee_2=athlete) |
             Q(referee_3=athlete) |
             Q(referee_4=athlete) |
             Q(referee_5=athlete)
-        ).select_related('category', 'category__group', 'category__field_assignment__field')
+        )
+        if slim:
+            assignments = assignments.select_related('category', 'category__group')
+        else:
+            assignments = assignments.select_related(
+                'category', 'category__group', 'category__field_assignment__field')
+
+        if slim:
+            return Response([
+                {
+                    'id': a.category_id,
+                    'type': a.category.type,
+                    'name': a.category.name,
+                    'gender': a.category.gender,
+                    # Numele grupei, nu obiectul: arbitrul vrea să știe la ce
+                    # probă e, iar restul câmpurilor grupei nu ajung nicăieri.
+                    'group_name': a.category.group.name if a.category.group_id else None,
+                    'referee_position': next(
+                        (f'A{i}' for i in range(1, 6)
+                         if getattr(a, f'referee_{i}_id', None) == athlete.id),
+                        None,
+                    ),
+                }
+                for a in assignments
+            ])
 
         # Build set of category IDs currently live on a monitor
         cat_ids = [a.category_id for a in assignments]
