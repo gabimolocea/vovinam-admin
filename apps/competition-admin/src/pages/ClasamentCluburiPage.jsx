@@ -184,7 +184,7 @@ export default function ClasamentCluburiPage() {
   return (
     <div className="flex-1 overflow-auto bg-background p-2">
       <div className="mx-auto max-w-6xl">
-        <Table>
+        <Table className="border border-border">
           <TableHeader>
             <TableRow>
               <TableHead colSpan={6} className="bg-muted text-center text-sm uppercase tracking-wide text-foreground">

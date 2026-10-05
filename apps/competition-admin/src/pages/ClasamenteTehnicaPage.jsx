@@ -325,7 +325,7 @@ export default function ClasamenteTehnicaPage() {
             const results = (rankingsByCategory.get(cat.id) || []).slice(0, 3);
 
             return (
-              <Table key={cat.id}>
+              <Table key={cat.id} className="border border-border">
                 <TableHeader>
                   <TableRow>
                     <TableHead colSpan={3} className="bg-muted text-center text-sm text-foreground">

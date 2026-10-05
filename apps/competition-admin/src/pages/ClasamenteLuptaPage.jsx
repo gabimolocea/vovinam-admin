@@ -242,7 +242,7 @@ export default function ClasamenteLuptaPage() {
             const podium = podiumByCategory.get(cat.id) || { 1: [], 2: [], 3: [] };
 
             return (
-              <Table key={cat.id}>
+              <Table key={cat.id} className="border border-border">
                 <TableHeader>
                   <TableRow>
                     <TableHead colSpan={3} className="bg-muted text-center text-sm text-foreground">

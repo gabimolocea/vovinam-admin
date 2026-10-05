@@ -243,7 +243,7 @@ export default function ClasamentSportiviInscrisiPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border">
-        <Table>
+        <Table className="border border-border">
           <TableHeader>
             <TableRow>
               <TableHead>Nume</TableHead>
