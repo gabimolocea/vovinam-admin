@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { fieldAPI } from '@shared/lib/api';
 
 const PUBLIC_DISPLAY_PORT = 5177;
@@ -138,21 +138,28 @@ function FloatingPreview({ fieldId, label, index, onClose }) {
 export function DisplayPreviewProvider({ children }) {
   const [fields, setFields] = useState([]);
   const [openPreviews, setOpenPreviews] = useState(new Set()); // Set of fieldId numbers
-  const [currentEventId, setCurrentEventId] = useState(null);
+  // In ref, nu in stare: valorile astea sunt folosite DOAR ca sa decidem daca
+  // mai e ceva de incarcat, nu se afiseaza nicaieri. Tinute in stare, faceau
+  // `loadFields` sa-si schimbe identitatea dupa fiecare incarcare - iar cine o
+  // declara ca dependenta (vezi LiveFullscreenPage) isi refacea efectul
+  // degeaba. In ref, functia e stabila pentru totdeauna.
+  const evenimentulIncarcat = useRef(null);
+  const cateTerenuri = useRef(0);
 
   // Load fields when event changes
   const loadFields = useCallback(async (eventId) => {
-    if (!eventId) { setFields([]); return; }
-    if (eventId === currentEventId && fields.length > 0) return;
+    if (!eventId) { setFields([]); cateTerenuri.current = 0; evenimentulIncarcat.current = null; return; }
+    if (eventId === evenimentulIncarcat.current && cateTerenuri.current > 0) return;
     try {
       const res = await fieldAPI.list({ event_id: eventId });
       const list = res.data?.results || res.data || [];
       setFields(list);
-      setCurrentEventId(eventId);
+      cateTerenuri.current = list.length;
+      evenimentulIncarcat.current = eventId;
     } catch (err) {
       console.error('DisplayPreview: failed to load fields', err);
     }
-  }, [currentEventId, fields.length]);
+  }, []);
 
   const togglePreview = useCallback((fieldId) => {
     setOpenPreviews(prev => {
@@ -173,7 +180,16 @@ export function DisplayPreviewProvider({ children }) {
 
   const isOpen = useCallback((fieldId) => openPreviews.has(fieldId), [openPreviews]);
 
-  const value = { fields, loadFields, openPreviews, togglePreview, closePreview, isOpen };
+  // Obiectul contextului, memorat.
+  //
+  // Construit la fiecare randare, el devenea mereu altul - iar React compara
+  // valoarea contextului prin identitate. Deci fiecare randare a providerului
+  // redesena TOTI consumatorii, chiar cand nimic din ce contin nu se
+  // schimbase.
+  const value = useMemo(
+    () => ({ fields, loadFields, openPreviews, togglePreview, closePreview, isOpen }),
+    [fields, loadFields, openPreviews, togglePreview, closePreview, isOpen],
+  );
 
   return (
     <DisplayPreviewContext.Provider value={value}>

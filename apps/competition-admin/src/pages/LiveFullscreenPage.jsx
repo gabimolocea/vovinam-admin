@@ -1,6 +1,5 @@
-import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Wifi, WifiOff, QrCode } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import ExcelJS from 'exceljs';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { aggregateRealtimeValidatedPoints } from '@shared/lib/realtimePoints';
@@ -11,9 +10,9 @@ import {
   eventAPI,
   fieldAPI, monitorAPI, roundAPI, matchAPI, scoreAPI,
   matchRefereeScoreAPI, matchFieldAssignmentAPI, refereeAPI,
-  categoryRefereeAssignmentAPI, matchEventAPI, fieldBreakAPI,
+  categoryRefereeAssignmentAPI, matchEventAPI,
   matchRefereeAssignmentAPI, groupAPI, categoryAPI, enrollmentAPI,
-  competitionRefereeAPI, refereePresenceAPI, refereeQrLoginAPI, recordingAPI, scoreTimelineAPI,
+  competitionRefereeAPI, refereePresenceAPI, recordingAPI, scoreTimelineAPI,
   systemAPI,
 } from '@shared/lib/api';
 import {
@@ -32,7 +31,6 @@ import { useToast } from '../contexts/ToastContext';
    ═══════════════════════════════════════════════════════ */
 
 const PUBLIC_DISPLAY_PORT = 5177;
-const REFEREE_SCORING_PORT = 5176;
 
 // Same-host, different-port - not hardcoded to localhost, since this admin
 // app and public-display may be opened from different devices on the venue
@@ -46,12 +44,6 @@ function publicDisplayOrigin() {
 // Same reasoning as publicDisplayOrigin() - the QR a referee scans needs to
 // point at the referee-scoring app's own origin, which is a different port
 // on the same host, possibly opened from a different device on the venue LAN.
-function refereeScoringOrigin() {
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
-  return `${protocol}//${host}:${REFEREE_SCORING_PORT}`;
-}
-
 const formatFieldLabel = (name = '') => String(name).replace(/\bfield\b/gi, 'TEREN').replace(/\btatami\b/gi, 'TEREN').toUpperCase();
 const TOPNAV_SECONDARY_BUTTON = 'text-xs rounded-md border border-white/30 bg-white/10 px-2.5 py-1 font-medium text-white transition hover:bg-white/20 disabled:opacity-40';
 const TOPNAV_GREEN_BUTTON = 'text-xs rounded-md border border-emerald-500 bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1 font-bold text-white transition disabled:opacity-40';
@@ -64,8 +56,6 @@ const PANEL_BUTTON_BASE = 'rounded-md border border-input px-3 py-3 text-lg font
 const PANEL_BUTTON_NEUTRAL = `${PANEL_BUTTON_BASE} bg-background text-foreground hover:bg-accent`;
 const PANEL_BUTTON_DANGER = `${PANEL_BUTTON_BASE} bg-background text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30`;
 const PANEL_BUTTON_SUCCESS = `${PANEL_BUTTON_BASE} bg-background text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30`;
-const PANEL_BUTTON_WARNING = `${PANEL_BUTTON_BASE} bg-amber-400 text-amber-950 hover:bg-amber-300`;
-const TOPNAV_REC_BUTTON = 'flex items-center gap-1.5 rounded-md border bg-white/10 px-2.5 py-1 text-xs font-bold uppercase tracking-[0.14em] text-white transition disabled:opacity-40';
 const ROUND_CARD_SHELL = 'flex flex-col gap-4 rounded-lg border-2 border-border bg-card px-4 py-4';
 const ROUND_BODY_PANEL = 'bg-card px-4 py-4';
 const ROUND_SECONDARY_BUTTON = 'rounded-md border border-input px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-accent disabled:opacity-40';
@@ -152,6 +142,48 @@ const writeCachedCategoryData = (eventId, groups, categories) => {
   sessionStorage.setItem(`competition-admin:categories:${eventId}`, JSON.stringify(categories || []));
 };
 
+// Bula de text care insoteste o evidentiere. Sta langa elementul la care se
+// refera, nu intr-un colt: altfel operatorul citeste indicatia si apoi o cauta
+// pe ecran.
+//
+// La nivel de modul fiindca o folosesc amandoua panourile - cel de sus, cu
+// butonul de TV, si cel al categoriei, cu arbitrii si sportivii.
+// Chenarul galben care pulseaza, ca strat peste element - nu ca o clasa pe el.
+//
+// `animate-pulse` pus direct pe bloc ar face si continutul sa palpaie, iar
+// tocmai continutul trebuie citit: numele arbitrilor, starea conexiunii lor.
+// Asa pulseaza doar rama, iar ce e inauntru sta nemiscat.
+function ChenarPulsand({ rotunjit = 'rounded-lg' }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute inset-0 z-20 ${rotunjit} ring-4 ring-amber-400 ring-offset-2 animate-pulse`}
+    />
+  );
+}
+
+function Indrumare({ text, onGata, eticheta = 'Am verificat', className = '' }) {
+  return (
+    <div className={`z-30 flex items-stretch gap-2 ${className}`}>
+      {/* Butonul la STANGA bulei, pe acelasi rand, si amandoua in afara ramei
+          galbene.
+          Inauntrul ramei arata ca o parte a atentionarii - ceva de citit, nu
+          de apasat. Langa ea si verde, se vede ca e actiunea care duce mai
+          departe, si ramane lipit de lucrul la care se refera. */}
+      {onGata && (
+        <button
+          type="button"
+          onClick={onGata}
+          className="shrink-0 animate-pulse self-stretch rounded-md border-2 border-emerald-700 bg-emerald-600 px-4 text-xs font-bold uppercase tracking-wide text-white shadow-md transition hover:bg-emerald-700"
+        >{eticheta}</button>
+      )}
+      <div className="rounded-md border-2 border-amber-500 bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950 shadow-lg">
+        {text}
+      </div>
+    </div>
+  );
+}
+
 export default function LiveFullscreenPage() {
   const toast = useToast();
   const { id: eventId } = useParams();
@@ -161,6 +193,18 @@ export default function LiveFullscreenPage() {
   const panelType = searchParams.get('panel'); // 'category' | 'match'
   const itemId = Number(searchParams.get('id')); // category or match ID
   const preview = useDisplayPreview();
+  // Functia, nu obiectul contextului.
+  //
+  // `preview` e recreat la fiecare randare (contextul nu-l memoreaza), deci
+  // pus in lista de dependente de mai jos ar desface si reface intervalul de
+  // 600ms la fiecare randare. `loadFields` e un useCallback stabil, deci se
+  // poate declara cinstit ca dependenta.
+  const { loadFields: incarcaTerenurile } = preview;
+  // Pasul cu Preview traieste in bara de sus, dar pasii urmatori sunt in
+  // panoul categoriei. Starea sta aici si coboara ca proprietate: altfel
+  // panoul ar incepe sa ceara verificarea arbitrilor peste indrumarea care
+  // inca arata spre Preview.
+  const [previewVazut, setPreviewVazut] = useState(false);
   const cachedCategoryDataRef = useRef(readCachedCategoryData(eventId));
 
   const [fields, setFields] = useState([]);
@@ -175,7 +219,8 @@ export default function LiveFullscreenPage() {
   const [refAssignments, setRefAssignments] = useState([]);
   const [matchEvents, setMatchEvents] = useState([]);
   const [matchRefAssignments, setMatchRefAssignments] = useState([]);
-  const [groups, setGroups] = useState(cachedCategoryDataRef.current.groups);
+  // Valoarea nu se citeste nicaieri - doar setter-ul, la incarcare.
+  const [, setGroups] = useState(cachedCategoryDataRef.current.groups);
   const [allCats, setAllCats] = useState(buildCategoriesWithGroups(cachedCategoryDataRef.current.categories, cachedCategoryDataRef.current.groups));
   const [competitionReferees, setCompetitionReferees] = useState([]);
   const [refPresence, setRefPresence] = useState([]);
@@ -372,13 +417,13 @@ export default function LiveFullscreenPage() {
   useEffect(() => {
     fetchData();
     fetchMatchState();
-    if (eventId) preview.loadFields(eventId);
+    if (eventId) incarcaTerenurile(eventId);
     // Kept in step with public-display's own poll interval so a score
     // submitted elsewhere (e.g. referee-scoring) shows up here about as
     // fast as it does on the public screen, not visibly lagging behind it.
     pollRef.current = setInterval(fetchMatchState, 600);
     return () => clearInterval(pollRef.current);
-  }, [fetchData, fetchMatchState]);
+  }, [fetchData, fetchMatchState, eventId, incarcaTerenurile]);
 
   // NOTE: No auto-idle on unmount — navigating back keeps display visible on public screen
 
@@ -474,8 +519,18 @@ export default function LiveFullscreenPage() {
     });
   const isCurrentMatchFinalized = !!currentMatch
     && (currentMatch.status === 'completed' || currentAssignment?.status === 'completed');
+  useEffect(() => { setPreviewVazut(false); }, [itemId]);
+
+
   const isCurrentCategoryFinalized = !!currentCat
     && currentAssignment?.status === 'completed';
+
+  // Pasul Preview: proba e pe TV, dar inca nu s-a uitat nimeni la ce arata.
+  // Dupa isCurrentCategoryFinalized, nu inaintea lui: `const` nu se poate citi
+  // inainte de linia care il declara, si asta nu se vede la lint - se vede
+  // abia cand pagina crapa.
+  const pasPreview = panelType === 'category' && currentCat && currentCat.type !== 'fight'
+    && isSessionActive && !isCurrentCategoryFinalized && !previewVazut;
   const operationalLockActive = !isLocalServer && Boolean(eventState?.operational_lock_active);
   const operationalLockMessage = eventState?.operational_lock_active
     ? 'Evenimentul este blocat pentru operare locală. Pentru modificări live, lucrează din copia locală/LAN a competiției sau finalizează sincronizarea în cloud.'
@@ -485,40 +540,15 @@ export default function LiveFullscreenPage() {
     if (!operationalLockActive) return true;
     toast.error(operationalLockMessage);
     return false;
-  }, [operationalLockActive, operationalLockMessage]);
+    // `toast` e stabil: ToastContext isi memoreaza valoarea cu useMemo, deci
+    // declararea lui aici nu reface callback-ul la fiecare randare.
+  }, [operationalLockActive, operationalLockMessage, toast]);
 
   const isRecordingActive = currentFieldRecordingSession?.status === 'recording';
-  const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState(0);
-
-  useEffect(() => {
-    if (!currentFieldRecordingSession?.started_at) {
-      setRecordingElapsedSeconds(0);
-      return;
-    }
-
-    const computeElapsed = () => {
-      if (currentFieldRecordingSession?.computed_duration_seconds != null && !isRecordingActive) {
-        return Number(currentFieldRecordingSession.computed_duration_seconds) || 0;
-      }
-      const startedAtMs = new Date(currentFieldRecordingSession.started_at).getTime();
-      if (Number.isNaN(startedAtMs)) return 0;
-      const endMs = !isRecordingActive && currentFieldRecordingSession?.ended_at
-        ? new Date(currentFieldRecordingSession.ended_at).getTime()
-        : Date.now();
-      return Math.max(0, Math.floor((endMs - startedAtMs) / 1000));
-    };
-
-    setRecordingElapsedSeconds(computeElapsed());
-    if (!isRecordingActive) return;
-
-    const intervalId = window.setInterval(() => {
-      setRecordingElapsedSeconds(computeElapsed());
-    }, 1000);
-
-    return () => window.clearInterval(intervalId);
-  }, [currentFieldRecordingSession, isRecordingActive]);
-
-  const recordingTimerLabel = `REC ${String(Math.floor(recordingElapsedSeconds / 60)).padStart(2, '0')}:${String(recordingElapsedSeconds % 60).padStart(2, '0')}`;
+  // Aici statea un cronometru al sesiunii de inregistrare: o stare, un efect
+  // si un interval de o secunda. Valoarea nu era citita nicaieri - eticheta
+  // care o afisa fusese scoasa cu mult inainte - deci ceasul pornea o
+  // redesenare pe secunda cat timp se inregistra, degeaba.
 
   // ── API helpers ──
   const wrap = fn => async (...a) => {
@@ -685,17 +715,17 @@ export default function LiveFullscreenPage() {
   const resetMatch = wrap(async (matchId) => {
     const mrs = matchRoundsForMatch;
     for (const r of mrs) {
-      try { await roundAPI.delete(r.id); } catch {}
+      try { await roundAPI.delete(r.id); } catch { /* repriza poate fi deja stearsa */ }
     }
     const evts = matchEvents.filter(e => e.match === matchId);
     for (const ev of evts) {
-      try { await matchEventAPI.delete(ev.id); } catch {}
+      try { await matchEventAPI.delete(ev.id); } catch { /* evenimentul poate fi deja sters */ }
     }
-    try { await refereeAPI.pointEvents.clear(matchId); } catch {}
+    try { await refereeAPI.pointEvents.clear(matchId); } catch { /* nimic de sters */ }
     // Also delete all referee scores for this match
     const scores = matchRefScores.filter(s => s.match === matchId);
     for (const sc of scores) {
-      try { await matchRefereeScoreAPI.delete(sc.id); } catch {}
+      try { await matchRefereeScoreAPI.delete(sc.id); } catch { /* nota poate fi deja stearsa */ }
     }
     // Reset match status back to scheduled
     await matchAPI.update(matchId, { status: 'scheduled' });
@@ -712,7 +742,7 @@ export default function LiveFullscreenPage() {
     }
     // Reset field assignment state too
     if (currentAssignment?.match === matchId) {
-      try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'not_started' }); } catch {}
+      try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'not_started' }); } catch { /* alocarea se poate sa fi fost mutata intre timp */ }
     }
     await fetchData();
   });
@@ -810,26 +840,42 @@ export default function LiveFullscreenPage() {
             >ÎNCHEIE PROBA</button>
           )}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
-            <button
-              onClick={async () => {
-                await startRecordingSession({ auto: true });
-                await switchDisplay(currentCat.id, null, null, 'displaying', { allowCreate: true });
-                if (currentAssignment) {
-                  setBusy(true);
-                  try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
-                  setBusy(false);
-                }
-              }}
-              disabled={busy || isCurrentCategoryFinalized}
-              className={`${TOPNAV_GREEN_BUTTON}`}
-            >AFIȘEAZĂ PE TV</button>
+            <span className="relative inline-flex">
+              <button
+                onClick={async () => {
+                  await startRecordingSession({ auto: true });
+                  await switchDisplay(currentCat.id, null, null, 'displaying', { allowCreate: true });
+                  if (currentAssignment) {
+                    setBusy(true);
+                    try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'in_progress' }); await fetchMatchState(); } catch(e) { console.error(e); }
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy || isCurrentCategoryFinalized}
+                className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryFinalized ? '' : 'ring-4 ring-amber-400 ring-offset-2 animate-pulse'}`}
+              >AFIȘEAZĂ PE TV</button>
+              {!isCurrentCategoryFinalized && (
+                <Indrumare text="Afișează proba pe TV" className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap" />
+              )}
+            </span>
           )}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && isSessionActive && (
-            <button
-              onClick={() => setShowFinishConfirm(true)}
-              disabled={busy}
-              className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted ? 'ring-2 ring-emerald-400 animate-pulse' : ''}`}
-            >ÎNCHEIE PROBA</button>
+            <span className="relative inline-flex">
+              <button
+                onClick={() => setShowFinishConfirm(true)}
+                disabled={busy}
+                className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
+              >ÎNCHEIE PROBA</button>
+              {/* Ultimul pas. Chenarul era verde ca restul butonului; galben,
+                  e aceeasi culoare ca toate indrumarile dinainte, deci se
+                  citeste ca "urmatorul lucru de facut", nu ca o stare. */}
+              {isCurrentCategoryCompleted && (
+                <Indrumare
+                  text="Toți sportivii au note - încheie proba"
+                  className="absolute right-0 top-full mt-2 whitespace-nowrap"
+                />
+              )}
+            </span>
           )}
 
           {panelType === 'match' && currentMatch && isSessionActive && (
@@ -852,13 +898,23 @@ export default function LiveFullscreenPage() {
             className={`${TOPNAV_SECONDARY_BUTTON} text-center`} title="Deschide ecranul public într-o filă nouă">
             TV
           </a>
-          <button
-            onClick={() => preview.togglePreview(fieldId)}
-            className={`${TOPNAV_SECONDARY_BUTTON} ${preview.isOpen(fieldId) ? 'bg-sidebar-accent hover:bg-sidebar-accent/80 text-sidebar-accent-foreground border-sidebar-accent' : ''}`}
-            title={preview.isOpen(fieldId) ? 'Ascunde previzualizarea ecranului public' : 'Arată previzualizarea ecranului public'}
-          >
-            Preview
-          </button>
+          <span className="relative inline-flex">
+            <button
+              onClick={() => { preview.togglePreview(fieldId); setPreviewVazut(true); }}
+              className={`${TOPNAV_SECONDARY_BUTTON} ${preview.isOpen(fieldId) ? 'bg-sidebar-accent hover:bg-sidebar-accent/80 text-sidebar-accent-foreground border-sidebar-accent' : ''} ${pasPreview ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
+              title={preview.isOpen(fieldId) ? 'Ascunde previzualizarea ecranului public' : 'Arată previzualizarea ecranului public'}
+            >
+              Preview
+            </button>
+            {pasPreview && (
+              <Indrumare
+                text="Deschide Preview și verifică ce se vede pe ecranul din sală"
+                onGata={() => setPreviewVazut(true)}
+                eticheta="Am văzut"
+                className="absolute right-0 top-full mt-2 w-64"
+              />
+            )}
+          </span>
 
           {/* Resetul sterge scoruri, deci sta ultimul si arata altfel - cat
               mai departe de butonul verde, cu care nu vrei sa-l confunzi. */}
@@ -989,13 +1045,13 @@ export default function LiveFullscreenPage() {
                 try {
                   setIdle();
                   if (currentAssignment) {
-                    try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'not_started' }); } catch {}
+                    try { await fieldAPI.assignments.update(currentAssignment.id, { status: 'not_started' }); } catch { /* alocarea se poate sa fi fost mutata intre timp */ }
                   }
                   const catScores = refScores.filter(rs => {
                     const as = athleteScores.find(a => a.id === rs.athlete_score);
                     return as && as.category === currentCat.id;
                   });
-                  for (const s of catScores) { try { await refereeAPI.categoryScores.delete(s.id); } catch {} }
+                  for (const s of catScores) { try { await refereeAPI.categoryScores.delete(s.id); } catch { /* una deja stearsa nu opreste restul */ } }
                   await fetchMatchState();
                 } catch(e) { console.error(e); }
                 setBusy(false);
@@ -1046,6 +1102,7 @@ export default function LiveFullscreenPage() {
         )}
         {panelType === 'category' && currentCat && currentCat.type !== 'fight' ? (
           <FullscreenCategoryPanel
+            previewVazut={previewVazut}
             cat={currentCat}
             session={isSessionActive ? session : null}
             refAssignment={currentCategoryRefAssignment}
@@ -1136,7 +1193,7 @@ export default function LiveFullscreenPage() {
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
-function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, recordingSession, busy, setBusy, switchDisplay, setIdle, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, exportExcelRef }) {
+function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, busy, setBusy, switchDisplay, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, exportExcelRef }) {
   const toast = useToast();
   const isTeamCategory = cat.type === 'team';
 
@@ -1153,6 +1210,14 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   const enrolled = isTeamCategory ? (cat.enrolled_teams || []) : (cat.enrolled_athletes || []);
 
   // Modal state for admin score input per referee
+  // Pasul cu arbitrii nu se poate deduce - nu exista "verificat" in date, e un
+  // lucru pe care operatorul il face cu ochii. Deci il confirma el, o data pe
+  // proba.
+  const [arbitriVerificati, setArbitriVerificati] = useState(false);
+  const [opresteVazut, setOpresteVazut] = useState(false);
+  // Alta proba inseamna alti arbitri: confirmarea nu se poarta mai departe.
+  useEffect(() => { setArbitriVerificati(false); setOpresteVazut(false); }, [cat?.id]);
+
   const [catRefModalData, setCatRefModalData] = useState(null); // { refId, refName, refPos, athleteId, athleteName, athleteScoreId, currentScore, existingScoreId }
   const [catScoreInput, setCatScoreInput] = useState('');
   const [finishedAthletes, setFinishedAthletes] = useState(new Set());
@@ -1233,7 +1298,13 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     const athleteName = isTeamCategory
       ? (ea.team_name || teamMembersLabel || `#${ea.team}`)
       : (`${d.last_name || ''} ${d.first_name || ''}`.trim() || `#${athleteId}`);
-    const clubName = isTeamCategory ? (ea.club_name || '') : (d.club_name || '');
+    // La echipe serializatorul trimite `club_name` gata compus; la sportivii
+    // individuali trimite clubul ca obiect imbricat, `club.name`. Pana acum
+    // citeam doar prima forma, deci la individual clubul lipsea peste tot -
+    // nu era ascuns, era gol.
+    const clubName = isTeamCategory
+      ? (ea.club_name || '')
+      : (d.club_name || d.club?.name || '');
     const detailText = isTeamCategory ? teamMembersLabel : '';
     const catScore = isTeamCategory
       ? resolveTeamScore(ea)
@@ -1303,6 +1374,27 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
   // Priority 1: active athlete → highlight their row & stop button
   // Priority 2: athlete with all scores ready to reveal
   // Priority 3: next athlete to present
+  // ── Indrumarea de pe o proba LIVE ──────────────────────────────────
+  //
+  // Doi pasi, in ordinea in care se face treaba la masa centrala dupa ce proba
+  // a ajuns pe TV: verifica arbitrii, apoi cheama primul sportiv.
+  //
+  // Pasul se DEDUCE din starea paginii, nu se tine intr-un tutorial separat.
+  // Cine reia pagina la mijloc - sau o deschide pe alt laptop - e prins acolo
+  // unde e, nu purtat de la inceput. Si cand proba merge deja, indrumarea
+  // dispare singura, fara sa fie inchisa de nimeni.
+  const sesiuneaMerge = !!session && session.status !== 'idle';
+  const pasIndrumare = (() => {
+    if (!sesiuneaMerge || isCategoryCompleted) return null;
+    // Cat timp indrumarea din bara de sus arata inca spre Preview, panoul
+    // tace: doua indrumari deodata nu spun care e urmatorul pas.
+    if (!previewVazut) return null;
+    // Cineva prezinta: urmatorul lucru de stiut e cum se opreste. O singura
+    // data pe proba, nu la fiecare sportiv - dupa primul, operatorul stie.
+    if (session?.current_athlete) return opresteVazut ? null : 'opreste';
+    return arbitriVerificati ? 'prezinta' : 'arbitri';
+  })();
+
   let highlightAthleteId = null;
   let highlightAction = null; // 'active' | 'reveal' | 'present'
 
@@ -1332,11 +1424,22 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     }
   }
 
+  // Un singur lucru evidentiat o data.
+  //
+  // Evidentierea verde de pe "Prezinta" vine din mecanismul care alege
+  // urmatorul sportiv, si el nu stie de indrumare: pulsa si cat timp proba
+  // nici nu era pe TV. Doua chemari deodata nu spun "fa astea doua", spun
+  // "nu stiu care e urmatorul pas".
+  if (highlightAction === 'present' && (!sesiuneaMerge || pasIndrumare === 'arbitri')) {
+    highlightAthleteId = null;
+    highlightAction = null;
+  }
+
   // Reset single athlete scores
   const resetAthleteScores = async (row) => {
     try {
       for (const sid of row.scoreIds) {
-        if (sid) { try { await refereeAPI.categoryScores.delete(sid); } catch {} }
+        if (sid) { try { await refereeAPI.categoryScores.delete(sid); } catch { /* una deja stearsa nu opreste restul */ } }
       }
       setFinishedAthletes(prev => { const s = new Set(prev); s.delete(row.athleteId); return s; });
       // Resetting an already-revealed athlete's scores doesn't clear the
@@ -1505,7 +1608,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       dr.height = 28;
       const baseBg = row.isDisqualified ? RED_ROW : (idx % 2 === 1 ? EVEN_ROW : null);
 
-      dr.eachCell({ includeEmpty: true }, (cell, col) => {
+      dr.eachCell({ includeEmpty: true }, (cell) => {
         cell.border = grayB();
         cell.font = normF(12);
         cell.alignment = CC;
@@ -1625,7 +1728,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     const safeName = [cat.groupName, cat.name, cat.gender === 'male' ? 'Masculin' : cat.gender === 'female' ? 'Feminin' : '']
       .filter(Boolean)
       .join('_')
-      .replace(/[^a-zA-Z0-9_\-]/g, '_')
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
       .replace(/_+/g, '_')
       .slice(0, 60);
     a.download = `${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
@@ -1647,10 +1750,6 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
     return !refSlots.some(r => r.id === athleteId);
   });
 
-  const spotlightRow = rows.find(r => r.isActive)
-    || rows.find(r => highlightAthleteId === r.athleteId)
-    || rows.find(r => !r.isDisqualified)
-    || null;
 
   // ── TASTATURA ──
   //
@@ -1791,6 +1890,17 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
           </div>
 
           <div className="w-full xl:col-start-3 xl:justify-self-end xl:max-w-md">
+            {/* Indrumarea DEASUPRA ramei, nu inauntrul ei: chenarul incadreaza
+                doar ce e de verificat - lista de arbitri. */}
+            {pasIndrumare === 'arbitri' && (
+              <Indrumare
+                text="Verifică toți arbitrii sunt asignați și conectați"
+                onGata={() => setArbitriVerificati(true)}
+                className="mb-2"
+              />
+            )}
+            <div className="relative">
+              {pasIndrumare === 'arbitri' && <ChenarPulsand />}
             <>
               <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</span>
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 xl:grid-cols-1">
@@ -1839,6 +1949,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                 })}
               </div>
             </>
+            </div>
           </div>
         </div>
       </div>
@@ -1968,7 +2079,25 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
       )}
 
       {/* ── Athletes table — all participants ── */}
-      <div className="overflow-hidden border-2 border-border bg-card shadow-sm">
+      {/* Pasul 3 sta deasupra tabelului, nu langa buton: butonul "Prezinta" e
+          deja evidentiat cu inel verde pulsand de mecanismul care alege
+          urmatorul sportiv, iar o bula inauntrul unui rand de tabel ar strica
+          latimile coloanelor. */}
+      {pasIndrumare === 'prezinta' && (
+        <Indrumare
+          text="Apasă Prezintă pentru a afișa sportivul pe ecran și pentru a-l chema la teren"
+          className="mb-2"
+        />
+      )}
+      {pasIndrumare === 'opreste' && (
+        <Indrumare
+          text="După ce sportivul a terminat, apasă Oprește - abia atunci arbitrii pot trimite notele"
+          onGata={() => setOpresteVazut(true)}
+          className="mb-2"
+        />
+      )}
+      <div className="relative overflow-hidden border-2 border-border bg-card shadow-sm">
+        {(pasIndrumare === 'prezinta' || pasIndrumare === 'opreste') && <ChenarPulsand rotunjit="rounded-none" />}
         <div className="space-y-3 p-3 lg:hidden">
           {rows.map((row, idx) => {
             const rank = getRank(row.athleteId);
@@ -2003,8 +2132,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                       {row.isActive && <span className="relative inline-flex h-2.5 w-2.5 shrink-0" title="Prezintă acum"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" /></span>}
                       {row.isRevealed && <span className="inline-flex rounded border border-amber-500 bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">Scor afișat</span>}
                     </div>
-                    <p className={`mt-2 break-words text-base font-black ${row.isDisqualified ? 'text-red-500 line-through' : 'text-foreground'}`}>{row.athleteName}</p>
-                    {row.clubName && <p className="mt-0.5 text-sm text-muted-foreground">{row.clubName}</p>}
+                    <p className={`mt-2 break-words text-base font-black ${row.isDisqualified ? 'text-red-500 line-through' : 'text-foreground'}`}>{row.athleteName}{row.clubName ? ` (${row.clubName})` : ''}</p>
                     {row.detailText && row.detailText !== row.athleteName && <p className="mt-0.5 text-xs text-muted-foreground/60">{row.detailText}</p>}
                   </div>
                   <div className="rounded border-2 border-border bg-amber-50 px-3 py-2 text-center">
@@ -2013,7 +2141,13 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                   </div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+                {/* Toti cei cinci arbitri pe UN rand, si pe telefon.
+                    Impartiti pe doua-trei randuri, nu se mai citeau ca un set:
+                    ochiul trebuia sa-i adune, si tocmai compararea notelor
+                    intre ei e singurul motiv pentru care sunt pusi unul langa
+                    altul. La cinci coloane celula are ~65px pe telefon, deci
+                    scade si spatierea, si textul din ea. */}
+                <div className="mt-3 grid grid-cols-5 gap-1 sm:gap-2">
                   {refCols.map((r, ri) => {
                     const value = row.vals[ri];
                     const mark = row.marks[ri];
@@ -2028,18 +2162,19 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                         type="button"
                         onClick={() => openScoreCell(r, row, value)}
                         title={r.id ? auditTitle : `Nicio persoană pe poziția A${r.pos} — apasă ca să aloci un arbitru`}
-                        className={`relative overflow-hidden rounded-md border px-3 py-2 text-left transition ${!r.id ? 'border-dashed border-border bg-muted/30 text-muted-foreground/60 hover:bg-muted/60' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''}`}
+                        className={`relative overflow-hidden rounded-md border px-1.5 py-1.5 text-center transition sm:px-3 sm:py-2 sm:text-left ${!r.id ? 'border-dashed border-border bg-muted/30 text-muted-foreground/60 hover:bg-muted/60' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''}`}
                       >
                         {audit && (
                           <span className="absolute right-0 top-0 h-0 w-0 border-t-[16px] border-l-[16px] border-t-red-600 border-l-transparent" />
                         )}
                         <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">A{r.pos}</p>
-                        <p className={`mt-1 text-lg font-black tabular-nums ${value != null ? (isCancelled ? 'text-red-400' : 'text-foreground') : 'text-muted-foreground/40'}`}>{value != null ? Math.round(Number(value)) : '—'}</p>
-                        {audit && audit.originalScore != null && (
-                          <p className="mt-0.5 text-[10px] font-normal normal-case text-muted-foreground">
-                            arbitru: {Math.round(audit.originalScore)}
-                          </p>
-                        )}
+                        <p className={`mt-0.5 text-base font-black tabular-nums sm:mt-1 sm:text-lg ${value != null ? (isCancelled ? 'text-red-400' : 'text-foreground') : 'text-muted-foreground/40'}`}>{value != null ? Math.round(Number(value)) : '—'}</p>
+                        {/* Un singur numar, cel care conteaza.
+                            Scorul arbitrului de dinaintea modificarii statea
+                            dedesubt, mic - si atunci celula arata doua numere
+                            fara sa spuna care e cel valabil. Coltul rosu spune
+                            deja ca a fost schimbat manual, iar cine vrea
+                            numarul vechi il are in tooltip. */}
                       </button>
                     );
                   })}
@@ -2100,11 +2235,7 @@ function FullscreenCategoryPanel({ cat, session, refAssignment, athleteScores, r
                           <div className="flex items-center justify-center gap-1">
                             <span>{v != null ? Math.round(Number(v)) : '—'}</span>
                           </div>
-                          {audit && audit.originalScore != null && (
-                            <div className="mt-0.5 text-[10px] font-normal normal-case text-muted-foreground">
-                              arbitru: {Math.round(audit.originalScore)}
-                            </div>
-                          )}
+
                         </td>
                       );
                     })}
@@ -2140,9 +2271,9 @@ const UNDOABLE_EVENT_TYPES = [
 
 function FullscreenMatchPanel({
   match, session, matchRounds, activeRound, matchRefScores, matchEvents, pointEvents,
-  matchRefAssignment, refPresence, allCats, busy, setBusy, competitionReferees, recordingSession, setIdle, startRound, endRound, resetRound, createRounds, eventStartDate, openMatchSettingsRef,
+  matchRefAssignment, refPresence, allCats, busy, setBusy, competitionReferees, startRound, endRound, resetRound, eventStartDate, openMatchSettingsRef,
   pauseRound, resumeRound, addWarning, addPenalty, addBonus, addInfraction, addDisqualification,
-  removeLastEvent, adjustTime, resetMatch, finalizeMatch, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh,
+  removeLastEvent, adjustTime, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh,
   operationalLockActive, operationalLockMessage, ensureOperationalWrite,
 }) {
   const toast = useToast();
@@ -2511,11 +2642,9 @@ function FullscreenMatchPanel({
     setBusy(true);
     try {
       for (const round of matchRounds) {
-        // eslint-disable-next-line no-await-in-loop
         await roundAPI.delete(round.id);
       }
       for (let i = 1; i <= roundCount; i += 1) {
-        // eslint-disable-next-line no-await-in-loop
         await roundAPI.create({ match: match.id, round_number: i, duration_seconds: durationSeconds });
       }
       await onRefresh();
@@ -2590,7 +2719,9 @@ function FullscreenMatchPanel({
     });
 
     return stats;
-  }, [match.display_mode, matchRounds, pointEvents]);
+    // Fara match.display_mode: nu se citeste nicaieri in calculul de mai sus,
+    // deci recalcularea la schimbarea lui ar da exact acelasi rezultat.
+  }, [matchRounds, pointEvents]);
 
   const eventLogRows = useMemo(() => {
     const typeLabels = {
@@ -3698,7 +3829,7 @@ function LiveTimer({ round, onTimeUp }) {
 }
 
 /* ── Break Timer (fullscreen version, synced with public display via session) ── */
-function BreakTimer({ onDone, busy, duration = 60, autoStart = false, endedAt, sessionId, nextRoundId, startRound }) {
+function BreakTimer({ onDone, duration = 60, autoStart = false, endedAt, sessionId, nextRoundId, startRound }) {
   // Compute initial seconds from ended_at if available (synced with public display)
   const computeFromEndedAt = useCallback(() => {
     if (!endedAt) return duration;
