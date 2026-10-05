@@ -1,7 +1,7 @@
 {
   "name": "@vovinam/launcher",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "FRVV Competition Launcher - runs the full competition stack locally, syncing an event down from the cloud before the day starts and back up afterwards.",
   "main": "electron/main.js",
   "type": "commonjs",
@@ -25,7 +25,7 @@
   },
   "build": {
     "appId": "ro.frvv.launcher",
-    "productName": "FRVV Competition Launcher v1.0.5",
+    "productName": "FRVV Competition Launcher v1.0.6",
     "artifactName": "FRVV-Competition-Launcher-${version}-${arch}.${ext}",
     "electronVersion": "33.4.11",
     "npmRebuild": false,
