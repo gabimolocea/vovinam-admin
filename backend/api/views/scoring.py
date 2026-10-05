@@ -430,6 +430,13 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+    def partial_update(self, request, pk=None):
+        """PATCH pe o nota. Aplicatia trimite PATCH cand un admin schimba o
+        nota din tabelul probei; fara metoda asta, routerul raspundea 405 si
+        modificarea nu intra niciodata. `update` lucreaza deja cu partial=True.
+        """
+        return self.update(request, pk)
+
     def destroy(self, request, pk=None):
         """Delete a referee score (only admin)"""
         try:
