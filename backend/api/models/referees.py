@@ -1,4 +1,10 @@
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
+from django.conf import settings
+
 from django.db import models
+from django.utils import timezone
 from django.db.models import Q
 from django.core.exceptions import ValidationError
 import secrets
@@ -210,6 +216,24 @@ class RefereePresence(models.Model):
         return f"Referee {self.referee_id} on category {self.category_id}"
 
 
+def _fusul_salii():
+    """Fusul in care se socotesc zilele de competitie (vezi settings)."""
+    return ZoneInfo(getattr(settings, 'FUS_ORAR_SALA', 'Europe/Bucharest'))
+
+
+def _ca_zi(valoare):
+    """Ziua calendaristica a unei valori care poate fi data sau data-si-ora.
+
+    `end_date` e DateTimeField pe model, dar codul si fixturile pun uneori un
+    `date` curat - si atunci `timezone.is_aware` crapa, pentru ca un `date`
+    n-are fus orar. Deosebirea se face dupa ce ARE valoarea, nu dupa ce ne
+    asteptam sa fie.
+    """
+    if isinstance(valoare, datetime):
+        return valoare.astimezone(_fusul_salii()).date() if timezone.is_aware(valoare) else valoare.date()
+    return valoare
+
+
 class RefereeQRLogin(models.Model):
     """A long-lived, admin-resettable QR login credential for a referee at
     a specific event. Scanning the QR (which encodes a URL carrying this
@@ -240,11 +264,44 @@ class RefereeQRLogin(models.Model):
     pin = models.CharField(_('PIN'), max_length=8, unique=True, db_index=True, null=True, blank=True)
     created_at = models.DateTimeField(_('Creat la'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Actualizat la'), auto_now=True)
+    # Pana la finalul zilei, nu pentru totdeauna.
+    #
+    # Codul ramane valabil toata ziua dinadins - un arbitru intra si iese de
+    # cateva ori si trebuie sa poata rescana acelasi cod inca afisat. Dar peste
+    # noapte nu mai are ce apara: acelasi PIN deschide si masa centrala a unui
+    # teren, deci unul ramas pe un bilet uitat in sala ar da acces la
+    # competitie si a doua zi.
+    #
+    # Gol inseamna fara expirare, pentru randuri despre care nu stim ce zi
+    # acopera.
+    expires_at = models.DateTimeField(_('Expiră la'), null=True, blank=True)
 
     # A PIN this short is only defensible because the login endpoint that
     # takes it is rate-limited and the server lives on the venue LAN.
     # Widening it costs nothing here: the device dials any length.
     PIN_LENGTH = 5
+
+    @staticmethod
+    def sfarsitul_zilei(event=None, acum=None):
+        """Miezul noptii dupa ultima zi care conteaza.
+
+        Ultima zi a evenimentului, sau ziua de azi daca evenimentul s-a
+        incheiat deja - un cod facut acum nu are voie sa se nasca mort, ceea
+        ce s-ar intampla la o competitie de test cu datele in trecut.
+        """
+        acum = acum or timezone.now()
+        fus = _fusul_salii()
+        ziua = acum.astimezone(fus).date()
+        sfarsit = getattr(event, 'end_date', None)
+        if sfarsit is not None:
+            ziua = max(ziua, _ca_zi(sfarsit))
+        return datetime.combine(ziua + timedelta(days=1), time.min, tzinfo=fus)
+
+    def este_valabil(self, acum=None):
+        return self.expires_at is None or (acum or timezone.now()) < self.expires_at
+
+    def prelungeste_pana_la_finalul_zilei(self):
+        self.expires_at = self.sfarsitul_zilei(self.event)
 
     class Meta:
         unique_together = ('event', 'referee')

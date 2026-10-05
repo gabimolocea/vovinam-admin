@@ -664,6 +664,12 @@ def referee_qr_login_info(request, event_id, athlete_id):
     silently invalidate a referee who already scanned in this morning."""
     athlete = get_object_or_404(Athlete, pk=athlete_id)
     qr, _ = RefereeQRLogin.objects.get_or_create(event_id=event_id, referee=athlete)
+    # Cerut din nou = folosit azi. Un cod cerut azi trebuie sa tina pana la
+    # finalul zilei de azi, chiar daca a fost facut saptamana trecuta sau daca
+    # purta o expirare mai scurta.
+    if qr.expires_at is None or qr.expires_at < RefereeQRLogin.sfarsitul_zilei(qr.event):
+        qr.prelungeste_pana_la_finalul_zilei()
+        qr.save(update_fields=['expires_at', 'updated_at'])
     if not qr.pin:
         # Row predates the PIN column and was never re-saved.
         qr.pin = RefereeQRLogin.generate_pin()
@@ -680,7 +686,8 @@ def referee_qr_login_reset(request, event_id, athlete_id):
     qr, _ = RefereeQRLogin.objects.get_or_create(event_id=event_id, referee=athlete)
     qr.token = secrets.token_urlsafe(32)
     qr.pin = RefereeQRLogin.generate_pin()
-    qr.save(update_fields=['token', 'pin', 'updated_at'])
+    qr.prelungeste_pana_la_finalul_zilei()
+    qr.save(update_fields=['token', 'pin', 'expires_at', 'updated_at'])
     return Response({'token': qr.token, 'pin': qr.pin, 'login_path': f'/qr-login/{qr.token}'})
 
 
@@ -698,6 +705,8 @@ def referee_qr_login_exchange(request):
     qr = RefereeQRLogin.objects.select_related('referee').filter(token=token).first()
     if not qr:
         return Response({'error': 'Cod QR invalid sau resetat. Cere unui admin un cod nou.'}, status=status.HTTP_404_NOT_FOUND)
+    if not qr.este_valabil():
+        return Response({'error': 'Codul a expirat. Cere unui admin unul nou.'}, status=status.HTTP_404_NOT_FOUND)
     user = _get_or_create_referee_user(qr.referee)
     refresh = RefreshToken.for_user(user)
     return Response({
@@ -757,6 +766,16 @@ def _pin_catre_arbitru(request):
     # Clean slate on success, so a referee who mistyped a few times isn't
     # left one fumble away from a lockout for the rest of the window.
     RefereePinLoginAttempt.objects.filter(ip_address=ip).delete()
+
+    # Expirarea se verifica DUPA stergerea de mai sus si fara sa inregistreze
+    # o incercare gresita: PIN-ul e corect, doar ziua lui a trecut. Numarat ca
+    # greseala, un arbitru care mai incearca de doua ori dimineata s-ar
+    # bloca singur pe adresa lui.
+    if not qr.este_valabil():
+        return None, Response(
+            {'error': 'Codul a expirat. Cere unui admin unul nou.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
     return qr, None
 
 

@@ -5,7 +5,9 @@ pentru Terenul 1 nu are voie sa opreasca proba de pe Terenul 2. Fara el,
 "acces doar la pagina Live" ar insemna acces la toata competitia, doar cu o
 interfata mai mica.
 """
-from datetime import date
+from datetime import date, timedelta
+
+from django.utils import timezone
 
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -153,3 +155,90 @@ class MasaCentralaTest(TestCase):
         self._cu_tokenul(self._intra(self.teren1))
         r = self.client.post('/api/monitor-sessions/', {'field': self.teren2.pk}, format='json')
         self.assertEqual(r.status_code, 403, r.content[:200])
+
+
+class ExpirarePinTest(TestCase):
+    """PIN-ul tine pana la finalul zilei, nu pentru totdeauna.
+
+    Ziua intreaga, dinadins: un arbitru intra si iese de cateva ori si trebuie
+    sa poata rescana acelasi cod inca afisat. Dar peste noapte nu mai are ce
+    apara - acelasi PIN deschide si masa centrala a unui teren.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.event = Event.objects.create(
+            title='Cupa', slug='cupa-exp', start_date=date(2026, 1, 1), end_date=date(2026, 1, 2),
+        )
+        self.teren = (CompetitionField.objects.filter(event=self.event).first()
+                      or CompetitionField.objects.create(event=self.event, name='T', field_number=1))
+        self.arbitru = Athlete.objects.create(first_name='Ana', last_name='Pin', is_referee=True)
+        self.qr = RefereeQRLogin.objects.create(
+            event=self.event, referee=self.arbitru, token='tok-exp', pin='77777',
+        )
+
+    def test_codul_nou_se_naste_valabil(self):
+        """Chiar si la un eveniment cu datele in trecut."""
+        self.qr.prelungeste_pana_la_finalul_zilei()
+        self.assertTrue(self.qr.este_valabil())
+        self.assertGreater(self.qr.expires_at, timezone.now())
+
+    def test_pinul_merge_cat_timp_nu_a_expirat(self):
+        self.qr.prelungeste_pana_la_finalul_zilei()
+        self.qr.save()
+        r = self.client.post('/api/masa-centrala-login/',
+                             {'pin': '77777', 'field': self.teren.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.content[:200])
+
+    def test_pinul_expirat_nu_mai_deschide_masa(self):
+        self.qr.expires_at = timezone.now() - timedelta(minutes=1)
+        self.qr.save()
+        r = self.client.post('/api/masa-centrala-login/',
+                             {'pin': '77777', 'field': self.teren.pk}, format='json')
+        self.assertEqual(r.status_code, 404)
+        self.assertIn('expirat', r.json()['error'])
+
+    def test_pinul_expirat_nu_mai_deschide_nici_device_ul(self):
+        self.qr.expires_at = timezone.now() - timedelta(minutes=1)
+        self.qr.save()
+        r = self.client.post('/api/referee-pin-login/', {'pin': '77777'}, format='json')
+        self.assertEqual(r.status_code, 404)
+        self.assertIn('expirat', r.json()['error'])
+
+    def test_codul_qr_expirat_e_refuzat(self):
+        self.qr.expires_at = timezone.now() - timedelta(minutes=1)
+        self.qr.save()
+        r = self.client.post('/api/referee-qr-login/', {'token': 'tok-exp'}, format='json')
+        self.assertEqual(r.status_code, 404)
+        self.assertIn('expirat', r.json()['error'])
+
+    def test_expirarea_nu_conteaza_ca_incercare_gresita(self):
+        """Altfel un arbitru care mai incearca de doua ori s-ar bloca singur."""
+        from api.models import RefereePinLoginAttempt
+        self.qr.expires_at = timezone.now() - timedelta(minutes=1)
+        self.qr.save()
+        self.client.post('/api/masa-centrala-login/',
+                         {'pin': '77777', 'field': self.teren.pk}, format='json')
+        self.assertEqual(RefereePinLoginAttempt.objects.count(), 0)
+
+    def test_ziua_se_socoteste_in_fusul_salii_nu_in_UTC(self):
+        """Serverul merge pe UTC, sala e in Romania.
+
+        Socotit in UTC, "finalul zilei" cade la ora 3 dimineata la Ploiesti -
+        in mijlocul noptii de dupa competitie, nu la capatul ei. Si mai rau,
+        cine lucreaza intre miezul noptii si ora 3 ar primi un cod care moare
+        peste cateva minute.
+        """
+        from zoneinfo import ZoneInfo
+        from django.conf import settings
+        from datetime import datetime as dt
+
+        fus = ZoneInfo(settings.FUS_ORAR_SALA)
+        # 01:00 la Ploiesti inseamna inca ziua de ieri in UTC.
+        noaptea = dt(2026, 5, 30, 1, 0, tzinfo=fus)
+        sfarsit = RefereeQRLogin.sfarsitul_zilei(None, acum=noaptea)
+        local = sfarsit.astimezone(fus)
+        self.assertEqual((local.hour, local.minute), (0, 0))
+        self.assertEqual(local.date(), date(2026, 5, 31))
+        # Aproape o zi intreaga, nu cateva minute.
+        self.assertGreater((sfarsit - noaptea).total_seconds() / 3600, 22)

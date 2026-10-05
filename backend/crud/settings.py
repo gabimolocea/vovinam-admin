@@ -341,6 +341,16 @@ LANGUAGE_CODE = 'ro'
 
 TIME_ZONE = 'UTC'
 
+# Fusul salii, pentru lucrurile care se masoara in ZILE de competitie, nu in
+# momente: expirarea codurilor de arbitru la finalul zilei, de pilda.
+#
+# Serverul ramane pe UTC - asa trebuie sa ramana, ca sa nu se schimbe sensul
+# niciunui moment deja scris in baza. Dar "finalul zilei" calculat in UTC ar
+# cadea la ora 3 dimineata in Romania, adica in mijlocul noptii de dupa
+# competitie, nu la capatul ei. Zilele se socotesc acolo unde se tine
+# competitia.
+FUS_ORAR_SALA = os.environ.get('FUS_ORAR_SALA', 'Europe/Bucharest')
+
 USE_I18N = True
 
 USE_TZ = True
