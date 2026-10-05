@@ -6,7 +6,15 @@ export default function LoginPage({ title = 'Login' }) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  // Daca am ajuns aici fiindca sesiunea a expirat, spunem asta: altfel pagina
+  // de autentificare aparuta din senin, in mijlocul unei competitii, arata ca
+  // o deconectare pe care n-a cerut-o nimeni. Vezi sesiuneExpirata() din
+  // shared/lib/api.js.
+  const [error, setError] = useState(
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('expirat')
+      ? 'Sesiunea a expirat. Autentifică-te din nou ca să continui.'
+      : ''
+  );
   const [busy, setBusy] = useState(false);
 
   const handleSubmit = async (e) => {

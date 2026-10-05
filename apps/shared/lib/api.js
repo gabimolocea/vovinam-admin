@@ -42,6 +42,31 @@ api.interceptors.request.use((config) => {
 // is gone or rejected.
 let refreshPromise = null;
 
+// Ce se intampla cand nici tokenul de refresh nu mai e bun.
+//
+// Pana acum: se stergeau tokenele si atat. Pe ecran nu se schimba nimic -
+// fiecare cerere raspundea 401, pagina ramanea goala, si butoanele pareau ca
+// nu fac nimic. In sala asta inseamna un arbitru-sef care apasa "AFISEAZA PE
+// TV" si crede ca s-a stricat aplicatia, cand de fapt doar i-a expirat
+// sesiunea peste noapte.
+//
+// Acum se duce la autentificare, o singura data chiar daca au cazut
+// douazeci de cereri deodata, si pastreaza unde era ca sa se poata intoarce.
+let ducLaAutentificare = false;
+
+function sesiuneExpirata() {
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+  if (ducLaAutentificare) return;
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname.endsWith('/login')) return;
+  ducLaAutentificare = true;
+  try {
+    sessionStorage.setItem('dupaAutentificare', window.location.pathname + window.location.search);
+  } catch { /* fara sessionStorage, ne intoarcem pe prima pagina */ }
+  window.location.assign('/login?expirat=1');
+}
+
 async function refreshAccessToken() {
   const refreshToken = localStorage.getItem('refreshToken');
   if (!refreshToken) throw new Error('No refresh token stored.');
@@ -73,15 +98,13 @@ api.interceptors.response.use(
         await refreshPromise;
         return api(config);
       } catch {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
+        sesiuneExpirata();
         return Promise.reject(err);
       }
     }
 
     if (response?.status === 401) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
+      sesiuneExpirata();
     }
     return Promise.reject(err);
   },
