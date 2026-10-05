@@ -1,4 +1,16 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const os = require('os');
+
+// `app.getVersion()` citeste package.json-ul aplicatiei si in dezvoltare, si
+// impachetat. Daca vreodata n-ar raspunde, titlul ramane fara versiune in loc
+// sa pice pornirea.
+const TITLU_FEREASTRA = (() => {
+  try {
+    return `FRVV Competition Launcher v${app.getVersion()}`;
+  } catch {
+    return 'FRVV Competition Launcher';
+  }
+})();
 const fs = require('fs');
 const path = require('path');
 
@@ -57,6 +69,12 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 760,
+    // Versiunea sta in titlu, nu scrisa de mana undeva in interfata: cand se
+    // raporteaza o problema din sala, primul lucru de aflat e ce versiune
+    // ruleaza calculatorul ala - iar pe un calculator imprumutat in ziua
+    // competitiei poate fi oricare. Luata din package.json, deci nu ramane in
+    // urma la urmatorul release.
+    title: TITLU_FEREASTRA,
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -75,6 +93,11 @@ function createWindow() {
   // for when they un-maximise.
   mainWindow.maximize();
 
+  // Altfel <title> din pagina - si titlul paginii dintr-un <webview> deschis -
+  // ar lua locul celui de sus, si versiunea ar disparea de indata ce se
+  // incarca ceva.
+  mainWindow.on('page-title-updated', (eveniment) => eveniment.preventDefault());
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -83,10 +106,122 @@ function createWindow() {
     contents.on('destroyed', () => {
       if (activeWebviewContents === contents) activeWebviewContents = null;
     });
+    // Butonul TV din competition-admin e un link cu target="_blank". Intr-un
+    // <webview> ferestrele noi sunt oprite din start, deci apasarea nu facea
+    // nimic si nici nu spunea de ce. Aici o prindem si deschidem noi
+    // fereastra: una adevarata, pe care operatorul o poate trage pe
+    // proiectorul din sala - ceea ce e tot rostul butonului.
+    contents.setWindowOpenHandler(({ url }) => {
+      if (esteAdresaLocala(url)) deschideFereastraSala(url);
+      // Orice altceva pleaca in browserul de sistem: o pagina straina n-are
+      // ce cauta intr-o fereastra a aplicatiei.
+      else if (/^https?:/i.test(url)) shell.openExternal(url);
+      return { action: 'deny' };
+    });
   });
 
   const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '..', 'dist', 'index.html')}`;
   mainWindow.loadURL(startUrl);
+}
+
+// Terenurile evenimentului activ, pentru meniul cu ecranele din sala. Se
+// umple singur cand stiva locala e pornita; pana atunci meniul arata de ce nu
+// are ce lista, in loc sa fie gol fara explicatie.
+let terenuri = [];
+
+function adresaEcranului(terenId) {
+  const gazda = session.lanIp || 'localhost';
+  const portul = PORTURI_DE_VERIFICAT.find((s) => s.cheie === 'public-display')?.port || 5177;
+  return `http://${gazda}:${portul}/display/${terenId}`;
+}
+
+// Intrarea la masa centrala a unui teren. Se deschide cu PIN-ul de arbitru,
+// deci poate fi dat oricui se aseaza acolo - nu e o adresa de admin.
+function adresaMesei(terenId) {
+  const gazda = session.lanIp || 'localhost';
+  const portul = PORTURI_DE_VERIFICAT.find((s) => s.cheie === 'competition-admin')?.port || 5191;
+  return `http://${gazda}:${portul}/masa/${terenId}`;
+}
+
+// Pagina cu un cod QR per teren, de aratat dimineata. Nu cuprinde un teren
+// anume, deci are nevoie de evenimentul activ, nu de lista de terenuri.
+function adresaCodurilor() {
+  const gazda = session.lanIp || 'localhost';
+  const portul = PORTURI_DE_VERIFICAT.find((s) => s.cheie === 'competition-admin')?.port || 5191;
+  return `http://${gazda}:${portul}/competitions/${session.eventId}/mese`;
+}
+
+// Intoarce true daca lista s-a schimbat, ca sa nu reconstruim meniul degeaba
+// la fiecare verificare de zece secunde.
+async function aduTerenurile() {
+  if (!session.localBaseUrl || !session.eventId) {
+    const eraCeva = terenuri.length > 0;
+    terenuri = [];
+    return eraCeva;
+  }
+  try {
+    const raspuns = await fetch(
+      `${session.localBaseUrl}/api/competition-fields/?event_id=${session.eventId}`,
+      { signal: AbortSignal.timeout(3000) },
+    );
+    if (!raspuns.ok) return false;
+    const noi = (await raspuns.json()).map((t) => ({ id: t.id, nume: t.name, numar: t.field_number }));
+    const seSchimba = JSON.stringify(noi) !== JSON.stringify(terenuri);
+    terenuri = noi;
+    return seSchimba;
+  } catch {
+    // Fara backend local - pastram ce stiam, ca sa nu dispara din meniu la o
+    // singura cerere cazuta.
+    return false;
+  }
+}
+
+// Ferestrele deschise din aplicatii (ecranul public), dupa adresa. Fara ele,
+// fiecare apasare pe TV ar deschide inca o fereastra peste cea dinainte.
+const ferestreSala = new Map();
+
+// Numai ce servim noi: localhost si adresa din retea a calculatorului asta,
+// pe porturile serviciilor locale. Orice altceva nu e "sala".
+function esteAdresaLocala(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    const porturiLocale = PORTURI_DE_VERIFICAT.map((s) => String(s.port));
+    if (!porturiLocale.includes(u.port)) return false;
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '::1') return true;
+    // Adresa din LAN a calculatorului asta - cand interfata e deschisa prin ea.
+    return Object.values(os.networkInterfaces()).some((adrese) => (adrese || []).some(
+      (a) => a.family === 'IPv4' && !a.internal && a.address === u.hostname,
+    ));
+  } catch {
+    return false;
+  }
+}
+
+function deschideFereastraSala(url) {
+  const deschisa = ferestreSala.get(url);
+  if (deschisa && !deschisa.isDestroyed()) {
+    // A doua apasare nu mai face o fereastra: o aduce in fata pe cea care e
+    // deja, poate pe celalalt ecran.
+    deschisa.show();
+    deschisa.focus();
+    return;
+  }
+
+  const fereastra = new BrowserWindow({
+    width: 1280,
+    height: 720,
+    title: `Ecran sală — ${TITLU_FEREASTRA}`,
+    backgroundColor: '#000000',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  fereastra.on('page-title-updated', (eveniment) => eveniment.preventDefault());
+  fereastra.on('closed', () => ferestreSala.delete(url));
+  fereastra.loadURL(url);
+  ferestreSala.set(url, fereastra);
 }
 
 // Child-process stdout/sync-progress events keep firing asynchronously
@@ -173,7 +308,10 @@ function porneteUrmarireaStarii() {
       const noua = await verificaLegaturi(gazda);
       const inainte = titluStare();
       stareSala = noua;
-      if (titluStare() !== inainte) buildMenu();
+      // Terenurile se verifica in aceeasi bucla: apar dupa ce stiva locala
+      // porneste, deci meniul construit la pornire nu le poate avea.
+      const terenuriSchimbate = await aduTerenurile();
+      if (titluStare() !== inainte || terenuriSchimbate) buildMenu();
     } catch {
       // Fara retea - titlul ramane cel de dinainte, nu stergem ce stiam.
     }
@@ -224,6 +362,56 @@ function buildMenu() {
                 : mainWindow?.webContents;
             target?.openDevTools({ mode: 'detach' });
           },
+        },
+        { type: 'separator' },
+        // Ecranele din sala, fiecare pe terenul lui. Doua feluri de deschis,
+        // fiindcă sunt doua situatii: fereastra se trage pe proiector fara sa
+        // iesi din aplicatie, iar browserul e pentru cand proiectorul atarna
+        // de alt calculator sau vrei ecran complet adevarat.
+        {
+          label: 'Ecran sală — fereastră nouă',
+          submenu: terenuri.length
+            ? terenuri.map((t) => ({
+              label: t.nume || `Teren ${t.numar}`,
+              click: () => deschideFereastraSala(adresaEcranului(t.id)),
+            }))
+            : [{ label: 'Pornește întâi competiția', enabled: false }],
+        },
+        {
+          label: 'Ecran sală — în browser',
+          submenu: terenuri.length
+            ? terenuri.map((t) => ({
+              label: t.nume || `Teren ${t.numar}`,
+              click: () => shell.openExternal(adresaEcranului(t.id)),
+            }))
+            : [{ label: 'Pornește întâi competiția', enabled: false }],
+        },
+        { type: 'separator' },
+        // Pagina pe care o primeste arbitrul care se aseaza la masa centrala.
+        // In browser, nu in fereastra launcherului: masa sta de obicei pe alt
+        // calculator decat cel care tine competitia.
+        {
+          label: 'Masă centrală — fereastră nouă',
+          submenu: terenuri.length
+            ? terenuri.map((t) => ({
+              label: t.nume || `Teren ${t.numar}`,
+              click: () => deschideFereastraSala(adresaMesei(t.id)),
+            }))
+            : [{ label: 'Pornește întâi competiția', enabled: false }],
+        },
+        {
+          label: 'Masă centrală — arată codurile pentru mese',
+          enabled: Boolean(session.eventId),
+          click: () => deschideFereastraSala(adresaCodurilor()),
+        },
+        {
+          label: 'Masă centrală — în browser',
+          submenu: terenuri.length
+            ? terenuri.map((t) => ({
+              label: t.nume || `Teren ${t.numar}`,
+              click: () => shell.openExternal(adresaMesei(t.id)),
+            }))
+            : [{ label: 'Pornește întâi competiția', enabled: false }],
         },
       ],
     },

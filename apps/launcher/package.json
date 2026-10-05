@@ -9,7 +9,8 @@
     "dev:renderer": "vite --port 5178 --strictPort",
     "dev": "concurrently -k -n renderer,electron -c cyan,magenta \"npm run dev:renderer\" \"wait-on tcp:5178 && cross-env ELECTRON_START_URL=http://localhost:5178 electron .\"",
     "build:renderer": "vite build",
-    "build": "npm run build:renderer && electron-builder -p never"
+    "build": "npm run build:renderer && electron-builder -p never",
+    "prebuild": "node electron/sincronizeazaNumele.js"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -24,7 +25,7 @@
   },
   "build": {
     "appId": "ro.frvv.launcher",
-    "productName": "FRVV Competition Launcher",
+    "productName": "FRVV Competition Launcher v1.0.5",
     "artifactName": "FRVV-Competition-Launcher-${version}-${arch}.${ext}",
     "electronVersion": "33.4.11",
     "npmRebuild": false,

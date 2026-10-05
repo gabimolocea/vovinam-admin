@@ -85,7 +85,13 @@ export default function AppViewPage({ app, onBack }) {
 
   return (
     <div className="app-view">
-      <webview ref={webviewRef} src={app.url} className="app-view-webview" />
+      {/* `allowpopups`: fara el, un link cu target="_blank" dinauntru - butonul
+          TV, de pilda - e oprit inainte ca procesul principal sa afle de el, si
+          apasarea pare ca nu face nimic. Ce se intampla cu fereastra decide tot
+          procesul principal (setWindowOpenHandler in electron/main.js), care
+          deschide doar adresele din sala si trimite restul in browser. */}
+      {/* eslint-disable-next-line react/no-unknown-property -- atribut Electron <webview>, nu DOM standard */}
+      <webview ref={webviewRef} src={app.url} allowpopups="true" className="app-view-webview" />
       {appErrors.length > 0 && (
         <div className="app-view-errors">
           <div className="app-view-errors-head">
