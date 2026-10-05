@@ -1,0 +1,138 @@
+# Setarile pentru care exista acest proiect.
+#
+# Fiecare din ele e inaccesibila din Arduino IDE, fiindca acolo componentele
+# ESP-IDF vin precompilate. Aici se compileaza din sursa, deci conteaza.
+#
+# Masura de referinta, din build-ul Arduino: imaginea trepideaza orizontal cu
+# radioul asociat, la 49.3Hz si 40 MB/s ceruti din PSRAM. Fara radio e curata.
+# Vezi ../referee-esp32s3-28b/README.md pentru tot ce s-a incercat si exclus.
+
+CONFIG_IDF_TARGET="esp32s3"
+
+# ─────────────────────────────── PSRAM ───────────────────────────────
+#
+# MODUL. Placa are PSRAM octal - verificat: in mod quad raporteaza
+# "PSRAM chip is not connected, or wrong PSRAM line mode" si zero octeti.
+# Nucleul Arduino compileaza esp_lcd impotriva CONFIG_SPIRAM_MODE_QUAD si
+# recompileaza doar sase biblioteci per varianta, fara esp_lcd intre ele. Deci
+# acolo driverul ecranului presupune un mod de memorie pe care placa nu-l are.
+# Asta e nepotrivirea pe care proiectul de aici o repara.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_TYPE_AUTO=y
+
+# VITEZA. 120MHz in loc de 80. In raportul de test al producatorului pentru
+# placa de 7", asta a fost singurul lucru care a eliminat flickerul - aceeasi
+# clasa de problema, acelasi mecanism. Pe PSRAM octal e functie experimentala,
+# de unde si linia de dinaintea ei; nucleul Arduino nu o expune deloc.
+#
+# Daca placa nu porneste sau da erori aleatoare la boot, asta e prima linie de
+# comentat (si CONFIG_ESPTOOLPY_FLASHFREQ_120M cu ea): se intoarce la 80MHz
+# si restul setarilor raman.
+# MASURAT: la 120MHz placa nu porneste deloc - nici mesajele de ROM nu ies,
+# desi USB-ul enumereaza. E riscul despre care avertizeaza si documentatia
+# Espressif pentru 120MHz pe PSRAM octal. Lasate comentate ca sa se vada ce s-a
+# incercat; de reluat doar dupa ce restul configuratiei e dovedita.
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+CONFIG_SPIRAM_SPEED_120M=y
+#CONFIG_SPIRAM_SPEED_80M=y
+
+# Tampoanele de retea NU in PSRAM. In Arduino asta e pornit, si e legatura
+# directa intre "radio pornit" si "imaginea trepideaza": fiecare pachet trece
+# peste citirea pe care peripheralul RGB o face continuu din aceeasi memorie.
+# Mutate in RAM intern, radioul nu mai concureaza cu ecranul.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n
+
+# XIP din PSRAM ramane OPRIT, desi ESP-FAQ il recomanda alaturi de bounce
+# buffers. Motivul e ca rezolva alta problema - operatiile pe flash care
+# opresc cache-ul - si o face mutand codul in PSRAM, adica adaugand exact
+# traficul de care incercam sa scapam. De incercat doar daca restul nu ajunge.
+CONFIG_SPIRAM_XIP_FROM_PSRAM=n
+
+# ─────────────────────────────── CACHE ───────────────────────────────
+#
+# Linii de 64 de octeti in loc de 32: jumatate de tranzactii pe magistrala
+# pentru aceeasi cantitate de pixeli cititi. Si cache de date dublu.
+# Amandoua fac parte din configuratia care a mers in raportul de 7".
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_32B=y
+
+# ──────────────────────────── ECRANUL RGB ────────────────────────────
+#
+# Intreruperea panoului in IRAM. Fara asta ea sta in flash, si orice ratare de
+# cache in timpul ei o intarzie - exact cand nu are voie, fiindca peripheralul
+# RGB nu are memorie proprie si consuma pixeli fara pauza.
+CONFIG_LCD_RGB_ISR_IRAM_SAFE=y
+
+# Repornirea DMA la fiecare VBlank ramane pornita: cu bounce buffers oprite
+# (cum le avem) e mecanismul care indreapta o deplasare la cadrul urmator, si
+# bug-ul de paritate din esp-idf#19070 nu se poate manifesta fara bounce.
+CONFIG_LCD_RGB_RESTART_IN_VSYNC=y
+
+# ─────────────────────────────── FLASH ───────────────────────────────
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+# 120MHz, obligatoriu impreuna cu PSRAM la 120: tabelele de calibrare MSPI nu
+# au o combinatie de 240MHz core cu flash la 80 si PSRAM la 120, si build-ul
+# cade pe simboluri lipsa. Aceeasi pereche ca in raportul de test al
+# producatorului pentru placa de 7".
+CONFIG_ESPTOOLPY_FLASHFREQ_120M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# ────────────────────────────── ARDUINO ──────────────────────────────
+#
+# Nucleul Arduino cere tick de 1000Hz, si porneste singur setup() si loop() -
+# de-aia sketch-ul merge nemodificat.
+CONFIG_FREERTOS_HZ=1000
+CONFIG_AUTOSTART_ARDUINO=y
+
+# USB CDC pe boot, ca in Arduino IDE: altfel Serial n-are setTxTimeoutMs().
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_TINYUSB_CDC_ENABLED=n
+
+CONFIG_FREERTOS_UNICORE=n
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Suficient ca o cerere HTTP cu JSON sa nu cada pe stiva.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+
+# ──────────────────────────── mbedTLS / PSK ────────────────────────────
+#
+# Aplicatia nu foloseste HTTPS - vorbeste HTTP cu un laptop din aceeasi sala.
+# Dar nucleul Arduino leaga NetworkClientSecure neconditionat, iar toata
+# implementarea lui din ssl_client.cpp sta intr-un #else dupa:
+#
+#   #if !defined(MBEDTLS_KEY_EXCHANGE__SOME__PSK_ENABLED) && ...
+#   #warning "Please call idf.py menuconfig ... Enable PSK based ciphersuite modes"
+#
+# Fara setarile de mai jos fisierul se compileaza gol si link-ul cade pe
+# simboluri lipsa. In Arduino IDE nu se vede fiindca acolo mbedTLS vine
+# precompilat cu ele pornite.
+CONFIG_MBEDTLS_PSK_MODES=y
+CONFIG_MBEDTLS_KEY_EXCHANGE_PSK=y
+
+# ──────────────────────────────── LVGL ────────────────────────────────
+#
+# Culoare pe 16 biti, ca framebuffer-ul panoului (RGB565). Orice altceva ar
+# insemna o conversie la fiecare pixel.
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_COLOR_16_SWAP=n
+
+# Fonturile de care are nevoie tastatura de PIN. Fiecare ocupa flash, deci
+# doar astea trei: text obisnuit, cifrele mari, si titlul.
+CONFIG_LV_FONT_MONTSERRAT_16=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_MONTSERRAT_48=y
+CONFIG_LV_FONT_DEFAULT_MONTSERRAT_16=y
+
+# LVGL isi ia memoria din heap-ul ESP-IDF, care include PSRAM. Obiectele de
+# interfata pot sta linistite acolo - nu ele sunt pe drumul critic, ci
+# tampoanele de desen, care stau in RAM intern (vezi main.cpp).
+CONFIG_LV_MEM_CUSTOM=y
+
+CONFIG_LV_USE_PERF_MONITOR=n
+CONFIG_LV_USE_LOG=n

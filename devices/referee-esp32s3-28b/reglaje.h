@@ -62,6 +62,8 @@
 #pragma once
 
 #include <Arduino.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 // Reglajele active. Citite din memoria device-ului la pornire, folosite de
 // Display_ST7701.cpp cand construieste panoul.
@@ -71,6 +73,7 @@ struct ReglajePanou {
   uint16_t vpw, vbp, vfp;
   uint32_t bouncePx;   // 0 = fara bounce buffers (vezi comentariul de sus)
   bool     pclkNeg;    // pe ce front al ceasului iese pixelul
+  uint8_t  numFb;      // cate memorii de ecran: 1, sau 2 ca sa nu se rupa imaginea
   bool     wifiSleep;  // economia de energie a radioului
 };
 
@@ -81,6 +84,17 @@ void reglajeIncarca();
 
 // Numara cadrele, pentru Hz-ii masurati. Se leaga de panou la pornire.
 void reglajeLeagaVsync();
+
+// Un semafor pe care cine vrea il primeste la fiecare cadru terminat.
+//
+// Exista pentru desenul cu doua memorii de ecran: schimbarea intre ele e
+// ceruta cu esp_lcd_panel_draw_bitmap, dar se intampla abia la VSYNC, iar
+// apelul se intoarce imediat. Fara sa astepte confirmarea, desenul porneste in
+// memoria pe care panoul inca o baleiaza - si atunci dubla memorare nu mai
+// apara de nimic, exact ce se vedea ca tremurat la fiecare apasare.
+//
+// Lasat null, nu costa nimic. Vezi ../referee-esp32s3-28b-lvgl/main/main.cpp.
+extern volatile SemaphoreHandle_t reglajeSemaforVsync;
 
 // Improspatarea masurata de la ultima intrebare, in Hz. Prima intoarce 0.
 float reglajeHz();

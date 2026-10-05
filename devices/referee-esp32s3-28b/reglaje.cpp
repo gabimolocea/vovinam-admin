@@ -40,6 +40,11 @@ static const ReglajePanou IMPLICIT = {
   .vpw = 10, .vbp = 20, .vfp = 20,
   .bouncePx  = 0,
   .pclkNeg   = false,   // 0 = frontul crescator, ca la producator
+  // O singura memorie de ecran. Doua ar scapa de ruperea imaginii la
+  // redesenare, dar costa inca 600KB de PSRAM si n-au rost cand desenul e rar
+  // si partial, ca in firmware-ul cu Arduino_GFX. Conteaza la LVGL, care
+  // redeseneaza mult mai des - vezi spike-ul din ../referee-esp32s3-28b-lvgl.
+  .numFb     = 1,
   .wifiSleep = false,
 };
 
@@ -50,6 +55,7 @@ static const char* NS = "panou";
 
 // Numaratoarea de cadre. Creste in intrerupere, deci volatile.
 static volatile uint32_t cadre = 0;
+volatile SemaphoreHandle_t reglajeSemaforVsync = nullptr;
 static uint32_t          cadreLaUltimaCitire = 0;
 static unsigned long     msLaUltimaCitire    = 0;
 
@@ -64,6 +70,7 @@ void reglajeIncarca() {
   rg.vfp       = prefsPanou.getUShort("vfp",  IMPLICIT.vfp);
   rg.bouncePx  = prefsPanou.getUInt("bounce", IMPLICIT.bouncePx);
   rg.pclkNeg   = prefsPanou.getBool("pclkneg", IMPLICIT.pclkNeg);
+  rg.numFb     = prefsPanou.getUChar("numfb",  IMPLICIT.numFb);
   rg.wifiSleep = prefsPanou.getBool("psleep", IMPLICIT.wifiSleep);
   prefsPanou.end();
 }
@@ -79,6 +86,7 @@ static void salveaza() {
   prefsPanou.putUShort("vfp",    rg.vfp);
   prefsPanou.putUInt("bounce",   rg.bouncePx);
   prefsPanou.putBool("pclkneg",  rg.pclkNeg);
+  prefsPanou.putUChar("numfb",   rg.numFb);
   prefsPanou.putBool("psleep",   rg.wifiSleep);
   prefsPanou.end();
 }
@@ -95,6 +103,14 @@ static IRAM_ATTR bool laVsync(esp_lcd_panel_handle_t panel,
                     const esp_lcd_rgb_panel_event_data_t* date,
                     void* arg) {
   cadre++;
+
+  // Daca cineva asteapta confirmarea schimbarii de memorie, i-o dam aici -
+  // asta E momentul in care s-a facut.
+  if (reglajeSemaforVsync) {
+    BaseType_t trezit = pdFALSE;
+    xSemaphoreGiveFromISR(reglajeSemaforVsync, &trezit);
+    return trezit == pdTRUE;
+  }
   return false;
 }
 
@@ -138,10 +154,11 @@ void reglajeRaport() {
   uint32_t ht = ECRAN_LAT  + rg.hpw + rg.hbp + rg.hfp;
   uint32_t vt = ECRAN_INAL + rg.vpw + rg.vbp + rg.vfp;
 
-  Serial.printf("PANOU pclk=%.1fMHz porch=%u,%u,%u,%u,%u,%u bounce=%u psleep=%d edge=%d\n",
+  Serial.printf("PANOU pclk=%.1fMHz porch=%u,%u,%u,%u,%u,%u bounce=%u psleep=%d edge=%d fb=%d\n",
                 rg.pclkHz / 1e6f,
                 rg.hpw, rg.hbp, rg.hfp, rg.vpw, rg.vbp, rg.vfp,
-                (unsigned)rg.bouncePx, rg.wifiSleep ? 1 : 0, rg.pclkNeg ? 1 : 0);
+                (unsigned)rg.bouncePx, rg.wifiSleep ? 1 : 0, rg.pclkNeg ? 1 : 0,
+                rg.numFb);
   Serial.printf("PANOU cadru=%ux%u=%u px  teoretic=%.1fHz  banda=%.1f MB/s\n",
                 (unsigned)ht, (unsigned)vt, (unsigned)pixeliPeCadru(),
                 reglajeHzTeoretic(), reglajeBandaMBs());
@@ -252,6 +269,21 @@ bool reglajeComanda(const String& linie) {
                   "Reporneste device-ul.\n",
                   v[0], v[1], v[2], v[3], v[4], v[5],
                   reglajeHzTeoretic(), reglajeBandaMBs());
+    return true;
+  }
+
+  if (linie.startsWith("FB=")) {
+    // Cate memorii de ecran. Cu doua, desenul se face in cea pe care panoul
+    // NU o citeste, si se schimba intre ele la VSYNC - deci nu se mai poate
+    // vedea jumatate de cadru vechi si jumatate nou. Costa 600KB de PSRAM.
+    int n = linie.substring(3).toInt();
+    if (n != 1 && n != 2) {
+      Serial.println("EROARE FB=1 sau FB=2");
+      return true;
+    }
+    rg.numFb = (uint8_t)n;
+    salveaza();
+    Serial.printf("OK FB=%d. Reporneste device-ul.\n", n);
     return true;
   }
 

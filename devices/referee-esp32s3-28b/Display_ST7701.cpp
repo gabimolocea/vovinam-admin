@@ -155,7 +155,7 @@ void ST7701_Init()
     },
     .data_width = ESP_PANEL_LCD_RGB_DATA_WIDTH,                                                   
     .bits_per_pixel = ESP_PANEL_LCD_RGB_PIXEL_BITS,                                               
-    .num_fbs = ESP_PANEL_LCD_RGB_FRAME_BUF_NUM,                                                   
+    .num_fbs = rg.numFb,                                                   
     .bounce_buffer_size_px = rg.bouncePx,                                   
     .psram_trans_align = 64,                                                                      
     .hsync_gpio_num = ESP_PANEL_LCD_PIN_NUM_RGB_HSYNC,                                            

@@ -1,0 +1,7 @@
+# Aplicatia are ~1.25MB. 3MB de factory lasa loc de crescut fara OTA, ca la
+# "Huge APP" din Arduino IDE, cu care se compara masuratorile.
+# nume,     tip, subtip,   adresa,  marime
+nvs,        data, nvs,     0x9000,  0x5000
+otadata,    data, ota,     0xe000,  0x2000
+factory,    app,  factory, 0x10000, 3M
+storage,    data, spiffs,  ,        1M
