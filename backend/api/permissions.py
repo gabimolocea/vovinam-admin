@@ -226,3 +226,75 @@ class IsResultReviewerOrAdmin(permissions.BasePermission):
             return True
 
         return False
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MASA CENTRALĂ A UNUI TEREN
+# ═══════════════════════════════════════════════════════════════════
+#
+# Cine stă la masa centrală se schimbă în timpul zilei, iar același arbitru
+# poate fi dimineața la colț și după-amiaza la masă. De aceea dreptul nu stă
+# pe persoană, ci pe teren: adresa pe care s-a deschis pagina spune terenul,
+# PIN-ul spune omul. Terenul ajunge în token (vezi masa_centrala_login), deci
+# sesiunea poartă singură limita cu ea.
+#
+# Limita e verificată în DOUĂ locuri, pentru că niciunul singur nu ajunge:
+# clasa de mai jos lasă cererea să intre în view, iar `poate_scrie_pe_teren`
+# verifică acolo că lucrul atins chiar e de pe terenul acela - abia în view se
+# știe despre ce probă e vorba.
+
+CHEIE_MASA_TEREN = 'masa_teren'
+CHEIE_MASA_ARBITRU = 'masa_arbitru'
+
+
+def terenul_mesei(request):
+    """Terenul pe care sesiunea are drept de masă centrală, sau None."""
+    try:
+        return int(request.auth[CHEIE_MASA_TEREN])
+    except (TypeError, KeyError, ValueError, AttributeError):
+        return None
+
+
+def arbitrul_mesei(request):
+    """Arbitrul care stă acum la masă, pentru istoric."""
+    try:
+        return int(request.auth[CHEIE_MASA_ARBITRU])
+    except (TypeError, KeyError, ValueError, AttributeError):
+        return None
+
+
+def este_admin(user):
+    return bool(user and user.is_authenticated and getattr(user, 'is_admin', False))
+
+
+def poate_scrie_pe_teren(request, field_id):
+    """Adevărat dacă cererea are voie să schimbe ceva de pe terenul dat.
+
+    Se cheamă din view, unde se știe al cui e lucrul atins. Fără asta,
+    operatorul de la Terenul 1 ar putea opri proba de la Terenul 3 - are un
+    token valid, doar că pentru alt teren.
+    """
+    if este_admin(request.user):
+        return True
+    teren = terenul_mesei(request)
+    if teren is None or field_id is None:
+        return False
+    try:
+        return int(field_id) == teren
+    except (TypeError, ValueError):
+        return False
+
+
+class IsAdminOrFieldTable(permissions.BasePermission):
+    """Citire pentru oricine; scriere pentru admin sau pentru masa unui teren.
+
+    Nu spune PE CARE teren - asta se verifică în view cu
+    `poate_scrie_pe_teren`, unde se cunoaște ținta.
+    """
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        if este_admin(request.user):
+            return True
+        return terenul_mesei(request) is not None

@@ -27,6 +27,7 @@ from ._common import (
     _log_category_flow_event,
     _resolve_recording_session,
 )
+from ..permissions import IsAdminOrFieldTable, este_admin, poate_scrie_pe_teren
 from .matches import MatchViewSet
 from .competitions import CompetitionViewSet
 
@@ -228,7 +229,7 @@ class FieldBreakViewSet(viewsets.ViewSet):
 
 class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
     """ViewSet for category-to-field assignments"""
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
     
     def list(self, request):
         """List all category-field assignments"""
@@ -248,6 +249,13 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """Create a category-field assignment"""
+        # Programul competitiei ramane al adminului. Permisiunea de pe viewset
+        # lasa acum sa intre si masa centrala - ea are nevoie de `update`, ca
+        # sa porneasca si sa incheie proba - iar actiunile de aici n-au nimic
+        # legat de un anume teren, deci fara randul asta masa de la Terenul 1
+        # ar putea rearanja toata ziua.
+        if not este_admin(request.user):
+            return Response({'error': 'Doar un admin poate face asta.'}, status=status.HTTP_403_FORBIDDEN)
         category = Category.objects.select_related('event').filter(pk=request.data.get('category')).first()
         locked = _event_operational_lock_response(getattr(category, 'event', None))
         if locked is not None:
@@ -274,6 +282,8 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(assignment, 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            if not poate_scrie_pe_teren(request, assignment.field_id):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             stare_veche = assignment.status
             serializer = CategoryFieldAssignmentSerializer(assignment, data=request.data, partial=True)
             if serializer.is_valid():
@@ -332,6 +342,13 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
     
     def destroy(self, request, pk=None):
         """Delete a category-field assignment"""
+        # Programul competitiei ramane al adminului. Permisiunea de pe viewset
+        # lasa acum sa intre si masa centrala - ea are nevoie de `update`, ca
+        # sa porneasca si sa incheie proba - iar actiunile de aici n-au nimic
+        # legat de un anume teren, deci fara randul asta masa de la Terenul 1
+        # ar putea rearanja toata ziua.
+        if not este_admin(request.user):
+            return Response({'error': 'Doar un admin poate face asta.'}, status=status.HTTP_403_FORBIDDEN)
         try:
             assignment = CategoryFieldAssignment.objects.get(pk=pk)
             locked = _event_operational_lock_response(getattr(getattr(assignment, 'category', None), 'event', None))
@@ -347,6 +364,13 @@ class CategoryFieldAssignmentViewSet(viewsets.ViewSet):
         """Bulk update order and field for multiple category-field assignments.
         Body: { items: [{ id, field, order, estimated_duration }, ...] }
         """
+        # Programul competitiei ramane al adminului. Permisiunea de pe viewset
+        # lasa acum sa intre si masa centrala - ea are nevoie de `update`, ca
+        # sa porneasca si sa incheie proba - iar actiunile de aici n-au nimic
+        # legat de un anume teren, deci fara randul asta masa de la Terenul 1
+        # ar putea rearanja toata ziua.
+        if not este_admin(request.user):
+            return Response({'error': 'Doar un admin poate face asta.'}, status=status.HTTP_403_FORBIDDEN)
         items = request.data.get('items', [])
         ids = [item.get('id') for item in items]
         assignments = list(CategoryFieldAssignment.objects.select_related('category__event').filter(pk__in=ids))
@@ -622,7 +646,7 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
     """ViewSet for managing display monitor sessions.
     Public read access needed for public-display app (no auth).
     """
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
     
     def list(self, request):
         """List all monitor sessions"""
@@ -722,6 +746,9 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """Create a new monitor session"""
+        # Pagina Live creeaza sesiunea cand terenul n-are inca una.
+        if not poate_scrie_pe_teren(request, request.data.get('field')):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
         field = CompetitionField.objects.select_related('event').filter(pk=request.data.get('field')).first()
         locked = _event_operational_lock_response(getattr(field, 'event', None))
         if locked is not None:
@@ -748,6 +775,8 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(session, 'field', None), 'event', None))
             if locked is not None:
                 return locked
+            if not poate_scrie_pe_teren(request, session.field_id):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             sportiv_vechi_id = session.current_athlete_id
             categorie_veche = session.current_category
             serializer = DisplayMonitorSessionSerializer(session, data=request.data, partial=True)
@@ -796,6 +825,13 @@ class DisplayMonitorSessionViewSet(viewsets.ViewSet):
     
     def destroy(self, request, pk=None):
         """Delete a monitor session"""
+        # Programul competitiei ramane al adminului. Permisiunea de pe viewset
+        # lasa acum sa intre si masa centrala - ea are nevoie de `update`, ca
+        # sa porneasca si sa incheie proba - iar actiunile de aici n-au nimic
+        # legat de un anume teren, deci fara randul asta masa de la Terenul 1
+        # ar putea rearanja toata ziua.
+        if not este_admin(request.user):
+            return Response({'error': 'Doar un admin poate face asta.'}, status=status.HTTP_403_FORBIDDEN)
         try:
             session = DisplayMonitorSession.objects.get(pk=pk)
             locked = _event_operational_lock_response(getattr(getattr(session, 'field', None), 'event', None))

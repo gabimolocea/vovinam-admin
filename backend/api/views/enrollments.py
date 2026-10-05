@@ -1,4 +1,6 @@
 from django.shortcuts import render
+from ..permissions import poate_scrie_pe_teren
+from ._common import terenul_categoriei
 from datetime import datetime, timedelta
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
@@ -165,7 +167,12 @@ class CategoryAthleteViewSet(viewsets.ViewSet):
 
     def partial_update(self, request, pk=None):
         instance = self.get_queryset().get(pk=pk)
-        forbidden = self._club_forbidden_response(request, instance)
+        # Masa centrala descalifica din tabelul probei. Regula pe cluburi e
+        # pentru inscrieri, facute inainte de competitie de antrenori; in sala,
+        # cine tine masa raspunde de toti sportivii de pe terenul lui,
+        # indiferent de club.
+        la_masa = poate_scrie_pe_teren(request, terenul_categoriei(getattr(instance, 'category', None)))
+        forbidden = None if la_masa else self._club_forbidden_response(request, instance)
         if forbidden:
             return forbidden
         locked = _event_operational_guard_response(request.user, getattr(instance.category, 'event', None))

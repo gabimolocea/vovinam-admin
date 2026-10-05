@@ -14,6 +14,8 @@ from rest_framework.pagination import PageNumberPagination
 from ..serializers import *
 from ..models import *
 from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
+from ..permissions import CHEIE_MASA_TEREN, CHEIE_MASA_ARBITRU
+from ..serializers._common import _person_name
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from django.conf import settings
@@ -715,6 +717,102 @@ def _client_ip(request):
     return forwarded.split(',')[0].strip() or '0.0.0.0'
 
 
+def _pin_catre_arbitru(request):
+    """PIN-ul din cerere -> randul RefereeQRLogin, sau un raspuns de refuz.
+
+    Scos din `referee_pin_login_exchange` cand a aparut al doilea loc care
+    cere acelasi PIN (masa centrala). Doua copii ale limitarii pe adresa ar fi
+    insemnat ca o corectie intr-una din ele lasa cealalta usa deschisa.
+    """
+    pin = str(request.data.get('pin', '')).strip()
+    ip = _client_ip(request)
+    window_start = timezone.now() - timedelta(minutes=RefereePinLoginAttempt.WINDOW_MINUTES)
+
+    recent_failures = RefereePinLoginAttempt.objects.filter(
+        ip_address=ip, created_at__gte=window_start,
+    ).count()
+    if recent_failures >= RefereePinLoginAttempt.MAX_FAILURES:
+        return None, Response(
+            {'error': 'Prea multe încercări greșite. Așteaptă câteva minute.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    qr = RefereeQRLogin.objects.select_related('referee').filter(pin=pin).first() if pin else None
+    if not qr:
+        RefereePinLoginAttempt.objects.create(ip_address=ip, pin_tried=pin[:8])
+        # Old rows are only ever read through the window above, so clear
+        # them out here rather than adding a scheduled job for it.
+        RefereePinLoginAttempt.objects.filter(
+            created_at__lt=timezone.now() - timedelta(days=1),
+        ).delete()
+        remaining = RefereePinLoginAttempt.MAX_FAILURES - recent_failures - 1
+        return None, Response(
+            {
+                'error': 'PIN invalid. Cere unui admin PIN-ul tău.',
+                'attempts_left': max(0, remaining),
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # Clean slate on success, so a referee who mistyped a few times isn't
+    # left one fumble away from a lockout for the rest of the window.
+    RefereePinLoginAttempt.objects.filter(ip_address=ip).delete()
+    return qr, None
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def masa_centrala_login(request):
+    """Public: acelasi PIN de arbitru, dar pentru masa centrala a unui teren.
+
+    De ce aici si nu o delegare pe persoana: la masa centrala oamenii se
+    schimba in timpul zilei, iar un arbitru de colt poate ajunge la masa si
+    invers. Nicio lista tinuta de cineva nu ramane adevarata pana seara. Asa
+    ca terenul da dreptul - adresa pe care s-a deschis pagina - iar omul doar
+    spune cine e, cu PIN-ul pe care deja il are pentru device.
+
+    Castigul e in istoric: fiecare oprire si fiecare nota schimbata manual
+    ramane cu numele arbitrului care era pe scaun atunci, nu cu un cont comun.
+
+    Corp: {"pin": "12345", "field": 7}
+    """
+    qr, refuz = _pin_catre_arbitru(request)
+    if refuz is not None:
+        return refuz
+
+    try:
+        teren = CompetitionField.objects.select_related('event').get(pk=request.data.get('field'))
+    except (CompetitionField.DoesNotExist, TypeError, ValueError):
+        return Response({'error': 'Terenul nu există.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # PIN-ul e unic pe toate evenimentele, deci trebuie spus explicit ca e al
+    # altui eveniment - altfel un arbitru de la o competitie veche ar deschide
+    # masa de la una in curs.
+    if teren.event_id != qr.event_id:
+        return Response(
+            {'error': 'PIN-ul tău este pentru alt eveniment.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    user = _get_or_create_referee_user(qr.referee)
+    refresh = RefreshToken.for_user(user)
+    # Dreptul calatoreste in token, nu intr-un rand de tabel: sesiunea spune
+    # singura pe ce teren are voie, si nu exista nimic de curatat seara.
+    refresh[CHEIE_MASA_TEREN] = teren.pk
+    refresh[CHEIE_MASA_ARBITRU] = qr.referee_id
+    acces = refresh.access_token
+    acces[CHEIE_MASA_TEREN] = teren.pk
+    acces[CHEIE_MASA_ARBITRU] = qr.referee_id
+
+    return Response({
+        'user': UserSerializer(user).data,
+        'event_id': qr.event_id,
+        'field': {'id': teren.pk, 'name': teren.name, 'number': teren.field_number},
+        'referee': {'id': qr.referee_id, 'name': _person_name(qr.referee)},
+        'tokens': {'refresh': str(refresh), 'access': str(acces)},
+    })
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def referee_pin_login_exchange(request):
@@ -732,39 +830,9 @@ def referee_pin_login_exchange(request):
     minutes-long script into hours of traffic that is impossible to miss.
     A correct PIN is never recorded and never counts against the limit.
     """
-    pin = str(request.data.get('pin', '')).strip()
-    ip = _client_ip(request)
-    window_start = timezone.now() - timedelta(minutes=RefereePinLoginAttempt.WINDOW_MINUTES)
-
-    recent_failures = RefereePinLoginAttempt.objects.filter(
-        ip_address=ip, created_at__gte=window_start,
-    ).count()
-    if recent_failures >= RefereePinLoginAttempt.MAX_FAILURES:
-        return Response(
-            {'error': 'Prea multe încercări greșite. Așteaptă câteva minute.'},
-            status=status.HTTP_429_TOO_MANY_REQUESTS,
-        )
-
-    qr = RefereeQRLogin.objects.select_related('referee').filter(pin=pin).first() if pin else None
-    if not qr:
-        RefereePinLoginAttempt.objects.create(ip_address=ip, pin_tried=pin[:8])
-        # Old rows are only ever read through the window above, so clear
-        # them out here rather than adding a scheduled job for it.
-        RefereePinLoginAttempt.objects.filter(
-            created_at__lt=timezone.now() - timedelta(days=1),
-        ).delete()
-        remaining = RefereePinLoginAttempt.MAX_FAILURES - recent_failures - 1
-        return Response(
-            {
-                'error': 'PIN invalid. Cere unui admin PIN-ul tău.',
-                'attempts_left': max(0, remaining),
-            },
-            status=status.HTTP_404_NOT_FOUND,
-        )
-
-    # Clean slate on success, so a referee who mistyped a few times isn't
-    # left one fumble away from a lockout for the rest of the window.
-    RefereePinLoginAttempt.objects.filter(ip_address=ip).delete()
+    qr, refuz = _pin_catre_arbitru(request)
+    if refuz is not None:
+        return refuz
 
     user = _get_or_create_referee_user(qr.referee)
     refresh = RefreshToken.for_user(user)

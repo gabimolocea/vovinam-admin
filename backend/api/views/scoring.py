@@ -24,6 +24,7 @@ import logging
 from pathlib import Path
 from django.db import IntegrityError
 
+from ..permissions import IsAdminOrFieldTable, este_admin, poate_scrie_pe_teren
 from ._common import (
     _compute_video_offset_ms,
     terenul_categoriei,
@@ -397,9 +398,10 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         
         user = request.user
         
-        # Check permissions: only the referee who created it or admin can update
-        if not (user.is_staff or
-                (hasattr(user, 'role') and user.role == 'admin') or
+        # Nota se poate schimba de: admin, arbitrul care a dat-o, sau masa
+        # centrala a terenului pe care se tine proba - ea introduce manual
+        # nota unui arbitru care n-a apucat s-o trimita.
+        if not (poate_scrie_pe_teren(request, terenul_categoriei(getattr(score.athlete_score, 'category', None))) or
             (hasattr(user, 'athlete') and user.athlete == score.referee
              and _is_category_assigned_referee(score.athlete_score.category, user.athlete))):
             return Response(
@@ -447,8 +449,8 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         
         user = request.user
         
-        # Only admins can delete
-        if not (user.is_staff or (hasattr(user, 'role') and user.role == 'admin')):
+        # Admin, sau masa centrala a terenului pe care se tine proba.
+        if not poate_scrie_pe_teren(request, terenul_categoriei(getattr(score.athlete_score, 'category', None))):
             return Response(
                 {'error': 'Only admins can delete referee scores'},
                 status=status.HTTP_403_FORBIDDEN
@@ -475,7 +477,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
 
 
 class CategoryRefereeScoreEventViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
 
     def list(self, request):
         queryset = CategoryRefereeScoreEvent.objects.select_related(
@@ -510,6 +512,8 @@ class CategoryRefereeScoreEventViewSet(viewsets.ViewSet):
         if serializer.is_valid():
             recording_session = None
             athlete_score = serializer.validated_data['athlete_score']
+            if not poate_scrie_pe_teren(request, terenul_categoriei(getattr(athlete_score, 'category', None))):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             if serializer.validated_data.get('recording_session'):
                 recording_session = serializer.validated_data['recording_session']
             else:
@@ -554,6 +558,8 @@ class CategoryRefereeScoreEventViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(getattr(getattr(athlete_score, 'category', None), 'event', None))
         if locked is not None:
             return locked
+        if not poate_scrie_pe_teren(request, terenul_categoriei(getattr(athlete_score, 'category', None))):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             tinta = CategoryRefereeScoreEvent.objects.get(pk=to_event_id, athlete_score_id=athlete_score.pk)
@@ -679,7 +685,7 @@ class CategoryFlowEventViewSet(viewsets.ViewSet):
 
 
 class FieldRecordingSessionViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
 
     def list(self, request):
         queryset = FieldRecordingSession.objects.select_related('event', 'field')
@@ -701,6 +707,8 @@ class FieldRecordingSessionViewSet(viewsets.ViewSet):
 
     def create(self, request):
         serializer = FieldRecordingSessionSerializer(data=request.data)
+        if not poate_scrie_pe_teren(request, request.data.get('field')):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
         if serializer.is_valid():
             instance = serializer.save()
             return Response(FieldRecordingSessionSerializer(instance).data, status=status.HTTP_201_CREATED)

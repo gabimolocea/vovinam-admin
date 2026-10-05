@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, ProtectedRoute } from '@shared';
 import LoginPage from '@shared/components/LoginPage';
 import { Spinner } from './components/ui';
+import { citesteMasa } from './lib/masaCentrala';
 import Layout from './components/Layout';
 
 const CompetitionList = lazy(() => import('./pages/CompetitionList'));
@@ -24,6 +25,25 @@ const ResultsPage = lazy(() => import('./pages/ResultsPage'));
 const LivePage = lazy(() => import('./pages/LivePage'));
 const LiveFullscreenPage = lazy(() => import('./pages/LiveFullscreenPage'));
 const DiplomaConfiguratorPage = lazy(() => import('./pages/DiplomaConfiguratorPage'));
+const MasaCentralaPage = lazy(() => import('./pages/MasaCentralaPage'));
+const MeseCentralePage = lazy(() => import('./pages/MeseCentralePage'));
+
+// Pagina Live se deschide si pentru admin, si pentru masa centrala a unui
+// teren. Garda de aici e doar pentru ce se vede: limita adevarata - ce poate
+// fi schimbat si pe care teren - o pune serverul la fiecare scriere.
+function RutaLive({ children }) {
+  const { user, loading, isAuthenticated } = useAuth();
+  const masa = citesteMasa();
+
+  if (loading) return null;
+  if (!isAuthenticated) {
+    // Daca sesiunea de masa a expirat, trimitem inapoi la terenul ei, nu la
+    // login: la masa centrala nu exista parola de tastat.
+    return <Navigate to={masa ? `/masa/${masa.field.id}` : '/login'} replace />;
+  }
+  if (user?.role === 'admin' || masa) return children;
+  return <Navigate to="/login" replace />;
+}
 
 export default function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -81,13 +101,30 @@ export default function App() {
         <Route path="diplome" element={<DiplomaConfiguratorPage />} />
       </Route>
 
-      {/* Fullscreen live view — outside CategoriesLayout, no bottom tabs */}
+      {/* Intrarea la masa centrala a unui teren: cod lipit pe masa, PIN de
+          arbitru. Publica - tocmai asta e rostul ei. */}
+      <Route path="/masa/:fieldId" element={<MasaCentralaPage />} />
+
+      {/* Codurile de impartit dimineata, cate unul pe teren. Doar adminul. */}
+      <Route
+        path="/competitions/:id/mese"
+        element={
+          <ProtectedRoute roles={['admin']}>
+            <MeseCentralePage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Fullscreen live view — outside CategoriesLayout, no bottom tabs.
+          Singura pagina la care ajunge si masa centrala: restul rutelor cer
+          rolul de admin, iar sesiunea de masa nu-l are, deci sunt inchise
+          fara sa fie nevoie de vreo lista de interdictii. */}
       <Route
         path="/competitions/:id/live-fullscreen"
         element={
-          <ProtectedRoute roles={['admin']}>
+          <RutaLive>
             <LiveFullscreenPage />
-          </ProtectedRoute>
+          </RutaLive>
         }
       />
 
