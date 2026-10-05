@@ -278,6 +278,11 @@ enum PointState {
 #define MAX_CATEGORIES 40
 int  myCategoryIds[MAX_CATEGORIES];
 char myCategoryPos[MAX_CATEGORIES][4];   // A1..A5, pozitia mea in categoria aia
+// Grupa si genul fiecarei categorii, ca sa le putem arata cand proba apare pe
+// televizor. Numele categoriei vine din interogarea mesei centrale, astea doua
+// nu - deci se tin aici, de la incarcarea categoriilor.
+char myCategoryGroup[MAX_CATEGORIES][24];
+char myCategoryGender[MAX_CATEGORIES][8];   // "male" / "female"
 int  myCategoryCount = 0;
 
 // Ce are masa centrala pe ecran chiar acum, din sesiunea de monitor.
@@ -299,6 +304,17 @@ bool liveRevealed        = false; // masa centrala a dezvaluit scorurile
 // calcula singur care a cazut ca extrema.
 bool revealKnown   = false;
 char revealMark[10] = "";        // low / high / counted
+
+// Notele TUTUROR arbitrilor, la dezvaluire.
+//
+// Serverul le trimitea deja in acelasi raspuns - noi le aruncam si pastram
+// doar randul nostru. Sunt cinci pozitii de arbitru intr-o categorie, si
+// pentru arbitru conteaza sa-si vada nota langa ale colegilor: altfel afla
+// doar ca a fost taiata, fara sa stie fata de ce.
+#define MAX_ARBITRI 5
+struct NotaArbitru { int score; char mark[10]; bool mine; };
+NotaArbitru revealScores[MAX_ARBITRI];
+int revealScoreCount = 0;
 int  revealTotal   = 0;
 unsigned long liveUpdatedAt = 0;  // cat de recenta e sesiunea aleasa
 
@@ -306,7 +322,19 @@ unsigned long liveUpdatedAt = 0;  // cat de recenta e sesiunea aleasa
 // Un arbitru nu noteaza in gol: se raporteaza la ce a dat inainte in
 // aceeasi proba, si pana acum trebuia sa tina minte.
 #define MAX_HISTORY 9
-struct HistoryRow { char name[14]; int score; };
+struct HistoryRow { char name[32]; int score; };
+
+// Toti sportivii din categoria curenta, in ordinea de concurs.
+//
+// Altceva decat `history`: acolo sunt doar cei pe care i-am notat eu. Aici
+// sunt toti, inclusiv cei care inca n-au intrat pe saltea - fiindca un arbitru
+// vrea sa vada cat a mai ramas si pe cine urmeaza, nu doar pe cine a notat.
+// Nota e -1 cat timp n-am dat-o.
+#define MAX_LISTA 24
+struct SportivLista { int id; char name[32]; char club[24]; int score; };
+SportivLista lista[MAX_LISTA];
+int listaCount = 0;
+int listaCategorie = 0;   // pentru ce categorie e incarcata acum
 HistoryRow history[MAX_HISTORY];
 int historyCount = 0;
 
@@ -524,9 +552,9 @@ void setStatus(const String& title, const String& detail, bool isError);
 void setup();
 void startSession();
 void submitCurrentScore();
-void submitPin();
 void toAsciiName(const char* src, char* dst, size_t dstSize);
 void toSurnameFirst(const char* src, char* dst, size_t dstSize);
+void uiTick();
 void touchTask(void*);
 void uitaWifiSalvat();
 
@@ -694,6 +722,17 @@ void citesteComenziSerial() {
 QueueHandle_t touchQueue = nullptr;
 volatile unsigned long lastInputAt = 0;
 
+// Starea curenta a degetului, in pixeli de ecran.
+//
+// Coada de mai sus duce EVENIMENTE - o apasare, o data. Interfata desenata de
+// noi are nevoie de atat. LVGL are nevoie de altceva: el intreaba periodic
+// "e apasat acum, si unde?", fiindca asa isi face singur apasarile, tragerile
+// si repetarea. Amandoua ies din aceeasi citire a cipului, ca sa nu ajunga doi
+// stapani pe aceeasi magistrala I2C.
+volatile bool     touchApasat = false;
+volatile uint16_t touchX      = 0;
+volatile uint16_t touchY      = 0;
+
 // Cat de des intrebam panoul. 15ms e mult mai des decat poate apasa un om si
 // mult mai rar decat ar incarca magistrala.
 #define TOUCH_POLL_MS 15
@@ -717,6 +756,12 @@ void touchTask(void*) {
     Touch_Get_XY(x, y, forta, &degete, 5);
 
     unsigned long now = millis();
+
+    // Starea continua, pentru LVGL. Neinterpretata: fara debounce si fara
+    // garda de palma, fiindca LVGL le face singur si altfel i-am taia
+    // apasarile de sub picioare.
+    touchApasat = (degete > 0);
+    if (degete > 0) { touchX = x[0]; touchY = y[0]; }
 
     // Numai frontul de apasare, si numai cu un singur deget.
     //
@@ -1082,9 +1127,19 @@ bool apiLoadCategories() {
   row["id"]   = true;
   row["type"] = true;
   row["referee_position"] = true;
+  // Filtrul ArduinoJson arunca tot ce nu e listat aici. Campurile adaugate in
+  // raspunsul serverului nu ajung in placa pana nu apar si in filtru - exact
+  // ce s-a intamplat cu grupa si genul, care se transmiteau dar se pierdeau
+  // la parsare.
+  row["group_name"] = true;
+  row["gender"]     = true;
 
   JsonDocument res;
-  int code = apiRequest("GET", "/referees/me/assigned-categories/", "", res, &filter);
+  // slim=1: serverul trimite doar cele trei campuri de mai sus, in loc de
+  // numele, terenul si starea fiecarei categorii. Masurat pe placa asta,
+  // raspunsul complet era 11.507 octeti si 1835ms - adica doua secunde de
+  // ecran blocat imediat dupa PIN, pentru date pe care le aruncam oricum.
+  int code = apiRequest("GET", "/referees/me/assigned-categories/?slim=1", "", res, &filter);
   if (code != 200) {
     statusDetail = (code < 0)
       ? String("Categoriile: ") + httpErrorText(code) + "."
@@ -1104,6 +1159,10 @@ bool apiLoadCategories() {
     int id = item["id"] | 0;
     if (!id) continue;
     myCategoryIds[myCategoryCount] = id;
+    strlcpy(myCategoryGroup[myCategoryCount], item["group_name"] | "",
+            sizeof(myCategoryGroup[myCategoryCount]));
+    strlcpy(myCategoryGender[myCategoryCount], item["gender"] | "",
+            sizeof(myCategoryGender[myCategoryCount]));
     strlcpy(myCategoryPos[myCategoryCount], item["referee_position"] | "",
             sizeof(myCategoryPos[myCategoryCount]));
     myCategoryCount++;
@@ -1127,6 +1186,25 @@ bool isMyCategory(int categoryId) {
     if (myCategoryIds[i] == categoryId) return true;
   }
   return false;
+}
+
+// Grupa categoriei, sau sir gol daca n-o stim.
+const char* grupaCategoriei(int categoryId) {
+  for (int i = 0; i < myCategoryCount; i++) {
+    if (myCategoryIds[i] == categoryId) return myCategoryGroup[i];
+  }
+  return "";
+}
+
+// Genul, scris romaneste. Serverul il trimite ca "male"/"female".
+const char* genulCategoriei(int categoryId) {
+  for (int i = 0; i < myCategoryCount; i++) {
+    if (myCategoryIds[i] != categoryId) continue;
+    if (strcmp(myCategoryGender[i], "male")   == 0) return "Masculin";
+    if (strcmp(myCategoryGender[i], "female") == 0) return "Feminin";
+    return myCategoryGender[i];
+  }
+  return "";
 }
 
 const char* myPositionIn(int categoryId) {
@@ -1692,6 +1770,52 @@ int scoreFromJson(JsonVariantConst value) {
 
 // Notele mele din categoria curenta: cea pentru sportivul de pe saltea
 // (ca sa stiu daca am notat deja) si ultimele cateva, pentru istoric.
+// Lista sportivilor din categorie. Se incarca o data pe categorie, nu la
+// fiecare interogare: se schimba doar cand masa centrala muta proba, iar
+// raspunsul e de ordinul zecilor de kiloocteti - prea scump ca sa fie cerut
+// pe secunda.
+void apiLoadCategoryAthletes(int categoryId) {
+  if (!categoryId || categoryId == listaCategorie) return;
+  listaCount = 0;
+  listaCategorie = 0;
+
+  // Serverul serializeaza sportivul cu toate campurile lui. Filtrul nu scade
+  // ce se transfera, dar scade ce ajunge in memoria placii - si acolo ar fi
+  // problema, nu pe retea.
+  JsonDocument filter;
+  JsonObject row = filter.add<JsonObject>();
+  row["athlete"] = true;
+  JsonObject det = row["athlete_details"].to<JsonObject>();
+  det["first_name"] = true;
+  det["last_name"]  = true;
+  // Clubul vine ca obiect imbricat; filtrul trebuie sa-l urmeze la fel.
+  JsonObject clb = det["club"].to<JsonObject>();
+  clb["name"] = true;
+
+  JsonDocument res;
+  if (apiRequest("GET", String("/category-athletes/?category=") + categoryId,
+                 "", res, &filter) != 200) return;
+
+  for (JsonObject item : res.as<JsonArray>()) {
+    if (listaCount >= MAX_LISTA) break;
+    int id = item["athlete"] | 0;
+    if (!id) continue;
+
+    char intreg[64];
+    snprintf(intreg, sizeof(intreg), "%s %s",
+             item["athlete_details"]["first_name"] | "",
+             item["athlete_details"]["last_name"]  | "");
+    toSurnameFirst(intreg, lista[listaCount].name, sizeof(lista[listaCount].name));
+    toAsciiName(item["athlete_details"]["club"]["name"] | "",
+                lista[listaCount].club, sizeof(lista[listaCount].club));
+    lista[listaCount].id    = id;
+    lista[listaCount].score = -1;
+    listaCount++;
+  }
+  listaCategorie = categoryId;
+  Serial.printf("Lista categoriei %d: %d sportivi\n", categoryId, listaCount);
+}
+
 void apiLoadMyScores(int categoryId, int athleteId) {
   mySubmittedScore = -1;
   historyCount = 0;
@@ -1719,15 +1843,21 @@ void apiLoadMyScores(int categoryId, int athleteId) {
         for (int k = 1; k < MAX_HISTORY; k++) history[k - 1] = history[k];
         historyCount = MAX_HISTORY - 1;
       }
-      // Doar numele de familie, si scurtat: pe 240px nu incape mai mult,
-      // iar arbitrul stie pe cine a notat acum doua minute.
-      char full[40];
-      toAsciiName(item["athlete_name"] | "?", full, sizeof(full));
-      const char* surname = strrchr(full, ' ');
-      strlcpy(history[historyCount].name, surname ? surname + 1 : full,
-              sizeof(history[historyCount].name));
+      // Numele intreg, de familie primul. Inainte pastram doar numele de
+      // familie si scurtat, fiindca pe 240px nu incapea mai mult; pe ecranul
+      // asta lista e un tabel adevarat si incape, iar doi sportivi cu acelasi
+      // nume de familie nu se mai confunda.
+      toSurnameFirst(item["athlete_name"] | "?",
+                     history[historyCount].name,
+                     sizeof(history[historyCount].name));
       history[historyCount].score = score;
       historyCount++;
+    }
+
+    // Si in lista completa, dupa id: acolo nota sta langa sportivul ei, chiar
+    // daca el a fost notat acum zece minute.
+    for (int k = 0; k < listaCount; k++) {
+      if (lista[k].id == id) { lista[k].score = score; break; }
     }
   }
 }
@@ -1752,12 +1882,18 @@ void apiLoadReveal(int categoryId) {
   if (!(res["revealed"] | false)) return;
 
   revealTotal = (int)lroundf(res["total"] | 0.0f);
+  revealScoreCount = 0;
   for (JsonObject item : res["scores"].as<JsonArray>()) {
+    if (revealScoreCount < MAX_ARBITRI) {
+      NotaArbitru& n = revealScores[revealScoreCount++];
+      n.score = scoreFromJson(item["score"]);
+      strlcpy(n.mark, item["mark"] | "counted", sizeof(n.mark));
+      n.mine = item["mine"] | false;
+    }
     if (item["mine"] | false) {
       strlcpy(revealMark, item["mark"] | "counted", sizeof(revealMark));
       mySubmittedScore = scoreFromJson(item["score"]);
       revealKnown = true;
-      return;
     }
   }
 }
@@ -1868,19 +2004,16 @@ bool pollMonitor() {
   toAsciiName(foundCategoryName, liveCategoryName,   sizeof(liveCategoryName));
   if (foundTeam) toAsciiName(foundName, liveCompetitorName, sizeof(liveCompetitorName));
   else           toSurnameFirst(foundName, liveCompetitorName, sizeof(liveCompetitorName));
-  // "Teren 1" -> "T1": in bara de sus nu e loc de cuvinte intregi.
-  char fieldFull[24];
-  toAsciiName(foundField, fieldFull, sizeof(fieldFull));
-  const char* digits = fieldFull;
-  while (*digits && (*digits < '0' || *digits > '9')) digits++;
-  if (*digits) snprintf(liveFieldName, sizeof(liveFieldName), "T%s", digits);
-  else         strlcpy(liveFieldName, fieldFull, sizeof(liveFieldName));
+  // Numele intreg al terenului. Inainte il scurtam la "T1", fiindca bara de
+  // sus avea 240px si nu incapeau cuvinte; acum are 480 si incap.
+  toAsciiName(foundField, liveFieldName, sizeof(liveFieldName));
 
     strlcpy(liveRefPosition,
           foundMatch ? myPositionInMatch(foundMatch) : myPositionIn(foundCategory),
           sizeof(liveRefPosition));
 
   if (changed) {
+    apiLoadCategoryAthletes(liveCategoryId);
     apiLoadMyScores(liveCategoryId, liveAthleteId);
 
     if (mySubmittedScore >= 0) {
@@ -2296,15 +2429,6 @@ void loadAfterLogin() {
   redraw();
 }
 
-void submitPin() {
-  setStatus("SE VERIFICA", "PIN-ul...", false);
-  if (!apiLoginWithPin(pinDigits)) {
-    setStatus("PIN RESPINS", statusDetail, true);
-    return;
-  }
-  loadAfterLogin();
-}
-
 void submitCurrentScore() {
   int code = apiSubmitScore(draftScore);
 
@@ -2314,6 +2438,7 @@ void submitCurrentScore() {
     submittedShown = true;
     redraw();
     // Nota tocmai trimisa intra si ea in istoric, pentru urmatorul.
+    apiLoadCategoryAthletes(liveCategoryId);
     apiLoadMyScores(liveCategoryId, liveAthleteId);
     return;
   }
@@ -2335,6 +2460,76 @@ void submitCurrentScore() {
 // treaba asta era un switch de douazeci de linii in loop(), fiindca existau
 // doua intentii - scurt si lung - si nimic mai mult. Pe touch fiecare ecran
 // are propriile zone, deci are si propria functie.
+
+// ─────────────────────── TREABA AMANATA ───────────────────────
+//
+// Cererile catre server nu pleaca din butonul care le-a cerut, ci din bucla.
+//
+// Motivul e ca interfata LVGL isi cheama butoanele din interiorul propriului
+// motor de desen. O cerere HTTP acolo tine motorul blocat cat dureaza - la un
+// link slab, secunde - si in tot timpul asta ecranul nu se mai reface. Adica
+// exact mesajul "SE VERIFICA", pus special ca arbitrul sa stie ca s-a
+// intamplat ceva, apare abia DUPA ce totul s-a terminat. Pe ecran arata ca si
+// cum apasarea n-a facut nimic.
+//
+// Asa, butonul noteaza ce s-a cerut si se intoarce imediat: motorul deseneaza
+// starea noua, si abia pe urmatorul tur de bucla pleaca cererea. Interfata cu
+// Arduino_GFX n-avea problema asta - ea era chemata chiar din bucla - dar
+// trece prin acelasi drum, fiindca o singura cale e mai usor de urmarit decat
+// doua care se poarta diferit.
+enum TreabaAmanata {
+  AMANAT_NIMIC,
+  AMANAT_PIN,        // verificarea PIN-ului
+  AMANAT_NOTA,       // trimiterea notei
+  AMANAT_PUNCT,      // un punct la lupte, in timp real sau pe repriza
+  AMANAT_DECIZIE,    // castigatorul, dupa ce s-a confirmat
+  AMANAT_RELUARE,    // reluarea conexiunii
+};
+static TreabaAmanata amanat     = AMANAT_NIMIC;
+static int           amanatArg  = 0;
+static bool          amanatRosu = false;
+
+void facTreabaAmanata() {
+  TreabaAmanata t = amanat;
+  if (t == AMANAT_NIMIC) return;
+  amanat = AMANAT_NIMIC;   // golim intai: o cerere noua in timpul asteia nu se pierde
+
+  switch (t) {
+    case AMANAT_PIN:
+      if (!apiLoginWithPin(pinDigits)) {
+        setStatus("PIN RESPINS", statusDetail, true);
+        return;
+      }
+      loadAfterLogin();
+      break;
+
+    case AMANAT_NOTA:
+      submitCurrentScore();
+      break;
+
+    case AMANAT_PUNCT:
+      if (liveMatchRealTime) sendPoint(amanatRosu, amanatArg);
+      else                   addRoundPoint(amanatRosu, amanatArg);
+      break;
+
+    case AMANAT_DECIZIE:
+      if (!apiSubmitDecision(amanatRosu)) {
+        pointSideRed = amanatRosu;
+        pointValue   = 0;
+        pointState   = POINT_FAILED;
+        pointShownAt = millis();
+        redraw();
+      }
+      break;
+
+    case AMANAT_RELUARE:
+      if (WiFi.status() == WL_CONNECTED) askForPin();
+      else                               startSession();
+      break;
+
+    default: break;
+  }
+}
 
 // ─────────────────────────── ACTIUNI ───────────────────────────
 //
@@ -2364,7 +2559,21 @@ void actPinSterge() {
 void actPinTrimite() {
   // Numai cu PIN-ul complet. Butonul e desenat stins pana atunci, deci aici
   // nu se refuza nimic ce ar fi parut posibil.
-  if (pinCursor == PIN_DIGITS) submitPin();
+  if (pinCursor != PIN_DIGITS) return;
+  // Mesajul acum, verificarea pe urmatorul tur: vezi TREABA AMANATA.
+  setStatus("SE VERIFICA", "PIN-ul...", false);
+  amanat = AMANAT_PIN;
+}
+
+// Nota, cu un pas oarecare. Marginile nu se taie, se refuza: butonul care ar
+// iesi din 0..100 e deja desenat stins, deci refuzul se potriveste cu ce se
+// vede.
+void actNotaCu(int delta) {
+  if (submittedShown) return;
+  int rezultat = draftScore + delta;
+  if (rezultat < 0 || rezultat > MAX_SCORE) return;
+  draftScore = rezultat;
+  redraw();
 }
 
 void actNotaPas(int treapta) {
@@ -2380,7 +2589,7 @@ void actNotaPas(int treapta) {
 
 void actNotaTrimite() {
   if (submittedShown) return;
-  submitCurrentScore();
+  amanat = AMANAT_NOTA;
 }
 
 void actDecizie(int buton) {
@@ -2394,12 +2603,8 @@ void actDecizie(int buton) {
 
   if (decisionArmed && decisionArmedRed == wantRed) {
     decisionArmed = false;
-    if (!apiSubmitDecision(wantRed)) {
-      pointSideRed = wantRed;
-      pointValue   = 0;
-      pointState   = POINT_FAILED;
-      pointShownAt = millis();
-    }
+    amanatRosu = wantRed;
+    amanat     = AMANAT_DECIZIE;
   } else {
     // Fie e prima apasare, fie te-ai razgandit: cealalta culoare schimba
     // alegerea in loc s-o confirme pe cea veche.
@@ -2433,8 +2638,9 @@ void actSfert(int index) {
 
   if (!acceptaApasare(index)) return;
 
-  if (liveMatchRealTime) sendPoint(pointButtons[index].isRed, pointButtons[index].points);
-  else                   addRoundPoint(pointButtons[index].isRed, pointButtons[index].points);
+  amanatRosu = pointButtons[index].isRed;
+  amanatArg  = pointButtons[index].points;
+  amanat     = AMANAT_PUNCT;
 }
 
 void actCerePredare() {
@@ -2457,8 +2663,7 @@ void actPredare(bool da) {
 }
 
 void actReia() {
-  if (WiFi.status() == WL_CONNECTED) askForPin();
-  else                               startSession();
+  amanat = AMANAT_RELUARE;
 }
 
 
@@ -2531,6 +2736,15 @@ void setup() {
   startSession();
 }
 void loop() {
+  // Interfata, daca are nevoie de timp propriu. Varianta cu Arduino_GFX nu
+  // are - deseneaza cand i se cere si atat. LVGL are: animatii, repetarea
+  // apasarii lungi, si propria citire a panoului tactil.
+  uiTick();
+
+  // Dupa uiTick(), nu inainte: asa starea pusa de ultima apasare e deja
+  // desenata cand pleaca cererea care tine placa ocupata.
+  facTreabaAmanata();
+
   // Si cand device-ul nu prinde reteaua: tocmai atunci e nevoie sa i-o poti
   // schimba prin cablu, nu doar cand merge totul.
   citesteComenziSerial();

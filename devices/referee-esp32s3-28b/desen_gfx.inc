@@ -923,3 +923,8 @@ void handleTouch(const TouchEvent& e) {
     case SCREEN_STANDBY: break;
   }
 }
+
+// Interfata asta n-are nevoie de timp propriu: deseneaza cand i se cere si
+// atat. Exista doar fiindca perechea ei, LVGL, are nevoie - si contractul
+// dintre logica si interfata trebuie sa fie acelasi pentru amandoua.
+void uiTick() {}

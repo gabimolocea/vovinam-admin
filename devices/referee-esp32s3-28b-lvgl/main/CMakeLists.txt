@@ -11,5 +11,5 @@ idf_component_register(
          "${PARTAJAT}/Touch_GT911.cpp"
     INCLUDE_DIRS "." "${PARTAJAT}"
     REQUIRES arduino-esp32 Arduino_GFX ArduinoJson lvgl
-             esp_lcd driver esp_wifi nvs_flash esp_mm
+             esp_lcd driver esp_wifi nvs_flash esp_mm esp_http_client
 )

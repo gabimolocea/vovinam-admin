@@ -1,5 +1,4 @@
-# Spike: ecranul de PIN in LVGL, ca sa se poata MASURA daca LVGL incape in
-# banda ramasa dupa ce panoul isi ia partea lui.
+# Firmware-ul de arbitraj cu interfata LVGL.
 #
 # Proiect separat dinadins. Firmware-ul de productie
 # (../referee-esp32s3-28b-idf) merge curat si nu se atinge pana nu stim
@@ -14,6 +13,10 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 # Dupa include, nu inainte: idf_build_set_property vine din project.cmake.
 # USB CDC pe boot, ca Serial sa fie HWCDC si sa aiba setTxTimeoutMs().
+# Comutatorul de interfata. Sketch-ul include desen_lvgl.inc in loc de
+# desen_gfx.inc cand vede asta - vezi referee-esp32s3-28b.ino.
+idf_build_set_property(COMPILE_OPTIONS "-DUI_LVGL=1" APPEND)
+
 idf_build_set_property(COMPILE_OPTIONS "-DARDUINO_USB_MODE=1" APPEND)
 idf_build_set_property(COMPILE_OPTIONS "-DARDUINO_USB_CDC_ON_BOOT=1" APPEND)
 

@@ -125,6 +125,7 @@ CONFIG_LV_COLOR_16_SWAP=n
 # Fonturile de care are nevoie tastatura de PIN. Fiecare ocupa flash, deci
 # doar astea trei: text obisnuit, cifrele mari, si titlul.
 CONFIG_LV_FONT_MONTSERRAT_16=y
+CONFIG_LV_FONT_MONTSERRAT_22=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
 CONFIG_LV_FONT_MONTSERRAT_48=y
 CONFIG_LV_FONT_DEFAULT_MONTSERRAT_16=y
