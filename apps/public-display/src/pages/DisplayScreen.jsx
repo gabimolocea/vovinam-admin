@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '@shared/lib/api';
-import { aggregateRealtimeValidatedPoints, getRealtimePointComparisonTimestamp } from '@shared/lib/realtimePoints';
+import { aggregateRealtimeValidatedPoints, getRealtimePointComparisonTimestamp, totalColt } from '@shared/lib/realtimePoints';
 const REAL_TIME_REFEREE_HIGHLIGHT_MS = 1500;
 
 // Round/break timers tick from an absolute started_at timestamp client-side
@@ -510,12 +510,18 @@ function FightDisplay({ event, category, group, match, rounds, matchRefScores, m
   const allRoundScores = matchRefScores.filter(s => s.round != null);
   const realtimeConsensusTotals = aggregateRealtimeValidatedPoints(pointEvents || []);
   const refereeIndicators = getRealtimeRefereeIndicators(matchRefAssignment, pointEvents || []);
-  const grandTotalRed = (isRealTimeMode
-    ? realtimeConsensusTotals.red
-    : allRoundScores.reduce((s, sc) => s + Number(sc.red_corner_score || 0), 0)) + adjustRed;
-  const grandTotalBlue = (isRealTimeMode
-    ? realtimeConsensusTotals.blue
-    : allRoundScores.reduce((s, sc) => s + Number(sc.blue_corner_score || 0), 0)) + adjustBlue;
+  const grandTotalRed = totalColt({
+    puncteValidate: isRealTimeMode
+      ? realtimeConsensusTotals.red
+      : allRoundScores.reduce((s, sc) => s + Number(sc.red_corner_score || 0), 0),
+    penalizari: totalPenaltyRed, bonusuri: totalBonusRed, avertismente: warningsRed,
+  });
+  const grandTotalBlue = totalColt({
+    puncteValidate: isRealTimeMode
+      ? realtimeConsensusTotals.blue
+      : allRoundScores.reduce((s, sc) => s + Number(sc.blue_corner_score || 0), 0),
+    penalizari: totalPenaltyBlue, bonusuri: totalBonusBlue, avertismente: warningsBlue,
+  });
 
   // Winner — computed from disqualification or referee decisions
   const winner =

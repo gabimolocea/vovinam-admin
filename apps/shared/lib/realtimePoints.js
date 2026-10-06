@@ -13,6 +13,33 @@
 
 export const REAL_TIME_POINT_VALIDATION_WINDOW_MS = 1500;
 
+// Cati arbitri trebuie sa apese pe acelasi lucru ca faza sa conteze.
+//
+// Trei din cinci: regula de concurs. A stat pe doi o vreme, ca sa poata fi
+// incercat fluxul cu doua dispozitive pe masa.
+//
+// Perechea lui e ARBITRI_PENTRU_FAZA din backend/api/views/_common.py. Scorul
+// se calculeaza in amandoua locurile - pe server si pe ecran - deci daca se
+// schimba doar unul, ecranul arata alt scor decat baza.
+export const ARBITRI_PENTRU_FAZA = 3;
+
+// Cat scade un avertisment din scorul coltului.
+export const PENALIZARE_AVERTISMENT = -2;
+
+/**
+ * Scorul unui colt: fazele validate, plus tot ce s-a adaugat sau scazut de
+ * mana.
+ *
+ * Exista pentru ca formula era scrisa de doua ori - o data in panoul de
+ * operare, o data pe ecranul public - si cele doua NU erau la fel: panoul
+ * uita penalizarile. Un luptator cu -24 din penalizari aparea cu +16 la masa
+ * centrala si cu -8 in sala, pe acelasi meci, in acelasi moment. Operatorul
+ * lua decizii pe un scor pe care publicul nu-l vedea.
+ */
+export function totalColt({ puncteValidate = 0, penalizari = 0, bonusuri = 0, avertismente = 0 }) {
+  return puncteValidate + penalizari + bonusuri + (avertismente * PENALIZARE_AVERTISMENT);
+}
+
 export function getRealtimePointRoundKey(event) {
   const metadata = event?.metadata || {};
   return metadata.round_id || metadata.round || 'unassigned';
@@ -69,7 +96,7 @@ export function aggregateRealtimeValidatedPoints(pointEvents) {
 
   groupedEvents.forEach((groups) => {
     groups.forEach((group) => {
-      if (group.refereeIds.size < 2 || !group.events.length) return;
+      if (group.refereeIds.size < ARBITRI_PENTRU_FAZA || !group.events.length) return;
       const awardedEvent = group.events[0];
       const awardedPoints = Number(awardedEvent.points || 0);
       if (awardedEvent.side === 'blue') {

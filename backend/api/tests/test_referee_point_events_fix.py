@@ -89,20 +89,33 @@ class RefereePointEventTests(TestCase):
             validation_status='pending',
             metadata={'round': 1},
         )
+        # Al treilea apasa tot in fereastra: testul asta e despre FEREASTRA de
+        # 1500ms, nu despre cati arbitri trebuie. Cu doi n-ar mai trece, si
+        # atunci n-ar mai masura ce si-a propus.
+        third = RefereePointEvent.objects.create(
+            match=self.match, referee=self.refs[2], side='red', points=2,
+            event_type='score', validation_status='pending', metadata={'round': 1},
+        )
         RefereePointEvent.objects.filter(pk=first.pk).update(timestamp=base_time)
         RefereePointEvent.objects.filter(pk=second.pk).update(
             timestamp=base_time + timedelta(milliseconds=REAL_TIME_POINT_VALIDATION_WINDOW_MS - 300)
         )
+        RefereePointEvent.objects.filter(pk=third.pk).update(
+            timestamp=base_time + timedelta(milliseconds=REAL_TIME_POINT_VALIDATION_WINDOW_MS - 200)
+        )
         first.refresh_from_db()
         second.refresh_from_db()
+        third.refresh_from_db()
 
-        validated = _auto_validate_real_time_point_event(second)
+        validated = _auto_validate_real_time_point_event(third)
 
-        self.assertEqual(len(validated), 2)
+        self.assertEqual(len(validated), 3)
         first.refresh_from_db()
         second.refresh_from_db()
+        third.refresh_from_db()
         self.assertEqual(first.validation_status, 'validated')
         self.assertEqual(second.validation_status, 'validated')
+        self.assertEqual(third.validation_status, 'validated')
 
     def test_real_time_validation_rejects_events_outside_1500ms(self):
         self.match.display_mode = 'real_time'
@@ -203,17 +216,30 @@ class RefereePointEventTests(TestCase):
             validation_status='pending',
             metadata={'round': 1, 'client_timestamp_ms': 1_001_200},
         )
+        # Al treilea, tot cu ceas desincronizat pe server dar apropiat dupa
+        # ceasul lui: testul e despre CE CEAS se crede, nu despre cati arbitri.
+        third = RefereePointEvent.objects.create(
+            match=self.match, referee=self.refs[2], side='red', points=1,
+            event_type='score', validation_status='pending',
+            metadata={'round': 1, 'client_timestamp_ms': 1_001_300},
+        )
         RefereePointEvent.objects.filter(pk=first.pk).update(timestamp=base_time)
         RefereePointEvent.objects.filter(pk=second.pk).update(
             timestamp=base_time + timedelta(milliseconds=REAL_TIME_POINT_VALIDATION_WINDOW_MS + 700)
         )
+        RefereePointEvent.objects.filter(pk=third.pk).update(
+            timestamp=base_time + timedelta(milliseconds=REAL_TIME_POINT_VALIDATION_WINDOW_MS + 900)
+        )
         first.refresh_from_db()
         second.refresh_from_db()
+        third.refresh_from_db()
 
-        validated = _auto_validate_real_time_point_event(second)
+        validated = _auto_validate_real_time_point_event(third)
 
-        self.assertEqual(len(validated), 2)
+        self.assertEqual(len(validated), 3)
         first.refresh_from_db()
         second.refresh_from_db()
+        third.refresh_from_db()
         self.assertEqual(first.validation_status, 'validated')
         self.assertEqual(second.validation_status, 'validated')
+        self.assertEqual(third.validation_status, 'validated')

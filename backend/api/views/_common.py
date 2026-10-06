@@ -119,12 +119,22 @@ def _referee_schedule_conflict_warnings(category, referee_ids):
     start = getattr(assignment, 'scheduled_start_time', None)
     if not assignment or not start:
         return []
+    # O proba incheiata nu mai ocupa pe nimeni. Nici ea nu mai poate intra in
+    # conflict cu altceva, nici arbitrii ei nu mai sunt tinuti de ea - iar un
+    # avertisment despre o suprapunere care s-a consumat deja il invata pe
+    # operator sa treaca peste avertismente.
+    if assignment.status == 'completed':
+        return []
     end = start + timedelta(minutes=assignment.estimated_duration or 15)
 
     warnings = []
     others = CategoryRefereeAssignment.objects.filter(
         category__field_assignment__scheduled_start_time__isnull=False
-    ).exclude(category_id=category.id).select_related(
+    ).exclude(
+        category_id=category.id
+    ).exclude(
+        category__field_assignment__status='completed'
+    ).select_related(
         'category__field_assignment', 'referee_1', 'referee_2', 'referee_3', 'referee_4', 'referee_5'
     )
     for other in others:
@@ -222,6 +232,19 @@ def _resolve_recording_session(request, *, event=None, field=None):
 
 
 REAL_TIME_POINT_VALIDATION_WINDOW_MS = 1500
+# Cati arbitri trebuie sa apese pe acelasi lucru ca faza sa conteze.
+#
+# Trei din cinci: regula de concurs. A stat pe doi o vreme, ca sa poata fi
+# incercat fluxul cu doua dispozitive pe masa - si doi au ramas acolo mai mult
+# decat ar fi trebuit, ceea ce inseamna ca o faza vazuta de doi oameni dadea
+# puncte intr-un meci adevarat.
+#
+# Numarul traieste in doua locuri, pentru ca scorul se calculeaza si pe server,
+# si pe ecran, in limbaje diferite. Celalalt e in
+# apps/shared/lib/realtimePoints.js - daca se schimba aici, se schimba si
+# acolo, altfel ecranul arata alt scor decat baza.
+ARBITRI_PENTRU_FAZA = 3
+
 REAL_TIME_POINT_EVENT_CANDIDATE_LOOKBACK_MS = 5000
 
 
@@ -311,7 +334,7 @@ def _auto_validate_real_time_point_event(event):
     matched_events = list(best_by_referee.values())
 
     unique_referees = {item.referee_id for item in matched_events if item.referee_id}
-    if len(unique_referees) < 2:
+    if len(unique_referees) < ARBITRI_PENTRU_FAZA:
         return []
 
     validated_at = timezone.now()
@@ -321,6 +344,11 @@ def _auto_validate_real_time_point_event(event):
     ).update(validation_status='validated', validated_at=validated_at)
 
     return list(RefereePointEvent.objects.filter(id__in=[item.id for item in matched_events]).order_by('timestamp', 'id'))
+
+
+def terenul_meciului(match):
+    """Terenul pe care se tine un meci, sau None daca nu e alocat."""
+    return getattr(getattr(match, 'field_assignment', None), 'field_id', None)
 
 
 def terenul_categoriei(category):
@@ -368,7 +396,10 @@ def _log_category_score_event(*, athlete_score, referee, action, source, created
     )
 
 
-def aggregate_validated_point_phases(events):
+def aggregate_validated_point_phases(events, prag=None):
+    """`prag` exista pentru inghetarea retroactiva: meciurile incheiate sub
+    regula veche trebuie recalculate cu regula de atunci, nu cu cea de acum.
+    Lasat gol, se foloseste regula curenta."""
     """Punctele validate, numarate pe FAZE, nu pe evenimente.
 
     O faza confirmata de doi arbitri produce cate un rand de la fiecare.
@@ -401,7 +432,7 @@ def aggregate_validated_point_phases(events):
     red = blue = 0
     for bucket in groups.values():
         for phase in bucket:
-            if len(phase['referees']) < 2:
+            if len(phase['referees']) < (prag or ARBITRI_PENTRU_FAZA):
                 continue
             if phase['event'].side == 'blue':
                 blue += phase['event'].points or 0

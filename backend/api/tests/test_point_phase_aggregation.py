@@ -28,6 +28,7 @@ class PointPhaseAggregationTests(TestCase):
         self.match = Match.objects.create(category=category, match_number='M1', display_mode='real_time')
         self.a = Athlete.objects.create(first_name='A', last_name='Unu', club=club, status='approved', is_referee=True)
         self.b = Athlete.objects.create(first_name='B', last_name='Doi', club=club, status='approved', is_referee=True)
+        self.c = Athlete.objects.create(first_name='C', last_name='Trei', club=club, status='approved', is_referee=True)
         self.base = 1_700_000_000_000
 
     def ev(self, referee, at_ms, side='red', points=1, statusul='validated'):
@@ -40,26 +41,39 @@ class PointPhaseAggregationTests(TestCase):
     def all_events(self):
         return list(RefereePointEvent.objects.filter(match=self.match).order_by('timestamp', 'id'))
 
-    def test_a_phase_confirmed_by_two_referees_counts_once(self):
+    def test_a_phase_confirmed_by_three_referees_counts_once(self):
         self.ev(self.a, 0, points=2)
         self.ev(self.b, 300, points=2)
+        self.ev(self.c, 500, points=2)
         self.assertEqual(aggregate_validated_point_phases(self.all_events()), (2, 0))
 
     def test_a_lone_referee_scores_nothing(self):
         self.ev(self.a, 0)
         self.assertEqual(aggregate_validated_point_phases(self.all_events()), (0, 0))
 
+    def test_two_referees_are_not_enough(self):
+        """Trei din cinci e regula de concurs.
+
+        A stat pe doi o vreme, ca sa poata fi incercat fluxul cu doua
+        dispozitive - iar o faza vazuta de doi oameni dadea puncte intr-un meci
+        adevarat. Testul asta e ce opreste intoarcerea la doi.
+        """
+        self.ev(self.a, 0, points=2)
+        self.ev(self.b, 300, points=2)
+        self.assertEqual(aggregate_validated_point_phases(self.all_events()), (0, 0))
+
     def test_two_separate_phases_count_separately(self):
-        self.ev(self.a, 0)
-        self.ev(self.b, 300)
-        self.ev(self.a, 2000)
-        self.ev(self.b, 2300)
+        for pornire in (0, 2000):
+            self.ev(self.a, pornire)
+            self.ev(self.b, pornire + 300)
+            self.ev(self.c, pornire + 500)
         self.assertEqual(aggregate_validated_point_phases(self.all_events()), (2, 0))
 
     def test_the_same_referee_pressing_twice_does_not_double_the_phase(self):
         self.ev(self.a, 0)
         self.ev(self.a, 200)
         self.ev(self.b, 300)
+        self.ev(self.c, 400)
         self.assertEqual(aggregate_validated_point_phases(self.all_events()), (1, 0))
 
     def test_corners_are_not_merged(self):
@@ -79,5 +93,6 @@ class PointPhaseAggregationTests(TestCase):
 
     def test_blue_corner_is_counted_too(self):
         self.ev(self.a, 0, side='blue', points=2)
-        self.ev(self.b, 400, side='blue', points=2)
+        self.ev(self.b, 200, side='blue', points=2)
+        self.ev(self.c, 400, side='blue', points=2)
         self.assertEqual(aggregate_validated_point_phases(self.all_events()), (0, 2))
