@@ -52,7 +52,21 @@ class MatchViewSet(viewsets.ViewSet):
             'referees',
             Prefetch(
                 'point_events',
-                queryset=RefereePointEvent.objects.select_related('referee').order_by('timestamp'),
+                # Numai coloanele care se citesc.
+                #
+                # Un meci lung are cateva sute de apasari, iar fiecare devenea
+                # un obiect Django intreg: profilul arata 550 de obiecte si
+                # 22.000 de atribuiri de campuri pentru O SINGURA cerere de
+                # meci, de cateva ori pe secunda. Campurile de mai jos sunt tot
+                # ce ating serializatorul si agregarea pe faze (vezi
+                # _get_point_events si aggregate_validated_point_phases);
+                # `match` trebuie sa fie aici fiindca pe el leaga Prefetch
+                # randurile de meciul lor.
+                queryset=RefereePointEvent.objects.select_related('referee').only(
+                    'id', 'match', 'referee', 'timestamp', 'side', 'points',
+                    'event_type', 'validation_status', 'metadata',
+                    'referee__id', 'referee__first_name', 'referee__last_name',
+                ).order_by('timestamp'),
                 to_attr='_prefetched_point_events',
             ),
             Prefetch(
@@ -155,13 +169,22 @@ class MatchViewSet(viewsets.ViewSet):
             return Response({'detail': 'Not found.'}, status=404)
 
         if request.method == 'GET':
-            events = match.point_events.all().order_by('timestamp')
+            # `select_related` nu e o optimizare de bun-simt, e diferenta dintre
+            # 2 interogari si 265.
+            #
+            # Serializatorul scrie numele arbitrului pentru fiecare eveniment
+            # (`referee_name`), iar fara asta fiecare rand isi cerea arbitrul
+            # separat. Lista se cere la fiecare 600ms si de pe ecranul de
+            # operare, si de pe cel din sala, si de pe fiecare device - deci
+            # un meci cu doua sute de apasari tinea backendul ocupat singur.
+            events = match.point_events.select_related('referee').order_by('timestamp')
             validation_status = request.query_params.get('validation_status')
             if validation_status:
                 events = events.filter(validation_status=validation_status)
             referee_id = request.query_params.get('referee_id')
             if referee_id:
                 events = events.filter(referee_id=referee_id)
+
             serializer = RefereePointEventSerializer(events, many=True)
             return Response(serializer.data)
 

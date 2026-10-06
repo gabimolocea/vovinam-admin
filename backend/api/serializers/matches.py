@@ -126,13 +126,25 @@ class MatchSerializer(serializers.ModelSerializer):
 
     def _consensus(self, obj):
         # Scorul real al meciului in arbitrajul in timp real: o faza
-        # confirmata de doi arbitri conteaza o data, nu o data pentru
-        # fiecare arbitru care a apasat. Fara asta, interfetele care
+        # confirmata de ARBITRI_PENTRU_FAZA arbitri conteaza o data, nu o data
+        # pentru fiecare arbitru care a apasat. Fara asta, interfetele care
         # adunau totalurile pe arbitri aratau dublu.
         if getattr(obj, 'display_mode', None) != 'real_time':
             return (None, None)
-        from ..views._common import aggregate_validated_point_phases
-        return aggregate_validated_point_phases(list(self._get_point_events(obj)))
+
+        # Socotit o data pe meci, nu o data pentru fiecare colt.
+        #
+        # `consensus_total_red` si `consensus_total_blue` sunt doua campuri, si
+        # fiecare chema aggregate_validated_point_phases peste TOATE
+        # evenimentele meciului - de doua ori aceeasi trecere prin cateva sute
+        # de apasari, la fiecare cerere, iar cererea vine la fiecare 600ms.
+        cache = getattr(self, '_consensus_cache', None)
+        if cache is None:
+            cache = self._consensus_cache = {}
+        if obj.pk not in cache:
+            from ..views._common import aggregate_validated_point_phases
+            cache[obj.pk] = aggregate_validated_point_phases(list(self._get_point_events(obj)))
+        return cache[obj.pk]
 
     def _get_point_events(self, obj):
         prefetched_events = getattr(obj, '_prefetched_point_events', None)
