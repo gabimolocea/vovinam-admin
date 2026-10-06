@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, webContents } = require('electron');
 const os = require('os');
 
 // `app.getVersion()` citeste package.json-ul aplicatiei si in dezvoltare, si
@@ -106,6 +106,12 @@ function createWindow() {
     contents.on('destroyed', () => {
       if (activeWebviewContents === contents) activeWebviewContents = null;
     });
+    // Bifa din meniu se ia din pagina, de fiecare data cand se incarca una:
+    // altfel ar arata ce credea launcherul la pornire, nu ce e pus pe
+    // calculatorul asta.
+    contents.on('did-finish-load', () => {
+      if (esteAdresaLocala(contents.getURL())) potrivesteGhidulDupaPagina(contents);
+    });
     // Butonul TV din competition-admin e un link cu target="_blank". Intr-un
     // <webview> ferestrele noi sunt oprite din start, deci apasarea nu facea
     // nimic si nici nu spunea de ce. Aici o prindem si deschidem noi
@@ -179,6 +185,45 @@ async function aduTerenurile() {
 // Ferestrele deschise din aplicatii (ecranul public), dupa adresa. Fara ele,
 // fiecare apasare pe TV ar deschide inca o fereastra peste cea dinainte.
 const ferestreSala = new Map();
+
+// Ghidul pas cu pas al mesei centrale, comutat din meniul View.
+//
+// Setarea sta in localStorage-ul paginii de administrare - ea o citeste la
+// fiecare pas, si ramane pusa si dupa inchidere. Aici tinem doar o oglinda a
+// ei, ca linia din meniu sa poata fi bifata; oglinda se potriveste citind
+// pagina cand se incarca, nu scriindu-i noi o valoare inventata la pornire.
+let ghidInteractiv = true;
+
+const COD_CITESTE_GHID = "(() => { try { return localStorage.getItem('ghidInteractiv') !== 'off'; } catch (e) { return true; } })()";
+
+const codScrieGhid = (pornit) => `(() => { try {`
+  + (pornit ? ` localStorage.removeItem('ghidInteractiv');` : ` localStorage.setItem('ghidInteractiv', 'off');`)
+  + ` window.dispatchEvent(new Event('frvv:ghid')); } catch (e) {} })()`;
+
+// Toate paginile din sala, nu doar cea din fata: masa centrala poate avea
+// deschise si ferestre separate, iar setarea descrie calculatorul intreg.
+function paginileSalii() {
+  return webContents.getAllWebContents().filter(
+    (c) => !c.isDestroyed() && esteAdresaLocala(c.getURL()),
+  );
+}
+
+async function trimiteGhidul(pornit) {
+  const cod = codScrieGhid(pornit);
+  for (const c of paginileSalii()) {
+    try { await c.executeJavaScript(cod); } catch { /* pagina s-a schimbat intre timp */ }
+  }
+}
+
+async function potrivesteGhidulDupaPagina(contents) {
+  try {
+    const pornit = await contents.executeJavaScript(COD_CITESTE_GHID);
+    if (typeof pornit === 'boolean' && pornit !== ghidInteractiv) {
+      ghidInteractiv = pornit;
+      buildMenu();
+    }
+  } catch { /* pagina nu e (inca) acolo */ }
+}
 
 // Numai ce servim noi: localhost si adresa din retea a calculatorului asta,
 // pe porturile serviciilor locale. Orice altceva nu e "sala".
@@ -349,6 +394,18 @@ function buildMenu() {
     {
       label: 'View',
       submenu: [
+        // Indrumarea e pentru cineva care tine masa prima oara. Cine a facut-o
+        // de zeci de ori o stinge de aici, si ramane stinsa.
+        {
+          label: 'Ghid interactiv (pas cu pas)',
+          type: 'checkbox',
+          checked: ghidInteractiv,
+          click: (item) => {
+            ghidInteractiv = item.checked;
+            trimiteGhidul(item.checked);
+          },
+        },
+        { type: 'separator' },
         {
           label: 'Consolă (DevTools)',
           accelerator: 'CmdOrCtrl+Alt+I',

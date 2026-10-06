@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Wifi, WifiOff, QrCode } from 'lucide-react';
+import { Wifi, WifiOff, QrCode, Laptop } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { aggregateRealtimeValidatedPoints } from '@shared/lib/realtimePoints';
+import { aggregateRealtimeValidatedPoints, totalColt } from '@shared/lib/realtimePoints';
 import { useVoiceAssistant } from '../hooks/useVoiceAssistant';
 import useHotkeys from '../hooks/useHotkeys';
 import ShortcutsHelp, { CATEGORY_SHORTCUTS, MATCH_SHORTCUTS, ShortcutsHint } from '../components/ShortcutsHelp';
@@ -18,6 +18,7 @@ import {
 import {
   formatGroupBadgeLabel,
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../components/ui';
 import { GENDER_BG, GENDER_LABELS } from './CategoriesLayout';
 import { useDisplayPreview } from '../contexts/DisplayPreviewContext';
@@ -25,6 +26,8 @@ import RefereeAccessModal from '../components/RefereeAccessModal';
 import { exportMatchExcel } from '../lib/exportMatchExcel';
 import { useToast } from '../contexts/ToastContext';
 import { citesteMasa } from '../lib/masaCentrala';
+import { ghidPornit, setGhid, ascultaGhidul, inLauncher } from '../lib/ghid';
+import { abateriTehnica, PRAGURI } from '../lib/impartialitate';
 
 /* ═══════════════════════════════════════════════════════
    LIVE FULLSCREEN PAGE — full-screen view for a field
@@ -53,13 +56,20 @@ const MODAL_SECONDARY_BUTTON = 'rounded-md border border-input bg-background px-
 const MODAL_DANGER_BUTTON = 'rounded-md bg-destructive px-4 py-2.5 font-bold text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-40';
 const MODAL_SUCCESS_BUTTON = 'rounded-md bg-emerald-600 px-4 py-2.5 font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40';
 const MODAL_WARNING_BUTTON = 'rounded-md bg-amber-400 px-4 py-2.5 font-bold text-amber-950 transition hover:bg-amber-300 disabled:opacity-40';
-const PANEL_BUTTON_BASE = 'rounded-md border border-input px-3 py-3 text-lg font-black transition disabled:opacity-40';
-const PANEL_BUTTON_NEUTRAL = `${PANEL_BUTTON_BASE} bg-background text-foreground hover:bg-accent`;
+// Latimea minima nu e cosmetica: butoanele astea se apasa in graba, cu
+// degetul, pe un ecran de masa centrala, iar o apasare alaturea pune un punct
+// la luptatorul gresit. Folosite doar in PanouColt, deci latirea nu misca
+// nimic altundeva.
+const PANEL_BUTTON_BASE = 'rounded-md border border-input px-3 py-3 text-lg font-black transition disabled:opacity-40 min-w-[4rem]';
 const PANEL_BUTTON_DANGER = `${PANEL_BUTTON_BASE} bg-background text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30`;
 const PANEL_BUTTON_SUCCESS = `${PANEL_BUTTON_BASE} bg-background text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30`;
 const ROUND_CARD_SHELL = 'flex flex-col gap-4 rounded-lg border-2 border-border bg-card px-4 py-4';
 const ROUND_BODY_PANEL = 'bg-card px-4 py-4';
 const ROUND_SECONDARY_BUTTON = 'rounded-md border border-input px-3 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-accent disabled:opacity-40';
+// Reglajul de timp sta pe acelasi rand cu Pauză / Stop / Reset, deci trebuie
+// sa fie si mai ingust - altfel randul se rupe in doua pe o caseta de repriza
+// stramta, si revine exact saltul pe care randul comun il repara.
+const ROUND_TIME_BUTTON = 'rounded-md border border-input px-2 py-2 text-xs font-semibold tabular-nums text-muted-foreground transition hover:bg-accent disabled:opacity-40';
 
 const readCachedCategoryData = (eventId) => {
   if (!eventId || typeof window === 'undefined') return { groups: [], categories: [] };
@@ -551,6 +561,12 @@ export default function LiveFullscreenPage() {
   // au fost opriti fara setul complet de note.
   const [totiTerminati, setTotiTerminati] = useState(false);
   const [istoricDeschis, setIstoricDeschis] = useState(false);
+  const [ghid, setGhidPornit] = useState(ghidPornit);
+  // Pornit/oprit se comuta din meniul aplicatiei (View > Ghid interactiv), nu
+  // din bara de sus: e o setare a calculatorului, nu a probei de pe ecran, iar
+  // bara de sus e plina de butoane care tin de proba. Meniul scrie setarea si
+  // striga; aici o reluam, ca sa nu fie nevoie de reincarcarea paginii.
+  useEffect(() => ascultaGhidul(setGhidPornit), []);
   useEffect(() => { setPreviewVazut(false); setTotiTerminati(false); }, [itemId]);
 
 
@@ -561,8 +577,18 @@ export default function LiveFullscreenPage() {
   // Dupa isCurrentCategoryFinalized, nu inaintea lui: `const` nu se poate citi
   // inainte de linia care il declara, si asta nu se vede la lint - se vede
   // abia cand pagina crapa.
-  const pasPreview = panelType === 'category' && currentCat && currentCat.type !== 'fight'
-    && isSessionActive && !isCurrentCategoryFinalized && !previewVazut;
+  // Ultimul pas al unui meci: castigatorul e pe ecranul din sala, nu mai e
+  // nimic de arbitrat, dar proba ramane deschisa pe teren pana o incheie
+  // cineva - iar terenul nu poate trece mai departe pana atunci.
+  const pasIncheieMeci = ghid && panelType === 'match' && currentMatch && isSessionActive
+    && !isCurrentMatchFinalized
+    && session?.current_match === currentMatch.id
+    && session?.status === 'winner_revealed';
+
+  const pasPreview = ghid && isSessionActive && !previewVazut && (
+    (panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isCurrentCategoryFinalized)
+    || (panelType === 'match' && currentMatch && !isCurrentMatchFinalized)
+  );
   const operationalLockActive = !isLocalServer && Boolean(eventState?.operational_lock_active);
   const operationalLockMessage = eventState?.operational_lock_active
     ? 'Evenimentul este blocat pentru operare locală. Pentru modificări live, lucrează din copia locală/LAN a competiției sau finalizează sincronizarea în cloud.'
@@ -745,19 +771,66 @@ export default function LiveFullscreenPage() {
     }
   });
   const resetMatch = wrap(async (matchId) => {
-    const mrs = matchRoundsForMatch;
-    for (const r of mrs) {
-      try { await roundAPI.delete(r.id); } catch { /* repriza poate fi deja stearsa */ }
+    // Ce n-a putut fi sters se numara si se spune.
+    //
+    // Fiecare pas era intr-un `try/catch` gol: o cerere refuzata trecea
+    // nevazuta, iar butonul parea ca si-a facut treaba. Asa a stat ascuns un
+    // 403 la stergerea punctelor - resetul lasa scorurile pe loc, si singurul
+    // semn era in consola browserului.
+    const esecuri = [];
+    // Reprizele din preset se ADUC LA ZERO, nu se sterg.
+    //
+    // Sterse, meciul ramanea fara nicio repriza - deci fara buton de pornit, si
+    // fara numarul si durata configurate din setarile meciului. Resetul
+    // inseamna "o luam de la capat", nu "aruncam cum a fost pregatit".
+    //
+    // Reprizele suplimentare sunt insa altceva: ele s-au adaugat in timpul
+    // meciului, la egalitate. Nu fac parte din cum a fost pregatit, deci la
+    // reset pleaca - altfel meciul repornea cu o repriza in plus pe care nimeni
+    // nu o ceruse.
+    //
+    // Lista se cere de la server, din acelasi motiv ca mai jos: ecranul poate
+    // sa nu le cuprinda pe toate.
+    let reprizeDeReset = matchRoundsForMatch;
+    try {
+      const { data } = await roundAPI.list({ match_id: matchId });
+      reprizeDeReset = (data?.results || data || []).filter(r => r.match === matchId);
+    } catch (e) { console.error(e); esecuri.push('lista reprizelor'); }
+    for (const r of reprizeDeReset) {
+      if (r.is_extra) {
+        try { await roundAPI.delete(r.id); } catch (e) { if (e?.response?.status !== 404) esecuri.push('o repriză suplimentară'); }
+        continue;
+      }
+      try {
+        await roundAPI.update(r.id, {
+          status: 'scheduled', started_at: null, ended_at: null,
+          paused_at: null, accumulated_pause_seconds: 0, extra_seconds: 0,
+        });
+      } catch (e) { if (e?.response?.status !== 404) esecuri.push('o repriză'); }
     }
-    const evts = matchEvents.filter(e => e.match === matchId);
-    for (const ev of evts) {
-      try { await matchEventAPI.delete(ev.id); } catch { /* evenimentul poate fi deja sters */ }
+    // Listele se cer de la SERVER, nu se iau din ecran.
+    //
+    // Ecranul tine ce a adus ultima incarcare: paginat, filtrat, sau pur si
+    // simplu invechit. Un meci cu zeci de penalizari ramanea cu ele dupa reset,
+    // iar scorul nu se schimba - stergerea mergea, doar ca nu stia ce sa
+    // stearga.
+    const deLaServer = async (cheama, nume) => {
+      try {
+        const { data } = await cheama();
+        return (data?.results || data || []).filter(x => x.match === matchId);
+      } catch (e) {
+        console.error(e);
+        esecuri.push(nume);
+        return [];
+      }
+    };
+
+    for (const ev of await deLaServer(() => matchEventAPI.list({ match_id: matchId }), 'evenimentele meciului')) {
+      try { await matchEventAPI.delete(ev.id); } catch (e) { if (e?.response?.status !== 404) esecuri.push('un eveniment'); }
     }
-    try { await refereeAPI.pointEvents.clear(matchId); } catch { /* nimic de sters */ }
-    // Also delete all referee scores for this match
-    const scores = matchRefScores.filter(s => s.match === matchId);
-    for (const sc of scores) {
-      try { await matchRefereeScoreAPI.delete(sc.id); } catch { /* nota poate fi deja stearsa */ }
+    try { await refereeAPI.pointEvents.clear(matchId); } catch (e) { if (e?.response?.status !== 404) esecuri.push('punctele arbitrilor'); }
+    for (const sc of await deLaServer(() => matchRefereeScoreAPI.list({ match_id: matchId }), 'notele arbitrilor')) {
+      try { await matchRefereeScoreAPI.delete(sc.id); } catch (e) { if (e?.response?.status !== 404) esecuri.push('o notă de arbitru'); }
     }
     // Reset match status back to scheduled
     await matchAPI.update(matchId, { status: 'scheduled' });
@@ -777,6 +850,10 @@ export default function LiveFullscreenPage() {
       try { await matchFieldAssignmentAPI.update(currentAssignment.id, { status: 'not_started' }); } catch { /* alocarea se poate sa fi fost mutata intre timp */ }
     }
     await fetchData();
+    if (esecuri.length) {
+      const ce = [...new Set(esecuri)].join(', ');
+      toast.error(`Resetul n-a putut șterge: ${ce}. Verifică și încearcă din nou.`);
+    }
   });
 
   if (loading) {
@@ -797,9 +874,12 @@ export default function LiveFullscreenPage() {
   // blocata pe ecranul de acces interzis exact dupa ce incheia o proba. Pentru
   // ea, inapoi inseamna "terenul meu, fara nicio proba aleasa" - iar de acolo
   // pagina alege singura ce urmeaza.
+  // "Inapoi" duce la lista probelor zilei - o pagina de admin, cu toate
+  // terenurile. Masa centrala n-are acces acolo, si nici n-ar avea ce face cu
+  // celelalte terenuri: ea vede doar ce are de facut terenul ei.
   const goBack = () => navigate(
     citesteMasa()
-      ? `/competitions/${eventId}/live-fullscreen?field=${fieldId}`
+      ? `/competitions/${eventId}/teren/${fieldId}`
       : `/competitions/${eventId}/categories/live`,
   );
 
@@ -841,6 +921,9 @@ export default function LiveFullscreenPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={goBack} className={TOPNAV_SECONDARY_BUTTON} title="Înapoi">&#8592;</button>
           <span className="text-base font-black uppercase tracking-wide text-sidebar-accent">{formatFieldLabel(field.name)}</span>
+          {/* Delogarea sta pe ecranul cu probele terenului, nu aici: bara de
+              sus a probei e plina de actiuni care se apasa des, iar o iesire
+              din sesiune intre ele e si in plus, si periculoasa. */}
           {/* Live indicator in top nav */}
           {isSessionActive && (
             <span className="flex items-center gap-2">
@@ -859,6 +942,7 @@ export default function LiveFullscreenPage() {
               treaba. Asa ramane de aceeasi latime indiferent de stare, iar
               Reset nu mai sta lipit de ÎNCHEIE PROBA. */}
           {panelType === 'match' && currentMatch && !isSessionActive && (
+            <span className="relative inline-flex">
             <button
               onClick={async () => {
                 await startRecordingSession({ auto: true });
@@ -870,15 +954,27 @@ export default function LiveFullscreenPage() {
                 }
               }}
               disabled={busy || isCurrentMatchFinalized}
-              className={`${TOPNAV_GREEN_BUTTON} ${isCurrentMatchFinalized ? '' : 'ring-2 ring-emerald-400 animate-pulse'}`}
+              className={`${TOPNAV_GREEN_BUTTON} ${ghid && !isCurrentMatchFinalized ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
             >AFIȘEAZĂ PE TV</button>
+            {ghid && !isCurrentMatchFinalized && (
+              <Indrumare text="Afișează meciul pe TV" className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap" />
+            )}
+            </span>
           )}
           {panelType === 'match' && currentMatch && isSessionActive && (
-            <button
-              onClick={() => setShowFinishConfirm(true)}
-              disabled={busy}
-              className={`${TOPNAV_GREEN_BUTTON} ${session?.current_match === currentMatch.id && session?.status === 'winner_revealed' ? 'ring-2 ring-emerald-400 animate-pulse' : ''}`}
-            >ÎNCHEIE PROBA</button>
+            <span className="relative inline-flex">
+              <button
+                onClick={() => setShowFinishConfirm(true)}
+                disabled={busy}
+                className={`${TOPNAV_GREEN_BUTTON} ${pasIncheieMeci ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
+              >ÎNCHEIE PROBA</button>
+              {pasIncheieMeci && (
+                <Indrumare
+                  text="Câștigătorul e pe ecran - încheie meciul"
+                  className="absolute right-0 top-full mt-2 whitespace-nowrap"
+                />
+              )}
+            </span>
           )}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && !isSessionActive && (
             <span className="relative inline-flex">
@@ -893,9 +989,9 @@ export default function LiveFullscreenPage() {
                   }
                 }}
                 disabled={busy || isCurrentCategoryFinalized}
-                className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryFinalized ? '' : 'ring-4 ring-amber-400 ring-offset-2 animate-pulse'}`}
+                className={`${TOPNAV_GREEN_BUTTON} ${ghid && !isCurrentCategoryFinalized ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
               >AFIȘEAZĂ PE TV</button>
-              {!isCurrentCategoryFinalized && (
+              {ghid && !isCurrentCategoryFinalized && (
                 <Indrumare text="Afișează proba pe TV" className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap" />
               )}
             </span>
@@ -905,12 +1001,12 @@ export default function LiveFullscreenPage() {
               <button
                 onClick={() => setShowFinishConfirm(true)}
                 disabled={busy}
-                className={`${TOPNAV_GREEN_BUTTON} ${isCurrentCategoryCompleted || totiTerminati ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
+                className={`${TOPNAV_GREEN_BUTTON} ${ghid && (isCurrentCategoryCompleted || totiTerminati) ? 'ring-4 ring-amber-400 ring-offset-2 animate-pulse' : ''}`}
               >ÎNCHEIE PROBA</button>
               {/* Ultimul pas. Chenarul era verde ca restul butonului; galben,
                   e aceeasi culoare ca toate indrumarile dinainte, deci se
                   citeste ca "urmatorul lucru de facut", nu ca o stare. */}
-              {(isCurrentCategoryCompleted || totiTerminati) && (
+              {ghid && (isCurrentCategoryCompleted || totiTerminati) && (
                 <Indrumare
                   text="Toți sportivii au terminat - încheie proba"
                   className="absolute right-0 top-full mt-2 whitespace-nowrap"
@@ -928,11 +1024,31 @@ export default function LiveFullscreenPage() {
               disabled={busy}
               className={TOPNAV_SECONDARY_BUTTON}
               title="Mod de afișare și durata reprizelor"
-              aria-label="Setări meci"
-            >⚙</button>
+            >⚙ Setări Meci</button>
           )}
-          {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
+          {((panelType === 'category' && currentCat && currentCat.type !== 'fight') || (panelType === 'match' && currentMatch)) && (
             <button onClick={() => exportExcelRef.current?.()} disabled={busy} className={TOPNAV_SECONDARY_BUTTON} title="Exportă rezultatele în Excel">⬇ Excel</button>
+          )}
+          {/* Meniul View al paginii - doar in browser.
+              In launcher aceleasi setari stau in meniul aplicatiei (View >
+              Ghid interactiv), si acolo le e locul: tin de calculator, nu de
+              proba de pe ecran. Aici n-avem meniu de aplicatie, deci pagina
+              si-l poarta pe al ei - un singur buton, nu inca unul in sir. */}
+          {!inLauncher() && (
+            <DropdownMenu>
+              <DropdownMenuTrigger className={TOPNAV_SECONDARY_BUTTON} title="Setările acestui calculator">View ▾</DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[16rem]">
+                <DropdownMenuLabel>Setările acestui calculator</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => { const nou = !ghid; setGhid(nou); setGhidPornit(nou); }}
+                  className="cursor-pointer"
+                >
+                  <span className="w-4 text-center">{ghid ? '✓' : ''}</span>
+                  <span className="flex-1">Ghid interactiv (pas cu pas)</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {panelType === 'category' && currentCat && currentCat.type !== 'fight' && (
             <button onClick={() => setIstoricDeschis(true)} className={TOPNAV_SECONDARY_BUTTON} title="Desfășurarea probei și fiecare modificare de notă">Istoric</button>
@@ -1018,11 +1134,10 @@ export default function LiveFullscreenPage() {
 
       {/* Finish panel confirm */}
       {showFinishConfirm && ((panelType === 'match' && currentMatch) || (panelType === 'category' && currentCat && currentCat.type !== 'fight')) && (() => {
-        // Excelul exista doar pentru probele de tehnica; la meciuri nu are
-        // ce exporta, deci acolo raman doua butoane ca pana acum. Odata
-        // incheiata proba se pleaca din ecran, iar exportul de aici e
-        // ultimul moment comod in care poate fi cerut.
-        const canExport = panelType === 'category' && !!exportExcelRef.current;
+        // Si meciurile au Excel - fazele, cine a punctat cand, si raportul de
+        // impartialitate. Odata incheiata proba se pleaca din ecran, iar
+        // exportul de aici e ultimul moment comod in care poate fi cerut.
+        const canExport = !!exportExcelRef.current;
         const finishWithExcel = async () => {
           setShowFinishConfirm(false);
           try {
@@ -1173,6 +1288,7 @@ export default function LiveFullscreenPage() {
             revealScores={revealScores}
             onRefresh={fetchMatchState}
             refreshCategories={refreshCategories}
+            ghid={ghid}
             isCategoryCompleted={isCurrentCategoryCompleted}
             onLastAthleteStopped={() => setShowAllDoneModal(true)}
             onTotiTerminati={setTotiTerminati}
@@ -1181,6 +1297,8 @@ export default function LiveFullscreenPage() {
         ) : panelType === 'match' && currentMatch ? (
           <FullscreenMatchPanel
             key={currentMatch.id}
+            previewVazut={previewVazut}
+            ghid={ghid}
             match={currentMatch}
             session={session}
             matchRounds={matchRoundsForMatch}
@@ -1215,6 +1333,7 @@ export default function LiveFullscreenPage() {
             finalizeMatch={finalizeMatch}
             revealDecisions={revealDecisions}
             revealWinner={revealWinner}
+            exportExcelRef={exportExcelRef}
             switchDisplay={switchDisplay}
             swapCorners={swapCorners}
             setDecision={setDecision}
@@ -1248,7 +1367,7 @@ export default function LiveFullscreenPage() {
 /* ═══════════════════════════════════════════════════════
    FULLSCREEN CATEGORY PANEL — solo/team scoring
    ═══════════════════════════════════════════════════════ */
-function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, busy, setBusy, switchDisplay, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, onTotiTerminati, exportExcelRef }) {
+function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, athleteScores, refScores, scoreEvents, refPresence, competitionReferees, busy, setBusy, switchDisplay, revealScores, onRefresh, refreshCategories, isCategoryCompleted, onLastAthleteStopped, onTotiTerminati, exportExcelRef, ghid }) {
   const toast = useToast();
   const isTeamCategory = cat.type === 'team';
 
@@ -1321,6 +1440,63 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
     return { pos: i, id, name: name || null };
   });
   const refCols = refSlots;
+
+  // ── Arbitrul care tine masa e A5 ──────────────────────────────────────
+  //
+  // La tehnica nu e un obicei, e asezarea din sala: A1-A4 stau in cele patru
+  // colturi, deci cine tine masa centrala e al cincilea. (La lupte nu e deloc
+  // printre cei care dau note - acolo sunt cinci plus el.)
+  //
+  // Fiind o regula, nu o preferinta, intrarea cu PIN il pune pe A5 chiar daca
+  // acolo era altcineva: scaunul de la masa si pozitia A5 sunt acelasi lucru,
+  // iar cel de dinainte tocmai a plecat de pe el. Si daca statea pe alta
+  // pozitie, o elibereaza - nu poate fi in doua locuri odata.
+  const masa = citesteMasa();
+  const arbitrulMesei = masa?.referee?.id ?? null;
+
+  // Semnalul de prezenta, ca la ceilalti arbitri.
+  //
+  // La tehnica, cine tine masa e si unul din cei cinci care dau note - deci
+  // trebuie sa apara conectat in lista de arbitri, altfel masa centrala arata
+  // un arbitru lipsa care sta chiar acolo. Semnalam de aici, de pe laptopul
+  // mesei, exact ca aplicatia de arbitri de pe telefon.
+  useEffect(() => {
+    if (!arbitrulMesei || !cat?.id) return undefined;
+    const bate = () => refereePresenceAPI
+      .ping({ category: cat.id, referee: arbitrulMesei })
+      .catch(() => { /* o bataie pierduta se recupereaza la urmatoarea */ });
+    bate();
+    const ceas = setInterval(bate, 3000);
+    return () => clearInterval(ceas);
+  }, [arbitrulMesei, cat?.id]);
+  const pozitiaMea = arbitrulMesei
+    ? (refSlots.find(r => r.id === arbitrulMesei)?.pos ?? null)
+    : null;
+
+  useEffect(() => {
+    if (!arbitrulMesei || !refAssignment?.id) return undefined;
+    if (refSlots[4].id === arbitrulMesei) return undefined;   // deja pe A5
+    let anulat = false;
+    const schimbari = { referee_5: arbitrulMesei };
+    // Daca statea pe alta pozitie, o eliberam: A1-A4 sunt colturile, iar el e
+    // la masa. Altfel ar aparea de doua ori in aceeasi proba.
+    if (pozitiaMea && pozitiaMea !== 5) schimbari[`referee_${pozitiaMea}`] = null;
+    categoryRefereeAssignmentAPI
+      .update(refAssignment.id, schimbari)
+      .then(() => { if (!anulat) refreshCategories?.(); })
+      .catch(e => console.error(e));
+    return () => { anulat = true; };
+    // `refSlots` se reface la fiecare randare; pozitia 5 o citim din el, deci
+    // dependenta cinstita e valoarea, nu lista.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arbitrulMesei, pozitiaMea, refAssignment?.id, refSlots[4]?.id]);
+
+  // Casuta in care arbitrul de la masa trebuie sa-si puna nota ACUM: a lui, pe
+  // sportivul care prezinta, cat timp e goala. Poate s-o scrie si de pe telefon
+  // sau de pe device - evidentierea doar ii arata unde, nu-l obliga pe unde.
+  const casutaMea = (coloana, rand, valoare) => Boolean(
+    arbitrulMesei && coloana?.id === arbitrulMesei && rand?.isActive && valoare == null,
+  );
 
   const resolveTeamScore = (teamEnrollment) => {
     const teamMemberIds = (teamEnrollment.members || []).map(member => member.id).sort((a, b) => a - b);
@@ -1474,7 +1650,7 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
 
   const sesiuneaMerge = !!session && session.status !== 'idle';
   const pasIndrumare = (() => {
-    if (!sesiuneaMerge || isCategoryCompleted) return null;
+    if (!ghid || !sesiuneaMerge || isCategoryCompleted) return null;
     // Cat timp indrumarea din bara de sus arata inca spre Preview, panoul
     // tace: doua indrumari deodata nu spun care e urmatorul pas.
     if (!previewVazut) return null;
@@ -1814,6 +1990,56 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
     });
 
     // ─────────────────────────────────────────────
+    // Imparțialitate — cat de diferit si-a notat fiecare arbitru clubul
+    // ─────────────────────────────────────────────
+    const clubArbitru = new Map(
+      (competitionReferees || [])
+        .filter(cr => cr.athlete && cr.club_name)
+        .map(cr => [cr.athlete, cr.club_name]),
+    );
+    const abateri = abateriTehnica({ randuri: rows, coloane: refCols, clubArbitru });
+
+    if (abateri.length) {
+      const ws3 = wb.addWorksheet('Imparțialitate');
+      ws3.addRow(['IMPARȚIALITATE — ' + titleText]);
+      ws3.getRow(1).height = 32;
+      ws3.getRow(1).getCell(1).font = boldF(14, 'FFFFFF');
+      ws3.getRow(1).getCell(1).fill = DARK_HDR;
+      ws3.getRow(1).getCell(1).alignment = LC;
+      ws3.mergeCells(1, 1, 1, 7);
+
+      // Metoda, scrisa in foaie. Un numar fara explicatie, intr-un fisier care
+      // ajunge la cine stie cine, se citeste drept acuzatie.
+      ws3.addRow(['Fiecare notă e comparată cu mediana celorlalți arbitri, pe aceeași prestație.']);
+      ws3.addRow(['Semnalul = media abaterilor la sportivii clubului propriu − media la ceilalți sportivi.']);
+      ws3.addRow([`Nu e o dovadă: e un număr care arată unde merită să se uite un om. Sub ${PRAGURI.MINIM_SPORTIVI} sportivi de club nu se marchează nimic.`]);
+      [2, 3, 4].forEach(n => { ws3.getRow(n).getCell(1).font = { size: 10, italic: true }; ws3.mergeCells(n, 1, n, 7); });
+      ws3.addRow([]);
+
+      const cap = ws3.addRow(['ARBITRU', 'CLUB', 'SPORTIVI DIN CLUB', 'ABATERE LA EI', 'ALȚI SPORTIVI', 'ABATERE LA EI', 'DIFERENȚĂ']);
+      cap.eachCell(c => { c.font = boldF(11); c.fill = YELLOW_HD; c.alignment = CC; c.border = allB(); });
+
+      const doua = (v) => (v == null ? '—' : Number(v.toFixed(2)));
+      for (const ab of abateri) {
+        const r = ws3.addRow([
+          ab.arbitru, ab.club, ab.nProprii, doua(ab.medieProprii),
+          ab.nAltii, doua(ab.medieAltii), doua(ab.diferenta),
+        ]);
+        r.eachCell(c => { c.border = grayB(); c.alignment = CC; });
+        r.getCell(1).alignment = LC;
+        r.getCell(2).alignment = LC;
+        if (ab.semnal === 'de verificat') {
+          r.eachCell(c => { c.font = boldF(11); });
+          r.getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE0E0' } };
+        }
+        r.getCell(7).value = ab.diferenta == null
+          ? '—'
+          : `${doua(ab.diferenta)} (${ab.semnal})`;
+      }
+      ws3.columns = [{ width: 26 }, { width: 24 }, { width: 18 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 22 }];
+    }
+
+    // ─────────────────────────────────────────────
     // Download
     // ─────────────────────────────────────────────
     const buffer = await wb.xlsx.writeBuffer();
@@ -2042,16 +2268,24 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
                           setReplacementRefId(r.id ? String(r.id) : '');
                         }}
                         className={`flex min-w-0 flex-1 items-stretch overflow-hidden rounded-md border text-left text-xs font-medium transition hover:shadow-sm ${isEmpty ? 'border-dashed border-border bg-card text-muted-foreground hover:bg-muted/40' : isConnected ? 'border-border bg-emerald-100 text-emerald-900 hover:bg-emerald-200' : 'border-border bg-card text-foreground/80 hover:bg-amber-100'}`}
-                        title={isEmpty ? 'Adaugă arbitru' : isConnected ? 'Arbitru conectat' : 'Arbitru neconectat'}
+                        title={isEmpty
+                          ? 'Adaugă arbitru'
+                          : r.pos === 5
+                            ? `Masa centrală — ${isConnected ? 'conectată' : 'neconectată'}`
+                            : `Arbitru ${isConnected ? 'conectat' : 'neconectat'}`}
                       >
+                        {/* A5 e masa centrala, prin regula probei: A1-A4 stau
+                            in cele patru colturi. Deci acolo semnalul nu vine
+                            de pe un telefon, ci de pe laptopul mesei - si
+                            atunci o antena de Wi-Fi spune altceva decat se
+                            intampla. Culoarea ramane aceeasi: verde conectat,
+                            rosu nu. */}
                         <span className={`flex w-6 shrink-0 items-center justify-center ${isEmpty ? 'bg-muted' : isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}>
-                          {isEmpty ? (
-                            <Wifi className="h-3.5 w-3.5 text-muted-foreground/70" strokeWidth={3} />
-                          ) : isConnected ? (
-                            <Wifi className="h-3.5 w-3.5 text-white" strokeWidth={3} />
-                          ) : (
-                            <WifiOff className="h-3.5 w-3.5 text-white" strokeWidth={3} />
-                          )}
+                          {(() => {
+                            const Pictograma = r.pos === 5 ? Laptop : (isEmpty || isConnected ? Wifi : WifiOff);
+                            const culoare = isEmpty ? 'text-muted-foreground/70' : 'text-white';
+                            return <Pictograma className={`h-3.5 w-3.5 ${culoare}`} strokeWidth={3} />;
+                          })()}
                         </span>
                         <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1">
                           <span className="font-black text-foreground">A{r.pos}</span>
@@ -2282,7 +2516,7 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
                         type="button"
                         onClick={() => openScoreCell(r, row, value)}
                         title={r.id ? auditTitle : `Nicio persoană pe poziția A${r.pos} — apasă ca să aloci un arbitru`}
-                        className={`relative overflow-hidden rounded-md border px-1.5 py-1.5 text-center transition sm:px-3 sm:py-2 sm:text-left ${!r.id ? 'border-dashed border-border bg-muted/30 text-muted-foreground/60 hover:bg-muted/60' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''}`}
+                        className={`relative overflow-hidden rounded-md border px-1.5 py-1.5 text-center transition sm:px-3 sm:py-2 sm:text-left ${!r.id ? 'border-dashed border-border bg-muted/30 text-muted-foreground/60 hover:bg-muted/60' : 'border-border bg-card hover:bg-amber-50'} ${isCancelled ? 'line-through' : ''} ${casutaMea(r, row, value) ? 'ring-4 ring-amber-400 ring-offset-1 animate-pulse' : ''}`}
                       >
                         {audit && (
                           <span className="absolute right-0 top-0 h-0 w-0 border-t-[16px] border-l-[16px] border-t-red-600 border-l-transparent" />
@@ -2347,7 +2581,7 @@ function FullscreenCategoryPanel({ cat, session, previewVazut, refAssignment, at
                         <td key={ri}
                           onClick={() => openScoreCell(r, row, v)}
                           title={r.id ? auditTitle : `Nicio persoană pe poziția A${r.pos} — apasă ca să aloci un arbitru`}
-                          className={`relative overflow-hidden border border-border/20 text-center px-2 py-2.5 tabular-nums text-sm cursor-pointer hover:bg-indigo-50 ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-foreground font-medium' : 'text-muted-foreground/40'}`}
+                          className={`relative overflow-hidden border border-border/20 text-center px-2 py-2.5 tabular-nums text-sm cursor-pointer hover:bg-indigo-50 ${isCancelled ? 'text-red-400 line-through' : v != null ? 'text-foreground font-medium' : 'text-muted-foreground/40'} ${casutaMea(r, row, v) ? 'ring-4 ring-amber-400 ring-inset animate-pulse' : ''}`}
                         >
                           {audit && (
                             <span className="absolute right-0 top-0 h-0 w-0 border-t-[14px] border-l-[14px] border-t-red-600 border-l-transparent" />
@@ -2389,15 +2623,134 @@ const UNDOABLE_EVENT_TYPES = [
   'infraction_red', 'infraction_blue',
 ];
 
+// Panoul unui colt: negativele la stanga, abaterile si avertismentele la
+// mijloc, pozitivele la dreapta - totul pe doua randuri.
+//
+// O singura componenta pentru amandoua colturile. Era scrisa de doua ori, iar
+// doua copii ale aceluiasi lucru se despart la prima corectie facuta in graba.
+//
+// De ce asezarea asta: butoanele erau toate sase intr-un rand, in ordinea
+// -2 -1 +1 +2 +Abatere +Avertism. Ce scade si ce adauga stateau lipite, iar
+// contoarele erau sus, departe de butoanele care le schimba. Acum fiecare grup
+// e in locul lui, si fiecare contor are langa el si plusul si minusul.
+function PanouColt({
+  colt, descalificat, abateri, avertismente, ajustare,
+  blocat, peAdauga, peScade, peAbatere, peAvertisment, peScadeAbatere, peScadeAvertisment,
+}) {
+  const rosu = colt === 'red';
+  const Chip = ({ activ, culoare, onClick, dezactivat, children }) => (
+    <button
+      type="button"
+      disabled={dezactivat}
+      onClick={onClick}
+      className={`flex h-[54px] w-11 cursor-pointer items-center justify-center rounded-sm border-2 text-lg font-black shadow-sm transition disabled:cursor-default ${
+        activ ? culoare : 'border-border bg-card text-muted-foreground/40'
+      }`}
+    >{children}</button>
+  );
+  // Aceeasi marime ca -1 / -2: sunt tot butoane care se apasa in graba, cu
+  // degetul, pe un ecran de masa centrala. Mai mici decat vecinii lor, se
+  // ratau - si o abatere pusa din greseala costa doua puncte.
+  const mic = `${PANEL_BUTTON_BASE} bg-background text-foreground hover:bg-accent`;
+
+  // Randul de eticheta exista si peste stanga si peste dreapta, gol.
+  //
+  // Fara el, doar mijlocul avea un rand deasupra, deci butoanele lui coborau
+  // cu inaltimea unui text fata de -2/-1 si +1/+2. Un spatiu gol de aceeasi
+  // inaltime aliniaza toate cele trei grupuri fara sa adauge nimic de citit.
+  const Eticheta = ({ children }) => (
+    <span
+      aria-hidden={children ? undefined : true}
+      className={`text-xs font-bold uppercase tracking-wide ${children ? 'text-muted-foreground' : 'select-none text-transparent'}`}
+    >{children || '·'}</span>
+  );
+
+  return (
+    <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${
+      descalificat ? 'border-border bg-muted opacity-60'
+        : rosu ? 'border-red-500 bg-red-200/80' : 'border-blue-500 bg-blue-200/80'
+    }`}>
+      {descalificat && (
+        <span className="inline-flex border border-red-700 bg-red-600 px-2 py-0.5 text-xs font-bold text-white">DESCALIFICAT</span>
+      )}
+
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
+        {/* ── stanga: ce scade ── */}
+        <div className="flex flex-col items-center gap-1">
+          <Eticheta />
+          <div className="flex gap-1.5">
+            <button onClick={() => peScade(2)} disabled={blocat} className={PANEL_BUTTON_DANGER}>-2</button>
+            <button onClick={() => peScade(1)} disabled={blocat} className={PANEL_BUTTON_DANGER}>-1</button>
+          </div>
+        </div>
+
+        {/* ── mijloc: doua grupuri, fiecare cu eticheta deasupra si cu
+               minusul la stanga, plusul la dreapta.
+               Cartonase, nu patratele: galben pentru abateri, rosu pentru
+               avertismente - acelasi limbaj ca in sala, deci nu trebuie citit,
+               se recunoaste. ── */}
+        <div className="flex flex-wrap items-start justify-center gap-x-5 gap-y-1">
+          {[
+            {
+              eticheta: 'Abateri', cate: abateri,
+              culoare: 'border-amber-500 bg-amber-400 text-amber-950 hover:bg-amber-300',
+              scadeText: 'Scade o abatere', adaugaText: 'Adaugă o abatere',
+              adauga: peAbatere, scade: peScadeAbatere,
+            },
+            {
+              eticheta: 'Avertismente', cate: avertismente,
+              culoare: 'border-red-700 bg-red-600 text-white hover:bg-red-500',
+              scadeText: 'Scade un avertisment', adaugaText: 'Adaugă un avertisment',
+              adauga: peAvertisment, scade: peScadeAvertisment,
+            },
+          ].map(grup => (
+            <div key={grup.eticheta} className="flex flex-col items-center gap-1">
+              <Eticheta>{grup.eticheta}</Eticheta>
+              <div className="flex items-center gap-1.5">
+                <button onClick={grup.scade} disabled={blocat || !grup.cate} className={mic} title={grup.scadeText}>−</button>
+                <span className="flex gap-1">
+                  {[0, 1, 2].map(i => (
+                    <Chip key={i} activ={i < grup.cate} dezactivat={blocat || i >= grup.cate}
+                      culoare={grup.culoare} onClick={grup.scade}>{i + 1}</Chip>
+                  ))}
+                </span>
+                <button onClick={grup.adauga} disabled={blocat} className={mic} title={grup.adaugaText}>+</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── dreapta: ce adauga, plus totalul ajustarilor ── */}
+        <div className="flex flex-col items-end gap-1">
+          <Eticheta />
+          <div className="flex gap-1.5">
+            <button onClick={() => peAdauga(1)} disabled={blocat} className={PANEL_BUTTON_SUCCESS}>+1</button>
+            <button onClick={() => peAdauga(2)} disabled={blocat} className={PANEL_BUTTON_SUCCESS}>+2</button>
+          </div>
+          <span className="flex items-center gap-1">
+            {/* "Ajustări", nu "Puncte": numarul asta e doar ce s-a adaugat sau
+                scazut de mana, fara fazele validate. */}
+            <span className="text-[10px] text-muted-foreground" title="Penalizări, bonusuri și avertismente - fără punctele din fazele validate">Ajustări:</span>
+            <span className={`border border-border px-1.5 py-0 text-sm font-black tabular-nums ${
+              ajustare > 0 ? 'bg-emerald-200 text-emerald-700' : ajustare < 0 ? 'bg-red-200 text-red-700' : 'bg-card text-muted-foreground'
+            }`}>{ajustare > 0 ? '+' : ''}{ajustare}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FullscreenMatchPanel({
   match, session, matchRounds, activeRound, matchRefScores, matchEvents, pointEvents,
-  matchRefAssignment, refPresence, allCats, busy, setBusy, competitionReferees, startRound, endRound, resetRound, eventStartDate, openMatchSettingsRef,
+  matchRefAssignment, refPresence, allCats, busy, setBusy, competitionReferees, startRound, endRound, resetRound, eventStartDate, openMatchSettingsRef, previewVazut, ghid,
   pauseRound, resumeRound, addWarning, addPenalty, addBonus, addInfraction, addDisqualification,
-  removeLastEvent, adjustTime, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh,
+  removeLastEvent, adjustTime, revealDecisions, revealWinner, switchDisplay, swapCorners, setDecision, onRefresh, exportExcelRef,
   operationalLockActive, operationalLockMessage, ensureOperationalWrite,
 }) {
   const toast = useToast();
   const [showRoundResetConfirm, setShowRoundResetConfirm] = useState(null); // round id
+  const [confirmaStartRepriza, setConfirmaStartRepriza] = useState(null); // { id, numar, idx }
   const [showStopRoundConfirm, setShowStopRoundConfirm] = useState(null); // round id for stop confirm
   const [showWinnerConfirm, setShowWinnerConfirm] = useState(false);
   const [showExtraRoundModal, setShowExtraRoundModal] = useState(false);
@@ -2409,7 +2762,9 @@ function FullscreenMatchPanel({
   const [qrRefData, setQrRefData] = useState(null); // arbitrul pentru care e deschisa fereastra de conectare
   const { id: eventId } = useParams();
   const [matchDisplayMode, setMatchDisplayMode] = useState(match.display_mode || 'real_time');
-  const [exportingExcel, setExportingExcel] = useState(false);
+  // La meciurile in timp real castigatorul iese din puncte, nu din voturile
+  // arbitrilor: fiecare faza a fost deja confirmata de trei din cinci, pe loc.
+  const isRealTimeMode = matchDisplayMode === 'real_time';
   const prevRoundStatusRef = useRef({});
   const autoRoundProvisionRef = useRef(new Set());
 
@@ -2493,6 +2848,57 @@ function FullscreenMatchPanel({
   );
   const totalRounds = matchRounds.length;
   const isMatchFinalized = match.status === 'completed';
+  // Repriza la rand: prima neincheiata.
+  //
+  // Pe un meci neinceput asta e R1, si doar butonul ei porneste dintr-o
+  // apasare; pe celelalte butonul sta stins si cere confirmare. O apasare
+  // greșită pe R3 pornea altfel repriza a treia cu primele doua nedisputate,
+  // iar cronometrul si evenimentele se legau de repriza greșită.
+  const idxReprizaLaRand = matchRounds.findIndex(r => r.status !== 'completed');
+  const reprizaLaRand = idxReprizaLaRand >= 0 ? matchRounds[idxReprizaLaRand] : null;
+
+  // ── Indrumarea de pe un meci ─────────────────────────────────────────
+  //
+  // Aceleasi reguli ca la tehnica: pasul se DEDUCE din starea paginii, nu se
+  // tine intr-un tutorial separat, si dispare singur cand meciul merge. Cine
+  // reia pagina la mijloc e prins acolo unde e.
+  //
+  // Ordinea e cea de la masa: pui meciul pe ecran, te uiti ce se vede, verifici
+  // ca ai arbitri, verifici ca sunt luptatorii potriviti in colturi, apoi dai
+  // drumul la prima repriza. Ce vine dupa - pauze, reprize urmatoare - are deja
+  // evidentierea lui verde si nu mai are nevoie de explicatii.
+  const [arbitriVerificatiMeci, setArbitriVerificatiMeci] = useState(false);
+  const [sportiviVerificati, setSportiviVerificati] = useState(false);
+  useEffect(() => {
+    setArbitriVerificatiMeci(false);
+    setSportiviVerificati(false);
+  }, [match.id]);
+
+  const colturiCompletate = Boolean(match.red_corner_full_name && match.blue_corner_full_name);
+
+  const pasMeci = (() => {
+    if (!ghid || isMatchFinalized || !isMatchDisplayStarted) return null;
+    // Cat timp bara de sus arata spre Preview, panoul tace: doua indrumari
+    // deodata nu spun care e urmatorul pas.
+    if (!previewVazut) return null;
+    if (!arbitriVerificatiMeci) return 'arbitri';
+    if (!colturiCompletate || !sportiviVerificati) return 'sportivi';
+    if (!matchStarted) return 'repriza';
+    // Reprizele s-au terminat, dar sala nu stie inca cine a castigat. Pasul
+    // asta e cel mai usor de ratat: butonul e jos, sub reprize, iar operatorul
+    // tocmai se uita la cronometrul care s-a oprit.
+    if (allRoundsCompleted && session?.status !== 'winner_revealed') return 'castigator';
+    return null;
+  })();
+
+  // Cat timp indrumarea mai are ceva de spus - fie din bara de sus (Preview),
+  // fie din panou - evidentierile vechi tac.
+  //
+  // `pasMeci` singur nu ajunge: la pasul Preview el e null dinadins, ca sa nu
+  // apara doua indrumari odata - si fix atunci pulsa Start Repriza, inainte sa
+  // fi verificat cineva arbitrii sau colturile.
+  const indrumareInCurs = !isMatchFinalized && isMatchDisplayStarted
+    && (!previewVazut || Boolean(pasMeci));
 
   // ── ASISTENT VOCAL ──
   //
@@ -2705,11 +3111,28 @@ function FullscreenMatchPanel({
 
   // Auto-start break when a round completes
   useEffect(() => {
-    matchRounds.forEach((r, idx) => {
-      const prevStatus = prevRoundStatusRef.current[r.id];
-      if (prevStatus === 'active' && r.status === 'completed' && idx < matchRounds.length - 1) {
-        setBreakTimers(prev => ({ ...prev, [idx]: true }));
-      }
+    setBreakTimers(prev => {
+      const urmator = { ...prev };
+      let schimbat = false;
+      matchRounds.forEach((r, idx) => {
+        const prevStatus = prevRoundStatusRef.current[r.id];
+        if (prevStatus === 'active' && r.status === 'completed' && idx < matchRounds.length - 1) {
+          if (!urmator[idx]) { urmator[idx] = true; schimbat = true; }
+        }
+        // O pauza are rost doar cat timp repriza dinaintea ei e incheiata.
+        //
+        // Cheile stateau pe indexul reprizei si nimeni nu le stergea: dupa un
+        // reset, reprizele se intorceau la 'scheduled' dar pauzele ramaneau
+        // aprinse - si porneau toate deodata, fiecare numarand pentru o repriza
+        // care nu se mai terminase.
+        if (r.status !== 'completed' && urmator[idx]) { delete urmator[idx]; schimbat = true; }
+      });
+      // Si cheile de peste capatul listei - o repriza suplimentara stearsa la
+      // reset isi lasa altfel pauza in urma, fara nicio caseta de care sa atarne.
+      Object.keys(urmator).forEach(k => {
+        if (Number(k) >= matchRounds.length) { delete urmator[k]; schimbat = true; }
+      });
+      return schimbat ? urmator : prev;
     });
     const statusMap = {};
     matchRounds.forEach(r => { statusMap[r.id] = r.status; });
@@ -2731,15 +3154,20 @@ function FullscreenMatchPanel({
   //     see lib/exportMatchExcel.js (single source of truth for this file's
   //     contents, so the two never drift into two different-looking exports). ──
   const exportMatchToExcel = async () => {
-    setExportingExcel(true);
     try {
-      await exportMatchExcel({ match, matchRounds, matchRefScores, matchEvents, pointEvents, matchRefSlots });
+      await exportMatchExcel({ match, matchRounds, matchRefScores, matchEvents, pointEvents, matchRefSlots, competitionReferees });
     } catch (err) {
       console.error('Export Excel failed', err);
       toast.error('Export Excel a eșuat: ' + err.message);
     }
-    setExportingExcel(false);
   };
+
+  // Acelasi ref ca la tehnica: un singur panou e montat odata, deci butonul
+  // din bara de sus cheama exportul panoului deschis, oricare ar fi el.
+  useEffect(() => {
+    if (exportExcelRef) exportExcelRef.current = exportMatchToExcel;
+    return () => { if (exportExcelRef) exportExcelRef.current = null; };
+  });
 
   const updateMatchDisplayMode = async (mode) => {
     if (!mode || mode === matchDisplayMode || operationalSettingsLocked) return;
@@ -2761,17 +3189,51 @@ function FullscreenMatchPanel({
     if (!ensureOperationalWrite()) return;
     setBusy(true);
     try {
-      for (const round of matchRounds) {
-        await roundAPI.delete(round.id);
-      }
+      // Se POTRIVESC reprizele, nu se sterg si se refac.
+      //
+      // Sterge-tot-si-creeaza avea doua defecte care se acopereau unul pe
+      // altul: o stergere cazuta oprea totul inainte sa creeze ceva (meciul
+      // ramanea cu zero reprize), iar daca lista din ecran nu le cuprindea pe
+      // toate - stearsa de alt calculator, sau invechita - crearea se lovea de
+      // "match, round_number trebuie sa formeze un set unic".
+      //
+      // Lista se cere de la server, nu se ia din ecran: ea e singura care stie
+      // ce exista chiar acum.
+      const { data } = await roundAPI.list({ match_id: match.id });
+      const existente = (data?.results || data || []).filter(r => r.match === match.id);
+      const dupaNumar = new Map(existente.map(r => [r.round_number, r]));
+
       for (let i = 1; i <= roundCount; i += 1) {
-        await roundAPI.create({ match: match.id, round_number: i, duration_seconds: durationSeconds });
+        const r = dupaNumar.get(i);
+        if (r) {
+          // Pastrata, nu refacuta: punctele si evenimentele sunt legate de ea.
+          await roundAPI.update(r.id, {
+            duration_seconds: durationSeconds, status: 'scheduled',
+            started_at: null, ended_at: null, paused_at: null,
+            accumulated_pause_seconds: 0, extra_seconds: 0, is_extra: false,
+          });
+        } else {
+          await roundAPI.create({ match: match.id, round_number: i, duration_seconds: durationSeconds });
+        }
       }
-      await onRefresh();
+      // Ce trece peste numarul cerut pleaca.
+      for (const r of existente) {
+        if (r.round_number > roundCount) {
+          try { await roundAPI.delete(r.id); } catch { /* deja stearsa */ }
+        }
+      }
     } catch (error) {
       console.error('Failed to apply round preset', error);
-      toast.error(error?.response?.data?.detail || 'Nu s-a putut salva presetul de reprize.');
+      // Mesajul serverului, daca l-a dat: "n-a mers" nu spune nimanui ce sa
+      // faca mai departe.
+      const spus = error?.response?.data?.detail
+        || (typeof error?.response?.data === 'object' && Object.values(error.response.data)[0])
+        || error?.message;
+      toast.error(spus ? `Nu s-a putut salva presetul: ${spus}` : 'Nu s-a putut salva presetul de reprize.');
     }
+    // Reimprospatarea se face si daca salvarea a dat gres: altfel ecranul
+    // ramane pe ce era inainte, iar ce s-a scris totusi nu se vede.
+    try { await onRefresh(); } catch (e) { console.error(e); }
     setBusy(false);
   };
 
@@ -2946,7 +3408,7 @@ function FullscreenMatchPanel({
               if (!ensureOperationalWrite()) return;
               setBusy(true);
               try {
-                await roundAPI.create({ match: match.id, round_number: totalRounds + 1, duration_seconds: extraRoundDuration });
+                await roundAPI.create({ match: match.id, round_number: totalRounds + 1, duration_seconds: extraRoundDuration, is_extra: true });
                 await onRefresh();
               } catch (e) {
                 console.error(e);
@@ -2991,6 +3453,25 @@ function FullscreenMatchPanel({
           actions={[
             <button key="cancel" onClick={() => setShowStopRoundConfirm(null)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
             <button key="confirm" onClick={async () => { const roundId = showStopRoundConfirm; setShowStopRoundConfirm(null); await endRound(roundId); }} disabled={busy} className={MODAL_DANGER_BUTTON}>Oprește repriza</button>,
+          ]}
+        />
+      )}
+
+      {confirmaStartRepriza && (
+        <FullscreenModal
+          onClose={() => setConfirmaStartRepriza(null)}
+          title={`Pornești R${confirmaStartRepriza.numar} peste rând?`}
+          description={reprizaLaRand
+            ? `La rând este R${reprizaLaRand.round_number}. Dacă pornești R${confirmaStartRepriza.numar}, reprizele dinaintea ei rămân nedisputate.`
+            : `Reprizele dinaintea R${confirmaStartRepriza.numar} rămân nedisputate.`}
+          actions={[
+            <button key="cancel" onClick={() => setConfirmaStartRepriza(null)} className={MODAL_SECONDARY_BUTTON}>Anulează</button>,
+            <button key="confirm" onClick={async () => {
+              const ales = confirmaStartRepriza;
+              setConfirmaStartRepriza(null);
+              if (ales.idx > 0 && breakTimers[ales.idx - 1]) dismissBreak(ales.idx - 1);
+              await startRound(ales.id);
+            }} disabled={busy} className={MODAL_WARNING_BUTTON}>Pornește R{confirmaStartRepriza.numar}</button>,
           ]}
         />
       )}
@@ -3108,9 +3589,26 @@ function FullscreenMatchPanel({
         // produce două rânduri în baza de date, iar adunarea lor arăta
         // dublu: doi arbitri de acord pe un +2 dădeau +4 în capul
         // ecranului, deși sportivul primise 2 puncte.
-        const consensus = aggregateRealtimeValidatedPoints(pointEvents || []);
-        const totalValidatedRed = consensus.red + totalBonusRed + warningPenaltyRed;
-        const totalValidatedBlue = consensus.blue + totalBonusBlue + warningPenaltyBlue;
+        //
+        // Dupa incheiere se citeste scorul inghetat, nu se mai numara.
+        // Rezultatul anuntat in sala nu are voie sa se schimbe daca se schimba
+        // regula - iar regula S-A schimbat deja o data, de la doi arbitri pe
+        // faza la trei.
+        const inghetat = match.scores_frozen_at
+          && match.final_red_score != null && match.final_blue_score != null;
+        const consensus = inghetat
+          ? { red: match.final_red_score, blue: match.final_blue_score }
+          : aggregateRealtimeValidatedPoints(pointEvents || []);
+        // Aceeasi formula ca pe ecranul public, din acelasi loc: pana acum
+        // erau doua, iar asta de aici uita penalizarile manuale.
+        const totalValidatedRed = totalColt({
+          puncteValidate: consensus.red, penalizari: totalPenaltyRed,
+          bonusuri: totalBonusRed, avertismente: warningsRed,
+        });
+        const totalValidatedBlue = totalColt({
+          puncteValidate: consensus.blue, penalizari: totalPenaltyBlue,
+          bonusuri: totalBonusBlue, avertismente: warningsBlue,
+        });
         return matchCat ? (
           <div className="w-full overflow-hidden bg-card shadow-sm">
             <div className="flex flex-col gap-4 p-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center xl:gap-6 xl:p-5">
@@ -3121,7 +3619,18 @@ function FullscreenMatchPanel({
                   </div>
                 ) : null}
               </div>
-              <div className="w-full xl:hidden">
+              <div className="relative w-full xl:hidden">
+                {pasMeci === 'arbitri' && <ChenarPulsand />}
+                {/* Suprapunere, nu in flux: in flux coboara tot blocul de
+                    arbitri cand apare si il urca la loc cand dispare, exact
+                    sub ochii celui care se uita la el. */}
+                {pasMeci === 'arbitri' && (
+                  <Indrumare
+                    text="Sunt arbitrii asignați și conectați?"
+                    onGata={() => setArbitriVerificatiMeci(true)}
+                    className="absolute bottom-full right-0 mb-1 w-[24rem] max-w-[92vw] xl:bottom-auto xl:right-full xl:top-0 xl:mb-0 xl:mr-4 xl:w-72"
+                  />
+                )}
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</p>
                 <div className="flex flex-wrap gap-1.5">
                   {matchRefSlots.map(r => {
@@ -3169,17 +3678,26 @@ function FullscreenMatchPanel({
               </div>
               <div className="min-w-0 xl:col-start-2">
                 <div className="flex flex-col items-center gap-4 text-center">
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 mb-1 text-xs font-medium text-muted-foreground">
-                    <span className="border border-border bg-card px-2 py-0.5">{matchCat.name}</span>
-                    {matchCat.groupName && <span className="border border-border bg-card px-2 py-0.5">{matchCat.groupName}</span>}
-                    <span className={`border border-border px-2 py-0.5 ${GENDER_BG[matchCat.gender] || 'bg-muted'}`}>{GENDER_LABELS[matchCat.gender] || matchCat.gender}</span>
-                    <span className="rounded border border-amber-300 bg-amber-100 px-2 py-0.5 font-bold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">{matchTypeLabels[match.match_type] || match.match_type}</span>
-                  </div>
-                  <div className="grid w-full grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-5">
+                  {/* Pasul "sportivi": colturile se verifica inainte de prima
+                      repriza, nu dupa. Un luptator pus gresit descoperit la
+                      runda a doua inseamna meci reluat.
+                      Tot suprapunere: numele luptatorilor sunt cel mai mare
+                      lucru de pe ecran si nu au voie sa sara. */}
+                  <div className="relative grid w-full grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-5">
+                    {pasMeci === 'sportivi' && <ChenarPulsand />}
+                    {pasMeci === 'sportivi' && (
+                      <Indrumare
+                        text={colturiCompletate
+                          ? 'Sunt luptătorii potriviți în colțuri?'
+                          : 'Lipsește un luptător dintr-un colț - completează înainte de start'}
+                        onGata={colturiCompletate ? () => setSportiviVerificati(true) : undefined}
+                        className="absolute bottom-full right-0 mb-1 w-[24rem] max-w-[92vw] xl:bottom-auto xl:right-full xl:top-0 xl:mb-0 xl:mr-4 xl:w-72"
+                      />
+                    )}
                     <div className={`min-w-0 text-center px-3 py-1.5 sm:justify-self-end ${isMatchFinalized && matchWinner === 'red' ? 'border-4 border-emerald-500 bg-emerald-50 shadow-lg' : ''}`}>
                       {isMatchFinalized && matchWinner === 'red' && <span className="mb-1 block text-xs font-bold text-emerald-600">CÂȘTIGĂTOR</span>}
                       {matchDisplayMode === 'real_time'
-                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedRed > 0 ? 'text-emerald-600' : totalValidatedRed < 0 ? 'text-red-700' : 'text-muted-foreground/60'}`}>{totalValidatedRed > 0 ? '+' : ''}{totalValidatedRed}</span>
+                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedRed > 0 ? 'text-emerald-600' : totalValidatedRed < 0 ? 'text-red-700' : 'text-muted-foreground/60'}`}>{totalValidatedRed}</span>
                         : <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${isMatchFinalized && matchWinner === 'red' ? 'text-emerald-600' : 'text-muted-foreground/40'}`}>–</span>
                       }
                       <span className="break-words text-2xl font-black text-red-600 sm:text-3xl">{match.red_corner_full_name || 'TBD'}</span>
@@ -3195,17 +3713,39 @@ function FullscreenMatchPanel({
                     <div className={`min-w-0 text-center px-3 py-1.5 sm:justify-self-start ${isMatchFinalized && matchWinner === 'blue' ? 'border-4 border-emerald-500 bg-emerald-50 shadow-lg' : ''}`}>
                       {isMatchFinalized && matchWinner === 'blue' && <span className="mb-1 block text-xs font-bold text-emerald-600">CÂȘTIGĂTOR</span>}
                       {matchDisplayMode === 'real_time'
-                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedBlue > 0 ? 'text-emerald-600' : totalValidatedBlue < 0 ? 'text-blue-700' : 'text-muted-foreground/60'}`}>{totalValidatedBlue > 0 ? '+' : ''}{totalValidatedBlue}</span>
+                        ? <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${totalValidatedBlue > 0 ? 'text-emerald-600' : totalValidatedBlue < 0 ? 'text-blue-700' : 'text-muted-foreground/60'}`}>{totalValidatedBlue}</span>
                         : <span className={`mb-0.5 block text-4xl font-black tabular-nums sm:text-5xl ${isMatchFinalized && matchWinner === 'blue' ? 'text-emerald-600' : 'text-muted-foreground/40'}`}>–</span>
                       }
                       <span className="break-words text-2xl font-black text-blue-600 sm:text-3xl">{match.blue_corner_full_name || 'TBD'}</span>
                       {match.blue_corner_club_name && <p className="text-sm font-medium text-muted-foreground">({match.blue_corner_club_name})</p>}
                     </div>
                   </div>
+                  {/* Categoria, grupa, genul si faza stau SUB luptatori.
+                      Deasupra, ochiul le citea primele desi sunt contextul, nu
+                      subiectul: pe ecranul mesei cine lupta si cu ce scor se
+                      cauta primul, iar restul se verifica dupa. */}
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <span className="border border-border bg-card px-2 py-0.5">{matchCat.name}</span>
+                    {matchCat.groupName && <span className="border border-border bg-card px-2 py-0.5">{matchCat.groupName}</span>}
+                    <span className={`border border-border px-2 py-0.5 ${GENDER_BG[matchCat.gender] || 'bg-muted'}`}>{GENDER_LABELS[matchCat.gender] || matchCat.gender}</span>
+                    <span className="rounded border border-amber-300 bg-amber-100 px-2 py-0.5 font-bold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">{matchTypeLabels[match.match_type] || match.match_type}</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="hidden w-full xl:block xl:col-start-3 xl:justify-self-end xl:max-w-[240px]">
+              {/* Arbitrii sunt desenati in DOUA locuri: aici pe ecrane late,
+                  si mai sus pe cele inguste (`xl:hidden`). Evidentierea trebuie
+                  pusa in amandoua - pusa doar intr-unul, pasul "verifica
+                  arbitrii" lipseste tocmai pe ecranul de la masa, care e lat. */}
+              <div className="relative hidden w-full xl:block xl:col-start-3 xl:justify-self-end xl:max-w-[240px]">
+                {pasMeci === 'arbitri' && <ChenarPulsand />}
+                {pasMeci === 'arbitri' && (
+                  <Indrumare
+                    text="Sunt arbitrii asignați și conectați?"
+                    onGata={() => setArbitriVerificatiMeci(true)}
+                    className="absolute bottom-full right-0 mb-1 w-[24rem] max-w-[92vw] xl:bottom-auto xl:right-full xl:top-0 xl:mb-0 xl:mr-4 xl:w-72"
+                  />
+                )}
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Arbitri</p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
                   {matchRefSlots.map(r => {
@@ -3406,107 +3946,53 @@ function FullscreenMatchPanel({
           </div>
         ) : null;
       })()}
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        {/* RED corner */}
-        <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${disqualifiedRed ? 'border-border bg-muted opacity-60' : 'border-red-500 bg-red-200/80'}`}>
-          {disqualifiedRed && <span className="inline-flex border border-red-700 bg-red-600 px-2 py-0.5 text-xs font-bold text-white">DESCALIFICAT</span>}
-          {/* Indicators: Abateri, Avertismente, Puncte */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground">Abateri:</span>
-              <div className="flex gap-0.5">
-                {[0, 1, 2].map(i => (
-                  <button key={i} disabled={busy || isMatchFinalized || i >= currentInfractionsRed} onClick={() => removeLastEvent(match.id, 'infraction_red')}
-                    className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
-                      i < currentInfractionsRed ? 'border-amber-600 bg-amber-400 text-amber-950 hover:bg-amber-300' : 'border-border bg-card text-muted-foreground/40'
-                    }`}>{i + 1}</button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground">Avertismente:</span>
-              <div className="flex gap-0.5">
-                {[0, 1, 2].map(i => (
-                  <button key={i} disabled={busy || isMatchFinalized || i >= warningsRed} onClick={() => removeLastEvent(match.id, 'warning_red')}
-                    className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
-                      i < warningsRed ? 'border-orange-600 bg-orange-500 text-white hover:bg-orange-400' : 'border-border bg-card text-muted-foreground/40'
-                    }`}>{i + 1}</button>
-                ))}
-              </div>
-              {warningsRed > 0 && <span className="text-[10px] text-red-500 font-medium">({warningPenaltyRed})</span>}
-            </div>
-            <div className="flex items-center gap-1 ml-auto">
-              <span className="text-xs text-muted-foreground">Puncte:</span>
-              <span className={`border border-border px-1.5 py-0 text-sm font-black tabular-nums ${adjustRed > 0 ? 'bg-emerald-200 text-emerald-700' : adjustRed < 0 ? 'bg-red-200 text-red-700' : 'bg-card text-muted-foreground'}`}>{adjustRed > 0 ? '+' : ''}{adjustRed}</span>
-            </div>
-          </div>
-          {/* Point buttons + action buttons in one row */}
-          <div className="grid grid-cols-6 gap-1.5">
-            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -2)} disabled={busy || isMatchFinalized || disqualifiedRed} className={PANEL_BUTTON_DANGER}>-2</button>
-            <button onClick={() => addPenalty(match.id, 'red', activeRound?.id, -1)} disabled={busy || isMatchFinalized || disqualifiedRed} className={PANEL_BUTTON_DANGER}>-1</button>
-            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 1)} disabled={busy || isMatchFinalized || disqualifiedRed} className={PANEL_BUTTON_SUCCESS}>+1</button>
-            <button onClick={() => addBonus(match.id, 'red', activeRound?.id, 2)} disabled={busy || isMatchFinalized || disqualifiedRed} className={PANEL_BUTTON_SUCCESS}>+2</button>
-            <button onClick={() => handleInfraction('red')} disabled={busy || isMatchFinalized || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-base`}>+Abatere</button>
-            <button onClick={() => { addWarning(match.id, 'red', activeRound?.id); if (warningsRed + 1 >= 3 && !disqualifiedRed) addDisqualification(match.id, 'red'); }} disabled={busy || isMatchFinalized || disqualifiedRed} className={`${PANEL_BUTTON_NEUTRAL} text-base`}>+Avertism.</button>
-          </div>
-        </div>
-        {/* BLUE corner */}
-        <div className={`space-y-1.5 border-2 px-3 py-2 shadow-sm ${disqualifiedBlue ? 'border-border bg-muted opacity-60' : 'border-blue-500 bg-blue-200/80'}`}>
-          {disqualifiedBlue && <span className="inline-flex border border-red-700 bg-red-600 px-2 py-0.5 text-xs font-bold text-white">DESCALIFICAT</span>}
-          {/* Indicators: Abateri, Avertismente, Puncte */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground">Abateri:</span>
-              <div className="flex gap-0.5">
-                {[0, 1, 2].map(i => (
-                  <button key={i} disabled={busy || isMatchFinalized || i >= currentInfractionsBlue} onClick={() => removeLastEvent(match.id, 'infraction_blue')}
-                    className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
-                      i < currentInfractionsBlue ? 'border-amber-600 bg-amber-400 text-amber-950 hover:bg-amber-300' : 'border-border bg-card text-muted-foreground/40'
-                    }`}>{i + 1}</button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground">Avertismente:</span>
-              <div className="flex gap-0.5">
-                {[0, 1, 2].map(i => (
-                  <button key={i} disabled={busy || isMatchFinalized || i >= warningsBlue} onClick={() => removeLastEvent(match.id, 'warning_blue')}
-                    className={`flex h-5 w-5 cursor-pointer items-center justify-center border text-[9px] font-bold transition disabled:cursor-default ${
-                      i < warningsBlue ? 'border-orange-600 bg-orange-500 text-white hover:bg-orange-400' : 'border-border bg-card text-muted-foreground/40'
-                    }`}>{i + 1}</button>
-                ))}
-              </div>
-              {warningsBlue > 0 && <span className="text-[10px] text-red-500 font-medium">({warningPenaltyBlue})</span>}
-            </div>
-            <div className="flex items-center gap-1 ml-auto">
-              <span className="text-xs text-muted-foreground">Puncte:</span>
-              <span className={`border border-border px-1.5 py-0 text-sm font-black tabular-nums ${adjustBlue > 0 ? 'bg-emerald-200 text-emerald-700' : adjustBlue < 0 ? 'bg-red-200 text-red-700' : 'bg-card text-muted-foreground'}`}>{adjustBlue > 0 ? '+' : ''}{adjustBlue}</span>
-            </div>
-          </div>
-          {/* Point buttons + action buttons in one row */}
-          <div className="grid grid-cols-6 gap-1.5">
-            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -2)} disabled={busy || isMatchFinalized || disqualifiedBlue} className={PANEL_BUTTON_DANGER}>-2</button>
-            <button onClick={() => addPenalty(match.id, 'blue', activeRound?.id, -1)} disabled={busy || isMatchFinalized || disqualifiedBlue} className={PANEL_BUTTON_DANGER}>-1</button>
-            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 1)} disabled={busy || isMatchFinalized || disqualifiedBlue} className={PANEL_BUTTON_SUCCESS}>+1</button>
-            <button onClick={() => addBonus(match.id, 'blue', activeRound?.id, 2)} disabled={busy || isMatchFinalized || disqualifiedBlue} className={PANEL_BUTTON_SUCCESS}>+2</button>
-            <button onClick={() => handleInfraction('blue')} disabled={busy || isMatchFinalized || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-base`}>+Abatere</button>
-            <button onClick={() => { addWarning(match.id, 'blue', activeRound?.id); if (warningsBlue + 1 >= 3 && !disqualifiedBlue) addDisqualification(match.id, 'blue'); }} disabled={busy || isMatchFinalized || disqualifiedBlue} className={`${PANEL_BUTTON_NEUTRAL} text-base`}>+Avertism.</button>
-          </div>
-        </div>
+      {/* Spatiu mai mare intre cele doua colturi: lipite, butoanele rosului
+          si ale albastrului pareau un singur rand lung, iar "+2" al unuia sta
+          chiar langa "-2" al celuilalt. Pe un ecran de masa se apasa repede si
+          fara sa te uiti de doua ori. */}
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 lg:gap-12">
+        <PanouColt
+          colt="red"
+          descalificat={disqualifiedRed}
+          abateri={currentInfractionsRed}
+          avertismente={warningsRed}
+          ajustare={adjustRed}
+          blocat={busy || isMatchFinalized || disqualifiedRed}
+          peScade={(v) => addPenalty(match.id, 'red', activeRound?.id, -v)}
+          peAdauga={(v) => addBonus(match.id, 'red', activeRound?.id, v)}
+          peAbatere={() => handleInfraction('red')}
+          peScadeAbatere={() => removeLastEvent(match.id, 'infraction_red')}
+          peAvertisment={() => {
+            addWarning(match.id, 'red', activeRound?.id);
+            if (warningsRed + 1 >= 3 && !disqualifiedRed) addDisqualification(match.id, 'red');
+          }}
+          peScadeAvertisment={() => removeLastEvent(match.id, 'warning_red')}
+        />
+        <PanouColt
+          colt="blue"
+          descalificat={disqualifiedBlue}
+          abateri={currentInfractionsBlue}
+          avertismente={warningsBlue}
+          ajustare={adjustBlue}
+          blocat={busy || isMatchFinalized || disqualifiedBlue}
+          peScade={(v) => addPenalty(match.id, 'blue', activeRound?.id, -v)}
+          peAdauga={(v) => addBonus(match.id, 'blue', activeRound?.id, v)}
+          peAbatere={() => handleInfraction('blue')}
+          peScadeAbatere={() => removeLastEvent(match.id, 'infraction_blue')}
+          peAvertisment={() => {
+            addWarning(match.id, 'blue', activeRound?.id);
+            if (warningsBlue + 1 >= 3 && !disqualifiedBlue) addDisqualification(match.id, 'blue');
+          }}
+          peScadeAvertisment={() => removeLastEvent(match.id, 'warning_blue')}
+        />
       </div>
 
       {/* ── ROUNDS — responsive: horizontal on desktop, vertical on mobile/tablet ── */}
       <div className="space-y-4">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-bold text-muted-foreground uppercase tracking-[0.2em]">Reprize</p>
-          </div>
-          {matchRounds.length > 0 && (
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground/60">
-              {matchRounds.filter(r => r.status === 'completed').length}/{matchRounds.length} finalizate
-            </span>
-          )}
-        </div>
+        {/* Randul "REPRIZE ... 0/3 FINALIZATE" a plecat: casetele de dedesubt
+            spun si cate sunt, si care s-au incheiat - fiecare isi scrie starea
+            in coltul ei. Un rand de titlu pe toata latimea, aproape gol,
+            manca din inaltimea utila a ecranului de masa. */}
         {matchRounds.length === 0 ? (
           <div className="flex flex-wrap items-center gap-3 border-2 border-border bg-card px-4 py-4">
             <span className="text-sm text-muted-foreground">Nu există reprize. Alege presetul din panoul „Preset reprize” de mai sus.</span>
@@ -3518,6 +4004,7 @@ function FullscreenMatchPanel({
               const isRoundPaused = r.is_paused;
               const isCompleted = r.status === 'completed';
               const showBreak = breakTimers[idx] && !isActive && idx < totalRounds - 1;
+              const esteLaRand = idx === idxReprizaLaRand;
               const showBreakPlaceholder = !showBreak && isCompleted && idx < totalRounds - 1
                 && matchRounds[idx + 1]?.status !== 'active' && matchRounds[idx + 1]?.status !== 'completed';
 
@@ -3533,7 +4020,7 @@ function FullscreenMatchPanel({
                           isCompleted ? 'bg-emerald-100 text-emerald-700' :
                           'bg-muted text-muted-foreground'
                         }`}>
-                          Repriza {r.round_number}
+                          R{r.round_number}
                         </span>
                       </div>
                       <div className="text-right">
@@ -3575,15 +4062,37 @@ function FullscreenMatchPanel({
                           </div>
                         )}
                         {/* Action buttons */}
-                        <div className="flex flex-wrap justify-center gap-2">
+                        <div className="relative flex flex-wrap justify-center gap-2">
                           {r.status === 'scheduled' && (
-                            <button onClick={() => { if (idx > 0 && breakTimers[idx - 1]) dismissBreak(idx - 1); startRound(r.id); }} disabled={busy || isMatchFinalized || !!activeRound} className={`rounded-md text-sm text-white px-5 py-2.5 font-semibold disabled:opacity-40 ${
-                              (idx === 0 && isMatchDisplayStarted && !matchStarted)
+                            <button
+                              onClick={() => {
+                                if (!esteLaRand) { setConfirmaStartRepriza({ id: r.id, numar: r.round_number, idx }); return; }
+                                if (idx > 0 && breakTimers[idx - 1]) dismissBreak(idx - 1);
+                                startRound(r.id);
+                              }}
+                              title={esteLaRand ? undefined : `Nu e repriza la rând${reprizaLaRand ? ` - urmează R${reprizaLaRand.round_number}` : ''}`}
+                              disabled={busy || isMatchFinalized || !!activeRound}
+                              className={`rounded-md text-sm text-white px-5 py-2.5 font-semibold disabled:opacity-40 ${!esteLaRand ? 'opacity-45 hover:opacity-100' : ''} ${
+                              (idx === 0 && pasMeci === 'repriza')
+                                ? 'border border-border bg-emerald-600 hover:bg-emerald-700 ring-4 ring-amber-400 ring-offset-2 animate-pulse'
+                                // Pulsul verde de dedesubt vine din mecanismul
+                                // vechi, care nu stie de indrumare: pornea din
+                                // clipa in care meciul ajungea pe ecran, adica
+                                // inaintea pasilor cu arbitrii si cu luptatorii.
+                                // Doua chemari deodata nu spun "fa astea doua",
+                                // spun "nu stiu care e urmatorul pas".
+                                : (idx === 0 && isMatchDisplayStarted && !matchStarted && !indrumareInCurs)
                                 ? 'border border-border bg-emerald-600 hover:bg-emerald-700 ring-4 ring-emerald-300 animate-pulse'
-                                : idx > 0 && matchRounds[idx - 1]?.status === 'completed' && !breakTimers[idx - 1]
+                                : esteLaRand && idx > 0 && matchRounds[idx - 1]?.status === 'completed' && !breakTimers[idx - 1]
                                 ? 'border border-border bg-emerald-600 hover:bg-emerald-700 ring-2 ring-emerald-300 animate-pulse'
                                 : 'border border-border bg-emerald-600 hover:bg-emerald-700'
                             }`}>Start Repriza</button>
+                          )}
+                          {idx === 0 && pasMeci === 'repriza' && r.status === 'scheduled' && (
+                            <Indrumare
+                              text="Totul e pregătit - pornește prima repriză"
+                              className="absolute left-1/2 top-full z-40 mt-1 w-[22rem] max-w-[92vw] -translate-x-1/2"
+                            />
                           )}
                           {isActive && !isRoundPaused && (
                             <button onClick={() => pauseRound(match.id, r.id)} disabled={busy} className={MODAL_WARNING_BUTTON}>Pauză</button>
@@ -3595,15 +4104,22 @@ function FullscreenMatchPanel({
                             <button onClick={() => setShowStopRoundConfirm(r.id)} disabled={busy} className={MODAL_DANGER_BUTTON}>Stop</button>
                           )}
                           <button onClick={() => setShowRoundResetConfirm(r.id)} disabled={busy || isMatchFinalized} className={ROUND_SECONDARY_BUTTON}>Reset</button>
+                          {/* Pe ACELASI rand cu Pauză / Stop / Reset.
+                              Pe randul lor, caseta crestea cand repriza pornea
+                              si se stramta la loc cand se oprea - iar tot ce
+                              urmeaza pe ecran sarea in sus si in jos exact in
+                              clipa in care operatorul se uita la cronometru.
+                              +30s a plecat: la un meci de trei minute se adauga
+                              secunde pentru o intrerupere, nu jumatate de
+                              repriza, iar doua apasari de +10 fac acelasi lucru
+                              fara sa poata gresi atat de mult. */}
+                          {isActive && (
+                            <>
+                              <button onClick={() => adjustTime(match.id, r.id, -10)} disabled={busy} className={ROUND_TIME_BUTTON}>-10s</button>
+                              <button onClick={() => adjustTime(match.id, r.id, 10)} disabled={busy} className={ROUND_TIME_BUTTON}>+10s</button>
+                            </>
+                          )}
                         </div>
-                        {/* Time adjust buttons */}
-                        {isActive && (
-                          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                            <button onClick={() => adjustTime(match.id, r.id, -10)} disabled={busy} className={PANEL_BUTTON_NEUTRAL}>-10s</button>
-                            <button onClick={() => adjustTime(match.id, r.id, 10)} disabled={busy} className={PANEL_BUTTON_NEUTRAL}>+10s</button>
-                            <button onClick={() => adjustTime(match.id, r.id, 30)} disabled={busy} className={PANEL_BUTTON_NEUTRAL}>+30s</button>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -3663,10 +4179,19 @@ function FullscreenMatchPanel({
                 <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground/60">După reprize</span>
               </div>
               <div className={`${ROUND_BODY_PANEL} space-y-3`}>
+                {/* La meciurile in timp real castigatorul iese din puncte,
+                    nu din voturile arbitrilor: fiecare faza a fost deja
+                    confirmata de trei din cinci, pe loc. Casutele de decizii
+                    nu doar ca sunt de prisos acolo - aratau "0/5 decizii" sub
+                    un meci terminat si complet punctat, ca si cum ar mai fi
+                    lipsit ceva. */}
+                {!isRealTimeMode && (
                 <span className="block text-xs text-muted-foreground/60 text-center">
                   {matchRefScores.filter(s => s.winner_choice && s.round == null).length}/{matchReferees.length || 5} decizii
                 </span>
+                )}
                 {/* Big A1-A5 boxes */}
+                {!isRealTimeMode && (
                 <div className="flex gap-2 justify-center">
                   {matchRefSlots.map((ref) => {
                     const choice = matchRefScores.filter(s => s.referee === ref.id && s.round == null).find(s => s.winner_choice)?.winner_choice;
@@ -3691,11 +4216,22 @@ function FullscreenMatchPanel({
                     );
                   })}
                 </div>
+                )}
                 {/* Afișează / Ascunde câștigătorul + Adaugă Repriză Extra */}
-                <div className="flex flex-wrap justify-center gap-2">
+                <div className="relative flex flex-wrap justify-center gap-2">
                   {allRoundsCompleted && session?.status !== 'winner_revealed' && (
                     <button onClick={() => {
                       if (!ensureOperationalWrite()) return;
+                      // La meciurile in timp real nu exista decizii de trimis:
+                      // castigatorul iese din puncte, iar fiecare faza a fost
+                      // deja confirmata de trei din cinci, pe loc. Numaratoarea
+                      // de mai jos dadea mereu 0 din 5, deci intrebarea "sigur
+                      // vrei, desi n-au votat toti?" aparea la fiecare meci -
+                      // o piedica pentru ceva ce nu lipsea.
+                      if (isRealTimeMode) {
+                        revealWinner();
+                        return;
+                      }
                       const submitted = matchRefScores.filter(s => s.winner_choice && s.round == null).length;
                       const total = matchReferees.length || 5;
                       if (submitted < total) {
@@ -3704,9 +4240,23 @@ function FullscreenMatchPanel({
                         revealWinner();
                       }
                     }} disabled={busy || operationalLockActive}
-                      className={`text-base text-white px-8 py-3 font-bold shadow-sm disabled:opacity-40 transition whitespace-nowrap ${allRefereesDecided ? 'bg-emerald-600 hover:bg-emerald-700 ring-4 ring-emerald-300 animate-pulse' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                      className={`text-base text-white px-8 py-3 font-bold shadow-sm disabled:opacity-40 transition whitespace-nowrap ${
+                        pasMeci === 'castigator'
+                          ? 'bg-emerald-600 hover:bg-emerald-700 ring-4 ring-amber-400 ring-offset-2 animate-pulse'
+                          : allRefereesDecided
+                            ? 'bg-emerald-600 hover:bg-emerald-700 ring-4 ring-emerald-300 animate-pulse'
+                            : 'bg-emerald-600 hover:bg-emerald-700'
+                      }`}>
                       Afișează câștigător
                     </button>
+                  )}
+                  {/* Suprapunere, ca peste tot: in flux ar impinge in jos tot
+                      ce urmeaza, exact cand operatorul se uita acolo. */}
+                  {pasMeci === 'castigator' && (
+                    <Indrumare
+                      text="Reprizele s-au terminat - arată câștigătorul în sală"
+                      className="absolute left-1/2 top-full z-40 mt-1 w-[24rem] max-w-[92vw] -translate-x-1/2"
+                    />
                   )}
                   {session?.status === 'winner_revealed' && (
                     <button onClick={() => {
@@ -3737,16 +4287,11 @@ function FullscreenMatchPanel({
       {/* ── REFEREE LIVE SCORES TABLE — full width, centralizator style ── */}
       {matchRounds.length > 0 && (
         <div className="w-full overflow-hidden border-2 border-border bg-card shadow-sm">
-          <div className="border-b-2 border-border bg-muted px-4 py-3 flex items-center justify-between gap-3">
+          {/* Exportul sta in bara de sus, langa ÎNCHEIE PROBA, ca la tehnica.
+              Doua butoane care fac acelasi lucru, in doua locuri, inseamna doar
+              ca trebuie cautat de fiecare data care e mai aproape. */}
+          <div className="border-b-2 border-border bg-muted px-4 py-3">
             <p className="text-sm font-bold uppercase tracking-wide text-foreground/80">Scoruri arbitri</p>
-            <button
-              onClick={exportMatchToExcel}
-              disabled={exportingExcel}
-              className="flex items-center gap-1.5 border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground/80 transition hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-40"
-              title="Exportă meci în Excel (3 sheet-uri: scoruri, evenimente, timeline puncte)"
-            >
-              {exportingExcel ? '⏳ Export...' : '⬇ Export Excel'}
-            </button>
           </div>
           <div className="w-full overflow-x-auto">
           <table className="w-full border-collapse border-0">
