@@ -705,6 +705,15 @@ class MatchRound(models.Model):
         help_text=_('Secunde adăugate sau eliminate de administrator în această rundă.')
     )
 
+    # O repriza suplimentara se adauga IN TIMPUL meciului, la egalitate - nu
+    # face parte din cum a fost pregatit meciul. Fara semnul asta, resetul n-o
+    # putea deosebi de reprizele din preset si o lasa pe loc.
+    is_extra = models.BooleanField(
+        _('Repriză suplimentară'),
+        default=False,
+        help_text=_('Adăugată în timpul meciului, peste presetul de reprize.')
+    )
+
     created_at = models.DateTimeField(_('Data creării'), auto_now_add=True)
     
     class Meta:

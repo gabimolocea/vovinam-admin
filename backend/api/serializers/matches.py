@@ -36,6 +36,12 @@ class MatchSerializer(serializers.ModelSerializer):
             'match_number',
             'name',
             'status',
+            # Scorul anuntat in sala, scris o data la incheiere. Vezi
+            # Match.ingheata_scorul: fara el, o schimbare de regula rescrie
+            # rezultatele meciurilor deja jucate.
+            'final_red_score',
+            'final_blue_score',
+            'scores_frozen_at',
             'display_mode',
             'category',
             'category_name',
@@ -65,7 +71,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'next_match',
             'loser_next_match',
         ]
-        read_only_fields = ['name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name', 'referee_scores', 'consensus_total_red', 'consensus_total_blue', 'central_penalties_red', 'central_penalties_blue', 'winner', 'winner_name']
+        read_only_fields = ['final_red_score', 'final_blue_score', 'scores_frozen_at', 'name', 'category_name', 'red_corner_full_name', 'red_corner_club_name', 'blue_corner_full_name', 'blue_corner_club_name', 'referee_scores', 'consensus_total_red', 'consensus_total_blue', 'central_penalties_red', 'central_penalties_blue', 'winner', 'winner_name']
 
     def get_red_corner_full_name(self, obj):
         """Get the full name of the red corner athlete."""
@@ -315,7 +321,7 @@ class MatchRoundSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'match', 'match_number', 'round_number', 'duration_seconds',
             'status', 'started_at', 'ended_at', 'paused_at',
-            'accumulated_pause_seconds', 'extra_seconds',
+            'accumulated_pause_seconds', 'extra_seconds', 'is_extra',
             'is_paused', 'effective_duration', 'created_at'
         ]
         read_only_fields = ['created_at']
