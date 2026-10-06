@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Wifi, WifiOff, QrCode, Laptop } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { aggregateRealtimeValidatedPoints, totalColt } from '@shared/lib/realtimePoints';
+import { aggregateRealtimeValidatedPoints, totalColt, ARBITRI_PENTRU_FAZA } from '@shared/lib/realtimePoints';
 import { useVoiceAssistant } from '../hooks/useVoiceAssistant';
 import useHotkeys from '../hooks/useHotkeys';
 import ShortcutsHelp, { CATEGORY_SHORTCUTS, MATCH_SHORTCUTS, ShortcutsHint } from '../components/ShortcutsHelp';
@@ -3833,9 +3833,11 @@ function FullscreenMatchPanel({
         <FullscreenModal
           onClose={() => setShowMatchSettings(false)}
           title="Setări meci"
-          description={settingsLocked
-            ? 'Meciul a început - setările nu mai pot fi schimbate.'
-            : 'Se aplică doar acestui meci. Reprizele sunt propuse după categoria de vârstă, dar le poți schimba.'}
+          description={isMatchFinalized
+            ? 'Meciul s-a încheiat, iar rezultatul e înghețat.'
+            : settingsLocked
+              ? 'Meciul a început - setările nu mai pot fi schimbate.'
+              : 'Se aplică doar acestui meci.'}
           actions={[
             <button key="close" onClick={() => setShowMatchSettings(false)} className={MODAL_SECONDARY_BUTTON}>Închide</button>,
           ]}
@@ -3844,19 +3846,19 @@ function FullscreenMatchPanel({
             <div>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Asistent vocal</p>
               <label className="flex items-start gap-3 rounded-md border border-input p-3">
+                {/* Casuta implicita e de 13px, cat o litera: de la un metru,
+                    de pe scaunul mesei, nu se vede daca e bifata sau nu. */}
                 <input
                   type="checkbox"
                   checked={voiceEnabled}
                   onChange={e => setVoiceEnabled(e.target.checked)}
-                  className="mt-1"
+                  className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-emerald-600"
                 />
                 <span className="text-sm">
                   <b>Comenzi prin voce</b>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    Pentru meciurile fără operator la masă. Arbitrul central poartă o cască și spune
-                    <b> &bdquo;arbitru&rdquo;</b> înaintea comenzii — de exemplu <i>&bdquo;arbitru, un punct roșu&rdquo;</i>.
-                    Fără cuvântul ăsta nu se aplică nimic, ca să poată vorbi liber cu sportivii.
-                    Spune <i>&bdquo;arbitru, anulează&rdquo;</i> ca să retragi ultima comandă.
+                    Pentru masa fără operator. Arbitrul central spune <b>&bdquo;arbitru&rdquo;</b> înaintea
+                    comenzii — <i>&bdquo;arbitru, un punct roșu&rdquo;</i>, <i>&bdquo;arbitru, anulează&rdquo;</i>.
                   </span>
                   {voice.error && <span className="mt-2 block text-xs font-semibold text-red-600">{voice.error}</span>}
                 </span>
@@ -3867,8 +3869,11 @@ function FullscreenMatchPanel({
               <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Mod de afișare</p>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { key: 'real_time', label: 'Scor timp real', hint: 'Punctele apar pe ecran pe măsură ce sunt validate de doi arbitri.' },
-                  { key: 'reveal_final', label: 'Decizia la final', hint: 'Ecranul rămâne neutru; rezultatul se arată la sfârșit.' },
+                  // Numarul de arbitri vine din aceeasi constanta ca scorul.
+                  // Scris de mana, a ramas "doi" si dupa ce regula s-a facut
+                  // trei - drawerul spunea alta regula decat cea aplicata.
+                  { key: 'real_time', label: 'Scor timp real', hint: `Punctele apar pe ecran când ${ARBITRI_PENTRU_FAZA} arbitri punctează la fel.` },
+                  { key: 'reveal_final', label: 'Decizia la final', hint: 'Ecranul rămâne neutru; rezultatul se arată la final.' },
                 ].map((mode) => (
                   <button
                     key={mode.key}
@@ -3916,15 +3921,12 @@ function FullscreenMatchPanel({
                   );
                 })}
               </div>
-              {agePresetKey ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Propunerea vine din anii de naștere ai grupei. Dacă meciul e încadrat greșit, alege altul.
-                </p>
-              ) : (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Grupa nu are ani de naștere definiți, deci nu se poate propune automat un preset.
-                </p>
-              )}
+              <p className="mt-2 text-xs text-muted-foreground">
+                {agePresetKey
+                  ? 'Propunerea vine din anii de naștere ai grupei.'
+                  : 'Grupa n-are ani de naștere, deci nu se poate propune nimic.'}
+                {' '}O repriză suplimentară adăugată în meci dispare la reset.
+              </p>
             </div>
           </div>
         </FullscreenModal>
