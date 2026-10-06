@@ -264,7 +264,7 @@ Screen screenBeforeHandover = SCREEN_STANDBY;
 enum PointState {
   POINT_NONE,        // ecranul normal de meci
   POINT_SENDING,     // cererea e pe drum
-  POINT_PENDING,     // serverul l-a primit, asteapta al doilea arbitru
+  POINT_PENDING,     // serverul l-a primit, asteapta ceilalti arbitri
   POINT_VALIDATED,   // confirmat: a intrat in scor
   POINT_FAILED,      // n-a plecat deloc (retea)
   POINT_TOO_FAST,    // a doua apasare pe acelasi buton, prea repede
@@ -1221,7 +1221,7 @@ int           pointEventId = 0;
 unsigned long pointShownAt = 0;
 
 // Cat tinem ecranul de punct inainte sa revenim la meci. Confirmarea se
-// vede scurt, asteptarea mai mult - daca al doilea arbitru n-a apasat in
+// vede scurt, asteptarea mai mult - daca ceilalti arbitri n-au apasat in
 // 4 secunde, punctul aproape sigur nu se mai valideaza si arbitrul
 // trebuie sa vada din nou scorul, nu un ecran inghetat.
 // Cat sta ecranul de punct peste meci. Scurt, intentionat: intr-o
@@ -1287,9 +1287,10 @@ void incarcaRoluri() {
 // 400ms; in schimb un deget nervos sau o atingere dubla da exact asta.
 //
 // Nu e o preferinta de interfata, e o problema de scor. Serverul refuza
-// sa valideze un punct pe apasarile unui singur arbitru (unique_referees
-// >= 2), dar daca un coleg apasa in aceeasi fereastra de 1,5 secunde,
-// atunci AMBELE apasari ale mele se valideaza si sportivul ia 2 puncte
+// sa valideze o faza vazuta de mai putin de ARBITRI_PENTRU_FAZA arbitri
+// (trei din cinci, vezi backend/api/views/_common.py), dar daca doi colegi
+// apasa in aceeasi fereastra de 1,5 secunde, atunci AMBELE apasari ale mele
+// se valideaza si sportivul ia 2 puncte
 // in loc de 1. Filtrul de aici e singurul loc unde asta se poate opri
 // fara sa schimbam backendul.
 //
@@ -1354,7 +1355,7 @@ const char* myPositionInMatch(int matchId) {
 }
 
 // Numele colturilor si modul de afisare. `display_mode` decide totul:
-// doar pe "real_time" serverul cere confirmarea a doi arbitri. In rest
+// doar pe "real_time" serverul cere confirmarea a trei arbitri. In rest
 // punctul intra direct, si atunci n-are rost sa aratam "astept".
 void apiLoadMatch(int matchId) {
   liveRedName[0] = '\0';
@@ -1634,7 +1635,7 @@ void addRoundPoint(bool isRed, int points) {
 }
 
 // Cat timp punctul meu e in asteptare, intreb serverul daca intre timp a
-// apasat si al doilea arbitru.
+// apasat si ceilalti arbitri.
 bool anyPendingRecent() {
   for (int i = 0; i < recentCount; i++) if (recent[i].state == POINT_PENDING) return true;
   return false;
@@ -2190,7 +2191,7 @@ void drawTopBar() {
 // timpul reprizei - are ochii pe saltea. Ecranul e oglinda mainii lui:
 // la apasare, dreptunghiul corespunzator se face galben, si atat trebuie sa
 // prinda din coltul ochiului ca sa stie ca punctul a plecat. Verde
-// inseamna ca l-a confirmat si al doilea arbitru.
+// inseamna ca l-au confirmat si ceilalti arbitri.
 //
 // Pe touch, dimensiunea lor nu e doar estetica: un sfert de ecran se
 // nimereste fara sa te uiti, un buton de 40 de pixeli nu.
@@ -2235,7 +2236,7 @@ void drawMatchScreen() {
       printCentered("SE TRIMITE...", MATCH_BAND_Y + 6, 1, YELLOW);
       break;
     case POINT_PENDING:
-      printCentered("TRIMIS - astept al 2-lea arbitru", MATCH_BAND_Y + 6, 1, YELLOW);
+      printCentered("TRIMIS - e nevoie de 3 arbitri", MATCH_BAND_Y + 6, 1, YELLOW);
       break;
     case POINT_VALIDATED:
       printCentered("VALIDAT", MATCH_BAND_Y + 4, 2, GREEN);
@@ -3485,7 +3486,7 @@ void loop() {
   }
 
   // Ecranul de punct nu ramane la nesfarsit: confirmarea se vede scurt,
-  // asteptarea mai mult. Daca al doilea arbitru n-a apasat in secunda si
+  // asteptarea mai mult. Daca ceilalti arbitri n-au apasat in secunda si
   // jumatate, punctul nu se mai valideaza si arbitrul trebuie sa vada din
   // nou meciul, nu un ecran inghetat.
   if (pointState != POINT_NONE && pointState != POINT_SENDING) {
