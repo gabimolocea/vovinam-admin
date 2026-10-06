@@ -553,6 +553,26 @@ void citesteComenziSerial() {
           Serial.printf("OK BTN=%s salvat.\n", rest.c_str());
         }
       }
+    } else if (linie == "I2C?") {
+      // Cine raspunde pe magistrala panoului tactil.
+      //
+      // Comanda era scrisa in ajutor de la inceput, dar nu exista nicaieri in
+      // parser: cine o incerca primea "comanda necunoscuta" cu I2C? chiar in
+      // lista comenzilor cunoscute. E prima intrebare de pus cand panoul tace -
+      // raspunde cineva pe fire, sau nu e nimeni acolo?
+      Serial.printf("OK I2C pe SDA=%d SCL=%d\n", CST328_SDA_PIN, CST328_SCL_PIN);
+      int gasite = 0;
+      for (uint8_t adresa = 1; adresa < 127; adresa++) {
+        Wire1.beginTransmission(adresa);
+        if (Wire1.endTransmission() == 0) {
+          Serial.printf("I2C\t0x%02X\n", adresa);
+          gasite++;
+        }
+      }
+      if (!gasite) {
+        Serial.println("I2C\tnimeni");
+        Serial.println("    Panoul nu e pe fire: verifica banda lui si ce s-a mai legat pe placa.");
+      }
     } else if (linie == "TEST") {
       modTest = true;
       modTestPanaLa = millis() + TEST_DURATA_MS;
