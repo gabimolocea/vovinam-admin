@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 # Create your models here.
@@ -47,6 +48,20 @@ class Match(models.Model):
     # Winner is now computed from scoring system - no longer stored
     name = models.CharField(_('Nume'), max_length=255, blank=True)  # Automatically generated match name
     display_mode = models.CharField(_('Mod afișare'), max_length=20, choices=DISPLAY_MODE_CHOICES, default='real_time')
+
+    # ── Scorul inghetat la incheierea meciului ──────────────────────────
+    #
+    # Scorul unui meci in timp real nu se pastreaza nicaieri: se numara de
+    # fiecare data din apasarile arbitrilor, dupa regula de atunci. Cat timp
+    # regula nu se schimba, e acelasi lucru - dar cand s-a schimbat (de la doi
+    # arbitri pe faza la trei), toate meciurile deja incheiate au inceput sa
+    # arate alt scor decat cel anuntat in sala.
+    #
+    # Un rezultat anuntat nu are voie sa se schimbe dupa. Deci la incheiere se
+    # scrie o data, si de atunci se citeste de aici.
+    final_red_score = models.IntegerField(_('Scor final colț roșu'), null=True, blank=True)
+    final_blue_score = models.IntegerField(_('Scor final colț albastru'), null=True, blank=True)
+    scores_frozen_at = models.DateTimeField(_('Scor înghețat la'), null=True, blank=True)
 
     class Meta:
         verbose_name = _('Meci')
@@ -116,17 +131,31 @@ class Match(models.Model):
             return self.blue_corner
         return None
 
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        try:
-            if self.field_id:
-                MatchFieldAssignment.objects.update_or_create(
-                    match=self,
-                    defaults={'field_id': self.field_id}
-                )
-        except Exception:
-            pass
-    
+
+    def ingheata_scorul(self):
+        """Scrie scorul de acum ca rezultat final. Nu rescrie unul deja scris.
+
+        Importul e inauntru dinadins: agregarea sta in stratul de view-uri, iar
+        la nivel de modul ar inchide un cerc de importuri.
+        """
+        if self.scores_frozen_at:
+            return False
+        from api.views._common import aggregate_validated_point_phases
+        evenimente = list(self.point_events.all().order_by('timestamp', 'id'))
+        rosu, albastru = aggregate_validated_point_phases(evenimente)
+        self.final_red_score = rosu
+        self.final_blue_score = albastru
+        self.scores_frozen_at = timezone.now()
+        return True
+
+    def scorul_final(self):
+        """Scorul de arătat: cel înghețat dacă există, altfel cel de acum."""
+        if self.scores_frozen_at:
+            return self.final_red_score or 0, self.final_blue_score or 0
+        from api.views._common import aggregate_validated_point_phases
+        return aggregate_validated_point_phases(
+            list(self.point_events.all().order_by('timestamp', 'id')))
+
     def calculate_winner_simplified(self):
         """
         Calculate winner using simplified 5-referee scoring system.
@@ -243,7 +272,18 @@ class Match(models.Model):
             return f"M{last.id + 1 if last else 1}"
     
     def save(self, *args, **kwargs):
-        """Generate match name and number on save"""
+        """Generate match name and number on save.
+
+        Clasa avea TREI metode `save`, una peste alta - in Python ramane doar
+        ultima, deci celelalte doua n-au rulat niciodata. Au fost sterse, ca
+        sa nu mai para ca fac ceva.
+
+        Una dintre ele tinea alocarea pe teren la zi. NU e adusa aici dinadins:
+        fiind moarta de mult, codul s-a asezat in jurul lipsei ei, iar pornita
+        acum se ciocneste cu alocarile facute explicit. Daca trebuie reparata,
+        e o treaba de sine statatoare, nu un efect secundar al inghetarii
+        scorului.
+        """
         # Auto-generate match_number if not provided
         if not self.match_number:
             self.match_number = self._generate_match_number()
@@ -256,7 +296,29 @@ class Match(models.Model):
             self.name = f"{red_name} vs {blue_name} ({self.match_type}) - {category_name}"
         except Exception:
             pass
+
+        # Un meci trecut pe "incheiat" isi scrie scorul o data si pentru
+        # totdeauna. Aici, nu in view, ca sa prinda orice cale - API, admin,
+        # sau un script de la linia de comanda.
+        inghetam = self.status == 'completed' and not self.scores_frozen_at and bool(self.pk)
+
+        # Iesit din "incheiat" - un reset, sau o corectie - meciul nu mai are
+        # rezultat final. Lasat inghetat, ar fi aratat scorul vechi pe un meci
+        # care urmeaza sa fie rejucat, si nimeni n-ar fi inteles de unde vine.
+        if self.status != 'completed' and self.scores_frozen_at:
+            self.final_red_score = None
+            self.final_blue_score = None
+            self.scores_frozen_at = None
+
         super().save(*args, **kwargs)
+
+        if inghetam and self.ingheata_scorul():
+            # `update`, nu inca un `save`: al doilea save ar reintra aici.
+            type(self).objects.filter(pk=self.pk).update(
+                final_red_score=self.final_red_score,
+                final_blue_score=self.final_blue_score,
+                scores_frozen_at=self.scores_frozen_at,
+            )
 
     def __str__(self):
         category = self.category
