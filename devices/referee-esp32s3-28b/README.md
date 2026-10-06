@@ -52,6 +52,8 @@ Pe lângă cele ale aplicației (`WIFI?`, `WIFI=ssid<TAB>parola`, `LUMINA=n`,
 | `RESYNC` | repornește DMA-ul la cadrul următor |
 | `PANOU!` | revine la reglajele implicite |
 | `REPORNESTE` | repornește placa |
+| `PINI?` | cine ține GPIO 33–37: memoria sau GPIO-ul. Nu atinge nimic |
+| `PINI!` | îi pune chiar pe intrare și verifică după aceea că PSRAM-ul a rămas întreg |
 
 Toate se salvează în memoria plăcii. În afară de `PCLK` și `PSLEEP`, cer
 repornire.

@@ -231,7 +231,7 @@ void drawTopBar() {
 // timpul reprizei - are ochii pe saltea. Ecranul e oglinda mainii lui:
 // la apasare, dreptunghiul corespunzator se face galben, si atat trebuie sa
 // prinda din coltul ochiului ca sa stie ca punctul a plecat. Verde
-// inseamna ca l-a confirmat si al doilea arbitru.
+// inseamna ca l-au confirmat si ceilalti arbitri.
 //
 // Pe touch, dimensiunea lor nu e doar estetica: un sfert de ecran se
 // nimereste fara sa te uiti, un buton de 40 de pixeli nu.
@@ -276,7 +276,7 @@ void drawMatchScreen() {
       printCentered("SE TRIMITE...", MATCH_BAND_Y + 6, 1, YELLOW);
       break;
     case POINT_PENDING:
-      printCentered("TRIMIS - astept al 2-lea arbitru", MATCH_BAND_Y + 6, 1, YELLOW);
+      printCentered("TRIMIS - e nevoie de 3 arbitri", MATCH_BAND_Y + 6, 1, YELLOW);
       break;
     case POINT_VALIDATED:
       printCentered("VALIDAT", MATCH_BAND_Y + 4, 2, GREEN);

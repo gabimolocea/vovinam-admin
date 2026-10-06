@@ -58,6 +58,9 @@
 
 #include "ecran.h"
 #include "reglaje.h"
+// Pentru proba pinilor 33-37: registrul IO MUX spune cine tine fiecare pin.
+#include "soc/gpio_periph.h"
+#include "soc/io_mux_reg.h"
 #include "Touch_GT911.h"
 #include "frvv_logo.h"
 // ─────────────────────────── CONFIGURARE ───────────────────────────
@@ -262,7 +265,7 @@ Screen screenBeforeHandover = SCREEN_STANDBY;
 enum PointState {
   POINT_NONE,        // ecranul normal de meci
   POINT_SENDING,     // cererea e pe drum
-  POINT_PENDING,     // serverul l-a primit, asteapta al doilea arbitru
+  POINT_PENDING,     // serverul l-a primit, asteapta ceilalti arbitri
   POINT_VALIDATED,   // confirmat: a intrat in scor
   POINT_FAILED,      // n-a plecat deloc (retea)
   POINT_TOO_FAST,    // a doua apasare pe acelasi buton, prea repede
@@ -474,6 +477,7 @@ const char* PREFS_NAMESPACE = "frvv";
 
 String disconnectReasonText(int reason);
 String httpErrorText(int code);
+void actSfert(int index);
 bool acceptaApasare(int index);
 bool anyPendingRecent();
 bool apiLoadCategories();
@@ -599,6 +603,119 @@ void raspundeWifi() {
 
 // Se cheama des, din bucla principala. Nu blocheaza: daca randul nu e
 // complet, se intoarce si revine data viitoare.
+// ── PROBA PINILOR 33-37 ──────────────────────────────────────────────────
+//
+// Serigrafia placii ii scoate pe header, deci par liberi pentru butoane. Dar
+// ecranul de aici are nevoie de PSRAM octal la 120MHz - fara el imaginea
+// tremura - iar PSRAM-ul octal foloseste in mod normal exact GPIO 33-37
+// (SPIIO4..SPIIO7 si SPIDQS). Una din doua: ori modulul asta ii are liberi,
+// ori serigrafia promite ceva ce magistrala de memorie deja ocupa.
+//
+// Nu se poate citi de nicaieri, se masoara. Si se masoara in doi pasi, cu
+// riscuri diferite:
+//
+//   PINI?  nu atinge nimic. Citeste registrul IO MUX al fiecarui pin si
+//          intreaba cine il tine: memoria sau GPIO-ul. Raspunde intotdeauna,
+//          nu poate strica nimic.
+//   PINI!  chiar ii pune pe intrare, cum i-ar pune un buton, si verifica dupa
+//          aceea ca PSRAM-ul a ramas intreg. Daca pinii sunt ai memoriei,
+//          placa poate ingheta aici - se repara scotand-o din priza, fiindca
+//          nimic nu se salveaza.
+//
+// Dovada nu e numarul functiei din IO MUX - tabelul lui difera de la pin la
+// pin si e usor de citit gresit. Dovada e MISCAREA: firmware-ul nu comanda
+// pinii astia cu nimic, deci daca nivelul lor se schimba intre doua citiri
+// facute una dupa alta, ii misca altcineva. Numarul functiei se tipareste
+// alaturi, ca sa fie la indemana cand cauti in foaia de catalog.
+const uint8_t PINI_DE_PROBA[5] = { 33, 34, 35, 36, 37 };
+
+// Ce mai scoate headerul, in afara de cei cinci de mai sus. Pe astia se pot
+// pune butoane - daca proba arata ca stau linistiti:
+//
+//   GPIO0  e si butonul BOOT. Ca intrare merge, dar daca butonul e apasat in
+//          clipa alimentarii, placa porneste in mod de programare.
+//   GPIO4  liber.
+//   GPIO16 NU e liber: e intreruperea panoului tactil GT911 (vezi
+//          Touch_GT911.h). E in lista ca sa se vada ca a fost cantarit, nu
+//          uitat.
+//   43/44  sunt RXD/TXD. Consola merge pe USB, deci UART-ul e liber - dar
+//          cine se leaga cu un adaptor serial pe ei ii pierde.
+const uint8_t PINI_CANDIDAT[5] = { 0, 4, 16, 43, 44 };
+
+// Cat de linistit sta un pin: de cate ori isi schimba nivelul in 2000 de
+// citiri una dupa alta. Firmware-ul nu comanda niciunul din pinii astia, deci
+// orice schimbare inseamna ca ii misca altcineva.
+static void masoaraPinul(uint8_t pin) {
+  uint32_t functie = REG_GET_FIELD(GPIO_PIN_MUX_REG[pin], MCU_SEL);
+  int schimbari = 0, unu = 0, ultim = gpio_get_level((gpio_num_t)pin);
+  for (int k = 0; k < 2000; k++) {
+    int acum = gpio_get_level((gpio_num_t)pin);
+    if (acum != ultim) schimbari++;
+    if (acum) unu++;
+    ultim = acum;
+  }
+  Serial.printf("PIN\tGPIO%d\tfunctie=%u\tsus=%d/2000\tschimbari=%d\t%s\n",
+                pin, (unsigned)functie, unu, schimbari,
+                schimbari > 0 ? "OCUPAT - il misca altcineva" : "linistit");
+}
+
+// Scrie si citeste inapoi o bucata de PSRAM. Daca magistrala a fost deranjata,
+// aici se vede - si se vede ca date gresite, nu ca o eroare de alocare.
+static bool psramIntreg(size_t octeti = 64 * 1024) {
+  uint32_t* p = (uint32_t*)heap_caps_malloc(octeti, MALLOC_CAP_SPIRAM);
+  if (!p) return false;
+  const size_t n = octeti / sizeof(uint32_t);
+  for (size_t i = 0; i < n; i++) p[i] = (uint32_t)(i * 2654435761u);
+  bool bun = true;
+  for (size_t i = 0; i < n && bun; i++) {
+    if (p[i] != (uint32_t)(i * 2654435761u)) bun = false;
+  }
+  heap_caps_free(p);
+  return bun;
+}
+
+void probaPinilor(bool chiarSchimba) {
+  Serial.printf("OK PINI psram=%u liber=%u\n",
+                (unsigned)ESP.getPsramSize(),
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  Serial.printf("PSRAM\tinainte\t%s\n", psramIntreg() ? "intreg" : "STRICAT");
+
+  Serial.println("-- 33-37, pinii de pe randul de jos al headerului --");
+  for (int i = 0; i < 5; i++) masoaraPinul(PINI_DE_PROBA[i]);
+
+  Serial.println("-- ce mai scoate headerul --");
+  for (int i = 0; i < 5; i++) masoaraPinul(PINI_CANDIDAT[i]);
+
+  if (!chiarSchimba) {
+    Serial.println("    Proba asta nu atinge nimic. PINI! pune CANDIDATII pe intrare.");
+    return;
+  }
+
+  // Pe intrare se pun doar candidatii, niciodata 33-37.
+  //
+  // Un pin luat de magistrala de memorie nu se cere inapoi fara pret: pana si
+  // mutarea lui pe GPIO il scoate din mana controllerului de memorie, iar
+  // memoria aia tine framebuffer-ul ecranului. Masuratoarea de mai sus spune
+  // deja tot ce trebuie stiut despre ei, fara sa riste nimic.
+  Serial.println("PINI: pun candidatii pe intrare cu rezistenta sus.");
+  for (int i = 0; i < 5; i++) pinMode(PINI_CANDIDAT[i], INPUT_PULLUP);
+  delay(20);
+
+  for (int i = 0; i < 5; i++) {
+    uint8_t pin = PINI_CANDIDAT[i];
+    // Cu rezistenta interna trasa sus, un pin liber si neapasat citeste 1 de
+    // fiecare data. Orice altceva inseamna ca pinul nu e al nostru.
+    int unu = 0;
+    for (int k = 0; k < 2000; k++) unu += gpio_get_level((gpio_num_t)pin);
+    Serial.printf("PIN\tGPIO%d\tcu pullup sus=%d/2000\t%s\n", pin, unu,
+                  unu == 2000 ? "liber" : (unu == 0 ? "tinut la masa" : "miscat de altcineva"));
+  }
+
+  Serial.printf("PSRAM\tdupa\t%s\n", psramIntreg() ? "intreg" : "STRICAT");
+  Serial.println("    Un pin care arata 2000/2000 si tine PSRAM-ul intreg poate duce un buton.");
+  Serial.println("    Reporneste placa: pinii raman pe intrare pana atunci.");
+}
+
 void citesteComenziSerial() {
   static String linie;
 
@@ -629,6 +746,10 @@ void citesteComenziSerial() {
       if (procent > 100) procent = 100;
       Set_Backlight(procent);
       Serial.printf("OK LUMINA=%d%%\n", procent);
+    } else if (linie == "PINI?") {
+      probaPinilor(false);
+    } else if (linie == "PINI!") {
+      probaPinilor(true);
     } else if (linie == "BTN?") {
       Serial.printf("OK BTN=%s,%s,%s,%s\n",
                     rolButoane[0], rolButoane[1], rolButoane[2], rolButoane[3]);
@@ -1305,7 +1426,7 @@ int           pointEventId = 0;
 unsigned long pointShownAt = 0;
 
 // Cat tinem ecranul de punct inainte sa revenim la meci. Confirmarea se
-// vede scurt, asteptarea mai mult - daca al doilea arbitru n-a apasat in
+// vede scurt, asteptarea mai mult - daca ceilalti arbitri n-au apasat in
 // 4 secunde, punctul aproape sigur nu se mai valideaza si arbitrul
 // trebuie sa vada din nou scorul, nu un ecran inghetat.
 // Cat sta ecranul de punct peste meci. Scurt, intentionat: intr-o
@@ -1371,9 +1492,10 @@ void incarcaRoluri() {
 // 400ms; in schimb un deget nervos sau o atingere dubla da exact asta.
 //
 // Nu e o preferinta de interfata, e o problema de scor. Serverul refuza
-// sa valideze un punct pe apasarile unui singur arbitru (unique_referees
-// >= 2), dar daca un coleg apasa in aceeasi fereastra de 1,5 secunde,
-// atunci AMBELE apasari ale mele se valideaza si sportivul ia 2 puncte
+// sa valideze o faza vazuta de mai putin de ARBITRI_PENTRU_FAZA arbitri
+// (trei din cinci, vezi backend/api/views/_common.py), dar daca doi colegi
+// apasa in aceeasi fereastra de 1,5 secunde, atunci AMBELE apasari ale mele
+// se valideaza si sportivul ia 2 puncte
 // in loc de 1. Filtrul de aici e singurul loc unde asta se poate opri
 // fara sa schimbam backendul.
 //
@@ -1392,10 +1514,107 @@ bool pressTooFast = false;
 // ajunge intreaga in bucla, cu coordonate, si garda se poate aplica pe loc.
 //
 // Intoarce true daca sfertul chiar trebuie punctat acum.
+// ── BUTOANE FIZICE ──────────────────────────────────────────────────────
+//
+// Patru butoane legate intre pin si masa, cate unul pentru fiecare sfert de
+// ecran si cu exact acelasi rol: butonul 1 da ce da sfertul 1. Asa BTN= ramane
+// singurul loc in care se schimba rolurile, si un arbitru care si-a mutat
+// rosul in dreapta il gaseste mutat si pe butoane.
+//
+// La lupte mana merge singura si nu se uita la sticla. Un buton adevarat se
+// simte sub deget; un sfert de ecran nu.
+//
+// PINII. Headerul placii scoate si 33-37, unul langa altul, si par facuti
+// pentru asta - dar nu sunt liberi: ii tine magistrala PSRAM-ului octal, adica
+// exact memoria in care sta imaginea ecranului. Se vede cu PINI?: nivelul lor
+// se schimba de sute de ori in doua mii de citiri, desi firmware-ul nu-i
+// comanda cu nimic. Liberi sunt doar astia patru, in doua perechi:
+//
+//   GPIO4, GPIO0   randul de sus, coloanele 6-7
+//   GPIO43, GPIO44 randul de jos, coloanele 9-10 (RXD/TXD; consola merge pe
+//                  USB, vezi CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+//
+// GPIO0 e si butonul BOOT: daca butonul lui e tinut apasat in clipa
+// alimentarii, placa porneste in mod de programare. Nu se strica nimic, dar
+// ecranul ramane negru pana la urmatoarea alimentare cu butoanele libere.
+const uint8_t PINI_BUTOANE[4] = { 4, 0, 43, 44 };
+
+// Doua fronturi mai apropiate decat atat sunt zgomotul contactului, nu doua
+// apasari. E alta treaba decat POINT_GUARD_MS de mai jos: aia e despre
+// arbitraj, asta e despre metal.
+const unsigned long BTN_DEBOUNCE_MS = 25;
+
+volatile bool          butonApasat[4]  = { false, false, false, false };
+volatile unsigned long butonUltimul[4] = { 0, 0, 0, 0 };
+bool butoaneFizice = false;
+
+// Apasarea se noteaza in intrerupere si se duce in bucla. loop() sta blocat in
+// cereri HTTP cate o secunda, iar o apasare citita prin polling s-ar pierde
+// acolo fara urma - acelasi motiv pentru care panoul tactil are task propriu.
+void IRAM_ATTR isrButonFizic(void* arg) {
+  int i = (int)(intptr_t)arg;
+  unsigned long acum = millis();
+  if (acum - butonUltimul[i] < BTN_DEBOUNCE_MS) return;
+  butonUltimul[i] = acum;
+  butonApasat[i] = true;
+}
+
+void initButoaneFizice() {
+  for (int i = 0; i < 4; i++) pinMode(PINI_BUTOANE[i], INPUT_PULLUP);
+  delay(5);
+
+  // O citire inainte de a lega intreruperile. Un pin gasit la masa cu nimic
+  // apasat inseamna fir pus gresit - iar o intrerupere pe el ar umple bucla cu
+  // apasari pe care nu le face nimeni, in mijlocul unui meci.
+  for (int i = 0; i < 4; i++) {
+    if (digitalRead(PINI_BUTOANE[i]) == LOW) {
+      Serial.printf("BUTOANE: oprite - GPIO%d e la masa cu nimic apasat.\n", PINI_BUTOANE[i]);
+      Serial.println("    Butoanele se leaga intre pin si G. Scrie PINI? ca sa le vezi starea.");
+      return;
+    }
+  }
+
+  for (int i = 0; i < 4; i++) {
+    attachInterruptArg(digitalPinToInterrupt(PINI_BUTOANE[i]), isrButonFizic,
+                       (void*)(intptr_t)i, FALLING);
+  }
+  butoaneFizice = true;
+  Serial.printf("BUTOANE: pornite pe GPIO %d=%s %d=%s %d=%s %d=%s\n",
+                PINI_BUTOANE[0], rolButoane[0], PINI_BUTOANE[1], rolButoane[1],
+                PINI_BUTOANE[2], rolButoane[2], PINI_BUTOANE[3], rolButoane[3]);
+}
+
+// Apasarea unui buton fizic, consumata din bucla.
+void apasaButonFizic(int index) {
+  // In proba se raporteaza doar pe cablu, ca si sferturile: asa pagina de
+  // proba din launcher aprinde acelasi indicator pentru buton ca pentru
+  // sfertul cu acelasi rol.
+  if (modTest) {
+    Serial.printf("BUTON\t%d\t%s\n", index + 1, rolButoane[index]);
+    return;
+  }
+
+  // Numai in meci, si numai cat timp meciul se puncteaza.
+  //
+  // La decizia finala sferturile aleg castigatorul in doi pasi, cu intrebarea
+  // pe ecran. Un buton fara eticheta n-are ce cauta intr-o alegere
+  // ireversibila, pe care serverul n-o mai primeste a doua oara.
+  if (screen != SCREEN_MATCH || needsFinalDecision() || decisionArmed) return;
+
+  // Mai departe e exact drumul sfertului de ecran: aceeasi functie, aceleasi
+  // reguli. Doua drumuri catre acelasi punct s-ar desparti in timp.
+  actSfert(index);
+}
+
 bool acceptaApasare(int index) {
   unsigned long now = millis();
   if (now - pointButtons[index].lastAcceptedMs < POINT_GUARD_MS) {
     pressTooFast = true;
+    // Si CE s-a refuzat, nu doar ca s-a refuzat. Altfel ecranul ar ramane cu
+    // valoarea apasarii dinainte - cea care a plecat - si ar scrie "+2 PREA
+    // REPEDE" peste un buton de +1 abia apasat.
+    pointSideRed = pointButtons[index].isRed;
+    pointValue   = pointButtons[index].points;
     return false;
   }
   pointButtons[index].lastAcceptedMs = now;
@@ -1438,7 +1657,7 @@ const char* myPositionInMatch(int matchId) {
 }
 
 // Numele colturilor si modul de afisare. `display_mode` decide totul:
-// doar pe "real_time" serverul cere confirmarea a doi arbitri. In rest
+// doar pe "real_time" serverul cere confirmarea a trei arbitri. In rest
 // punctul intra direct, si atunci n-are rost sa aratam "astept".
 void apiLoadMatch(int matchId) {
   liveRedName[0] = '\0';
@@ -1718,7 +1937,7 @@ void addRoundPoint(bool isRed, int points) {
 }
 
 // Cat timp punctul meu e in asteptare, intreb serverul daca intre timp a
-// apasat si al doilea arbitru.
+// apasat si ceilalti arbitri.
 bool anyPendingRecent() {
   for (int i = 0; i < recentCount; i++) if (recent[i].state == POINT_PENDING) return true;
   return false;
@@ -2726,6 +2945,10 @@ void setup() {
   incarcaWifiSalvat();
   incarcaRoluri();
 
+  // Dupa incarcaRoluri(), ca linia de pornire sa spuna rolul fiecarui buton,
+  // nu pe cel din cod.
+  initButoaneFizice();
+
   // Atingerile, pe celalalt nucleu. Prioritate 2: peste firul de repaus, mult
   // sub WiFi - panoul nu are nevoie de mai mult, si daca ar avea ar intarzia
   // exact radioul pe care pleaca nota.
@@ -2774,6 +2997,16 @@ void loop() {
   // plece o cerere de doua secunde peste o apasare care deja asteapta.
   TouchEvent atingere;
   while (takeTouch(&atingere)) handleTouch(atingere);
+
+  // Butoanele fizice, in acelasi loc si cu aceleasi reguli ca atingerile:
+  // un buton e un sfert de ecran care se simte sub deget.
+  if (butoaneFizice) {
+    for (int i = 0; i < 4; i++) {
+      if (!butonApasat[i]) continue;
+      butonApasat[i] = false;
+      apasaButonFizic(i);
+    }
+  }
 
   // Apasarea oprita de garda: aratam explicit ca n-a plecat. Tacerea ar
   // fi cea mai proasta varianta - arbitrul ar crede ca a dat doua puncte.
@@ -2898,7 +3131,7 @@ void loop() {
   }
 
   // Ecranul de punct nu ramane la nesfarsit: confirmarea se vede scurt,
-  // asteptarea mai mult. Daca al doilea arbitru n-a apasat in secunda si
+  // asteptarea mai mult. Daca ceilalti arbitri n-au apasat in secunda si
   // jumatate, punctul nu se mai valideaza si arbitrul trebuie sa vada din
   // nou meciul, nu un ecran inghetat.
   if (pointState != POINT_NONE && pointState != POINT_SENDING) {
