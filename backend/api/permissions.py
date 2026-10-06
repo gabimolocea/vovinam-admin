@@ -285,6 +285,17 @@ def poate_scrie_pe_teren(request, field_id):
         return False
 
 
+def scrie_pentru_altii(request, field_id):
+    """Adevarat daca cererea poate scrie nota ALTUI arbitru pe terenul dat.
+
+    Masa centrala face asta tot timpul: introduce manual nota unui arbitru care
+    n-a apucat s-o trimita. Pana acum o putea face doar un admin, iar la lupte
+    cel de la masa nici nu e printre cei cinci care dau note - deci regula "doar
+    arbitrii alocati probei" l-ar fi oprit tocmai pe el.
+    """
+    return poate_scrie_pe_teren(request, field_id)
+
+
 class IsAdminOrFieldTable(permissions.BasePermission):
     """Citire pentru oricine; scriere pentru admin sau pentru masa unui teren.
 

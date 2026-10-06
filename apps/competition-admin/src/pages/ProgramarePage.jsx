@@ -656,6 +656,13 @@ export default function ProgramarePage() {
 
         // Skip breaks — they don't have referees
         if (item.type === 'break') continue;
+        // Ce s-a terminat nu mai ocupa pe nimeni. Un arbitru care a arbitrat
+        // dimineata la Terenul 1 poate fi pus dupa-amiaza la Terenul 2 fara sa
+        // fie avertizat de o suprapunere care nu mai exista decat in program.
+        const terminat = item.type === 'category'
+          ? item.assignment?.status === 'completed'
+          : item.data?.status === 'completed';
+        if (terminat) continue;
 
         // Find which referees are assigned to this item
         const refAss = item.type === 'category' ? catRefMap[item.id] : matchRefMap[item.id];
@@ -835,10 +842,17 @@ export default function ProgramarePage() {
     const isEditingThis = editingDuration?.type === item.type && editingDuration?.id === item.id;
     const isTeamCat = isCat && data.type === 'team';
     const enrolledCount = isTeamCat ? (data.enrolled_teams?.length || 0) : (data.enrolled_athletes?.length || 0);
-    // A finished match stays assigned to its field (it was actually played
-    // there), but shouldn't look like it's still pending on that tatami -
-    // dim the card and label it so it's obvious at a glance.
-    const isFinishedMatch = !isCat && data.status === 'completed';
+    // Ce s-a terminat ramane alocat terenului pe care chiar s-a tinut, dar
+    // nu mai are ce cauta in ochii cuiva care se uita ce urmeaza - deci se
+    // stinge si se marcheaza.
+    //
+    // Pentru meciuri starea sta pe meci; pentru probe sta pe ALOCAREA de
+    // teren, nu pe categorie. Pana acum citeam doar `data.status`, care la o
+    // categorie nu exista - si atunci nicio proba terminata nu arata ca atare,
+    // oricat de incheiata ar fi fost.
+    const isFinishedMatch = isCat
+      ? item.assignment?.status === 'completed'
+      : data.status === 'completed';
 
     return (
       <div
@@ -846,7 +860,9 @@ export default function ProgramarePage() {
         onDragStart={isFinishedMatch ? undefined : (e) => handleDragStart(e, item.type, item.id, item.assignment?.field)}
         onDragEnd={handleDragEnd}
         onClick={!isCat ? () => setMatchDetailModal({ matchId: item.id }) : undefined}
-        title={isFinishedMatch ? 'Meci finalizat - nu mai poate fi mutat' : !isCat ? 'Click pentru detalii meci' : undefined}
+        title={isFinishedMatch
+          ? (isCat ? 'Probă finalizată - nu mai poate fi mutată' : 'Meci finalizat - nu mai poate fi mutat')
+          : !isCat ? 'Click pentru detalii meci' : undefined}
         className={`group relative mb-2 rounded-md border border-border p-2.5 shadow-sm transition-all hover:shadow-md ${
           isFinishedMatch
             ? 'cursor-not-allowed bg-muted/50 opacity-60 hover:opacity-100'

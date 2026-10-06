@@ -27,6 +27,7 @@ const LiveFullscreenPage = lazy(() => import('./pages/LiveFullscreenPage'));
 const DiplomaConfiguratorPage = lazy(() => import('./pages/DiplomaConfiguratorPage'));
 const MasaCentralaPage = lazy(() => import('./pages/MasaCentralaPage'));
 const MeseCentralePage = lazy(() => import('./pages/MeseCentralePage'));
+const TerenPage = lazy(() => import('./pages/TerenPage'));
 
 // Pagina Live se deschide si pentru admin, si pentru masa centrala a unui
 // teren. Garda de aici e doar pentru ce se vede: limita adevarata - ce poate
@@ -112,6 +113,17 @@ export default function App() {
           <ProtectedRoute roles={['admin']}>
             <MeseCentralePage />
           </ProtectedRoute>
+        }
+      />
+
+      {/* Ce are de facut un singur teren azi: pagina "Înapoi" a mesei
+          centrale, si o privire rapida pentru admin. */}
+      <Route
+        path="/competitions/:id/teren/:fieldId"
+        element={
+          <RutaLive>
+            <TerenPage />
+          </RutaLive>
         }
       />
 

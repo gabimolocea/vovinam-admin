@@ -17,12 +17,30 @@ export default function MeseCentralePage() {
   const { id: eventId } = useParams();
   const [terenuri, setTerenuri] = useState([]);
   const [incarca, setIncarca] = useState(true);
+  const [eroare, setEroare] = useState(null);
+
+  // Raspunsul vine fie ca lista, fie paginat - depinde de cine intreaba.
+  // Citit gresit, `terenuri` ajungea un obiect si pagina ramanea agatata.
+  const lista = r => r.data?.results || r.data || [];
 
   useEffect(() => {
     let anulat = false;
+    setIncarca(true);
+    setEroare(null);
     fieldAPI.list({ event_id: eventId })
-      .then(({ data }) => { if (!anulat) setTerenuri(data || []); })
-      .catch(() => { if (!anulat) setTerenuri([]); })
+      .then((r) => { if (!anulat) setTerenuri(lista(r)); })
+      .catch((e) => {
+        console.error(e);
+        if (anulat) return;
+        setTerenuri([]);
+        // Mesajul spune ce s-a intamplat, nu doar ca n-a mers: un "Se
+        // încarcă" care nu se mai termina nu lasa pe nimeni sa ghiceasca
+        // daca e reteaua, sesiunea, sau evenimentul gresit.
+        const cod = e?.response?.status;
+        setEroare(cod
+          ? `Nu am putut citi terenurile (eroare ${cod}).`
+          : 'Nu am putut citi terenurile: serverul local nu răspunde.');
+      })
       .finally(() => { if (!anulat) setIncarca(false); });
     return () => { anulat = true; };
   }, [eventId]);
@@ -49,6 +67,11 @@ export default function MeseCentralePage() {
       )}
 
       {incarca && <p className="mt-6 text-sm text-muted-foreground">Se încarcă…</p>}
+      {eroare && (
+        <p className="mt-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+          {eroare}
+        </p>
+      )}
       {!incarca && terenuri.length === 0 && (
         <p className="mt-6 text-sm text-muted-foreground">Evenimentul nu are terenuri.</p>
       )}

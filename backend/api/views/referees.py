@@ -14,7 +14,11 @@ from rest_framework.pagination import PageNumberPagination
 from ..serializers import *
 from ..models import *
 from ..permissions import IsAdminOrReadOnly, IsAdmin, IsOwnerOrAdmin, IsClubCoachOrAdmin, IsAthleteOwnerCoachOrAdmin
-from ..permissions import CHEIE_MASA_TEREN, CHEIE_MASA_ARBITRU
+from ..permissions import (
+    CHEIE_MASA_TEREN, CHEIE_MASA_ARBITRU, IsAdminOrFieldTable, este_admin,
+    poate_scrie_pe_teren, terenul_mesei,
+)
+from ._common import terenul_categoriei
 from ..serializers._common import _person_name
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
@@ -436,7 +440,7 @@ def auto_assign_referees(request, event_id):
 
 class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
     """ViewSet for assigning 5 referees to solo/team categories"""
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
 
     def list(self, request):
         event_id = request.query_params.get('event_id')
@@ -453,6 +457,10 @@ class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(getattr(category, 'event', None))
         if locked is not None:
             return locked
+        # Masa centrala isi completeaza arbitrii pe probele terenului ei - la
+        # tehnica, ea insasi e unul din cei cinci.
+        if not poate_scrie_pe_teren(request, terenul_categoriei(category)):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = CategoryRefereeAssignmentSerializer(data=request.data)
         if serializer.is_valid():
             instance = serializer.save()
@@ -478,6 +486,8 @@ class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
         try:
             obj = CategoryRefereeAssignment.objects.get(pk=pk)
             locked = _event_operational_lock_response(getattr(getattr(obj, 'category', None), 'event', None))
+            if not poate_scrie_pe_teren(request, terenul_categoriei(getattr(obj, 'category', None))):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             if locked is not None:
                 return locked
             serializer = CategoryRefereeAssignmentSerializer(obj, data=request.data, partial=True)
@@ -502,6 +512,8 @@ class CategoryRefereeAssignmentViewSet(viewsets.ViewSet):
         try:
             obj = CategoryRefereeAssignment.objects.get(pk=pk)
             locked = _event_operational_lock_response(getattr(getattr(obj, 'category', None), 'event', None))
+            if not poate_scrie_pe_teren(request, terenul_categoriei(getattr(obj, 'category', None))):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             if locked is not None:
                 return locked
             obj.delete()
@@ -656,12 +668,35 @@ def _get_or_create_referee_user(athlete):
     return user
 
 
+def _poate_vedea_codurile(request, event_id):
+    """Adminul, sau cine tine o masa centrala la evenimentul asta.
+
+    Omul de la masa e tocmai cel care sta langa arbitri si trebuie sa le arate
+    codul: trimis la un admin de fiecare data, fluxul se rupe exact acolo unde
+    trebuie sa fie rapid. Codul e pe arbitru si pe eveniment, nu pe teren, deci
+    limitarea care are sens e evenimentul.
+    """
+    if este_admin(request.user):
+        return True
+    teren = terenul_mesei(request)
+    return bool(teren) and CompetitionField.objects.filter(pk=teren, event_id=event_id).exists()
+
+
+def _refuz_coduri():
+    return Response(
+        {'error': 'Doar un admin sau masa centrală a terenului poate vedea codurile.'},
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 @api_view(['GET'])
-@permission_classes([IsAdmin])
+@permission_classes([permissions.IsAuthenticated])
 def referee_qr_login_info(request, event_id, athlete_id):
     """Get-or-create this referee's QR login for the event. Never rotates
     an existing token - reopening this screen later in the day must not
     silently invalidate a referee who already scanned in this morning."""
+    if not _poate_vedea_codurile(request, event_id):
+        return _refuz_coduri()
     athlete = get_object_or_404(Athlete, pk=athlete_id)
     qr, _ = RefereeQRLogin.objects.get_or_create(event_id=event_id, referee=athlete)
     # Cerut din nou = folosit azi. Un cod cerut azi trebuie sa tina pana la
@@ -678,10 +713,12 @@ def referee_qr_login_info(request, event_id, athlete_id):
 
 
 @api_view(['POST'])
-@permission_classes([IsAdmin])
+@permission_classes([permissions.IsAuthenticated])
 def referee_qr_login_reset(request, event_id, athlete_id):
     """Rotate this referee's QR token, so whatever code was previously
     displayed/scanned/photographed immediately stops working."""
+    if not _poate_vedea_codurile(request, event_id):
+        return _refuz_coduri()
     athlete = get_object_or_404(Athlete, pk=athlete_id)
     qr, _ = RefereeQRLogin.objects.get_or_create(event_id=event_id, referee=athlete)
     qr.token = secrets.token_urlsafe(32)

@@ -45,6 +45,7 @@ export default function RefereeAccessModal({ eventId, referee, onClose }) {
   const toast = useToast();
   const [info, setInfo] = useState(null);      // { token, pin, login_path }
   const [loading, setLoading] = useState(false);
+  const [eroare, setEroare] = useState(null);
   const [resetting, setResetting] = useState(false);
 
   // Ia (sau creeaza) codul de conectare. Nu roteste niciodata unul
@@ -55,9 +56,21 @@ export default function RefereeAccessModal({ eventId, referee, onClose }) {
     let cancelled = false;
     setLoading(true);
     setInfo(null);
+    setEroare(null);
     refereeQrLoginAPI.get(eventId, referee.id)
       .then(({ data }) => { if (!cancelled) setInfo(data); })
-      .catch((err) => { console.error('Nu s-a putut citi codul arbitrului', err); })
+      .catch((err) => {
+        console.error('Nu s-a putut citi codul arbitrului', err);
+        if (cancelled) return;
+        // Pana acum eroarea ramanea doar in consola, iar fereastra arata
+        // "Se încarcă…" la nesfarsit - aceeasi imagine si cand chiar se
+        // incarca, si cand cererea cazuse. Nimeni nu avea cum sa stie ca
+        // trebuie sa se uite in consola.
+        const cod = err?.response?.status;
+        setEroare(cod === 403 || cod === 401
+          ? 'Nu ai dreptul să vezi codul acestui arbitru.'
+          : `Nu am putut citi codul arbitrului${cod ? ` (eroare ${cod})` : ': serverul nu răspunde'}.`);
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [referee?.id, eventId]);
@@ -95,7 +108,11 @@ export default function RefereeAccessModal({ eventId, referee, onClose }) {
             Ești pe <strong>localhost</strong> — codul QR va trimite telefonul arbitrului tot spre &bdquo;localhost al lui&rdquo;, nu spre acest calculator, deci nu va funcționa. Deschide pagina folosind adresa IP din rețeaua locală înainte să arăți codul unui arbitru. PIN-ul nu e afectat: dispozitivul are adresa serverului scrisă în el.
           </div>
         )}
-        {loading || !info ? (
+        {eroare ? (
+          <div className="flex min-h-48 w-full items-center justify-center border-2 border-red-300 bg-red-50 px-4 py-6 text-center text-sm font-semibold text-red-800">
+            {eroare}
+          </div>
+        ) : loading || !info ? (
           <div className="flex h-48 w-48 items-center justify-center border-2 border-dashed border-border text-sm text-muted-foreground">
             Se încarcă…
           </div>

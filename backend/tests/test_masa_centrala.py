@@ -242,3 +242,279 @@ class ExpirarePinTest(TestCase):
         self.assertEqual(local.date(), date(2026, 5, 31))
         # Aproape o zi intreaga, nu cateva minute.
         self.assertGreater((sfarsit - noaptea).total_seconds() / 3600, 22)
+
+
+class MasaCentralaLaLupteTest(TestCase):
+    """La lupte, cel de la masa nu e printre cei cinci care dau note - e al
+    saselea. Regula "doar arbitrii alocati meciului" l-ar fi oprit tocmai pe
+    el, iar restul endpointurilor de lupta cereau admin, deci masa nu
+    functiona deloc acolo.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.event = Event.objects.create(
+            title='Cupa', slug='cupa-lupte', start_date=date(2026, 1, 1), end_date=date(2026, 1, 2),
+        )
+        terenuri = list(CompetitionField.objects.filter(event=self.event).order_by('field_number'))
+        while len(terenuri) < 2:
+            terenuri.append(CompetitionField.objects.create(
+                event=self.event, name=f'Teren {len(terenuri) + 1}', field_number=len(terenuri) + 1))
+        self.teren1, self.teren2 = terenuri[0], terenuri[1]
+
+        self.arbitru = Athlete.objects.create(first_name='Vlad', last_name='Masă', is_referee=True)
+        RefereeQRLogin.objects.create(
+            event=self.event, referee=self.arbitru, token='tok-lupte', pin='31337',
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+        self.proba = Category.objects.create(name='Lupte', event=self.event)
+        self.meci1 = self._meci(self.teren1)
+        self.meci2 = self._meci(self.teren2)
+
+    def _meci(self, teren):
+        from api.models import Match, MatchFieldAssignment
+        m = Match.objects.create(category=self.proba, match_number=teren.field_number)
+        MatchFieldAssignment.objects.create(match=m, field=teren)
+        return m
+
+    def _intra(self, teren):
+        r = self.client.post('/api/masa-centrala-login/',
+                             {'pin': '31337', 'field': teren.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.content[:200])
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {r.json()['tokens']['access']}")
+
+    def test_porneste_meciul_de_pe_terenul_lui(self):
+        self._intra(self.teren1)
+        r = self.client.patch(f'/api/match-field-assignments/{self.meci1.field_assignment.pk}/',
+                              {'status': 'in_progress'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content[:200])
+
+    def test_nu_atinge_meciul_altui_teren(self):
+        self._intra(self.teren1)
+        r = self.client.patch(f'/api/match-field-assignments/{self.meci2.field_assignment.pk}/',
+                              {'status': 'completed'}, format='json')
+        self.assertEqual(r.status_code, 403, r.content[:200])
+
+    def test_nu_schimba_meciul_altui_teren(self):
+        self._intra(self.teren1)
+        r = self.client.patch(f'/api/matches/{self.meci2.pk}/', {'status': 'completed'}, format='json')
+        self.assertEqual(r.status_code, 403, r.content[:200])
+
+    def test_conduce_rundele_doar_pe_terenul_lui(self):
+        self._intra(self.teren1)
+        bun = self.client.post('/api/match-rounds/',
+                               {'match': self.meci1.pk, 'round_number': 9}, format='json')
+        self.assertIn(bun.status_code, (200, 201), bun.content[:200])
+        rau = self.client.post('/api/match-rounds/',
+                               {'match': self.meci2.pk, 'round_number': 9}, format='json')
+        self.assertEqual(rau.status_code, 403, rau.content[:200])
+
+    def test_scrie_nota_unui_arbitru_desi_el_nu_e_printre_cei_cinci(self):
+        """Tot rostul: la lupte masa nu e arbitru alocat, dar introduce note."""
+        self._intra(self.teren1)
+        altul = Athlete.objects.create(first_name='Ana', last_name='Colț', is_referee=True)
+        r = self.client.post('/api/match-referee-scores/', {
+            'match': self.meci1.pk, 'referee': altul.pk, 'red_score': 3, 'blue_score': 1,
+        }, format='json')
+        self.assertIn(r.status_code, (200, 201), r.content[:300])
+        from api.models import MatchRefereeScore
+        self.assertTrue(MatchRefereeScore.objects.filter(match=self.meci1, referee=altul).exists())
+
+
+class SursaNoteiTest(TestCase):
+    """Cine a scris nota: arbitrul insusi, sau altcineva in locul lui.
+
+    Tabelul pune colt rosu pe `competition_admin`. Pana acum sursa se deducea
+    din "e admin sau nu", ceea ce cu masa centrala se strica in amandoua
+    felurile: nota pusa de masa in casuta ALTUIA nu mai era insemnata deloc -
+    tocmai urma care conteaza la o contestatie - iar propria lui nota primea
+    colt rosu ca si cum i-ar fi schimbat-o cineva.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.event = Event.objects.create(
+            title='Cupa', slug='cupa-sursa', start_date=date(2026, 1, 1), end_date=date(2026, 1, 2),
+        )
+        self.teren = (CompetitionField.objects.filter(event=self.event).first()
+                      or CompetitionField.objects.create(event=self.event, name='T', field_number=1))
+        self.proba = Category.objects.create(name='Quyen', event=self.event)
+        CategoryFieldAssignment.objects.create(category=self.proba, field=self.teren)
+
+        self.eu = Athlete.objects.create(first_name='Dan', last_name='Masă', is_referee=True)
+        self.altul = Athlete.objects.create(first_name='Ana', last_name='Colț', is_referee=True)
+        from api.models import CategoryRefereeAssignment
+        CategoryRefereeAssignment.objects.create(
+            category=self.proba, referee_1=self.altul, referee_5=self.eu)
+        RefereeQRLogin.objects.create(
+            event=self.event, referee=self.eu, token='tok-sursa', pin='24680',
+            expires_at=timezone.now() + timedelta(days=1))
+        self.rezultat = CategoryAthleteScore.objects.create(
+            category=self.proba, athlete=Athlete.objects.create(first_name='X', last_name='Y'), type='solo')
+
+        r = self.client.post('/api/masa-centrala-login/',
+                             {'pin': '24680', 'field': self.teren.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.content[:200])
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {r.json()['tokens']['access']}")
+
+    def _sursa(self, arbitru):
+        from api.models import CategoryRefereeScoreEvent
+        return (CategoryRefereeScoreEvent.objects
+                .filter(athlete_score=self.rezultat, referee=arbitru)
+                .order_by('timestamp', 'id').last().source)
+
+    def test_propria_nota_nu_e_insemnata_ca_interventie(self):
+        r = self.client.post('/api/category-referee-score/', {
+            'athlete_score': self.rezultat.pk, 'referee': self.eu.pk, 'score': 95,
+        }, format='json')
+        self.assertIn(r.status_code, (200, 201), r.content[:300])
+        self.assertEqual(self._sursa(self.eu), 'referee_app')
+
+    def test_nota_altui_arbitru_ramane_insemnata(self):
+        r = self.client.post('/api/category-referee-score/', {
+            'athlete_score': self.rezultat.pk, 'referee': self.altul.pk, 'score': 88,
+        }, format='json')
+        self.assertIn(r.status_code, (200, 201), r.content[:300])
+        self.assertEqual(self._sursa(self.altul), 'competition_admin')
+
+
+class ConflictArbitriTest(TestCase):
+    """O probă încheiată nu mai ține niciun arbitru ocupat.
+
+    Un arbitru care a arbitrat dimineața la Terenul 1 poate fi pus după-amiază
+    la Terenul 2. Avertizat pentru o suprapunere care s-a consumat deja,
+    operatorul învață să treacă peste avertismente - iar atunci nu-l mai
+    oprește nici cel adevărat.
+    """
+
+    def setUp(self):
+        from datetime import datetime
+        from api.models import CategoryRefereeAssignment
+        self.event = Event.objects.create(
+            title='Cupa', slug='cupa-conflict', start_date=date(2026, 1, 1), end_date=date(2026, 1, 2),
+        )
+        terenuri = list(CompetitionField.objects.filter(event=self.event).order_by('field_number'))
+        while len(terenuri) < 2:
+            terenuri.append(CompetitionField.objects.create(
+                event=self.event, name=f'T{len(terenuri) + 1}', field_number=len(terenuri) + 1))
+        self.arbitru = Athlete.objects.create(first_name='Ion', last_name='Dublu', is_referee=True)
+
+        ora = timezone.make_aware(datetime(2026, 1, 1, 10, 0))
+        self.a = Category.objects.create(name='Proba A', event=self.event)
+        self.aloc_a = CategoryFieldAssignment.objects.create(
+            category=self.a, field=terenuri[0], scheduled_start_time=ora, estimated_duration=30)
+        CategoryRefereeAssignment.objects.create(category=self.a, referee_1=self.arbitru)
+
+        self.b = Category.objects.create(name='Proba B', event=self.event)
+        self.aloc_b = CategoryFieldAssignment.objects.create(
+            category=self.b, field=terenuri[1], scheduled_start_time=ora, estimated_duration=30)
+
+    def _avertismente(self):
+        from api.views._common import _referee_schedule_conflict_warnings
+        self.b.refresh_from_db()
+        return _referee_schedule_conflict_warnings(self.b, [self.arbitru.pk])
+
+    def test_suprapunerea_reala_e_semnalata(self):
+        self.assertTrue(self._avertismente())
+
+    def test_proba_incheiata_nu_mai_produce_conflict(self):
+        self.aloc_a.status = 'completed'
+        self.aloc_a.save(update_fields=['status'])
+        self.assertEqual(self._avertismente(), [])
+
+    def test_nici_proba_incheiata_nu_mai_primeste_avertismente(self):
+        self.aloc_b.status = 'completed'
+        self.aloc_b.save(update_fields=['status'])
+        self.assertEqual(self._avertismente(), [])
+
+
+class InghetareScorTest(TestCase):
+    """Un rezultat anunțat în sală nu are voie să se schimbe după.
+
+    Scorul unui meci în timp real se număra de fiecare dată din apăsări, după
+    regula de atunci. Când regula s-a schimbat - de la doi arbitri pe fază la
+    trei - toate meciurile deja încheiate au început să arate alt scor decât
+    cel anunțat. Testele de aici păzesc contrariul.
+    """
+
+    def setUp(self):
+        from api.models import FightCategory, Match, RefereePointEvent
+        self.event = Event.objects.create(
+            title='Cupa', slug='cupa-inghet', start_date=date(2026, 1, 1), end_date=date(2026, 1, 2),
+        )
+        cat = FightCategory.objects.create(name='Lupta', event=self.event, display_order=1)
+        self.meci = Match.objects.create(category=cat, match_number='M9', display_mode='real_time')
+        self.arbitri = [
+            Athlete.objects.create(first_name=f'A{i}', last_name='Ref', is_referee=True)
+            for i in range(4)
+        ]
+        self.baza = 1_700_000_000_000
+        self.RefereePointEvent = RefereePointEvent
+
+    def _apasa(self, arbitru, la_ms, puncte=2):
+        return self.RefereePointEvent.objects.create(
+            match=self.meci, referee=arbitru, side='red', points=puncte,
+            event_type='score', validation_status='validated',
+            metadata={'round': 1, 'round_id': 1, 'client_timestamp_ms': self.baza + la_ms},
+        )
+
+    def test_scorul_se_scrie_la_incheiere(self):
+        for i, a in enumerate(self.arbitri[:3]):
+            self._apasa(a, i * 200)
+        self.assertIsNone(self.meci.scores_frozen_at)
+        self.meci.status = 'completed'
+        self.meci.save()
+        self.meci.refresh_from_db()
+        self.assertIsNotNone(self.meci.scores_frozen_at)
+        self.assertEqual((self.meci.final_red_score, self.meci.final_blue_score), (2, 0))
+
+    def test_apasarile_de_dupa_nu_mai_schimba_rezultatul(self):
+        """Nici măcar o fază nouă adăugată după încheiere."""
+        for i, a in enumerate(self.arbitri[:3]):
+            self._apasa(a, i * 200)
+        self.meci.status = 'completed'
+        self.meci.save()
+        for i, a in enumerate(self.arbitri[:3]):
+            self._apasa(a, 5000 + i * 200)
+        self.meci.refresh_from_db()
+        self.assertEqual(self.meci.scorul_final(), (2, 0), 'rezultatul a fost rescris după încheiere')
+
+    def test_a_doua_salvare_nu_rescrie(self):
+        for i, a in enumerate(self.arbitri[:3]):
+            self._apasa(a, i * 200)
+        self.meci.status = 'completed'
+        self.meci.save()
+        self.meci.refresh_from_db()
+        intai = self.meci.scores_frozen_at
+        self.meci.save()
+        self.meci.refresh_from_db()
+        self.assertEqual(self.meci.scores_frozen_at, intai)
+
+    def test_un_meci_neincheiat_se_numara_mai_departe(self):
+        for i, a in enumerate(self.arbitri[:3]):
+            self._apasa(a, i * 200)
+        self.assertEqual(self.meci.scorul_final(), (2, 0))
+        for i, a in enumerate(self.arbitri[:3]):
+            self._apasa(a, 5000 + i * 200)
+        self.assertEqual(self.meci.scorul_final(), (4, 0), 'înainte de încheiere scorul e viu')
+
+    def test_resetul_dezgheata_rezultatul(self):
+        """Un meci scos din «încheiat» nu mai are rezultat final.
+
+        Lăsat înghețat, ar fi arătat scorul vechi pe un meci care urmează să
+        fie rejucat - și nimeni n-ar fi înțeles de unde vine.
+        """
+        for i, a in enumerate(self.arbitri[:3]):
+            self._apasa(a, i * 200)
+        self.meci.status = 'completed'
+        self.meci.save()
+        self.meci.refresh_from_db()
+        self.assertIsNotNone(self.meci.scores_frozen_at)
+
+        self.meci.status = 'scheduled'
+        self.meci.save()
+        self.meci.refresh_from_db()
+        self.assertIsNone(self.meci.scores_frozen_at)
+        self.assertIsNone(self.meci.final_red_score)
+        # Si se numara iar din apasari.
+        self.assertEqual(self.meci.scorul_final(), (2, 0))

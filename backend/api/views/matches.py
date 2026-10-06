@@ -23,6 +23,8 @@ from pathlib import Path
 from django.db import IntegrityError
 
 import math
+from ..permissions import IsAdminOrFieldTable, este_admin, poate_scrie_pe_teren
+from ._common import terenul_meciului
 from ._common import (
     _auto_validate_real_time_point_event,
     _compute_video_offset_ms,
@@ -34,7 +36,7 @@ from ._common import (
 
 
 class MatchViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
     queryset = Match.objects.all()
     serializer_class = MatchSerializer
 
@@ -107,6 +109,9 @@ class MatchViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(getattr(getattr(instance, 'category', None), 'event', None))
         if locked is not None:
             return locked
+        # Masa centrala conduce meciurile de pe terenul ei - si numai de pe el.
+        if not poate_scrie_pe_teren(request, terenul_meciului(instance)):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.serializer_class(instance, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -118,6 +123,9 @@ class MatchViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(getattr(getattr(instance, 'category', None), 'event', None))
         if locked is not None:
             return locked
+        # Masa centrala conduce meciurile de pe terenul ei - si numai de pe el.
+        if not poate_scrie_pe_teren(request, terenul_meciului(instance)):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.serializer_class(instance, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -158,7 +166,10 @@ class MatchViewSet(viewsets.ViewSet):
             return Response(serializer.data)
 
         if request.method == 'DELETE':
-            if not request.user or not request.user.is_authenticated or not getattr(request.user, 'is_admin', False):
+            # Butonul Reset de pe meci sterge punctele. Il apasa masa centrala,
+            # care nu e admin - iar cererea raspundea 403 fara ca interfata sa
+            # arate nimic: resetul parea ca a mers si lasa scorurile pe loc.
+            if not poate_scrie_pe_teren(request, terenul_meciului(match)):
                 return Response({'error': 'Only admins can clear point events.'}, status=status.HTTP_403_FORBIDDEN)
             locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
             if locked is not None:
@@ -170,7 +181,10 @@ class MatchViewSet(viewsets.ViewSet):
         if locked is not None:
             return locked
 
-        is_admin = bool(request.user and request.user.is_authenticated and getattr(request.user, 'is_admin', False))
+        # Masa centrala introduce puncte in numele arbitrilor, ca si adminul:
+        # la lupte ea nu e printre cei care puncteaza, dar corecteaza de la masa.
+        is_admin = bool(request.user and request.user.is_authenticated and getattr(request.user, 'is_admin', False)) \
+            or poate_scrie_pe_teren(request, terenul_meciului(match))
         requester_athlete = getattr(request.user, 'athlete', None) if request.user and request.user.is_authenticated else None
 
         if not is_admin:
@@ -233,7 +247,7 @@ class MatchViewSet(viewsets.ViewSet):
 
 class MatchRoundViewSet(viewsets.ViewSet):
     """ViewSet for managing match rounds in fighting competitions"""
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
     
     def list(self, request):
         """List all match rounds"""
@@ -252,10 +266,13 @@ class MatchRoundViewSet(viewsets.ViewSet):
     
     def create(self, request):
         """Create a new match round"""
-        match = Match.objects.select_related('category__event').filter(pk=request.data.get('match')).first()
+        match = Match.objects.select_related('category__event', 'field_assignment').filter(pk=request.data.get('match')).first()
         locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
         if locked is not None:
             return locked
+        # Masa centrala conduce rundele de pe terenul ei - si numai de pe el.
+        if not poate_scrie_pe_teren(request, terenul_meciului(match)):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = MatchRoundSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -278,6 +295,8 @@ class MatchRoundViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(getattr(round_obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            if not poate_scrie_pe_teren(request, terenul_meciului(getattr(round_obj, "match", None))):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             data = request.data.copy()
             next_status = data.get('status')
             if next_status == 'completed':
@@ -309,6 +328,8 @@ class MatchRoundViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(getattr(round_obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            if not poate_scrie_pe_teren(request, terenul_meciului(getattr(round_obj, "match", None))):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             round_obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchRound.DoesNotExist:
@@ -481,7 +502,7 @@ def _sync_match_referee_score_to_legacy(match_id, referee_id):
 
 class MatchEventViewSet(viewsets.ViewSet):
     """ViewSet for match events: warnings, penalties, pauses, time adjustments"""
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
 
     def list(self, request):
         match_id = request.query_params.get('match_id')
@@ -503,6 +524,9 @@ class MatchEventViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
         if locked is not None:
             return locked
+        # Avertismente si penalizari se dau de la masa terenului.
+        if not poate_scrie_pe_teren(request, terenul_meciului(match)):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
         # Auto-set created_by to current user's athlete if available
         if hasattr(request.user, 'athlete'):
             data.setdefault('created_by', request.user.athlete.id)
@@ -588,7 +612,11 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
             return locked
         is_admin = bool(request.user.is_staff or getattr(request.user, 'role', None) == 'admin')
         requester_athlete = getattr(request.user, 'athlete', None)
-        if not is_admin:
+        # La lupte, cel de la masa centrala NU e printre cei cinci care dau
+        # note - e al saselea - deci regula "doar arbitrii alocati meciului"
+        # l-ar fi oprit tocmai pe el. Pe terenul lui scrie si pentru altii.
+        la_masa = poate_scrie_pe_teren(request, terenul_meciului(match))
+        if not is_admin and not la_masa:
             if not requester_athlete or not requester_athlete.is_referee or not _is_match_assigned_referee(match, requester_athlete):
                 return Response({'error': 'Nu ești arbitru alocat acestui meci.'}, status=status.HTTP_403_FORBIDDEN)
             data['referee'] = requester_athlete.id
@@ -624,7 +652,8 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
-            is_admin = bool(request.user.is_staff or getattr(request.user, 'role', None) == 'admin')
+            is_admin = bool(request.user.is_staff or getattr(request.user, 'role', None) == 'admin') or \
+                poate_scrie_pe_teren(request, terenul_meciului(getattr(obj, 'match', None)))
             requester_athlete = getattr(request.user, 'athlete', None)
             if not is_admin and (
                 not requester_athlete
@@ -659,7 +688,8 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
-            is_admin = bool(request.user.is_staff or getattr(request.user, 'role', None) == 'admin')
+            is_admin = bool(request.user.is_staff or getattr(request.user, 'role', None) == 'admin') or \
+                poate_scrie_pe_teren(request, terenul_meciului(getattr(obj, 'match', None)))
             requester_athlete = getattr(request.user, 'athlete', None)
             if not is_admin and (
                 not requester_athlete
@@ -681,7 +711,7 @@ class MatchRefereeScoreViewSet(viewsets.ViewSet):
 
 class MatchFieldAssignmentViewSet(viewsets.ViewSet):
     """ViewSet for assigning matches to competition fields"""
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
 
     def list(self, request):
         event_id = request.query_params.get('event_id')
@@ -702,6 +732,8 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
         if locked is not None:
             return locked
+        if not este_admin(request.user):
+            return Response({'error': 'Doar un admin poate face asta.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = MatchFieldAssignmentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -723,6 +755,9 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            # Masa centrala porneste si incheie meciurile de pe terenul ei.
+            if not poate_scrie_pe_teren(request, obj.field_id):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             serializer = MatchFieldAssignmentSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -741,6 +776,10 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            # Scoaterea unui meci de pe teren tine de program, nu de condusul
+            # lui: ramane a adminului.
+            if not este_admin(request.user):
+                return Response({'error': 'Doar un admin poate face asta.'}, status=status.HTTP_403_FORBIDDEN)
             obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchFieldAssignment.DoesNotExist:
@@ -786,7 +825,7 @@ class MatchFieldAssignmentViewSet(viewsets.ViewSet):
 
 class MatchRefereeAssignmentViewSet(viewsets.ViewSet):
     """ViewSet for assigning 5 referees to fight matches"""
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrFieldTable]
 
     def list(self, request):
         event_id = request.query_params.get('event_id')
@@ -806,6 +845,9 @@ class MatchRefereeAssignmentViewSet(viewsets.ViewSet):
         locked = _event_operational_lock_response(getattr(getattr(match, 'category', None), 'event', None))
         if locked is not None:
             return locked
+        # Masa centrala isi aloca arbitrii pe meciurile terenului ei.
+        if not poate_scrie_pe_teren(request, terenul_meciului(match)):
+            return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = MatchRefereeAssignmentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -827,6 +869,8 @@ class MatchRefereeAssignmentViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            if not poate_scrie_pe_teren(request, terenul_meciului(getattr(obj, 'match', None))):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             serializer = MatchRefereeAssignmentSerializer(obj, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -845,6 +889,8 @@ class MatchRefereeAssignmentViewSet(viewsets.ViewSet):
             locked = _event_operational_lock_response(getattr(getattr(getattr(obj, 'match', None), 'category', None), 'event', None))
             if locked is not None:
                 return locked
+            if not poate_scrie_pe_teren(request, terenul_meciului(getattr(obj, 'match', None))):
+                return Response({'error': 'Nu ai drepturi pe acest teren.'}, status=status.HTTP_403_FORBIDDEN)
             obj.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MatchRefereeAssignment.DoesNotExist:

@@ -24,7 +24,7 @@ import logging
 from pathlib import Path
 from django.db import IntegrityError
 
-from ..permissions import IsAdminOrFieldTable, este_admin, poate_scrie_pe_teren
+from ..permissions import IsAdminOrFieldTable, arbitrul_mesei, este_admin, poate_scrie_pe_teren, terenul_mesei
 from ._common import (
     _compute_video_offset_ms,
     terenul_categoriei,
@@ -33,6 +33,26 @@ from ._common import (
     _log_category_score_event,
     _resolve_recording_session,
 )
+
+
+def _sursa_notei(request, referee_id):
+    """Cine a scris nota: arbitrul insusi, sau altcineva in locul lui.
+
+    Pana acum se deducea din "e admin sau nu", iar tabelul pune colt rosu pe
+    `competition_admin`. Cu masa centrala asta se strica in amandoua felurile:
+    cel de la masa nu e admin, deci nota pusa de el in casuta ALTUI arbitru nu
+    mai era insemnata deloc - tocmai urma care conteaza la o contestatie - iar
+    la tehnica, unde el e si unul din cei cinci, propria lui nota primea colt
+    rosu ca si cum i-ar fi schimbat-o cineva.
+
+    Deosebirea adevarata nu e rangul celui care scrie, ci a cui e nota.
+    """
+    scriitor = getattr(getattr(request.user, 'athlete', None), 'id', None) or arbitrul_mesei(request)
+    try:
+        propria = scriitor is not None and int(referee_id) == int(scriitor)
+    except (TypeError, ValueError):
+        propria = False
+    return 'referee_app' if propria else 'competition_admin'
 
 
 class CategoryRefereeScoreViewSet(viewsets.ViewSet):
@@ -123,7 +143,13 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         referees see their own, admins see all"""
         user = request.user
         
-        if not user or not user.is_authenticated:
+        teren = terenul_mesei(request)
+        if teren is not None:
+            # Masa centrala are nevoie de toate cele cinci coloane ale probelor
+            # de pe terenul ei; un arbitru obisnuit vede mai jos doar ale lui.
+            queryset = CategoryRefereeScore.objects.filter(
+                athlete_score__category__field_assignment__field_id=teren)
+        elif not user or not user.is_authenticated:
             # Public / display access — return all (read-only, filtered by params)
             queryset = CategoryRefereeScore.objects.all()
         elif user.is_staff or (hasattr(user, 'role') and user.role == 'admin'):
@@ -171,9 +197,13 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
         
         # Determine the referee ID
         is_admin = user.is_staff or (hasattr(user, 'role') and user.role == 'admin')
-        
-        if is_admin and request.data.get('referee'):
-            # Admin scoring on behalf of a referee
+        # Masa centrala scrie si pentru altii: introduce manual nota unui
+        # arbitru care n-a apucat s-o trimita. Terenul se afla mai jos, din
+        # proba atinsa, deci aici verificam doar ca sesiunea e una de masa;
+        # `pentru_altii` se restrange la terenul ei imediat ce stim proba.
+        pentru_altii = is_admin or arbitrul_mesei(request) is not None
+
+        if pentru_altii and request.data.get('referee'):
             referee_id = request.data['referee']
         elif hasattr(user, 'athlete') and user.athlete.is_referee:
             referee_id = user.athlete.id
@@ -198,7 +228,16 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
             target_category = Category.objects.filter(pk=request.data['category']).first()
         if not target_category:
             return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
-        if not is_admin and not _is_category_assigned_referee(target_category, user.athlete):
+        la_masa = poate_scrie_pe_teren(request, terenul_categoriei(target_category))
+        if request.data.get('referee') and not is_admin and not la_masa:
+            # A cerut sa scrie pentru altcineva fara sa aiba dreptul; mai sus a
+            # fost tratat ca si cum ar fi scris pentru el, ceea ce ar fi
+            # inregistrat nota pe numele gresit.
+            return Response({'error': 'Nu poți scrie nota altui arbitru.'}, status=status.HTTP_403_FORBIDDEN)
+        # Cine tine masa terenului nu e neaparat printre cei cinci care dau
+        # note - la lupte chiar nu e, e al saselea - deci regula de mai jos nu
+        # i se aplica.
+        if not is_admin and not la_masa and not _is_category_assigned_referee(target_category, user.athlete):
             return Response({'error': 'Nu ești arbitru alocat acestei categorii.'}, status=status.HTTP_403_FORBIDDEN)
         
         # Build a clean plain dict for the serializer
@@ -311,7 +350,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                     athlete_score=existing.athlete_score,
                     referee=existing.referee,
                     action='update',
-                    source='competition_admin' if is_admin else 'referee_app',
+                    source=_sursa_notei(request, referee_id),
                     created_by=request.user if request.user.is_authenticated else None,
                     score_value=existing.score,
                     previous_score=previous_score,
@@ -325,7 +364,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                 athlete_score=instance.athlete_score,
                 referee=instance.referee,
                 action='create',
-                source='competition_admin' if is_admin else 'referee_app',
+                source=_sursa_notei(request, referee_id),
                 created_by=request.user if request.user.is_authenticated else None,
                 score_value=instance.score,
                 previous_score=None,
@@ -354,7 +393,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                     athlete_score=existing.athlete_score,
                     referee=existing.referee,
                     action='update',
-                    source='competition_admin' if is_admin else 'referee_app',
+                    source=_sursa_notei(request, referee_id),
                     created_by=request.user if request.user.is_authenticated else None,
                     score_value=existing.score,
                     previous_score=previous_score,
@@ -422,7 +461,7 @@ class CategoryRefereeScoreViewSet(viewsets.ViewSet):
                 athlete_score=instance.athlete_score,
                 referee=instance.referee,
                 action='update',
-                source='competition_admin' if (user.is_staff or (hasattr(user, 'role') and user.role == 'admin')) else 'referee_app',
+                source=_sursa_notei(request, instance.referee_id),
                 created_by=request.user if request.user.is_authenticated else None,
                 score_value=instance.score,
                 previous_score=previous_score,
@@ -764,6 +803,20 @@ class CategoryAthleteScoreViewSet(viewsets.ModelViewSet):
         """Return scores based on user role and visibility (includes individual and team results)"""
         user = self.request.user
         
+        # Masa centrala vede TOT ce e pe terenul ei.
+        #
+        # Fara randurile astea, cine tine masa e tratat ca orice arbitru: vede
+        # doar notele lui si pe cele deja aprobate. In competitie nimic nu e
+        # aprobat inca, deci tabelul ii ramanea gol - nu lipseau drepturile de
+        # scris, lipsea ce sa afiseze, si arata ca si cum notele nu s-ar fi
+        # salvat.
+        teren = terenul_mesei(self.request)
+        if teren is not None:
+            return (CategoryAthleteScore.objects
+                    .filter(category__field_assignment__field_id=teren)
+                    .select_related('athlete', 'category__event', 'reviewed_by')
+                    .prefetch_related('team_members'))
+
         # Get base queryset based on user role
         if user.is_staff or hasattr(user, 'role') and user.role == 'admin':
             # Admins can see all scores (individual and team)
