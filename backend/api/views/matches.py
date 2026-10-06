@@ -185,8 +185,29 @@ class MatchViewSet(viewsets.ViewSet):
             if referee_id:
                 events = events.filter(referee_id=referee_id)
 
+            # Numai ce e nou, daca cine intreaba spune ce are deja.
+            #
+            # Lista e append-only, deci "mai nou decat" inseamna un id mai mare.
+            # Fara asta, ecranul de operare primea tot istoricul meciului la
+            # fiecare 600ms - vreo 110 KB de fiecare data, de serializat pe
+            # server si de trecut prin WiFi, ca sa afle ca nu s-a schimbat nimic.
+            #
+            # `X-Total-Count` e perechea necesara: cine cere incremental nu are
+            # cum sa afle ca s-a STERS ceva (un reset de meci goleste lista).
+            # Comparand cate are cu cate spune serverul, isi da seama singur ca
+            # trebuie sa ia lista de la capat.
+            total = events.count()
+            since = request.query_params.get('since')
+            if since:
+                try:
+                    events = events.filter(id__gt=int(since))
+                except (TypeError, ValueError):
+                    pass
+
             serializer = RefereePointEventSerializer(events, many=True)
-            return Response(serializer.data)
+            raspuns = Response(serializer.data)
+            raspuns['X-Total-Count'] = str(total)
+            return raspuns
 
         if request.method == 'DELETE':
             # Butonul Reset de pe meci sterge punctele. Il apasa masa centrala,

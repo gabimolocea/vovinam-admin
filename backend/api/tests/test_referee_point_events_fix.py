@@ -243,3 +243,71 @@ class RefereePointEventTests(TestCase):
         self.assertEqual(first.validation_status, 'validated')
         self.assertEqual(second.validation_status, 'validated')
         self.assertEqual(third.validation_status, 'validated')
+
+
+class PointEventsIncrementalTests(TestCase):
+    """Lista de apasari se poate cere pe bucati.
+
+    Ecranul de operare o cerea intreaga la fiecare 600ms - peste 110 KB pentru
+    un meci lung, doar ca sa afle ca nu s-a schimbat nimic."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        today = timezone.now().date()
+        dob = today - timedelta(days=365 * 20)
+        rosu = Athlete.objects.create(first_name='Red', last_name='Inc', date_of_birth=dob)
+        albastru = Athlete.objects.create(first_name='Blue', last_name='Inc', date_of_birth=dob)
+        self.arbitru = Athlete.objects.create(first_name='Ref', last_name='Inc', is_referee=True, date_of_birth=dob)
+        cat = Category.objects.create(name='IncCat')
+        self.match = Match.objects.create(category=cat, red_corner=rosu, blue_corner=albastru)
+        self.admin = User.objects.create_user(
+            username='admin-inc', email='admin-inc@example.com', password='x',
+            role='admin', is_staff=True,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+        self.url = f'/api/matches/{self.match.id}/point_events/'
+
+    def _eveniment(self, puncte=1):
+        return RefereePointEvent.objects.create(
+            match=self.match, referee=self.arbitru, side='red', points=puncte, event_type='score',
+        )
+
+    def test_fara_since_vine_tot_si_cu_numarul_total(self):
+        self._eveniment(); self._eveniment()
+        r = self.client.get(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data), 2)
+        self.assertEqual(r.headers.get('X-Total-Count'), '2')
+
+    def test_cu_since_vine_doar_ce_e_nou(self):
+        unu = self._eveniment()
+        doi = self._eveniment()
+        r = self.client.get(self.url, {'since': unu.id})
+        self.assertEqual([e['id'] for e in r.data], [doi.id])
+        # Numarul total ramane al meciului intreg, nu al bucatii trimise:
+        # dupa el isi da seama cine intreaba ca nu i-a scapat nimic.
+        self.assertEqual(r.headers.get('X-Total-Count'), '2')
+
+    def test_since_la_zi_nu_mai_trimite_nimic(self):
+        self._eveniment()
+        ultim = self._eveniment()
+        r = self.client.get(self.url, {'since': ultim.id})
+        self.assertEqual(list(r.data), [])
+        self.assertEqual(r.headers.get('X-Total-Count'), '2')
+
+    def test_dupa_stergere_numarul_total_tradeaza_resetul(self):
+        unu = self._eveniment()
+        self._eveniment()
+        RefereePointEvent.objects.filter(match=self.match).delete()
+        r = self.client.get(self.url, {'since': unu.id})
+        self.assertEqual(list(r.data), [])
+        # Cine tine o lista crescatoare are doua, serverul spune zero - de aici
+        # stie sa o ia de la capat.
+        self.assertEqual(r.headers.get('X-Total-Count'), '0')
+
+    def test_since_aiurea_nu_arunca(self):
+        self._eveniment()
+        r = self.client.get(self.url, {'since': 'abc'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data), 1)

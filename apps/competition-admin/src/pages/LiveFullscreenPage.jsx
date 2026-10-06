@@ -360,7 +360,9 @@ export default function LiveFullscreenPage() {
         requests.push(matchRefereeScoreAPI.list({ match_id: itemId }));
         requests.push(matchEventAPI.list({ match_id: itemId }));
         requests.push(matchRefereeAssignmentAPI.list({ match_id: itemId }));
-        requests.push(refereeAPI.pointEvents.list(itemId));
+        // Doar ce e nou de la ultima rotatie. Vezi punctele() de mai jos:
+        // lista creste pe loc, in loc sa vina intreaga la fiecare 600ms.
+        requests.push(refereeAPI.pointEvents.list(itemId, puncteDeLa(itemId)));
         requests.push(recordingAPI.sessions.list({ event_id: eventId, field_id: fieldId }));
         // Prezenta arbitrilor lipsea de aici, desi panoul de categorie o
         // cerea: pe un meci, punctele verzi/rosii veneau doar din
@@ -394,7 +396,7 @@ export default function LiveFullscreenPage() {
         setMatchRefScores(arr(fourthR));
         setMatchEvents(arr(responses[4]));
         setMatchRefAssignments(arr(responses[5]));
-        setMatchPointEvents(arr(responses[6]));
+        setMatchPointEvents(await punctele(itemId, responses[6]));
         setRecordingSessions(arr(responses[7]));
         setRefPresence(arr(responses[8]));
       }
@@ -403,7 +405,54 @@ export default function LiveFullscreenPage() {
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [eventId, fieldId, itemId, panelType]);
+  }, [eventId, fieldId, itemId, panelType, puncteDeLa, punctele]);
+
+  // ── Punctele unui meci, aduse pe bucati ──────────────────────────────
+  //
+  // Lista de apasari a unui meci lung ajunge la peste o suta de kilobytes, iar
+  // ecranul de operare o cerea intreaga la fiecare 600ms doar ca sa constate
+  // ca nu s-a schimbat nimic. Serverul stie acum sa trimita numai ce e mai nou
+  // decat ce avem (`since`), iar aici o completam.
+  //
+  // `X-Total-Count` e plasa de siguranta: resetul unui meci sterge apasarile,
+  // iar o lista care doar creste n-ar afla niciodata. Daca numarul nu se
+  // potriveste, luam lista de la capat.
+  const puncteCache = useRef({ matchId: null, lista: [], ultimulId: 0 });
+
+  // Amandoua stabile (useCallback fara dependente): umbla doar pe ref, iar daca
+  // s-ar reface la fiecare randare ar reface si bucla de polling care le
+  // foloseste, adica exact ce incercam sa facem mai ieftin.
+  const puncteDeLa = useCallback((matchId) => {
+    const c = puncteCache.current;
+    return (c.matchId === matchId && c.ultimulId) ? { since: c.ultimulId } : undefined;
+  }, []);
+
+  const punctele = useCallback(async (matchId, raspuns) => {
+    const c = puncteCache.current;
+    const noi = arr(raspuns);
+    const total = Number(raspuns?.headers?.['x-total-count']);
+    let lista = (c.matchId === matchId && c.ultimulId) ? c.lista.concat(noi) : noi;
+
+    if (Number.isFinite(total) && lista.length !== total) {
+      // S-a sters ceva (reset de meci, sau o apasare scoasa de la masa).
+      try {
+        lista = arr(await refereeAPI.pointEvents.list(matchId));
+      } catch (e) {
+        console.error(e);
+        lista = noi;
+      }
+    }
+
+    // Ordinea ramane cea dupa timp: `since` merge pe id, iar un eveniment
+    // intarziat de retea poate avea id mai mare si moment mai vechi.
+    lista = [...lista].sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+    puncteCache.current = {
+      matchId,
+      lista,
+      ultimulId: lista.reduce((max, e) => Math.max(max, Number(e.id) || 0), 0),
+    };
+    return lista;
+  }, []);
 
   // Targeted category refresh (for DQ status updates etc.)
   const refreshCategories = useCallback(async () => {

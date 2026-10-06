@@ -282,6 +282,16 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# Ce poate CITI browserul din raspuns, nu doar trimite.
+#
+# Fara linia asta, un antet propriu exista in raspuns dar JavaScript-ul din
+# pagina nu-l vede deloc - CORS ascunde tot ce nu e in lista scurta standard.
+# `X-Total-Count` spune cate evenimente are meciul in total; ecranul de operare
+# il compara cu cate are el si isi da seama cand s-a sters ceva (un reset),
+# ca sa reia lista intreaga in loc sa ramana cu una care nu mai exista.
+CORS_EXPOSE_HEADERS = ['X-Total-Count']
+
 ROOT_URLCONF = 'crud.urls'
 
 TEMPLATES = [
