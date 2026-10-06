@@ -339,6 +339,53 @@ export default function LiveFullscreenPage() {
   }, [eventId]);
 
   // Lightweight fetch — only scores + sessions (polled every 2s)
+  // ── Punctele unui meci, aduse pe bucati ──────────────────────────────
+  //
+  // Lista de apasari a unui meci lung ajunge la peste o suta de kilobytes, iar
+  // ecranul de operare o cerea intreaga la fiecare 600ms doar ca sa constate
+  // ca nu s-a schimbat nimic. Serverul stie acum sa trimita numai ce e mai nou
+  // decat ce avem (`since`), iar aici o completam.
+  //
+  // `X-Total-Count` e plasa de siguranta: resetul unui meci sterge apasarile,
+  // iar o lista care doar creste n-ar afla niciodata. Daca numarul nu se
+  // potriveste, luam lista de la capat.
+  const puncteCache = useRef({ matchId: null, lista: [], ultimulId: 0 });
+
+  // Amandoua stabile (useCallback fara dependente): umbla doar pe ref, iar daca
+  // s-ar reface la fiecare randare ar reface si bucla de polling care le
+  // foloseste, adica exact ce incercam sa facem mai ieftin.
+  const puncteDeLa = useCallback((matchId) => {
+    const c = puncteCache.current;
+    return (c.matchId === matchId && c.ultimulId) ? { since: c.ultimulId } : undefined;
+  }, []);
+
+  const punctele = useCallback(async (matchId, raspuns) => {
+    const c = puncteCache.current;
+    const noi = arr(raspuns);
+    const total = Number(raspuns?.headers?.['x-total-count']);
+    let lista = (c.matchId === matchId && c.ultimulId) ? c.lista.concat(noi) : noi;
+
+    if (Number.isFinite(total) && lista.length !== total) {
+      // S-a sters ceva (reset de meci, sau o apasare scoasa de la masa).
+      try {
+        lista = arr(await refereeAPI.pointEvents.list(matchId));
+      } catch (e) {
+        console.error(e);
+        lista = noi;
+      }
+    }
+
+    // Ordinea ramane cea dupa timp: `since` merge pe id, iar un eveniment
+    // intarziat de retea poate avea id mai mare si moment mai vechi.
+    lista = [...lista].sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+    puncteCache.current = {
+      matchId,
+      lista,
+      ultimulId: lista.reduce((max, e) => Math.max(max, Number(e.id) || 0), 0),
+    };
+    return lista;
+  }, []);
+
   const fetchMatchState = useCallback(async () => {
     if (!eventId) return;
     if (pollInFlightRef.current) return;
@@ -406,53 +453,6 @@ export default function LiveFullscreenPage() {
       pollInFlightRef.current = false;
     }
   }, [eventId, fieldId, itemId, panelType, puncteDeLa, punctele]);
-
-  // ── Punctele unui meci, aduse pe bucati ──────────────────────────────
-  //
-  // Lista de apasari a unui meci lung ajunge la peste o suta de kilobytes, iar
-  // ecranul de operare o cerea intreaga la fiecare 600ms doar ca sa constate
-  // ca nu s-a schimbat nimic. Serverul stie acum sa trimita numai ce e mai nou
-  // decat ce avem (`since`), iar aici o completam.
-  //
-  // `X-Total-Count` e plasa de siguranta: resetul unui meci sterge apasarile,
-  // iar o lista care doar creste n-ar afla niciodata. Daca numarul nu se
-  // potriveste, luam lista de la capat.
-  const puncteCache = useRef({ matchId: null, lista: [], ultimulId: 0 });
-
-  // Amandoua stabile (useCallback fara dependente): umbla doar pe ref, iar daca
-  // s-ar reface la fiecare randare ar reface si bucla de polling care le
-  // foloseste, adica exact ce incercam sa facem mai ieftin.
-  const puncteDeLa = useCallback((matchId) => {
-    const c = puncteCache.current;
-    return (c.matchId === matchId && c.ultimulId) ? { since: c.ultimulId } : undefined;
-  }, []);
-
-  const punctele = useCallback(async (matchId, raspuns) => {
-    const c = puncteCache.current;
-    const noi = arr(raspuns);
-    const total = Number(raspuns?.headers?.['x-total-count']);
-    let lista = (c.matchId === matchId && c.ultimulId) ? c.lista.concat(noi) : noi;
-
-    if (Number.isFinite(total) && lista.length !== total) {
-      // S-a sters ceva (reset de meci, sau o apasare scoasa de la masa).
-      try {
-        lista = arr(await refereeAPI.pointEvents.list(matchId));
-      } catch (e) {
-        console.error(e);
-        lista = noi;
-      }
-    }
-
-    // Ordinea ramane cea dupa timp: `since` merge pe id, iar un eveniment
-    // intarziat de retea poate avea id mai mare si moment mai vechi.
-    lista = [...lista].sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
-    puncteCache.current = {
-      matchId,
-      lista,
-      ultimulId: lista.reduce((max, e) => Math.max(max, Number(e.id) || 0), 0),
-    };
-    return lista;
-  }, []);
 
   // Targeted category refresh (for DQ status updates etc.)
   const refreshCategories = useCallback(async () => {
