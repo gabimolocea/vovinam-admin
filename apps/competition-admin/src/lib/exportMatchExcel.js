@@ -20,7 +20,7 @@ import { REAL_TIME_POINT_VALIDATION_WINDOW_MS, ARBITRI_PENTRU_FAZA } from '@shar
  * APASAT: un arbitru care lipseste sistematic de la fazele unui luptator, pe
  * care ceilalti patru le vad, spune ceva ce scorul final nu spune.
  */
-function fazeleMeciului({ pointEvents = [], matchRefSlots = [] }) {
+export function fazeleMeciului({ pointEvents = [], matchRefSlots = [] }) {
   const momentul = (e) => {
     const client = Number(e?.metadata?.client_timestamp_ms);
     if (Number.isFinite(client)) return client;

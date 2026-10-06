@@ -1,10 +1,13 @@
 // Reconstructia fazelor, pe cazurile care conteaza.
-import { readFileSync } from 'fs';
-const sursa = readFileSync('/Users/gabimolocea/vovinam-admin/apps/competition-admin/src/lib/exportMatchExcel.js', 'utf8');
-const corp = sursa.slice(sursa.indexOf('function fazeleMeciului'), sursa.indexOf('function renderScoringTimelineChart'));
-const FEREASTRA = 1500, PRAG = 3;
-const fazeleMeciului = new Function('REAL_TIME_POINT_VALIDATION_WINDOW_MS', 'ARBITRI_PENTRU_FAZA',
-  corp + '; return fazeleMeciului;')(FEREASTRA, PRAG);
+//
+// Functia se IMPORTA, nu se mai decupeaza din textul sursei.
+//
+// Testul citea exportMatchExcel.js de la o cale absoluta de pe calculatorul
+// meu, taia bucata dintre doua nume de functii si o trecea prin `new Function`
+// cu constantele scrise de mana. Mergea doar la mine: in CI cadea cu ENOENT pe
+// /Users/gabimolocea/..., si oricum masura regula pe care o scria testul, nu pe
+// cea din cod.
+import { fazeleMeciului } from './exportMatchExcel';
 
 // Rulat de vitest (`npm test`), ca restul testelor din proiect.
 //
