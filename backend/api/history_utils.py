@@ -3,7 +3,11 @@ Utility functions for tracking change history in Django admin.
 """
 from django.contrib.admin.models import LogEntry, ADDITION, CHANGE, DELETION
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 import json
+
+# Cat incape in LogEntry.object_repr. Django o declara varchar(200).
+LUNGIME_REPR = 200
 
 
 def create_log_entry(obj, action_type, user=None, change_message=""):
@@ -24,19 +28,31 @@ def create_log_entry(obj, action_type, user=None, change_message=""):
         return None
     
     content_type = ContentType.objects.get_for_model(obj)
-    
+
     try:
-        log_entry = LogEntry.objects.create(
-            content_type=content_type,
-            object_id=str(obj.pk),
-            object_repr=str(obj),
-            action_flag=action_type,
-            change_message=change_message,
-            user=user
-        )
-        return log_entry
+        # `atomic` nu e de prisos, e tocmai miezul.
+        #
+        # `except` de mai jos prinde exceptia Python, dar nu si starea bazei:
+        # in PostgreSQL, o comanda cazuta ABANDONEAZA tranzacția, iar tot ce s-a
+        # facut in ea se pierde la iesire. Iar stergerea unui obiect ruleaza
+        # intr-un bloc atomic, impreuna cu semnalele ei - deci un jurnal care nu
+        # intra anula tocmai stergerea, in tacere: endpointul raspundea 204 pe
+        # ceva ce nu se intamplase. Punctul de salvare de aici tine caderea
+        # inchisa inauntru.
+        with transaction.atomic():
+            return LogEntry.objects.create(
+                content_type=content_type,
+                object_id=str(obj.pk),
+                # Taiat, nu lasat sa cada: numele unui meci include categoria,
+                # grupa SI titlul competitiei, si trece de 200 de caractere la
+                # orice competitie cu nume lung.
+                object_repr=str(obj)[:LUNGIME_REPR],
+                action_flag=action_type,
+                change_message=change_message,
+                user=user,
+            )
     except Exception as e:
-        # Silently fail if we can't create the log entry
+        # Jurnalul e util, dar nu e motiv sa pice actiunea pe care o descrie.
         print(f"Error creating log entry: {e}")
         return None
 
