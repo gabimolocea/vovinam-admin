@@ -1,4 +1,6 @@
 import ExcelJS from 'exceljs';
+import { abateriLupta, PRAGURI } from './impartialitate';
+import { REAL_TIME_POINT_VALIDATION_WINDOW_MS, ARBITRI_PENTRU_FAZA } from '@shared/lib/realtimePoints';
 
 /**
  * Renders a per-second scoring timeline as a PNG (via an offscreen canvas):
@@ -7,7 +9,56 @@ import ExcelJS from 'exceljs';
  * obvious which referee never scored - that's the whole point of this
  * chart, not a general-purpose analytics view.
  */
-function renderScoringTimelineChart({ matchTitle, matchRefSlots, pointEvents }) {
+/**
+ * Fazele unui meci, din apasarile brute.
+ *
+ * O "faza" e o secventa de apasari pe aceeasi parte, la mai putin de
+ * REAL_TIME_POINT_VALIDATION_WINDOW_MS una de alta. Faza conteaza daca au
+ * vazut-o cel putin ARBITRI_PENTRU_FAZA arbitri.
+ *
+ * Partea care intereseaza la final de meci nu e cine a apasat, ci CINE N-A
+ * APASAT: un arbitru care lipseste sistematic de la fazele unui luptator, pe
+ * care ceilalti patru le vad, spune ceva ce scorul final nu spune.
+ */
+function fazeleMeciului({ pointEvents = [], matchRefSlots = [] }) {
+  const momentul = (e) => {
+    const client = Number(e?.metadata?.client_timestamp_ms);
+    if (Number.isFinite(client)) return client;
+    const t = new Date(e?.timestamp || 0).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+
+  const sortate = (pointEvents || [])
+    .filter(e => e && e.event_type !== 'penalty' && e.referee)
+    .sort((x, y) => momentul(x) - momentul(y));
+
+  const faze = [];
+  for (const e of sortate) {
+    const t = momentul(e);
+    const ultima = faze.find(f => f.side === e.side
+      && f.points === Number(e.points || 0)
+      && t - f.ancora < REAL_TIME_POINT_VALIDATION_WINDOW_MS
+      && t >= f.ancora);
+    if (ultima) {
+      ultima.arbitri.add(e.referee);
+      ultima.ultimul = t;
+    } else {
+      faze.push({
+        ancora: t, ultimul: t, side: e.side, points: Number(e.points || 0),
+        arbitri: new Set([e.referee]),
+      });
+    }
+  }
+
+  const alocati = (matchRefSlots || []).filter(r => r.id);
+  return faze.map(f => ({
+    ...f,
+    confirmata: f.arbitri.size >= ARBITRI_PENTRU_FAZA,
+    lipsa: alocati.filter(r => !f.arbitri.has(r.id)),
+  }));
+}
+
+function renderScoringTimelineChart({ matchTitle, matchRefSlots, pointEvents, faze = [] }) {
   const W = 1200;
   const rowH = 46;
   const marginLeft = 170, marginRight = 30, marginTop = 56, marginBottom = 36;
@@ -54,6 +105,35 @@ function renderScoringTimelineChart({ matchTitle, matchRefSlots, pointEvents }) 
   const tMax = Math.max(...times);
   const span = Math.max(tMax - tMin, 1000);
 
+  // Benzile fazelor, desenate INAINTEA punctelor ca sa stea dedesubt.
+  //
+  // Verde = faza a fost confirmata de destui arbitri si a dat puncte; gri =
+  // au apasat prea putini, deci n-a contat. Cu banda in spate se vede dintr-o
+  // privire cine lipseste dintr-o faza pe care ceilalti au vazut-o: randul lui
+  // e gol tocmai acolo unde banda e verde.
+  const laX = (t) => marginLeft + ((t - tMin) / span) * plotW;
+  faze.forEach((f) => {
+    const x1 = laX(f.ancora);
+    const x2 = Math.max(laX(f.ultimul), x1 + 2);
+    ctx.fillStyle = f.confirmata ? 'rgba(16,185,129,0.14)' : 'rgba(156,163,175,0.16)';
+    ctx.fillRect(x1 - 3, marginTop, (x2 - x1) + 6, matchRefSlots.length * rowH);
+  });
+
+  // Secundele, ca sa se poata citi "la ce moment" fara sa se ghiceasca.
+  const secunde = Math.ceil(span / 1000);
+  const pasSecunde = Math.max(1, Math.ceil(secunde / 20));
+  ctx.strokeStyle = '#f3f4f6';
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '10px sans-serif';
+  for (let sec = 0; sec <= secunde; sec += pasSecunde) {
+    const x = laX(tMin + sec * 1000);
+    ctx.beginPath();
+    ctx.moveTo(x, marginTop);
+    ctx.lineTo(x, marginTop + matchRefSlots.length * rowH);
+    ctx.stroke();
+    ctx.fillText(`${sec}s`, x - 6, marginTop - 6);
+  }
+
   matchRefSlots.forEach((ref, ri) => {
     if (!ref.id) return;
     const y = marginTop + ri * rowH + rowH / 2;
@@ -92,6 +172,10 @@ function renderScoringTimelineChart({ matchTitle, matchRefSlots, pointEvents }) 
   ctx.fillStyle = '#374151'; ctx.fillText('Albastru', marginLeft + 70, 44);
   ctx.globalAlpha = 0.35; ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(marginLeft + 150, 40, 4, 0, Math.PI * 2); ctx.fill();
   ctx.globalAlpha = 1; ctx.fillStyle = '#374151'; ctx.fillText('Respins de admin', marginLeft + 160, 44);
+  ctx.fillStyle = 'rgba(16,185,129,0.35)'; ctx.fillRect(marginLeft + 290, 34, 12, 12);
+  ctx.fillStyle = '#374151'; ctx.fillText(`Fază confirmată (${ARBITRI_PENTRU_FAZA}+ arbitri)`, marginLeft + 308, 44);
+  ctx.fillStyle = 'rgba(156,163,175,0.4)'; ctx.fillRect(marginLeft + 470, 34, 12, 12);
+  ctx.fillStyle = '#374151'; ctx.fillText('Fază neconfirmată', marginLeft + 488, 44);
 
   return canvas.toDataURL('image/png');
 }
@@ -105,7 +189,7 @@ function renderScoringTimelineChart({ matchTitle, matchRefSlots, pointEvents }) 
  * the field-schedule match detail modal (ProgramarePage), so the two
  * never drift into two different-looking exports for the same data.
  */
-export async function exportMatchExcel({ match, matchRounds, matchRefScores, matchEvents, pointEvents, matchRefSlots }) {
+export async function exportMatchExcel({ match, matchRounds, matchRefScores, matchEvents, pointEvents, matchRefSlots, competitionReferees }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'FRVV Admin';
   wb.created = new Date();
@@ -299,15 +383,99 @@ export async function exportMatchExcel({ match, matchRounds, matchRefScores, mat
   // ── Sheet 4: Grafic Punctaj (visual per-second scoring timeline, one
   //     row per referee - the empty rows are exactly which referees
   //     never submitted a single point) ──
+  const faze = fazeleMeciului({ pointEvents, matchRefSlots: matchRefSlots || [] });
+
   const ws4 = wb.addWorksheet('Grafic Punctaj');
   try {
-    const dataUrl = renderScoringTimelineChart({ matchTitle, matchRefSlots: matchRefSlots || [], pointEvents: pointEvents || [] });
+    const dataUrl = renderScoringTimelineChart({ matchTitle, matchRefSlots: matchRefSlots || [], pointEvents: pointEvents || [], faze });
     const imageId = wb.addImage({ base64: dataUrl.split(',')[1], extension: 'png' });
     ws4.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 1200, height: 56 + (matchRefSlots || []).length * 46 + 36 } });
   } catch (err) {
     // Canvas isn't available in every runtime (e.g. a headless test) -
     // fall back to a plain note rather than failing the whole export.
     ws4.addRow(['Graficul nu a putut fi generat: ' + err.message]);
+  }
+
+  // ── Faze — cine a văzut fiecare fază și cine a lipsit de la ea ──
+  if (faze.length) {
+    const t0 = Math.min(...faze.map(f => f.ancora));
+    const ws6 = wb.addWorksheet('Faze');
+    ws6.addRow(['FAZE — ' + matchTitle]);
+    ws6.getRow(1).font = { bold: true, size: 14 };
+    ws6.addRow([`O fază contează dacă au văzut-o cel puțin ${ARBITRI_PENTRU_FAZA} arbitri, în ${REAL_TIME_POINT_VALIDATION_WINDOW_MS / 1000}s unul de altul.`]);
+    ws6.addRow(['Coloana "Nu au punctat" e cea care spune ceva: un arbitru care lipsește mereu de la fazele aceluiași luptător.']);
+    ws6.getRow(2).font = { size: 10, italic: true };
+    ws6.getRow(3).font = { size: 10, italic: true };
+    ws6.addRow([]);
+    const cap6 = ws6.addRow(['SECUNDA', 'COLȚ', 'PUNCTE', 'CÂȚI AU VĂZUT', 'A CONTAT', 'NU AU PUNCTAT']);
+    cap6.font = { bold: true };
+    for (const f of faze) {
+      ws6.addRow([
+        Number(((f.ancora - t0) / 1000).toFixed(1)),
+        f.side === 'blue' ? 'Albastru' : 'Roșu',
+        f.points,
+        f.arbitri.size,
+        f.confirmata ? 'DA' : 'nu',
+        f.lipsa.map(r => `A${r.pos} ${r.name || ''}`.trim()).join(', ') || '—',
+      ]);
+    }
+    ws6.columns = [{ width: 10 }, { width: 11 }, { width: 9 }, { width: 15 }, { width: 11 }, { width: 46 }];
+
+    // Cat de des a lipsit fiecare de la fazele care au contat.
+    ws6.addRow([]);
+    const cap7 = ws6.addRow(['ARBITRU', 'FAZE CONFIRMATE', 'A VĂZUT', 'A LIPSIT', 'LIPSĂ %']);
+    cap7.font = { bold: true };
+    const confirmate = faze.filter(f => f.confirmata);
+    for (const r of (matchRefSlots || []).filter(x => x.id)) {
+      const vazute = confirmate.filter(f => f.arbitri.has(r.id)).length;
+      const lipsa = confirmate.length - vazute;
+      ws6.addRow([
+        `A${r.pos} ${r.name || ''}`.trim(), confirmate.length, vazute, lipsa,
+        confirmate.length ? Number(((lipsa / confirmate.length) * 100).toFixed(0)) : 0,
+      ]);
+    }
+  }
+
+  // ── Imparțialitate — cat de diferit a notat fiecare arbitru colturile ──
+  //
+  // Aceeasi masuratoare ca la tehnica, din acelasi modul: marja pe care
+  // arbitrul o da coltului clubului sau, fata de mediana colegilor pe aceeasi
+  // runda. O a doua implementare aici ar fi divergat de prima.
+  const clubArbitru = new Map(
+    (competitionReferees || []).filter(cr => cr.athlete && cr.club_name).map(cr => [cr.athlete, cr.club_name]),
+  );
+  const numeArbitru = new Map(
+    (matchRefSlots || []).filter(r => r.id).map(r => [r.id, r.name || `A${r.pos}`]),
+  );
+  const abateri = abateriLupta({
+    noteArbitri: matchRefScores || [],
+    clubRosu: match?.red_corner_club_name,
+    clubAlbastru: match?.blue_corner_club_name,
+    clubArbitru,
+    numeArbitru,
+  });
+
+  if (abateri.length) {
+    const ws5 = wb.addWorksheet('Imparțialitate');
+    ws5.addRow(['IMPARȚIALITATE — ' + matchTitle]);
+    ws5.getRow(1).font = { bold: true, size: 14 };
+    ws5.addRow(['Marja dată de fiecare arbitru colțului propriului club, față de mediana colegilor pe aceeași rundă.']);
+    ws5.addRow([`Nu e o dovadă: arată unde merită să se uite un om. Sub ${PRAGURI.MINIM_SPORTIVI} runde judecate nu se marchează nimic.`]);
+    ws5.getRow(2).font = { size: 10, italic: true };
+    ws5.getRow(3).font = { size: 10, italic: true };
+    ws5.addRow([]);
+    const cap = ws5.addRow(['ARBITRU', 'CLUB', 'RUNDE CU CLUBUL', 'ABATERE', 'ALTE RUNDE', 'ABATERE', 'DIFERENȚĂ']);
+    cap.font = { bold: true };
+    const doua = (v) => (v == null ? '—' : Number(v.toFixed(2)));
+    for (const ab of abateri) {
+      const r = ws5.addRow([
+        ab.arbitru, ab.club, ab.nProprii, doua(ab.medieProprii),
+        ab.nAltii, doua(ab.medieAltii),
+        ab.diferenta == null ? '—' : `${doua(ab.diferenta)} (${ab.semnal})`,
+      ]);
+      if (ab.semnal === 'de verificat') r.font = { bold: true };
+    }
+    ws5.columns = [{ width: 26 }, { width: 24 }, { width: 18 }, { width: 13 }, { width: 14 }, { width: 13 }, { width: 22 }];
   }
 
   // ── Download ──
