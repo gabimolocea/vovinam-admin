@@ -284,7 +284,13 @@ static lv_obj_t* notaConfirm, *notaConfirmText;
 static bool      ceremConfirmare = false;
 // Meci in timp real
 static BaraSus   meciBara;
-static lv_obj_t* meciSferturi[4], *meciEtichete[4], *meciBanda;
+static lv_obj_t* meciPanou, *meciPunct, *meciStare;
+static void aduMeciLaZi();
+
+// Cat dureaza o jumatate de clipire a verdelui de la punctul validat. Nu e o
+// infrumusetare: arbitrul se uita la saltea, nu la ecran, si il prinde cu
+// coada ochiului. Ceva care se misca se prinde asa; o culoare statica, nu.
+static const unsigned long CLIPIRE_MS = 220;
 // Suprapunerea de punct
 static lv_obj_t* punctValoare, *punctCuloare, *punctStare, *punctDetaliu;
 
@@ -667,38 +673,44 @@ static void construiesteMeci() {
   ecrMeci  = ecranNou();
   meciBara = faBara(ecrMeci);
 
-  // Patru sferturi, PATRU OBIECTE. Asta e tot rostul regulii masurate: un
-  // punct dat atinge un sfert, nu ecranul. Un panou care le-ar contine pe
-  // toate ar fi invalidat intreg la fiecare apasare.
-  const int latS = ECRAN_LAT / 2;
-  const int inalS = (584 - 52) / 2;
-  for (int i = 0; i < 4; i++) {
-    int col = (i < 2) ? 0 : 1;          // 0,1 = stanga; 2,3 = dreapta
-    int rand = i % 2;
-    lv_obj_t* q = lv_obj_create(ecrMeci);
-    lv_obj_set_size(q, latS, inalS);
-    lv_obj_set_pos(q, col * latS, 52 + rand * inalS);
-    lv_obj_set_style_border_width(q, 2, 0);
-    lv_obj_set_style_border_color(q, lv_color_black(), 0);
-    lv_obj_set_style_radius(q, 0, 0);
-    lv_obj_clear_flag(q, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(q, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(q, [](lv_event_t* e) {
-                             actSfert((int)(intptr_t)lv_event_get_user_data(e));
-                           },
-                        LV_EVENT_CLICKED, (void*)(intptr_t)i);
-    meciSferturi[i] = q;
+  // UN panou, nu patru sferturi.
+  //
+  // Sferturile erau butoane: scriau +2 si +1 si se apasau. De cand punctul se
+  // da de pe butoane fizice, ele n-ar mai fi fost butoane, ci doar patru
+  // dreptunghiuri colorate care arata ce poti apasa in alta parte. Ecranul la
+  // lupte are acum o singura treaba: sa spuna ce s-a intamplat cu ULTIMA
+  // apasare - a plecat, s-a validat, sau n-a plecat si de ce.
+  //
+  // Si ramane un singur obiect tocmai fiindca se schimba tot, de fiecare data:
+  // nu mai exista un sfert atins si trei neatinse.
+  meciPanou = lv_obj_create(ecrMeci);
+  lv_obj_set_size(meciPanou, ECRAN_LAT, ECRAN_INAL - 52);
+  lv_obj_set_pos(meciPanou, 0, 52);
+  lv_obj_set_style_border_width(meciPanou, 0, 0);
+  lv_obj_set_style_radius(meciPanou, 0, 0);
+  lv_obj_clear_flag(meciPanou, LV_OBJ_FLAG_SCROLLABLE);
 
-    meciEtichete[i] = lv_label_create(q);
-    lv_obj_set_style_text_font(meciEtichete[i], &lv_font_montserrat_48, 0);
-    lv_obj_center(meciEtichete[i]);
-  }
+  // Doua randuri, amandoua la cel mai mare corp pe care il avem: valoarea sus,
+  // ce s-a ales de ea dedesubt. Nimic altceva.
+  //
+  // Arbitrul de la lupte citeste ecranul dintr-o aruncatura de ochi, cu capul
+  // intors de la saltea. O explicatie corecta pe trei randuri nu se citeste
+  // asa - se citesc doua cuvinte mari, sau niciunul.
+  meciPunct = lv_label_create(meciPanou);
+  lv_obj_set_style_text_font(meciPunct, &lv_font_montserrat_48, 0);
+  lv_obj_align(meciPunct, LV_ALIGN_CENTER, 0, -50);
 
-  // Banda de jos: ori in ce repriza suntem, ori ce s-a ales de ultima apasare.
-  // Nicio apasare nu dispare in tacere.
-  meciBanda = eticheta(ecrMeci, 0, 596, &lv_font_montserrat_28, CL_SLAB);
-  lv_obj_set_width(meciBanda, ECRAN_LAT);
-  lv_obj_set_style_text_align(meciBanda, LV_TEXT_ALIGN_CENTER, 0);
+  meciStare = lv_label_create(meciPanou);
+  lv_obj_set_style_text_font(meciStare, &lv_font_montserrat_48, 0);
+  lv_obj_set_width(meciStare, ECRAN_LAT - 16);
+  lv_obj_set_style_text_align(meciStare, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(meciStare, LV_ALIGN_CENTER, 0, 40);
+
+  // Banda de jos a plecat.
+  //
+  // Spunea a doua oara ce spune panoul din mijloc, doar mai lung - iar la
+  // latimea ecranului frazele ei ("TRIMIS - e nevoie de 3 arbitri") ieseau
+  // afara si se taiau. Tot ce avea de spus incape in centru, in doua cuvinte.
 }
 
 static void construiestePunct() {
@@ -783,6 +795,23 @@ void uiTick() {
   unsigned long acum = millis();
   lv_tick_inc(acum - ultimul);
   ultimul = acum;
+
+  // Clipirea verde a punctului validat.
+  //
+  // Redesenarea vine de aici, nu dintr-un timer LVGL: panoul isi ia culoarea
+  // din millis() (vezi aduMeciLaZi), deci tot ce trebuie e sa fie rechemat
+  // cand se schimba jumatatea de perioada. Si numai atunci - un redesen la
+  // fiecare trecere prin bucla ar manca banda din PSRAM pe care o imparte cu
+  // radioul, adica exact ce face imaginea sa tremure.
+  if (lv_scr_act() == ecrMeci && pointState == POINT_VALIDATED) {
+    static unsigned long ultimaFaza = 0;
+    unsigned long faza = acum / CLIPIRE_MS;
+    if (faza != ultimaFaza) {
+      ultimaFaza = faza;
+      aduMeciLaZi();
+    }
+  }
+
   lv_timer_handler();
 }
 
@@ -973,51 +1002,77 @@ static void aduNotaLaZi() {
   puneFmt(et, "TRIMITE %d", draftScore);
 }
 
-static void aduMeciLaZi() {
-  for (int i = 0; i < 4; i++) {
-    bool rosu = pointButtons[i].isRed;
-    int  pct  = pointButtons[i].points;
-    lv_color_t fundal = rosu ? CL_ROSU : CL_ALBASTRU;
+// Culoarea coltului validat, ca sa se vada SI ce s-a validat, nu doar ca s-a
+// validat. Alterneaza cu verdele.
+static lv_color_t culoareaMeaDeAcum() {
+  return pointSideRed ? CL_ROSU : CL_ALBASTRU;
+}
 
-    // Sfertul apasat acum. Il recunoastem dupa culoare si valoare, nu dupa
-    // pozitie, ca sa nu existe doua adevaruri despre aceeasi apasare.
-    bool almeu = (pointState != POINT_NONE) && (pointSideRed == rosu) &&
-                 (pointValue == pct);
-    if (almeu) {
-      if      (pointState == POINT_VALIDATED) fundal = CL_VERDE;
-      else if (pointState == POINT_FAILED)    fundal = CL_PANOU;
-      else if (pointState == POINT_SENDING ||
-               pointState == POINT_PENDING)   fundal = CL_GOLD;
-    }
-    puneFundal(meciSferturi[i], fundal);
-    puneFmt(meciEtichete[i], "+%d", pct);
-    lv_obj_set_style_text_color(meciEtichete[i],
-        (fundal.full == CL_GOLD.full) ? lv_color_black() : CL_TEXT, 0);
+static void aduMeciLaZi() {
+  // Ecranul de la lupte are o singura treaba: ce s-a intamplat cu ULTIMA
+  // apasare. Sferturile cu +2 si +1 au plecat odata cu trecerea punctelor pe
+  // butoane fizice - ele aratau ce poti apasa, iar acum nu mai apesi acolo.
+  lv_color_t fundal = CL_PANOU;
+  const char* stare = "";
+  char valoare[8] = "";
+  lv_color_t cerneala = CL_TEXT;
+
+  if (pointState != POINT_NONE) {
+    snprintf(valoare, sizeof(valoare), "+%d", pointValue);
   }
 
-  const char* banda; lv_color_t cul = CL_SLAB;
   switch (pointState) {
-    case POINT_SENDING:   banda = "SE TRIMITE..."; cul = CL_GOLD; break;
-    case POINT_PENDING:   banda = "TRIMIS - astept al 2-lea arbitru"; cul = CL_GOLD; break;
-    case POINT_VALIDATED: banda = "VALIDAT"; cul = CL_VERDE; break;
-    case POINT_FAILED:    banda = "NETRIMIS - fara legatura"; cul = CL_ROSU; break;
-    case POINT_TOO_FAST:  banda = "PREA REPEDE - punctul NU a plecat"; cul = CL_GOLD; break;
-    case POINT_CLOSED:    banda = allRoundsDone ? "MECI INCHEIAT - nu se puncteaza"
-                                                : "NU SE PUNCTEAZA ACUM"; cul = CL_GOLD; break;
+    case POINT_SENDING:
+      fundal = culoareaMeaDeAcum();
+      stare = "SE TRIMITE";
+      break;
+    case POINT_PENDING:
+      fundal = culoareaMeaDeAcum();
+      stare = "TRIMIS";
+      break;
+    case POINT_VALIDATED:
+      // Verde si culoarea coltului, pe rand - clipirea se face in uiTick().
+      // Asa se vede si CA s-a validat, si CUI, fara un rand de text in plus.
+      fundal = ((millis() / CLIPIRE_MS) % 2) ? CL_VERDE : culoareaMeaDeAcum();
+      stare = "VALIDAT";
+      break;
+    case POINT_TOO_FAST:
+      // Valoarea ramane pe ecran: acceptaApasare() o scrie chiar cand refuza,
+      // deci "+1 PREA REPEDE" spune care apasare n-a plecat.
+      fundal = lv_color_hex(0xE07A20);
+      stare = "PREA REPEDE";
+      break;
+    case POINT_CLOSED:
+      fundal = CL_PANOU;
+      stare = "NU ACUM";
+      break;
+    case POINT_FAILED:
+      fundal = CL_ROSU;
+      stare = "NETRIMIS";
+      break;
     default:
-      if      (!roundsKnown)      banda = "...";
-      else if (allRoundsDone)   { banda = "MECI INCHEIAT"; cul = CL_GOLD; }
-      else if (activeRoundPaused){ banda = "PAUZA"; cul = CL_GOLD; }
-      else if (!activeRoundId)  { banda = "INTRE REPRIZE"; cul = CL_GOLD; }
+      // In repaus randul de jos spune in ce repriza suntem. Textele sunt
+      // scurte dinadins: tot ce se scrie aici incape pe o linie la corpul mare.
+      if      (!roundsKnown)       stare = "";
+      else if (allRoundsDone)      stare = "MECI INCHEIAT";
+      else if (activeRoundPaused)  stare = "PAUZA";
+      else if (!activeRoundId)     stare = "INTRE REPRIZE";
       else {
-        static char r[24];
+        static char r[16];
         snprintf(r, sizeof(r), "REPRIZA %d", activeRoundNumber);
-        banda = r; cul = CL_VERDE;
+        stare = r;
       }
       break;
   }
-  pune(meciBanda, banda);
-  puneCuloareText(meciBanda, cul);
+
+  if (fundal.full == CL_VERDE.full || fundal.full == CL_GOLD.full) cerneala = lv_color_black();
+
+  puneFundal(meciPanou, fundal);
+  pune(meciPunct, valoare);
+  puneCuloareText(meciPunct, cerneala);
+  pune(meciStare, stare);
+  puneCuloareText(meciStare, cerneala);
+
 }
 
 static void aduPunctLaZi() {
