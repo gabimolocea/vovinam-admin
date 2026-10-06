@@ -6,8 +6,18 @@ const FEREASTRA = 1500, PRAG = 3;
 const fazeleMeciului = new Function('REAL_TIME_POINT_VALIDATION_WINDOW_MS', 'ARBITRI_PENTRU_FAZA',
   corp + '; return fazeleMeciului;')(FEREASTRA, PRAG);
 
-let ok = 0, rau = 0;
-const v = (n, c, d = '') => { if (c) { ok++; console.log('  ok  ', n); } else { rau++; console.log('  PICAT', n, d); } };
+// Rulat de vitest (`npm test`), ca restul testelor din proiect.
+//
+// Era un script de sine statator, cu propriul numarator si `process.exit` la
+// final. Mergea cu `node fisier.mjs`, dar vitest il lua si el - numele se
+// termina in .test.mjs - si cadea pe "process.exit unexpectedly called",
+// oprind CI-ul pentru tot workspace-ul.
+import { test, expect } from 'vitest';
+
+const inregistreaza = (nume, conditie, detaliu = '') => test(nume, () => {
+  expect(conditie, detaliu).toBe(true);
+});
+const v = inregistreaza;
 
 const sloturi = [1,2,3,4,5].map(i => ({ pos: i, id: i, name: `Arbitru ${i}` }));
 const ap = (ref, ms, side = 'red', points = 1) => ({
@@ -64,6 +74,3 @@ console.log('\n— cine lipseste mereu se vede —');
   const lipsa5 = conf.filter(x => x.lipsa.some(r => r.pos === 5)).length;
   v('arbitrul 5 lipseste de la toate trei', conf.length === 3 && lipsa5 === 3, `${conf.length} / ${lipsa5}`);
 }
-
-console.log(`\n${ok} trecute, ${rau} picate`);
-process.exit(rau ? 1 : 0);

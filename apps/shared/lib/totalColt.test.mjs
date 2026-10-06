@@ -5,8 +5,18 @@
 // -8 in sala, pe acelasi meci, in acelasi moment.
 import { totalColt, PENALIZARE_AVERTISMENT } from './realtimePoints.js';
 
-let ok = 0, rau = 0;
-const v = (n, c, d = '') => { if (c) { ok++; console.log('  ok  ', n); } else { rau++; console.log('  PICAT', n, d); } };
+// Rulat de vitest (`npm test`), ca restul testelor din proiect.
+//
+// Era un script de sine statator, cu propriul numarator si `process.exit` la
+// final. Mergea cu `node fisier.mjs`, dar vitest il lua si el - numele se
+// termina in .test.mjs - si cadea pe "process.exit unexpectedly called",
+// oprind CI-ul pentru tot workspace-ul.
+import { test, expect } from 'vitest';
+
+const inregistreaza = (nume, conditie, detaliu = '') => test(nume, () => {
+  expect(conditie, detaliu).toBe(true);
+});
+const v = inregistreaza;
 
 v('fara nimic, scorul e cel validat',
   totalColt({ puncteValidate: 10 }) === 10);
@@ -32,6 +42,3 @@ v('toate la un loc',
 
 v('lipsa unui camp nu strica suma',
   totalColt({ puncteValidate: 7 }) === totalColt({ puncteValidate: 7, penalizari: 0, bonusuri: 0, avertismente: 0 }));
-
-console.log(`\n${ok} trecute, ${rau} picate`);
-process.exit(rau ? 1 : 0);

@@ -6,11 +6,18 @@
 // treilea nu trebuie sa produca o acuzatie.
 import { abateriTehnica, abateriLupta } from './impartialitate.js';
 
-let trecute = 0, picate = 0;
-const verifica = (nume, conditie, detaliu = '') => {
-  if (conditie) { trecute++; console.log('  ok  ', nume); }
-  else { picate++; console.log('  PICAT', nume, detaliu); }
-};
+// Rulat de vitest (`npm test`), ca restul testelor din proiect.
+//
+// Era un script de sine statator, cu propriul numarator si `process.exit` la
+// final. Mergea cu `node fisier.mjs`, dar vitest il lua si el - numele se
+// termina in .test.mjs - si cadea pe "process.exit unexpectedly called",
+// oprind CI-ul pentru tot workspace-ul.
+import { test, expect } from 'vitest';
+
+const inregistreaza = (nume, conditie, detaliu = '') => test(nume, () => {
+  expect(conditie, detaliu).toBe(true);
+});
+const verifica = inregistreaza;
 
 const coloane = [
   { id: 1, name: 'A unu' }, { id: 2, name: 'B doi' }, { id: 3, name: 'C trei' },
@@ -94,6 +101,3 @@ console.log('\nâ€” lupte: arbitrul 2 (Regnum) umfla coltul rosu, care e Regnum â
   const a1 = r.find(x => x.arbitru === 'unu');
   verifica('arbitrul neutru iese 0', Math.abs(a1.diferenta ?? 0) < 0.01, JSON.stringify(a1));
 }
-
-console.log(`\n${trecute} trecute, ${picate} picate`);
-process.exit(picate ? 1 : 0);
