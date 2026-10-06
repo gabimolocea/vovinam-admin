@@ -958,9 +958,13 @@ export default function ProgramarePage() {
             )}
           </div>
         </div>
-        {/* Referee slots — categories only now; a match's referees are
-            assigned from its detail modal instead, to keep the card compact. */}
-        {item.assignment && isCat && <RefSlots itemType={item.type} itemId={item.id}
+        {/* Arbitrii, la fel pe meci ca pe proba de tehnica.
+            Statusul panelului e intrebarea pe care si-o pune cineva care se
+            uita la programul zilei - "cine arbitreaza asta, si e vreunul luat
+            de pe alt teren?" - iar raspunsul statea ascuns in fereastra de
+            detalii a meciului. Casutele stiu amandoua felurile de la bun
+            inceput (vezi RefSlots), deci era doar o conditie in plus aici. */}
+        {item.assignment && <RefSlots itemType={item.type} itemId={item.id}
           fieldId={item.assignment?.field} startMin={item.startMin} endMin={item.startMin != null ? item.startMin + duration : null} />}
       </div>
     );
