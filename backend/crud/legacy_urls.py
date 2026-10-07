@@ -18,6 +18,8 @@ CURRENT_ROUTES = {
     'confidentialitate', 'gdpr', 'competitii', 'contact',
 }
 
+DOCUMENT_EXTENSIONS = ('.pdf', '.doc', '.docx', '.xls', '.xlsx')
+
 FEDERATIE_PAGES = {'arbitri': '/arbitri', 'staff': '/staff'}
 
 
@@ -59,7 +61,19 @@ def legacy_redirect(path):
     if first == 'privacy-policy':
         return '/confidentialitate'
     if first == 'wp-content':
-        return '/regulament' if 'regulament' in path.lower() else '/documente'
+        # Only uploaded documents have a page that replaced them. Theme and
+        # plugin files, images, and junk like the literal "/wp-content/uploads/*"
+        # Google picked up from the old robots.txt are gone for good - see
+        # is_gone() - and redirecting them to /documente would be a lie.
+        lower = path.lower()
+        if not lower.endswith(DOCUMENT_EXTENSIONS):
+            return None
+        return '/regulament' if 'regulament' in lower else '/documente'
     if len(parts) == 1 and first not in CURRENT_ROUTES:
         return _news_path(parts[0]) or _event_path(parts[0])
     return None
+
+
+def is_gone(path):
+    """Old WordPress files with no replacement: answered 410, so Google drops them."""
+    return path.lower().startswith('/wp-content/')

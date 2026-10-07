@@ -4,7 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 import os
 from functools import lru_cache
-from django.http import HttpResponse, HttpResponsePermanentRedirect
+from django.http import HttpResponse, HttpResponseGone, HttpResponsePermanentRedirect
 from django.views.generic import TemplateView
 from django.views.generic.base import RedirectView
 from django.templatetags.static import static as static_url
@@ -49,11 +49,13 @@ def frontend(request):
     crud.legacy_urls) - checked first, so /congres-evvf-2025/ is one hop,
     not a slash redirect followed by another.
     """
-    from crud.legacy_urls import legacy_redirect
+    from crud.legacy_urls import is_gone, legacy_redirect
 
     target = legacy_redirect(request.path)
     if target:
         return HttpResponsePermanentRedirect(target)
+    if is_gone(request.path):
+        return HttpResponseGone()
     if request.path != '/' and request.path.endswith('/'):
         query = request.META.get('QUERY_STRING')
         return HttpResponsePermanentRedirect(request.path.rstrip('/') + (f'?{query}' if query else ''))

@@ -114,6 +114,11 @@ class LegacyWordPressRedirectTests(TestCase):
         for path in ('/', '/despre', '/noutati', '/noutati/congres-evvf-2025', '/cont', '/ciorna/', '/nu-exista/'):
             self.assertIsNone(legacy_urls.legacy_redirect(path), path)
 
+    def test_old_wordpress_files_with_no_replacement_are_gone(self):
+        for path in ('/wp-content/themes/bricks/*', '/wp-content/uploads/*', '/wp-content/uploads/2024/01/poza.jpg'):
+            response = crud_urls.frontend(RequestFactory().get(path))
+            self.assertEqual(response.status_code, 410, path)
+
     def test_frontend_view_redirects_in_one_hop(self):
         response = crud_urls.frontend(RequestFactory().get('/congres-evvf-2025/'))
         self.assertEqual(response.status_code, 301)
