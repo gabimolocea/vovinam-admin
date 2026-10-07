@@ -82,20 +82,20 @@ function DesktopNavItem({ item }) {
           <path d="M1.5 4L6 8l4.5-4" stroke="currentColor" strokeWidth="1.5" />
         </svg>
       </button>
-      {open && (
-        <div className="site-submenu absolute left-0 top-full z-50 flex min-w-[18rem] flex-col py-3">
-          {item.children.map((child) => (
-            <NavLink
-              key={child.to}
-              to={child.to}
-              className="site-submenu-link px-6 py-3.5"
-              onClick={() => setOpen(false)}
-            >
-              {child.label}
-            </NavLink>
-          ))}
-        </div>
-      )}
+      {/* Always in the page, only hidden while closed: rendered on hover
+          alone, Google never saw links to these pages from the homepage. */}
+      <div className={`site-submenu absolute left-0 top-full z-50 min-w-[18rem] flex-col py-3 ${open ? 'flex' : 'hidden'}`}>
+        {item.children.map((child) => (
+          <NavLink
+            key={child.to}
+            to={child.to}
+            className="site-submenu-link px-6 py-3.5"
+            onClick={() => setOpen(false)}
+          >
+            {child.label}
+          </NavLink>
+        ))}
+      </div>
     </div>
   );
 }
@@ -127,20 +127,18 @@ function MobileNavItem({ item, onNavigate }) {
         {item.label}
         <ChevronRight className={`h-5 w-5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
       </button>
-      {expanded && (
-        <div className="flex flex-col pb-2">
-          {item.children.map((child) => (
-            <NavLink
-              key={child.to}
-              to={child.to}
-              className="site-mobile-link px-8 py-2 text-base"
-              onClick={onNavigate}
-            >
-              {child.label}
-            </NavLink>
-          ))}
-        </div>
-      )}
+      <div className={`flex-col pb-2 ${expanded ? 'flex' : 'hidden'}`}>
+        {item.children.map((child) => (
+          <NavLink
+            key={child.to}
+            to={child.to}
+            className="site-mobile-link px-8 py-2 text-base"
+            onClick={onNavigate}
+          >
+            {child.label}
+          </NavLink>
+        ))}
+      </div>
     </div>
   );
 }

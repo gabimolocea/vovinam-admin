@@ -67,6 +67,20 @@ export function organizationJsonLd() {
   };
 }
 
+// Tells Google the site's own name (shown above the result instead of
+// the bare domain) - one of the signals it uses for the sitelinks block.
+export function websiteJsonLd() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    // The name Google shows above the result - spelled the way the
+    // federation writes it in the footer, not SITE_NAME's Việt Võ Đạo.
+    name: 'Federația Română de Vovinam Viet-Vo-Dao',
+    alternateName: [SITE_NAME, 'FRVV', 'Vovinam România'],
+    url: `${SITE_URL}/`,
+  };
+}
+
 export function newsArticleJsonLd(post, path) {
   return {
     '@context': 'https://schema.org',

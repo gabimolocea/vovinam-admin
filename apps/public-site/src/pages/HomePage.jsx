@@ -9,7 +9,7 @@ import NewsCard from '../components/NewsCard';
 import AboutVovinamSection from '../components/AboutVovinamSection';
 import PartnersSection from '../components/PartnersSection';
 import NextEventSection from '../components/NextEventSection';
-import Seo, { organizationJsonLd } from '../components/Seo';
+import Seo, { organizationJsonLd, websiteJsonLd } from '../components/Seo';
 
 export default function HomePage() {
   const [heroSlides, setHeroSlides] = useState([]);
@@ -93,7 +93,7 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col">
-      <Seo path="/" jsonLd={organizationJsonLd()} />
+      <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd()]} />
       {loading ? (
         <Skeleton className="site-full-bleed -mt-8 h-[560px] w-full rounded-none lg:h-[620px]" />
       ) : heroSlides.length > 0 ? (

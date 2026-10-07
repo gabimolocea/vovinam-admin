@@ -67,6 +67,18 @@ function organizationJsonLd() {
   };
 }
 
+function websiteJsonLd() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    // The name Google shows above the result - spelled the way the
+    // federation writes it in the footer, not SITE_NAME's Việt Võ Đạo.
+    name: 'Federația Română de Vovinam Viet-Vo-Dao',
+    alternateName: [SITE_NAME, 'FRVV', 'Vovinam România'],
+    url: `${SITE_URL}/`,
+  };
+}
+
 function newsArticleJsonLd(post, routePath) {
   return {
     '@context': 'https://schema.org',
@@ -104,14 +116,13 @@ function sportsEventJsonLd(event, routePath) {
 
 function buildStaticRoutes() {
   return [
-    { path: '/', title: null, description: DEFAULT_DESCRIPTION, jsonLd: organizationJsonLd() },
+    { path: '/', title: null, description: DEFAULT_DESCRIPTION, jsonLd: [websiteJsonLd(), organizationJsonLd()] },
     { path: '/noutati', title: 'Noutăți', description: 'Cele mai recente noutăți, comunicate și anunțuri ale Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/galerie', title: 'Media', description: 'Materiale video și poze din activitatea Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/despre', title: 'Despre noi', description: 'Despre Federația Română de Vovinam Việt Võ Đạo: istorie, misiune și structura federației.' },
     { path: '/calendar', title: 'Calendar competiții', description: 'Calendarul competițiilor, examenelor și seminariilor de pregătire organizate de Federația Română de Vovinam Việt Võ Đạo.' },
     { path: '/competitie', title: 'Competiție', description: 'Prezentarea sistemului competițional al Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/cluburi', title: 'Cluburi afiliate', description: 'Lista cluburilor sportive afiliate Federației Române de Vovinam Việt Võ Đạo, cu antrenori și localizare.' },
-    { path: '/sportivi', title: 'Sportivi', description: 'Sportivii legitimați ai cluburilor afiliate Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/staff', title: 'Staff federație', description: 'Consiliul actual și titlurile de Maestru acordate de Ministerul Sportului în cadrul Federației Române de Vovinam Việt Võ Đạo.' },
     { path: '/arbitri', title: 'Arbitri', description: 'Arbitrii internaționali și naționali acreditați de Federația Română de Vovinam Việt Võ Đạo.' },
     { path: '/regulament', title: 'Regulament', description: 'Regulament - Federația Română de Vovinam Việt Võ Đạo.' },
