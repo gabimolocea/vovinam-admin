@@ -45,7 +45,15 @@ def frontend(request):
     their own title and canonical; everything else (account pages, athlete
     pages, news posted since the last deploy) gets the SPA shell, which
     carries no canonical of its own and lets the app set the right one.
+    Old WordPress addresses get a 301 straight to their current page (see
+    crud.legacy_urls) - checked first, so /congres-evvf-2025/ is one hop,
+    not a slash redirect followed by another.
     """
+    from crud.legacy_urls import legacy_redirect
+
+    target = legacy_redirect(request.path)
+    if target:
+        return HttpResponsePermanentRedirect(target)
     if request.path != '/' and request.path.endswith('/'):
         query = request.META.get('QUERY_STRING')
         return HttpResponsePermanentRedirect(request.path.rstrip('/') + (f'?{query}' if query else ''))

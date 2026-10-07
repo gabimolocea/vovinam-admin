@@ -10,7 +10,9 @@ import { fetchAllNews, fetchAllEvents, fetchAllClubs } from './lib/fetch-content
 const SITE_URL = (process.env.VITE_SITE_URL || 'https://vovinam.ro').replace(/\/$/, '');
 const DIST_DIR = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..', 'dist');
 
-// Kept in sync with the routes declared in src/App.jsx.
+// Kept in sync with the routes declared in src/App.jsx - minus /sportivi,
+// which needs sign-in and is noindex: listing it here asked Google to index
+// a page that tells it not to.
 const STATIC_ROUTES = [
   '/',
   '/noutati',
@@ -19,7 +21,6 @@ const STATIC_ROUTES = [
   '/calendar',
   '/competitie',
   '/cluburi',
-  '/sportivi',
   '/staff',
   '/arbitri',
   '/regulament',

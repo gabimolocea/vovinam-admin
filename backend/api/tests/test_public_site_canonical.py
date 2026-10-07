@@ -3,9 +3,9 @@ import tempfile
 from unittest import mock
 
 from django.http import HttpResponse
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 
-from crud import urls as crud_urls
+from crud import legacy_urls, urls as crud_urls
 from crud.middleware import PrimaryHostRedirectMiddleware
 
 
@@ -71,3 +71,50 @@ class PrimaryHostRedirectTests(SimpleTestCase):
     def test_primary_and_other_hosts_pass_through(self):
         for host in ('vovinam.ro', 'admin.vovinam.ro', 'api.vovinam.ro', 'localhost'):
             self.assertEqual(self.call(host).content, b'page', host)
+
+
+class LegacyWordPressRedirectTests(TestCase):
+    """Old WordPress addresses Search Console listed as noindex - each lands on its page today."""
+
+    def setUp(self):
+        from api.models import User
+        from landing.models import NewsPost
+
+        author = User.objects.create_user('autor', email='autor@example.com', password='x')
+        NewsPost.objects.create(title='Congres', slug='congres-evvf-2025', author=author, content='x', published=True)
+        NewsPost.objects.create(title='Ciorna', slug='ciorna', author=author, content='x', published=False)
+        visible_events = {'stagiu-national-de-arbitraj-2024'}
+        patcher = mock.patch.object(
+            legacy_urls, '_event_path',
+            side_effect=lambda slug: f'/calendar/{slug}' if slug in visible_events else None,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_old_addresses_map_to_their_current_page(self):
+        cases = {
+            '/congres-evvf-2025/': '/noutati/congres-evvf-2025',
+            '/evenimente_info/stagiu-national-de-arbitraj-2024/': '/calendar/stagiu-national-de-arbitraj-2024',
+            '/evenimente_info/congres-evvf-2025/': '/noutati/congres-evvf-2025',
+            '/evenimente_info/ceva-sters/': '/calendar',
+            '/membri/angel-mititelu/': '/staff',
+            '/federatie/arbitri/': '/arbitri',
+            '/federatie/staff/': '/staff',
+            '/federatie/despre/': '/despre',
+            '/category/congres/': '/noutati',
+            '/tag/vovinam/': '/noutati',
+            '/noutati/page/4/': '/noutati',
+            '/privacy-policy/': '/confidentialitate',
+            '/wp-content/uploads/2025/05/Regulament-lupta-vovinam-2023.pdf': '/regulament',
+        }
+        for old, new in cases.items():
+            self.assertEqual(legacy_urls.legacy_redirect(old), new, old)
+
+    def test_current_routes_and_unknown_paths_are_left_alone(self):
+        for path in ('/', '/despre', '/noutati', '/noutati/congres-evvf-2025', '/cont', '/ciorna/', '/nu-exista/'):
+            self.assertIsNone(legacy_urls.legacy_redirect(path), path)
+
+    def test_frontend_view_redirects_in_one_hop(self):
+        response = crud_urls.frontend(RequestFactory().get('/congres-evvf-2025/'))
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response['Location'], '/noutati/congres-evvf-2025')
