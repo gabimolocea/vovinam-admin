@@ -115,7 +115,10 @@ class LegacyWordPressRedirectTests(TestCase):
             self.assertIsNone(legacy_urls.legacy_redirect(path), path)
 
     def test_old_wordpress_files_with_no_replacement_are_gone(self):
-        for path in ('/wp-content/themes/bricks/*', '/wp-content/uploads/*', '/wp-content/uploads/2024/01/poza.jpg'):
+        for path in (
+            '/wp-content/themes/bricks/*', '/wp-content/uploads/*', '/wp-content/uploads/2024/01/poza.jpg',
+            '/feed/', '/congres-evvf-2025/feed/', '/category/campionat-mondial/feed/', '/tag/aparare/feed/',
+        ):
             response = crud_urls.frontend(RequestFactory().get(path))
             self.assertEqual(response.status_code, 410, path)
 

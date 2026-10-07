@@ -46,7 +46,8 @@ def legacy_redirect(path):
     if not parts:
         return None
     first = parts[0].lower()
-
+    if parts[-1].lower() == 'feed':
+        return None
     if first in ('category', 'tag'):
         return '/noutati'
     if first == 'noutati' and len(parts) >= 2 and parts[1] == 'page':
@@ -75,5 +76,11 @@ def legacy_redirect(path):
 
 
 def is_gone(path):
-    """Old WordPress files with no replacement: answered 410, so Google drops them."""
-    return path.lower().startswith('/wp-content/')
+    """Old WordPress files with no replacement: answered 410, so Google drops them.
+
+    That covers /wp-content/ files that aren't documents, and the RSS feeds
+    WordPress had for the site, every article, category and tag
+    (/feed/, /<article>/feed/, /tag/<tag>/feed/) - the new site has none.
+    """
+    parts = [part for part in path.lower().split('/') if part]
+    return bool(parts) and (parts[0] == 'wp-content' or parts[-1] == 'feed')
