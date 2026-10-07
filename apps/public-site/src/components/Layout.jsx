@@ -21,6 +21,9 @@ const NAV_LINKS = [
   { to: '/noutati', label: 'Noutăți' },
   { to: '/calendar', label: 'Calendar' },
   {
+    // A page of its own too (not just a menu), so Google can list
+    // "Federație" among the site's links under a search result.
+    to: '/despre',
     label: 'Federație',
     children: [
       { to: '/despre', label: 'Despre' },
@@ -68,20 +71,37 @@ function DesktopNavItem({ item }) {
     closeTimer.current = setTimeout(() => setOpen(false), 150);
   }
 
+  const chevron = (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M1.5 4L6 8l4.5-4" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+
   return (
     <div className="relative" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
-      <button
-        type="button"
-        className="site-nav-link inline-flex h-9 items-center gap-1 px-3"
-        aria-expanded={open}
-        aria-haspopup="true"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {item.label}
-        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-          <path d="M1.5 4L6 8l4.5-4" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      </button>
+      {item.to ? (
+        <NavLink
+          to={item.to}
+          className={({ isActive }) => `${desktopLinkClassName({ isActive })} gap-1`}
+          aria-haspopup="true"
+          onFocus={handleEnter}
+          onClick={() => setOpen(false)}
+        >
+          {item.label}
+          {chevron}
+        </NavLink>
+      ) : (
+        <button
+          type="button"
+          className="site-nav-link inline-flex h-9 items-center gap-1 px-3"
+          aria-expanded={open}
+          aria-haspopup="true"
+          onClick={() => setOpen((v) => !v)}
+        >
+          {item.label}
+          {chevron}
+        </button>
+      )}
       {/* Always in the page, only hidden while closed: rendered on hover
           alone, Google never saw links to these pages from the homepage. */}
       <div className={`site-submenu absolute left-0 top-full z-50 min-w-[18rem] flex-col py-3 ${open ? 'flex' : 'hidden'}`}>
@@ -118,15 +138,32 @@ function MobileNavItem({ item, onNavigate }) {
 
   return (
     <div className="site-mobile-row">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-4 py-4 text-[16px] uppercase text-white"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {item.label}
-        <ChevronRight className={`h-5 w-5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
-      </button>
+      {item.to ? (
+        <div className="flex items-center">
+          <NavLink to={item.to} className="flex-1 px-4 py-4 text-[16px] uppercase text-white" onClick={onNavigate}>
+            {item.label}
+          </NavLink>
+          <button
+            type="button"
+            className="px-4 py-4 text-white"
+            aria-expanded={expanded}
+            aria-label={`Submeniu ${item.label}`}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            <ChevronRight className={`h-5 w-5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-4 py-4 text-[16px] uppercase text-white"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {item.label}
+          <ChevronRight className={`h-5 w-5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+        </button>
+      )}
       <div className={`flex-col pb-2 ${expanded ? 'flex' : 'hidden'}`}>
         {item.children.map((child) => (
           <NavLink
