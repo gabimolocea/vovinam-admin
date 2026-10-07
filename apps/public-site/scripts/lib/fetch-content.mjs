@@ -5,7 +5,13 @@
 // Runs under plain Node (not Vite), so it cannot use `import.meta.env` -
 // the API base and site URL are read from process.env instead, with the
 // same defaults used by the Vite app for local dev.
-const API_BASE = process.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+// Production sets VITE_API_BASE_URL to the relative "/api" (right for the
+// browser bundle), which Node's fetch can't use - so a relative base is
+// resolved against the site's own address. Before this, every production
+// build fetched nothing and shipped a sitemap with no news, events or clubs.
+const SITE_URL = (process.env.VITE_SITE_URL || 'https://vovinam.ro').replace(/\/$/, '');
+const RAW_API_BASE = process.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+const API_BASE = RAW_API_BASE.startsWith('/') ? `${SITE_URL}${RAW_API_BASE}` : RAW_API_BASE;
 
 async function fetchAllPages(path) {
   const results = [];
