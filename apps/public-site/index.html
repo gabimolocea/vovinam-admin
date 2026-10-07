@@ -6,46 +6,11 @@
     <title>Federația Română de Vovinam Việt Võ Đạo</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate icon" type="image/png" href="/frvv-logo.png" />
-
-    <!--
-      Fonturile stau la noi, nu la Google, si se cer din chiar prima linie
-      de HTML citita.
-
-      Inainte veneau de la Google printr-o foaie de stil externa, iar
-      browserul nu afla adresa fisierelor de font decat dupa ce sosea
-      foaia aceea - o conexiune noua catre alt domeniu, apoi inca una
-      pentru fonturi. Pana atunci scria deja cu fontul de sistem, si abia
-      pe urma se schimba: exact clipitul dintre doua fonturi la incarcare.
-
-      Numele au hash-ul continutului in ele, ca WhiteNoise sa le poata
-      servi cu cache pe un an (vezi WHITENOISE_IMMUTABLE_FILE_TEST in
-      settings_production.py). Cine schimba un fisier de font trebuie sa
-      schimbe si hash-ul din nume, altfel browserele vor servi vechiul
-      fisier luni de zile.
-
-      `preload` porneste descarcarea imediat, in paralel cu restul, si
-      `@font-face` e scris aici in pagina ca sa nu mai fie nevoie de nici
-      o foaie de stil inainte. Fonturile sunt variabile - un fisier
-      acopera toate grosimile de la 100 la 900 - deci si `font-semibold`,
-      folosit in vreo 34 de locuri, iese acum cu grosimea lui adevarata,
-      nu una indesata de browser din 500 sau 700.
-    -->
     <link rel="preload" href="/fonts/roboto-latin.1404ca34.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/roboto-latin-ext.cedb374b.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/roboto-condensed-latin.8d230115.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/roboto-condensed-latin-ext.4a44e6b1.woff2" as="font" type="font/woff2" crossorigin />
     <style>
-      /*
-        `latin-ext` nu e un lux: diacriticele romanesti - a, i, s, t cu
-        semne - nu sunt in `latin`, iar fara el browserul le-ar scoate din
-        alt font decat restul cuvantului.
-
-        `font-display: block` ascunde textul cat se incarca fontul, in loc
-        sa-l scrie cu altul si sa-l schimbe apoi. Aici fereastra aceea e
-        practic zero: paginile se desenează după ce porneste JS-ul, iar
-        fonturile, cerute mai sus si venind de pe acelasi server, ajung cu
-        mult inainte.
-      */
       @font-face {
         font-family: 'Roboto';
         font-style: normal;
