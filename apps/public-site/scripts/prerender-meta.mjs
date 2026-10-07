@@ -134,6 +134,9 @@ function clubJsonLd(club, routePath) {
   };
 }
 
+// data-rh marks these as react-helmet-async's own tags, so when the app
+// boots, <Seo> replaces them instead of adding a second canonical (and a
+// second og:url, description, ...) next to them.
 function renderHead(template, { routePath, title, description, image, type, jsonLd }) {
   const fullTitle = title ? `${title} · ${SITE_NAME}` : SITE_NAME;
   const url = absoluteUrl(routePath);
@@ -141,20 +144,20 @@ function renderHead(template, { routePath, title, description, image, type, json
   const img = image || DEFAULT_OG_IMAGE;
 
   const metaTags = [
-    `<meta name="description" content="${escapeHtml(desc)}" />`,
-    `<link rel="canonical" href="${url}" />`,
-    `<meta property="og:site_name" content="${escapeHtml(SITE_NAME)}" />`,
-    `<meta property="og:type" content="${type || 'website'}" />`,
-    `<meta property="og:title" content="${escapeHtml(fullTitle)}" />`,
-    `<meta property="og:description" content="${escapeHtml(desc)}" />`,
-    `<meta property="og:url" content="${url}" />`,
-    `<meta property="og:image" content="${img}" />`,
-    `<meta property="og:locale" content="ro_RO" />`,
-    `<meta name="twitter:card" content="summary_large_image" />`,
-    `<meta name="twitter:title" content="${escapeHtml(fullTitle)}" />`,
-    `<meta name="twitter:description" content="${escapeHtml(desc)}" />`,
-    `<meta name="twitter:image" content="${img}" />`,
-    jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : '',
+    `<meta data-rh="true" name="description" content="${escapeHtml(desc)}" />`,
+    `<link data-rh="true" rel="canonical" href="${url}" />`,
+    `<meta data-rh="true" property="og:site_name" content="${escapeHtml(SITE_NAME)}" />`,
+    `<meta data-rh="true" property="og:type" content="${type || 'website'}" />`,
+    `<meta data-rh="true" property="og:title" content="${escapeHtml(fullTitle)}" />`,
+    `<meta data-rh="true" property="og:description" content="${escapeHtml(desc)}" />`,
+    `<meta data-rh="true" property="og:url" content="${url}" />`,
+    `<meta data-rh="true" property="og:image" content="${img}" />`,
+    `<meta data-rh="true" property="og:locale" content="ro_RO" />`,
+    `<meta data-rh="true" name="twitter:card" content="summary_large_image" />`,
+    `<meta data-rh="true" name="twitter:title" content="${escapeHtml(fullTitle)}" />`,
+    `<meta data-rh="true" name="twitter:description" content="${escapeHtml(desc)}" />`,
+    `<meta data-rh="true" name="twitter:image" content="${img}" />`,
+    jsonLd ? `<script data-rh="true" type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : '',
   ]
     .filter(Boolean)
     .join('\n    ');
@@ -173,6 +176,14 @@ async function writeRoute(template, routePath, meta) {
 
 async function main() {
   const template = await readFile(path.join(DIST_DIR, 'index.html'), 'utf-8');
+  // The untouched shell, saved before the '/' route below overwrites
+  // dist/index.html with the homepage's tags. Django serves it for every
+  // route with no prerendered page (see crud.urls.frontend and the
+  // Dockerfile). It used to be the homepage file, so all those pages -
+  // account pages, athlete pages, news newer than the last deploy, 404s -
+  // shipped with a canonical pointing at the homepage, and once the app set
+  // its own, Google saw two conflicting canonicals and trusted neither.
+  await writeFile(path.join(DIST_DIR, 'spa.html'), template, 'utf-8');
   const [news, events, clubs] = await Promise.all([fetchAllNews(), fetchAllEvents(), fetchAllClubs()]);
 
   let count = 0;

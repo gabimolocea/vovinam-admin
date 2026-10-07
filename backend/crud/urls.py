@@ -3,6 +3,8 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 import os
+from functools import lru_cache
+from django.http import HttpResponse, HttpResponsePermanentRedirect
 from django.views.generic import TemplateView
 from django.views.generic.base import RedirectView
 from django.templatetags.static import static as static_url
@@ -12,6 +14,45 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 FRONTEND_INDEX_TEMPLATE = os.path.join(settings.BASE_DIR, 'templates', 'index.html')
 HAS_FRONTEND_INDEX = os.path.exists(FRONTEND_INDEX_TEMPLATE)
+
+spa_shell = TemplateView.as_view(template_name='index.html')
+
+
+@lru_cache(maxsize=2048)
+def prerendered_page(path):
+    """The build-time page for this route (frontend_build/<path>/index.html), or None.
+
+    Read once per process: the files only change with a new deploy, which
+    starts new processes anyway.
+    """
+    root = getattr(settings, 'WHITENOISE_ROOT', None)
+    if not root:
+        return None
+    root = os.path.realpath(root)
+    candidate = os.path.realpath(os.path.join(root, path.strip('/'), 'index.html'))
+    if not candidate.startswith(root + os.sep) or not os.path.isfile(candidate):
+        return None
+    with open(candidate, 'rb') as page:
+        return page.read()
+
+
+def frontend(request):
+    """Public site pages, at exactly the address their canonical tag names.
+
+    That address never ends in a slash (/noutati, not /noutati/), so the
+    slash form gets a 301 to it - otherwise Google sees two URLs with the
+    same page. Routes prerendered at build time get their own page, with
+    their own title and canonical; everything else (account pages, athlete
+    pages, news posted since the last deploy) gets the SPA shell, which
+    carries no canonical of its own and lets the app set the right one.
+    """
+    if request.path != '/' and request.path.endswith('/'):
+        query = request.META.get('QUERY_STRING')
+        return HttpResponsePermanentRedirect(request.path.rstrip('/') + (f'?{query}' if query else ''))
+    page = prerendered_page(request.path)
+    if page is not None:
+        return HttpResponse(page, content_type='text/html; charset=utf-8')
+    return spa_shell(request)
 
 urlpatterns = [
     path('favicon.ico', RedirectView.as_view(url=static_url('favicon.svg'), permanent=False)),
@@ -65,7 +106,7 @@ if not settings.DEBUG:
             # instead of resolving to Django's own admin/api/etc. and
             # getting its normal APPEND_SLASH redirect.
             re_path(r'^(?!(?:api|admin|media|static|health|ckeditor5)(?:/|$)).*$',
-                    TemplateView.as_view(template_name='index.html'),
+                    frontend,
                     name='frontend'),
         ]
     else:

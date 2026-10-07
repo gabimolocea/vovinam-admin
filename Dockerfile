@@ -61,11 +61,13 @@ COPY backend/ .
 # served at the site root by WhiteNoise (see WHITENOISE_ROOT in
 # settings_production.py) - its asset references and prerendered per-route
 # folders are root-relative (/assets/..., /frvv-logo.png, /arbitri/), not
-# under Django's own /static/ prefix. index.html is ALSO copied into
-# templates/ separately, for crud.urls's catch-all SPA-fallback view.
+# under Django's own /static/ prefix. spa.html - the shell with no per-page
+# tags, written by scripts/prerender-meta.mjs - is ALSO copied into
+# templates/index.html, for crud.urls's catch-all SPA-fallback view. Not
+# dist/index.html: that one is the homepage, canonical and all.
 RUN mkdir -p templates frontend_build
 COPY --from=frontend-builder /build/apps/public-site/dist /app/frontend_build
-COPY --from=frontend-builder /build/apps/public-site/dist/index.html /app/templates/index.html
+COPY --from=frontend-builder /build/apps/public-site/dist/spa.html /app/templates/index.html
 
 RUN mkdir -p media/profile_images media/seminar_certificates media/seminar_documents media/news media/grades
 

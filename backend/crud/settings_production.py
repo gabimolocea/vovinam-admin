@@ -27,17 +27,33 @@ DATABASES['default'] = dj_database_url.config(
 # Static files - use WhiteNoise for serving
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 
+# The public site's one real address; the aliases below get a 301 to it
+# before anything else runs (see crud.middleware.PrimaryHostRedirectMiddleware).
+# Keep in sync with PRODUCTION_HOSTS in apps/public-site/src/lib/seo.js.
+PRIMARY_SITE_HOST = os.getenv('PRIMARY_SITE_HOST', 'vovinam.ro')
+PRIMARY_SITE_ALIAS_HOSTS = _csv_env('PRIMARY_SITE_ALIAS_HOSTS') or [
+    'www.vovinam.ro',
+    'vovinam-vietvodao.ro',
+    'www.vovinam-vietvodao.ro',
+]
+MIDDLEWARE.insert(0, 'crud.middleware.PrimaryHostRedirectMiddleware')
+
 # The built public-site (Vite `dist/`, copied into the image at
 # frontend_build/ by the root Dockerfile) is served as-is at the site root -
 # separate from Django's own /static/ (admin, DRF, CKEditor) - since its
 # asset references are root-relative (/assets/..., /frvv-logo.png) rather
-# than under /static/. WHITENOISE_INDEX_FILE lets prerendered per-route
-# folders (frontend_build/arbitri/index.html, etc.) resolve when a crawler
-# requests the bare path; the SPA fallback for routes with no prerendered
-# folder is still handled by crud.urls's catch-all view rendering
-# templates/index.html (also copied there by the Dockerfile).
+# than under /static/.
+#
+# WHITENOISE_INDEX_FILE stays off on purpose. With it on, WhiteNoise
+# answered /noutati with a 302 to /noutati/, while the canonical tag and
+# the sitemap both say /noutati - so every sitemap URL redirected, and the
+# page it landed on named the redirecting URL as its canonical. Google
+# ignores a canonical like that. The prerendered per-route pages
+# (frontend_build/arbitri/index.html, etc.) are served at the bare path by
+# crud.urls's catch-all view instead, which also 301s the trailing-slash
+# form away and falls back to the SPA shell for routes with no prerendered
+# page.
 WHITENOISE_ROOT = os.path.join(BASE_DIR, 'frontend_build')
-WHITENOISE_INDEX_FILE = True
 
 # Cat tine browserul un fisier fara sa ne mai intrebe.
 #
