@@ -4,7 +4,7 @@ import { useAuth, athleteAPI, scoreAPI, gradeHistoryAPI, visaAPI } from '@shared
 import { Alert, Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '../components/ui';
 import Seo from '../components/Seo';
 
-const PLACEMENT_LABELS = { '1st': '🥇 Locul 1', '2nd': '🥈 Locul 2', '3rd': '🥉 Locul 3' };
+const PLACEMENT_LABELS = { '1st': '🥇 Locul 1', '2nd': '🥈 Locul 2', '3rd': '🥉 Locul 3', participation: 'Participare' };
 const VISA_TYPE_LABELS = { medical: 'Medicală', annual: 'Anuală' };
 
 /** Admin-only page listing pending profile-picture changes, results, grade

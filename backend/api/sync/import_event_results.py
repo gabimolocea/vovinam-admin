@@ -670,6 +670,11 @@ def import_event_results(payload: dict[str, Any]) -> dict[str, Any]:
     event.mark_results_uploaded()
     event.save(update_fields=['local_sync_status', 'results_uploaded_at'])
 
+    # The venue's results are in, so whoever competed without a podium
+    # place gets a "Participare" result - see api/participations.py.
+    from ..participations import record_participations
+    imported['participations'] = record_participations(event)
+
     return {
         'event_id': event.id,
         'imported': imported,

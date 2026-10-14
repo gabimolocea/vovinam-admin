@@ -261,7 +261,13 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
         ('1st', 'Locul 1'),
         ('2nd', 'Locul 2'),
         ('3rd', 'Locul 3'),
+        # Competed without reaching the podium. Never a medal: every medal
+        # count filters on the three places above. Set by the athlete
+        # (with a participation diploma) or by record_participations() once
+        # a competition's results are in - see api/participations.py.
+        ('participation', 'Participare'),
     ]
+    PODIUM_PLACEMENTS = ('1st', '2nd', '3rd')
     
     category = models.ForeignKey('Category', on_delete=models.CASCADE, verbose_name=_('Categorie'), related_name='athlete_scores')
     athlete = models.ForeignKey('Athlete', on_delete=models.CASCADE, verbose_name=_('Sportiv'), related_name='category_scores', null=True, blank=True, help_text=_('Sportivul arbitrat (nul pentru scorurile de echipă).'))
@@ -284,7 +290,7 @@ class CategoryAthleteScore(ApprovalWorkflowMixin, models.Model):
 
     # Athlete self-submission fields
     submitted_by_athlete = models.BooleanField(_('Trimis de sportiv'), default=False, help_text=_('Bifat dacă a fost trimis chiar de sportiv.'))
-    placement_claimed = models.CharField(_('Loc revendicat'), max_length=10, choices=PLACEMENT_CHOICES, blank=True, null=True, help_text=_('Locul revendicat de sportiv sau echipă.'))
+    placement_claimed = models.CharField(_('Loc revendicat'), max_length=20, choices=PLACEMENT_CHOICES, blank=True, null=True, help_text=_('Locul revendicat de sportiv sau echipă.'))
     notes = models.TextField(_('Note'), blank=True, null=True, help_text=_('Note suplimentare despre prestație.'))
     certificate_image = models.ImageField(_('Imagine certificat'), upload_to='result_certificates/', null=True, blank=True, help_text=_('Fotografie a certificatului sau a premiului.'))
     result_document = models.FileField(_('Document rezultat'), upload_to='result_documents/', null=True, blank=True, help_text=_('Documentul oficial cu rezultatul.'))

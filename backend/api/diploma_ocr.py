@@ -23,6 +23,7 @@ PLACEMENT_MAP = {
     '1': '1st', 'i': '1st', 'primul': '1st', 'locul 1': '1st', 'locul i': '1st', 'gold': '1st', 'aur': '1st',
     '2': '2nd', 'ii': '2nd', 'locul 2': '2nd', 'locul ii': '2nd', 'silver': '2nd', 'argint': '2nd',
     '3': '3rd', 'iii': '3rd', 'locul 3': '3rd', 'locul iii': '3rd', 'bronze': '3rd', 'bronz': '3rd',
+    'participare': 'participation', 'participant': 'participation', 'participation': 'participation',
 }
 
 RESULT_EXTRACTION_PROMPT = """Această imagine este o diplomă sau un certificat de la o competiție de Vovinam. \
@@ -31,7 +32,7 @@ Extrage următoarele informații și răspunde STRICT cu un obiect JSON valid, f
   "competition_name": string sau null (numele competiției/evenimentului),
   "category_name": string sau null (numele categoriei, de exemplu "Solo masculin", "Lupta -60kg"),
   "group_name": string sau null (grupa de vârstă, dacă apare),
-  "placement": string sau null (locul obținut, ca text: ex "1", "locul 2", "III"),
+  "placement": string sau null (locul obținut, ca text: ex "1", "locul 2", "III"; "participare" dacă e o diplomă de participare fără loc),
   "athlete_name": string sau null (numele sportivului de pe diplomă, dacă apare)
 }
 Dacă un câmp nu apare clar pe imagine, folosește null pentru acel câmp."""

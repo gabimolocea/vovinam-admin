@@ -46,7 +46,7 @@ const STATUS_LABELS = {
 };
 const ACCOUNT_REJECT_NOTE = 'Cererea de înregistrare nu a fost aprobată.';
 const PHOTO_REJECT_NOTE = 'Poza nu a fost aprobată.';
-const PLACEMENT_LABELS = { '1st': '🥇 Locul 1', '2nd': '🥈 Locul 2', '3rd': '🥉 Locul 3' };
+const PLACEMENT_LABELS = { '1st': '🥇 Locul 1', '2nd': '🥈 Locul 2', '3rd': '🥉 Locul 3', participation: 'Participare' };
 const RESULT_TYPE_LABELS = { solo: 'Solo', teams: 'Echipe', fight: 'Luptă' };
 
 const NATIONAL_RIBBON = ['#002B7F', '#FCD116', '#CE1126'];
@@ -676,6 +676,7 @@ function AddResultDialog({ open, onOpenChange, athlete, onCreated }) {
                 <SelectItem value="1st">Locul 1</SelectItem>
                 <SelectItem value="2nd">Locul 2</SelectItem>
                 <SelectItem value="3rd">Locul 3</SelectItem>
+                <SelectItem value="participation">Participare (fără loc)</SelectItem>
               </SelectContent>
             </Select>
           </div>
