@@ -155,7 +155,7 @@ function RosterSection({ clubId }) {
     setLoading(true);
     setError('');
     Promise.allSettled([
-      athleteAPI.list({ club: clubId }),
+      athleteAPI.list({ club: clubId, ordering: 'grade' }),
       visaAPI.annual.list({ club: clubId }),
       visaAPI.medical.list({ club: clubId }),
     ]).then(([athletesResult, annualResult, medicalResult]) => {

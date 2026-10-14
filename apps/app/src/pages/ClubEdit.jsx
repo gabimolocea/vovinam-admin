@@ -100,7 +100,7 @@ function RosterTab() {
     setLoading(true);
     setError('');
     Promise.allSettled([
-      athleteAPI.list({ my_club: true }),
+      athleteAPI.list({ my_club: true, ordering: 'grade' }),
       visaAPI.annual.list({ my_club: true }),
       visaAPI.medical.list({ my_club: true }),
     ]).then(([athletesResult, annualResult, medicalResult]) => {
