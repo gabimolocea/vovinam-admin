@@ -95,16 +95,17 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/95 md:flex-row" role="dialog" aria-modal="true">
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Închide"
-        className="absolute right-4 top-4 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-      >
-        <X className="h-6 w-6" />
-      </button>
-
       <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4" {...swipe}>
+        {/* In the photo's dark pane, not the dialog's corner: on desktop that
+            corner is the white comments panel, where a white button vanished. */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Închide"
+          className="absolute right-4 top-4 z-20 rounded-full bg-white/15 p-2 text-white ring-1 ring-white/30 hover:bg-white/25"
+        >
+          <X className="h-6 w-6" />
+        </button>
         {index > 0 && (
           <button
             type="button"
