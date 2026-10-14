@@ -617,6 +617,7 @@ export default function AthleteDetailPage({ showSeo = true }) {
           <InfoRow label="Rol" value={[athlete.is_coach && 'Antrenor', athlete.is_referee && 'Arbitru'].filter(Boolean).join(', ') || 'Sportiv'} />
           <InfoRow label="CNP" value={athlete.cnp} private visible={isSelf || canReview} />
           <InfoRow label="Serie legitimație" value={athlete.license_series} private visible={isSelf || canReview} />
+          <InfoRow label="Număr legitimație" value={athlete.license_number} private visible={isSelf || canReview} />
           <InfoRow label="Email" value={athlete.email} private visible={isSelf || canReview} />
           <InfoRow label="Telefon" value={athlete.mobile_number} private visible={isSelf || canReview} />
           <InfoRow label="Adresă" value={athlete.address} private visible={isSelf || canReview} />

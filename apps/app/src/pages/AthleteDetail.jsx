@@ -1488,6 +1488,7 @@ export default function AthleteDetail() {
               <InfoRow label="Email" value={athlete.email} />
               <InfoRow label="CNP" value={athlete.cnp} />
               <InfoRow label="Serie legitimație" value={athlete.license_series} />
+              <InfoRow label="Număr legitimație" value={athlete.license_number} />
               <InfoRow label="Telefon" value={athlete.mobile_number} />
               <InfoRow label="Adresă" value={athlete.address} />
               <InfoRow label="Data înregistrării" value={fmtDate(athlete.registered_date)} />
