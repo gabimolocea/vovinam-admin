@@ -143,3 +143,25 @@ class EventGalleryTests(TestCase):
             NewsPostGallery.objects.create(news_post=post, event=self.event, image='x.jpg')
         with self.assertRaises(IntegrityError), transaction.atomic():
             NewsPostGallery.objects.create(image='x.jpg')
+
+
+class AdminNewestFirstTests(TestCase):
+    def test_events_list_newest_first(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from landing.models import Event
+
+        admin_user = get_user_model().objects.create_superuser(
+            username='ordine', email='ordine@example.com', password='parola12345',
+        )
+        self.client.force_login(admin_user)
+        now = timezone.now()
+        for days, slug in ((-300, 'vechi'), (30, 'viitor'), (-10, 'recent')):
+            Event.objects.create(
+                title=slug, slug=slug, start_date=now + timedelta(days=days),
+                end_date=now + timedelta(days=days + 1), event_type='competition',
+            )
+
+        response = self.client.get(reverse('admin:api_event_changelist'))
+        titles = [event.title for event in response.context['cl'].result_list]
+        self.assertEqual(titles, ['viitor', 'recent', 'vechi'])

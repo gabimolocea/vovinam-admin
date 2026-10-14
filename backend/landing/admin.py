@@ -216,11 +216,12 @@ class EventAdmin(BulkGalleryUploadMixin, admin.ModelAdmin):
     # Marchează / Finalizează / Deblochează) are the only supported way to
     # transition state, since each one updates every affected field together.
     readonly_fields = ['status', 'sync_mode_display', 'sync_locked_display', 'local_sync_status_display', 'exported_to_local_at', 'results_uploaded_at', 'sync_completed_at', 'import_results_action']
-    actions = ['lock_for_local_event', 'mark_local_in_progress', 'mark_local_results_uploaded', 'complete_local_sync', 'unlock_local_event']
+    actions = ['lock_for_local_event', 'mark_local_in_progress', 'mark_local_results_uploaded', 'complete_local_sync', 'unlock_local_event', 'record_participations']
     # Removed inline editing for `is_featured` to avoid the changelist-wide
     # "Save" button. Use the object change form or admin actions to toggle
     # featured status instead.
-    ordering = ['start_date']
+    # Cel mai recent primul, ca toate listele din admin.
+    ordering = ['-start_date']
 
     fieldsets = (
         (_('Detalii eveniment'), {
@@ -334,6 +335,16 @@ class EventAdmin(BulkGalleryUploadMixin, admin.ModelAdmin):
         url = reverse('admin:landing_event_import_results', args=[obj.pk])
         return format_html('<a href="{}" class="button">Încarcă rezultate din local (JSON)</a>', url)
     import_results_action.short_description = _('Import rezultate')
+
+    @admin.action(description=_('Înregistrează „Participare” pentru sportivii fără loc'))
+    def record_participations(self, request, queryset):
+        """Gives every athlete/team enrolled in these events' categories who
+        didn't place a "Participare" result (see api/participations.py).
+        Safe to run more than once."""
+        from api.participations import record_participations
+
+        total = sum(record_participations(event) for event in queryset)
+        self.message_user(request, f'Participări înregistrate: {total}.', level=messages.SUCCESS)
 
     def get_urls(self):
         urls = super().get_urls()
@@ -527,7 +538,7 @@ class NewsPostGalleryAdmin(admin.ModelAdmin):
     list_display = ['news_post', 'event', 'image_preview', 'alt_text', 'order', 'created_at']
     list_filter = ['created_at']
     search_fields = ['news_post__title', 'event__title', 'alt_text', 'caption']
-    ordering = ['news_post', 'event', 'order']
+    ordering = ['-created_at']
     raw_id_fields = ['news_post', 'event']
     filter_horizontal = ['tagged_athletes', 'tagged_clubs']
     fields = ['news_post', 'event', 'image', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
@@ -540,6 +551,7 @@ class NewsPostGalleryAdmin(admin.ModelAdmin):
 
 
 class GalleryReactionAdmin(admin.ModelAdmin):
+    ordering = ['-created_at']
     list_display = ['gallery_image', 'user', 'reaction_type', 'created_at']
     list_filter = ['reaction_type', 'created_at']
     search_fields = ['user__username', 'gallery_image__news_post__title', 'gallery_image__event__title']
@@ -547,6 +559,7 @@ class GalleryReactionAdmin(admin.ModelAdmin):
 
 
 class NewsReactionAdmin(admin.ModelAdmin):
+    ordering = ['-created_at']
     list_display = ['news_post', 'user', 'reaction_type', 'created_at']
     list_filter = ['reaction_type', 'created_at']
     search_fields = ['user__username', 'news_post__title']
@@ -554,6 +567,7 @@ class NewsReactionAdmin(admin.ModelAdmin):
 
 
 class GalleryCommentAdmin(admin.ModelAdmin):
+    ordering = ['-created_at']
     list_display = ['content_preview', 'author', 'gallery_image', 'is_approved', 'created_at']
     list_filter = ['is_approved', 'created_at']
     search_fields = ['content', 'author__username']
