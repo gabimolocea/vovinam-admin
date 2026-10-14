@@ -59,6 +59,20 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
 
         submitted_by_athlete = not is_admin and target_athlete == requester_athlete
 
+        # Checked here, against the athlete the participation is actually
+        # for. It used to live in the serializer's validate(), which only
+        # knew the logged-in user - so a coach who had logged their own
+        # participation at a seminar was refused for every athlete of
+        # their club at that same seminar.
+        event = serializer.validated_data.get('event')
+        if event and TrainingSeminarParticipation.objects.filter(athlete=target_athlete, event=event).exists():
+            message = (
+                'Ai trimis deja participarea la acest eveniment.'
+                if target_athlete == requester_athlete
+                else 'Sportivul are deja o participare înregistrată la acest eveniment.'
+            )
+            raise DRFValidationError({'event': message})
+
         try:
             serializer.save(athlete=target_athlete, submitted_by_athlete=submitted_by_athlete)
         except IntegrityError:
@@ -67,7 +81,7 @@ class TrainingSeminarParticipationViewSet(viewsets.ModelViewSet):
             # DRF's exception handler doesn't render as JSON and surfaces as an opaque 500
             # instead of a 400. Import DRF's explicitly here so the friendly message actually
             # reaches the client.
-            raise DRFValidationError({'event': 'You have already submitted participation for this event.'})
+            raise DRFValidationError({'event': 'Sportivul are deja o participare înregistrată la acest eveniment.'})
     
     def get_queryset(self):
         """Return seminar participations for the current user if athlete, all if admin"""

@@ -33,7 +33,6 @@ from api.models import (
     Visa,
 )
 from api.notification_utils import create_competition_notification
-from api.serializers import TrainingSeminarParticipationSerializer
 from landing.models import Event
 
 
@@ -171,31 +170,47 @@ class VisaFreshnessTests(TestCase):
 
 
 class SeminarDuplicateValidationTests(TestCase):
-    """The duplicate check must validate on `event` (the actual unique_together
-    field), not the unused legacy `seminar` field."""
+    """A participation is a duplicate only for the athlete it's for - not for whoever submits it."""
 
-    def test_duplicate_event_submission_is_rejected(self):
-        user = User.objects.create_user(
-            username='seminar-athlete', email='sa@example.com', password='pass12345', role='athlete'
-        )
-        athlete = Athlete.objects.create(first_name='Sem', last_name='Inar', user=user, status='approved')
+    def setUp(self):
         now = timezone.now()
-        event = Event.objects.create(
+        self.event = Event.objects.create(
             title='Seminar Test', slug='seminar-test', start_date=now, end_date=now + timedelta(days=1),
             event_type='seminar',
         )
-        TrainingSeminarParticipation.objects.create(athlete=athlete, event=event, submitted_by_athlete=True)
-
-        class DummyRequest:
-            pass
-
-        req = DummyRequest()
-        req.user = user
-        serializer = TrainingSeminarParticipationSerializer(
-            data={'event': event.pk}, context={'request': req}
+        self.club = Club.objects.create(name='Club Seminar')
+        self.coach_user = User.objects.create_user(
+            username='seminar-coach', email='sc@example.com', password='pass12345', role='athlete'
         )
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('event', serializer.errors)
+        self.coach = Athlete.objects.create(
+            first_name='Antre', last_name='Nor', user=self.coach_user, club=self.club, is_coach=True, status='approved',
+        )
+        self.athlete = Athlete.objects.create(first_name='Spor', last_name='Tiv', club=self.club, status='approved')
+        self.client = _auth_client(self.coach_user)
+
+    def submit(self, athlete_id=None):
+        data = {'event': self.event.pk}
+        if athlete_id:
+            data['athlete'] = athlete_id
+        return self.client.post('/api/seminar-submissions/', data, format='multipart', HTTP_HOST='localhost')
+
+    def test_own_duplicate_is_rejected(self):
+        TrainingSeminarParticipation.objects.create(athlete=self.coach, event=self.event, submitted_by_athlete=True)
+        response = self.submit()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('event', response.data)
+
+    def test_coach_can_add_club_athlete_after_logging_own_participation(self):
+        TrainingSeminarParticipation.objects.create(athlete=self.coach, event=self.event, submitted_by_athlete=True)
+        response = self.submit(self.athlete.pk)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertTrue(TrainingSeminarParticipation.objects.filter(athlete=self.athlete, event=self.event).exists())
+
+    def test_athlete_duplicate_added_by_coach_is_rejected(self):
+        TrainingSeminarParticipation.objects.create(athlete=self.athlete, event=self.event)
+        response = self.submit(self.athlete.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('event', response.data)
 
 
 class FieldCountGuardTests(TestCase):

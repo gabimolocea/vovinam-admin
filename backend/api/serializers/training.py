@@ -65,24 +65,6 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
             return getattr(ts, 'name', None)
         return None
     
-    def validate(self, attrs):
-        """Prevent duplicate submissions for the same athlete+event.
-
-        This returns a 400 with a clear message instead of letting the DB
-        raise an IntegrityError (which bubbled up as a 500).
-        """
-        request = self.context.get('request')
-        event = attrs.get('event')
-        # Only validate for authenticated users with an athlete profile
-        if request and hasattr(request.user, 'athlete') and event:
-            athlete = request.user.athlete
-            from ..models import TrainingSeminarParticipation
-            if TrainingSeminarParticipation.objects.filter(athlete=athlete, event=event).exists():
-                raise serializers.ValidationError(
-                    {'event': 'You have already submitted participation for this seminar.'}
-                )
-        return attrs
-    
     def create(self, validated_data):
         """Auto-assign current user's athlete profile and set submission flag"""
         request = self.context.get('request')
@@ -94,8 +76,11 @@ class TrainingSeminarParticipationSerializer(serializers.ModelSerializer):
             return result
 
         if request and hasattr(request.user, 'athlete'):
-            validated_data['athlete'] = request.user.athlete
-            validated_data['submitted_by_athlete'] = True
+            # Only a default: the view passes the athlete it resolved (a
+            # coach may submit for one of their club's athletes). Overwriting
+            # it put every coach-added participation on the coach instead.
+            validated_data.setdefault('athlete', request.user.athlete)
+            validated_data.setdefault('submitted_by_athlete', True)
             
             # Create the participation record
             participation = super().create(validated_data)
