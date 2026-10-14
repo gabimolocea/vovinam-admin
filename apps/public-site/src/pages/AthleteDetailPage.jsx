@@ -375,8 +375,8 @@ export default function AthleteDetailPage({ showSeo = true }) {
       if (approve) await api.approve(itemId, {});
       else await api.reject(itemId, { notes: REVIEW_REJECT_NOTE[kind] });
       await refreshAthlete();
-    } catch {
-      setReviewError('Nu am putut procesa cererea.');
+    } catch (err) {
+      setReviewError(err?.response?.data?.error || err?.response?.data?.detail || 'Nu am putut procesa cererea.');
     } finally {
       setReviewBusyKey(null);
     }

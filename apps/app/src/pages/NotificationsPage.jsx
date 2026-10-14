@@ -210,8 +210,8 @@ export default function NotificationsPage() {
       if (approve) await gradeHistoryAPI.submissions.approve(id, {});
       else await gradeHistoryAPI.submissions.reject(id, { notes: 'Examenul de grad nu a fost aprobat.' });
       setPendingGrades((prev) => prev.filter((g) => g.id !== id));
-    } catch {
-      setError('Nu am putut procesa examenul de grad.');
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.response?.data?.detail || 'Nu am putut procesa examenul de grad.');
     } finally {
       setReviewBusyId(null);
     }

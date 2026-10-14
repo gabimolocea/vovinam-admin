@@ -1265,8 +1265,8 @@ export default function AthleteDetail() {
       if (approve) await api.approve(itemId, {});
       else await api.reject(itemId, { notes: notes || REVIEW_REJECT_NOTE[kind] });
       await load();
-    } catch {
-      setReviewError('Nu am putut procesa cererea.');
+    } catch (err) {
+      setReviewError(err?.response?.data?.error || err?.response?.data?.detail || 'Nu am putut procesa cererea.');
     } finally {
       setReviewBusyKey(null);
     }
@@ -1346,8 +1346,6 @@ export default function AthleteDetail() {
           <ArrowLeft className="h-4 w-4" /> {canGoBack ? 'Înapoi' : 'Înapoi la club'}
         </Button>
       )}
-
-      {reviewError && <Alert variant="destructive">{reviewError}</Alert>}
 
       {/* Hero */}
       <div className="relative flex flex-col items-center gap-4 rounded-lg bg-sidebar px-6 py-6 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between">
@@ -1454,6 +1452,10 @@ export default function AthleteDetail() {
       </div>
 
       <TabBar activeKey={tab} onSelect={setTab} />
+
+      {/* Under the tabs, not above the hero: the approve/reject buttons are
+          down in the tab content, where a message up top went unseen. */}
+      {reviewError && <Alert variant="destructive">{reviewError}</Alert>}
 
       {tab === 'info' && (
         <div className="flex flex-col">

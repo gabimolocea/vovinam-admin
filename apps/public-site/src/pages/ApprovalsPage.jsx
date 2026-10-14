@@ -80,7 +80,7 @@ export default function ApprovalsPage() {
       // Approving can fail for a real, actionable reason (e.g. the claimed
       // place is already held by someone else) - show that instead of a
       // generic message, so the admin knows what to do next.
-      setError(err?.response?.data?.error || 'Nu am putut procesa rezultatul.');
+      setError(err?.response?.data?.error || err?.response?.data?.detail || 'Nu am putut procesa rezultatul.');
     } finally {
       setBusyId(null);
     }
@@ -92,8 +92,8 @@ export default function ApprovalsPage() {
       if (approve) await gradeHistoryAPI.submissions.approve(gradeId, {});
       else await gradeHistoryAPI.submissions.reject(gradeId, { notes: 'Examenul de grad nu a fost aprobat.' });
       setGrades((prev) => prev.filter((g) => g.id !== gradeId));
-    } catch {
-      setError('Nu am putut procesa examenul de grad.');
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.response?.data?.detail || 'Nu am putut procesa examenul de grad.');
     } finally {
       setBusyId(null);
     }
@@ -105,8 +105,8 @@ export default function ApprovalsPage() {
       if (approve) await visaAPI.submissions.approve(visaId, {});
       else await visaAPI.submissions.reject(visaId, { notes: 'Viza nu a fost aprobată.' });
       setVisas((prev) => prev.filter((v) => v.id !== visaId));
-    } catch {
-      setError('Nu am putut procesa viza.');
+    } catch (err) {
+      setError(err?.response?.data?.error || err?.response?.data?.detail || 'Nu am putut procesa viza.');
     } finally {
       setBusyId(null);
     }
