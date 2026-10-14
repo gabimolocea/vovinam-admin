@@ -139,6 +139,11 @@ export default function PhotoLightbox({ photos, index, onClose, onIndexChange })
               {detail.news_post_title}
             </Link>
           )}
+          {detail.event_title && (
+            <Link to={`/calendar/${detail.event_slug}`} className="text-sm font-medium text-foreground hover:underline">
+              {detail.event_title}
+            </Link>
+          )}
           {detail.caption && <p className="text-sm text-muted-foreground">{detail.caption}</p>}
           <GalleryTagEditor
             photoId={detail.id}

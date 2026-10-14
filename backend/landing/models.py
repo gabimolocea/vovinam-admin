@@ -508,11 +508,23 @@ class ContactInfo(models.Model):
         return self.organization_name
 
 class NewsPostGallery(models.Model):
-    """Gallery images for news posts"""
+    """Gallery images for a news post or an event - exactly one of the two.
+
+    Events reuse this model (rather than a twin) so their photos get the
+    same tagging, reactions, comments and athlete/club "Poze" tabs."""
     news_post = models.ForeignKey(
-        NewsPost, 
-        related_name='gallery_images', 
-        on_delete=models.CASCADE
+        NewsPost,
+        related_name='gallery_images',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+    )
+    event = models.ForeignKey(
+        Event,
+        related_name='gallery_images',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
     )
     image = models.ImageField(upload_to='news/gallery/')
     alt_text = models.CharField(
@@ -547,9 +559,19 @@ class NewsPostGallery(models.Model):
         ordering = ['order', 'created_at']
         verbose_name = _('Gallery Image')
         verbose_name_plural = _('Gallery Images')
-    
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(news_post__isnull=False, event__isnull=True)
+                    | models.Q(news_post__isnull=True, event__isnull=False)
+                ),
+                name='gallery_image_belongs_to_post_or_event',
+            ),
+        ]
+
     def __str__(self):
-        return f"{self.news_post.title} - Image {self.order}"
+        owner = self.news_post or self.event
+        return f"{owner.title if owner else '—'} - Image {self.order}"
 
 
 

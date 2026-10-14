@@ -178,10 +178,11 @@ class PublicEventSerializer(serializers.ModelSerializer):
 
 
 class PublicEventDetailSerializer(PublicEventSerializer):
-    """Adds the full description for the event detail page."""
+    """Adds the full description and photo gallery for the event detail page."""
+    gallery_images = PublicNewsPostGallerySerializer(many=True, read_only=True)
 
     class Meta(PublicEventSerializer.Meta):
-        fields = PublicEventSerializer.Meta.fields + ['description']
+        fields = PublicEventSerializer.Meta.fields + ['description', 'gallery_images']
 
 
 class PublicClubSerializer(serializers.ModelSerializer):
@@ -337,14 +338,17 @@ class PublicGalleryPhotoSerializer(serializers.ModelSerializer):
     dislike_count = serializers.IntegerField(read_only=True)
     comment_count = serializers.IntegerField(read_only=True)
     my_reaction = serializers.SerializerMethodField()
-    news_post_title = serializers.CharField(source='news_post.title', read_only=True)
-    news_post_slug = serializers.CharField(source='news_post.slug', read_only=True)
+    news_post_title = serializers.CharField(source='news_post.title', read_only=True, default=None)
+    news_post_slug = serializers.CharField(source='news_post.slug', read_only=True, default=None)
+    # Set instead of the two above when the photo is from an event's gallery.
+    event_title = serializers.CharField(source='event.title', read_only=True, default=None)
+    event_slug = serializers.CharField(source='event.slug', read_only=True, default=None)
 
     class Meta:
         model = NewsPostGallery
         fields = [
             'id', 'image', 'alt_text', 'caption', 'created_at',
-            'news_post_title', 'news_post_slug',
+            'news_post_title', 'news_post_slug', 'event_title', 'event_slug',
             'tagged_athletes', 'tagged_clubs',
             'like_count', 'dislike_count', 'comment_count', 'my_reaction',
         ]
@@ -572,7 +576,7 @@ class PublicEventViewSet(viewsets.ViewSet):
     @cache_public_response()
     def retrieve(self, request, pk=None):
         # `pk` here is actually the event slug (see api/urls.py routing).
-        instance = get_object_or_404(self.get_queryset(), slug=pk)
+        instance = get_object_or_404(self.get_queryset().prefetch_related('gallery_images'), slug=pk)
         serializer = PublicEventDetailSerializer(instance, context={'request': request})
         return Response(serializer.data)
 
@@ -802,7 +806,7 @@ class PublicGalleryViewSet(viewsets.ViewSet):
 
     def get_queryset(self):
         return (
-            _with_reaction_counts(NewsPostGallery.objects.select_related('news_post'))
+            _with_reaction_counts(NewsPostGallery.objects.select_related('news_post', 'event'))
             .prefetch_related('tagged_athletes', 'tagged_clubs', 'reactions')
             .order_by('-created_at')
         )

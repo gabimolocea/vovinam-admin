@@ -28,6 +28,7 @@ debug_*.py
 test_*.py
 *_test.py
 !backend/api/tests/*.py
+!backend/landing/tests/*.py
 !backend/tests/*.py
 !backend/api/tests/test_bulk_operations.py
 !backend/api/tests/test_assigned_referee_score_permissions.py

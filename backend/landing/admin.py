@@ -29,12 +29,96 @@ from .models import (
 
 class NewsPostGalleryInline(admin.TabularInline):
     model = NewsPostGallery
+    fk_name = 'news_post'
     extra = 1
     fields = ['image', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
     filter_horizontal = ['tagged_athletes', 'tagged_clubs']
     ordering = ['order']
 
-class NewsPostAdmin(admin.ModelAdmin):
+
+class EventGalleryInline(NewsPostGalleryInline):
+    fk_name = 'event'
+    extra = 0
+
+
+class BulkGalleryUploadMixin:
+    """Bulk image upload for an admin whose model has `gallery_images`
+    (NewsPost, Event). The change form posts the chosen files here in small
+    batches - see templates/admin/landing/_bulk_gallery_upload.html.
+
+    `gallery_owner_field` is the NewsPostGallery foreign key that points at
+    this admin's model."""
+
+    gallery_owner_field = None
+
+    # Cate fisiere acceptam intr-o cerere. Nu e o preferinta: serverul
+    # are un vCPU si o jumatate de gigabyte, iar fiecare imagine se
+    # deschide, se micsoreaza si se recodeaza inainte de raspuns. O suta
+    # deodata trec de orice limita de timp si de memorie - de acolo a
+    # venit 503-ul. Incarcarea in masa se face in transe mici, una dupa
+    # alta, din browser.
+    GALLERY_BATCH_LIMIT = 6
+
+    def _gallery_upload_url_name(self):
+        return f'{self.opts.app_label}_{self.opts.model_name}_gallery_upload'
+
+    def get_urls(self):
+        custom = [
+            path(
+                '<int:object_id>/gallery-upload/',
+                self.admin_site.admin_view(self.gallery_upload_view),
+                name=self._gallery_upload_url_name(),
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        extra_context = dict(extra_context or {})
+        extra_context['gallery_upload_url'] = reverse(
+            f'admin:{self._gallery_upload_url_name()}', args=[object_id],
+        )
+        extra_context['gallery_batch_limit'] = self.GALLERY_BATCH_LIMIT
+        return super().change_view(request, object_id, form_url, extra_context)
+
+    def gallery_upload_view(self, request, object_id):
+        """Primeste o transa de imagini si le adauga in galerie."""
+        if request.method != 'POST':
+            return HttpResponseBadRequest('POST required')
+
+        owner = get_object_or_404(self.model, pk=object_id)
+        if not self.has_change_permission(request, owner):
+            return JsonResponse({'error': 'Nu ai dreptul să modifici această pagină.'}, status=403)
+
+        files = request.FILES.getlist('images')
+        if not files:
+            return JsonResponse({'error': 'Nicio imagine primită.'}, status=400)
+        if len(files) > self.GALLERY_BATCH_LIMIT:
+            return JsonResponse(
+                {'error': f'Maxim {self.GALLERY_BATCH_LIMIT} imagini pe cerere.'}, status=400,
+            )
+
+        owner_kwargs = {self.gallery_owner_field: owner}
+        # Continuam numerotarea, ca imaginile adaugate acum sa nu sara in
+        # fata celor existente.
+        start = (NewsPostGallery.objects.filter(**owner_kwargs)
+                 .aggregate(Max('order'))['order__max'] or 0) + 1
+
+        created, failed = [], []
+        for offset, uploaded in enumerate(files):
+            try:
+                item = NewsPostGallery.objects.create(
+                    **owner_kwargs, image=uploaded, order=start + offset,
+                )
+                created.append({'id': item.pk, 'url': item.image.url, 'name': uploaded.name})
+            except Exception as exc:
+                # O imagine stricata dintr-o transa nu trebuie sa piarda
+                # si restul transei.
+                failed.append({'name': uploaded.name, 'error': str(exc)})
+
+        return JsonResponse({'created': created, 'failed': failed})
+
+
+class NewsPostAdmin(BulkGalleryUploadMixin, admin.ModelAdmin):
     list_display = ['title', 'published', 'featured', 'author_name', 'gallery_count', 'created_at', 'updated_at']
     list_filter = ['published', 'featured', 'created_at', 'author']
     search_fields = ['title', 'content', 'excerpt', 'tags']
@@ -46,60 +130,7 @@ class NewsPostAdmin(admin.ModelAdmin):
     ordering = ['-created_at']
     inlines = [NewsPostGalleryInline]
     change_form_template = 'admin/landing/newspost/change_form.html'
-
-    # Cate fisiere acceptam intr-o cerere. Nu e o preferinta: serverul
-    # are un vCPU si o jumatate de gigabyte, iar fiecare imagine se
-    # deschide, se micsoreaza si se recodeaza inainte de raspuns. O suta
-    # deodata trec de orice limita de timp si de memorie - de acolo a
-    # venit 503-ul. Incarcarea in masa se face in transe mici, una dupa
-    # alta, din browser.
-    GALLERY_BATCH_LIMIT = 6
-
-    def get_urls(self):
-        custom = [
-            path(
-                '<int:post_id>/gallery-upload/',
-                self.admin_site.admin_view(self.gallery_upload_view),
-                name='landing_newspost_gallery_upload',
-            ),
-        ]
-        return custom + super().get_urls()
-
-    def gallery_upload_view(self, request, post_id):
-        """Primeste o transa de imagini si le adauga in galerie."""
-        if request.method != 'POST':
-            return HttpResponseBadRequest('POST required')
-
-        post = get_object_or_404(NewsPost, pk=post_id)
-        if not self.has_change_permission(request, post):
-            return JsonResponse({'error': 'Nu ai dreptul să modifici articolul.'}, status=403)
-
-        files = request.FILES.getlist('images')
-        if not files:
-            return JsonResponse({'error': 'Nicio imagine primită.'}, status=400)
-        if len(files) > self.GALLERY_BATCH_LIMIT:
-            return JsonResponse(
-                {'error': f'Maxim {self.GALLERY_BATCH_LIMIT} imagini pe cerere.'}, status=400,
-            )
-
-        # Continuam numerotarea, ca imaginile adaugate acum sa nu sara in
-        # fata celor existente.
-        start = (NewsPostGallery.objects.filter(news_post=post)
-                 .aggregate(Max('order'))['order__max'] or 0) + 1
-
-        created, failed = [], []
-        for offset, uploaded in enumerate(files):
-            try:
-                item = NewsPostGallery.objects.create(
-                    news_post=post, image=uploaded, order=start + offset,
-                )
-                created.append({'id': item.pk, 'url': item.image.url, 'name': uploaded.name})
-            except Exception as exc:
-                # O imagine stricata dintr-o transa nu trebuie sa piarda
-                # si restul transei.
-                failed.append({'name': uploaded.name, 'error': str(exc)})
-
-        return JsonResponse({'created': created, 'failed': failed})
+    gallery_owner_field = 'news_post'
 
     fieldsets = (
         (_('Informații de bază'), {
@@ -164,8 +195,11 @@ class EventAdminForm(forms.ModelForm):
             self.fields['event_types'].initial = self.instance.event_types
 
 
-class EventAdmin(admin.ModelAdmin):
+class EventAdmin(BulkGalleryUploadMixin, admin.ModelAdmin):
     form = EventAdminForm
+    inlines = [EventGalleryInline]
+    change_form_template = 'admin/landing/event/change_form.html'
+    gallery_owner_field = 'event'
     list_display = ['title', 'start_date', 'city', 'event_types_display', 'event_status', 'sync_mode', 'sync_locked', 'local_sync_status', 'is_featured', 'is_publicly_visible']
     # `status` nu mai e camp in baza de date, ci se citeste din date (vezi
     # Event.status), asa ca nu se poate filtra pe el; coloana start_date
@@ -490,12 +524,13 @@ except Exception:
     pass
 
 class NewsPostGalleryAdmin(admin.ModelAdmin):
-    list_display = ['news_post', 'image_preview', 'alt_text', 'order', 'created_at']
-    list_filter = ['news_post', 'created_at']
-    search_fields = ['news_post__title', 'alt_text', 'caption']
-    ordering = ['news_post', 'order']
+    list_display = ['news_post', 'event', 'image_preview', 'alt_text', 'order', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['news_post__title', 'event__title', 'alt_text', 'caption']
+    ordering = ['news_post', 'event', 'order']
+    raw_id_fields = ['news_post', 'event']
     filter_horizontal = ['tagged_athletes', 'tagged_clubs']
-    fields = ['news_post', 'image', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
+    fields = ['news_post', 'event', 'image', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
 
     def image_preview(self, obj):
         if obj.image:
@@ -507,7 +542,7 @@ class NewsPostGalleryAdmin(admin.ModelAdmin):
 class GalleryReactionAdmin(admin.ModelAdmin):
     list_display = ['gallery_image', 'user', 'reaction_type', 'created_at']
     list_filter = ['reaction_type', 'created_at']
-    search_fields = ['user__username', 'gallery_image__news_post__title']
+    search_fields = ['user__username', 'gallery_image__news_post__title', 'gallery_image__event__title']
     raw_id_fields = ['gallery_image', 'user']
 
 
