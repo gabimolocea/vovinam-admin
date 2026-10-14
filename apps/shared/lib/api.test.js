@@ -68,6 +68,25 @@ describe('api axios instance interceptors', () => {
     expect(localStorage.getItem('refreshToken')).toBeNull();
   });
 
+  it('never redirects to login when the logout request itself is refused', async () => {
+    // A 401 on logout used to send the app to /login, racing - and often
+    // beating - the logout's own redirect, so the public site never got
+    // the signal to drop its session and sent the user back to their panel.
+    vi.resetModules();
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, pathname: '/athletes/10', search: '', assign });
+    try {
+      const { default: api } = await import('./api.js');
+      const responseInterceptor = api.interceptors.response.handlers[0];
+      const error = { config: { url: '/auth/logout/' }, response: { status: 401 } };
+
+      await expect(responseInterceptor.rejected(error)).rejects.toBe(error);
+      expect(assign).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('leaves stored tokens alone on a non-401 error', async () => {
     const { default: api } = await import('./api.js');
     localStorage.setItem('authToken', 'still-valid');

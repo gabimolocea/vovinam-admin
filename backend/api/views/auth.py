@@ -130,8 +130,15 @@ class PasswordResetConfirmView(APIView):
 
 
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
-    
+    # Not IsAuthenticated: the clients clear their access token before
+    # calling this (see AuthContext.logout), so the request arrives without
+    # one. It used to 401, which skipped the blacklist below and sent the
+    # app's 401 handler off to its login page, racing - and often beating -
+    # the logout's own redirect. The refresh token itself is the proof
+    # needed here: whoever holds it can only use it to end that session.
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
     def post(self, request):
         refresh_token = request.data.get("refresh")
         if refresh_token:

@@ -85,6 +85,13 @@ api.interceptors.response.use(
     const { config, response } = err;
     const isAuthEndpoint = config?.url?.includes('/auth/login/') || config?.url?.includes('/auth/token/refresh/');
 
+    // Logging out is already leaving: a failure here must not trigger a
+    // refresh or the expired-session redirect, which would race the
+    // logout's own navigation and land back on a logged-in page.
+    if (config?.url?.includes('/auth/logout/')) {
+      return Promise.reject(err);
+    }
+
     if (response?.status === 401 && config && !config._retriedAfterRefresh && !isAuthEndpoint) {
       config._retriedAfterRefresh = true;
       try {
