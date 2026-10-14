@@ -219,9 +219,19 @@ class AthleteViewSet(viewsets.ModelViewSet):
         ordering = request.query_params.get('ordering')
         if ordering == 'grade':
             # Highest-ranked belt first; athletes without a grade yet sort last.
-            queryset = queryset.order_by(
-                models.F('current_grade__rank_order').desc(nulls_last=True), 'last_name', 'first_name', 'id'
-            )
+            by_grade = [models.F('current_grade__rank_order').desc(nulls_last=True), 'last_name', 'first_name', 'id']
+            club_id = request.query_params.get('club')
+            if not club_id and self._is_own_club_roster_request():
+                club_id = request.user.athlete.club_id
+            if club_id:
+                # On a club's roster its coaches come first, then everyone by grade.
+                queryset = queryset.annotate(
+                    is_club_coach=models.Exists(
+                        Club.coaches.through.objects.filter(club_id=club_id, athlete_id=models.OuterRef('pk'))
+                    ),
+                )
+                by_grade.insert(0, models.F('is_club_coach').desc())
+            queryset = queryset.order_by(*by_grade)
         else:
             queryset = queryset.order_by('last_name', 'first_name', 'id')
 

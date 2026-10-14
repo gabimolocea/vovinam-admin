@@ -97,7 +97,7 @@ export default function MyClub() {
       .then((clubRes) => setClub(clubRes.data))
       .catch(() => setError('Nu am putut încărca datele clubului.'));
     Promise.allSettled([
-      athleteAPI.list({ my_club: true }),
+      athleteAPI.list({ my_club: true, ordering: 'grade' }),
       visaAPI.annual.list({ my_club: true }),
       visaAPI.medical.list({ my_club: true }),
     ])

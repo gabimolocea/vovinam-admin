@@ -86,6 +86,8 @@ export default function ClubDetailPage() {
       try {
         const response = await athleteAPI.list({
           club: club.id,
+          // Antrenorul primul, apoi sportivii de la gradul cel mai mare.
+          ordering: 'grade',
           paginate: true,
           page_size: 20,
           page,
