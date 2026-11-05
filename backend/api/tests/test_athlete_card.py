@@ -35,8 +35,24 @@ class AthleteCardTests(TestCase):
         # No photo uploaded: the model's placeholder, which isn't a photo.
         self.assertIsNone(data['profile_image'])
 
-    def test_visitors_get_nothing(self):
-        self.assertEqual(self.get().status_code, 401)
+    def test_visitors_get_the_card_of_someone_already_public(self):
+        # Has a title, so already on the public Staff page.
+        data = self.get().data
+        self.assertEqual(data['full_name'], 'Florin Macovei')
+        self.assertEqual(data['grade'], 'CENTURĂ ROŞIE, 7 DANG')
+        self.assertEqual(data['title'], 'Maestru')
+
+    def test_visitors_get_a_referee_card_too(self):
+        referee = Athlete.objects.create(first_name='Ar', last_name='Bitru', status='approved', is_referee=True)
+        self.assertEqual(self.get(url=f'/api/athletes/{referee.pk}/card/').status_code, 200)
+
+    def test_visitors_get_nothing_for_other_athletes(self):
+        athlete = Athlete.objects.create(first_name='Sportiv', last_name='Minor', status='approved')
+        response = self.get(url=f'/api/athletes/{athlete.pk}/card/')
+        # 403, not 401: the frontend's API client turns any 401 into a
+        # session-expired redirect to the login page.
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn('profile_image', response.data)
 
     def test_unapproved_athletes_have_no_card(self):
         user = User.objects.create_user(username='cititor', email='c@example.com', password='x', role='athlete')

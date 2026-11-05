@@ -21,8 +21,9 @@ function loadCard(id) {
 /**
  * Compact preview of an athlete tagged in an article, shown while the
  * pointer rests on their name. Athlete profiles need a sign-in (photos of
- * minors), so a visitor only sees the name and a hint - the same thing the
- * link itself would tell them.
+ * minors), so a visitor gets the full card only for someone the site
+ * already shows publicly - staff, title holders, referees (the backend
+ * decides, see athlete_card); for anyone else just the name and a hint.
  */
 export default function MentionCard({ athleteId, name, anchor, onMouseEnter, onMouseLeave }) {
   const { isAuthenticated } = useAuth();
@@ -30,7 +31,6 @@ export default function MentionCard({ athleteId, name, anchor, onMouseEnter, onM
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated) return undefined;
     let active = true;
     setCard(null);
     setFailed(false);
@@ -67,8 +67,8 @@ export default function MentionCard({ athleteId, name, anchor, onMouseEnter, onM
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="font-semibold leading-tight text-[#00334d]">{card?.full_name || name}</p>
           {card?.club && <p className="truncate text-xs text-[#5b6675]">{card.club}</p>}
-          {!isAuthenticated && <p className="text-xs text-[#5b6675]">Autentifică-te ca să vezi profilul sportivului.</p>}
-          {isAuthenticated && !card && !failed && <p className="text-xs text-[#5b6675]">Se încarcă…</p>}
+          {!card && !failed && <p className="text-xs text-[#5b6675]">Se încarcă…</p>}
+          {failed && !isAuthenticated && <p className="text-xs text-[#5b6675]">Autentifică-te ca să vezi profilul sportivului.</p>}
         </div>
       </div>
       {card?.grade && (

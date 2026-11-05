@@ -26,11 +26,17 @@ from ..notification_utils import notify_profile_image_submitted, notify_profile_
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def athlete_card(request, pk):
     """The few things the hover card on an athlete tagged in an article
-    shows: photo, name, grade, title and roles. Sign-in only, like the
-    profile it previews (see athlete_detail) - visitors just see the name."""
+    shows: photo, name, grade, title and roles.
+
+    Athlete profiles need a sign-in (many athletes are minors), so a visitor
+    only gets the card of someone whose photo, grade and title the site
+    already publishes anyway: federation staff and title holders (the Staff
+    page) and referees (the Arbitri page). Everyone else answers 403 - not
+    401, which the apps' API client treats as an expired session and
+    redirects to login - and the card just shows the name."""
     from ..serializers._common import _person_name, _safe_file_url
 
     athlete = (
@@ -41,6 +47,9 @@ def athlete_card(request, pk):
     )
     if not athlete:
         return Response({'detail': 'Not found.'}, status=404)
+    is_public_figure = bool(athlete.federation_role_id or athlete.title_id or athlete.is_referee)
+    if not request.user.is_authenticated and not is_public_figure:
+        return Response({'detail': 'Autentifică-te ca să vezi profilul sportivului.'}, status=403)
     roles = [
         label for flag, label in (
             (athlete.is_coach, 'Antrenor'), (athlete.is_instructor, 'Instructor'), (athlete.is_referee, 'Arbitru'),
