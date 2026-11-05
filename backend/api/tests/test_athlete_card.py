@@ -6,7 +6,7 @@ from api.models import Athlete, Club, Grade, Title, User
 
 
 class AthleteCardTests(TestCase):
-    """The hover card on an athlete tagged in an article: sign-in only, like their profile."""
+    """The hover card on an athlete tagged in an article: public basics only."""
 
     def setUp(self):
         self.athlete = Athlete.objects.create(
@@ -35,24 +35,14 @@ class AthleteCardTests(TestCase):
         # No photo uploaded: the model's placeholder, which isn't a photo.
         self.assertIsNone(data['profile_image'])
 
-    def test_visitors_get_the_card_of_someone_already_public(self):
-        # Has a title, so already on the public Staff page.
-        data = self.get().data
-        self.assertEqual(data['full_name'], 'Florin Macovei')
-        self.assertEqual(data['grade'], 'CENTURĂ ROŞIE, 7 DANG')
-        self.assertEqual(data['title'], 'Maestru')
-
-    def test_visitors_get_a_referee_card_too(self):
-        referee = Athlete.objects.create(first_name='Ar', last_name='Bitru', status='approved', is_referee=True)
-        self.assertEqual(self.get(url=f'/api/athletes/{referee.pk}/card/').status_code, 200)
-
-    def test_visitors_get_nothing_for_other_athletes(self):
-        athlete = Athlete.objects.create(first_name='Sportiv', last_name='Minor', status='approved')
-        response = self.get(url=f'/api/athletes/{athlete.pk}/card/')
-        # 403, not 401: the frontend's API client turns any 401 into a
-        # session-expired redirect to the login page.
-        self.assertEqual(response.status_code, 403)
-        self.assertNotIn('profile_image', response.data)
+    def test_visitors_get_the_card_too(self):
+        athlete = Athlete.objects.create(first_name='Sportiv', last_name='Oarecare', status='approved')
+        data = self.get(url=f'/api/athletes/{athlete.pk}/card/').data
+        self.assertEqual(data['full_name'], 'Sportiv Oarecare')
+        self.assertEqual(set(data), {
+            'id', 'full_name', 'profile_image', 'profile_image_focus_x', 'profile_image_focus_y',
+            'club', 'grade', 'title', 'federation_role', 'roles',
+        })
 
     def test_unapproved_athletes_have_no_card(self):
         user = User.objects.create_user(username='cititor', email='c@example.com', password='x', role='athlete')

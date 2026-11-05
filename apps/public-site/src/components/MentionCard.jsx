@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { User } from 'lucide-react';
-import { useAuth } from '@shared';
 import { athleteAPI } from '@shared/lib/api';
 import { stilFocus } from '@shared/lib/profileImage';
 import BeltBadge from './BeltBadge';
@@ -20,13 +19,10 @@ function loadCard(id) {
 
 /**
  * Compact preview of an athlete tagged in an article, shown while the
- * pointer rests on their name. Athlete profiles need a sign-in (photos of
- * minors), so a visitor gets the full card only for someone the site
- * already shows publicly - staff, title holders, referees (the backend
- * decides, see athlete_card); for anyone else just the name and a hint.
+ * pointer rests on their name: photo, club, belt, title and roles - the
+ * public basics the Staff and Arbitri pages show too.
  */
 export default function MentionCard({ athleteId, name, anchor, onMouseEnter, onMouseLeave }) {
-  const { isAuthenticated } = useAuth();
   const [card, setCard] = useState(null);
   const [failed, setFailed] = useState(false);
 
@@ -38,7 +34,7 @@ export default function MentionCard({ athleteId, name, anchor, onMouseEnter, onM
       .then((data) => { if (active) setCard(data); })
       .catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
-  }, [athleteId, isAuthenticated]);
+  }, [athleteId]);
 
   // Below the name, flipped above it when there's no room underneath.
   const rect = anchor.getBoundingClientRect();
@@ -68,7 +64,6 @@ export default function MentionCard({ athleteId, name, anchor, onMouseEnter, onM
           <p className="font-semibold leading-tight text-[#00334d]">{card?.full_name || name}</p>
           {card?.club && <p className="truncate text-xs text-[#5b6675]">{card.club}</p>}
           {!card && !failed && <p className="text-xs text-[#5b6675]">Se încarcă…</p>}
-          {failed && !isAuthenticated && <p className="text-xs text-[#5b6675]">Autentifică-te ca să vezi profilul sportivului.</p>}
         </div>
       </div>
       {card?.grade && (
