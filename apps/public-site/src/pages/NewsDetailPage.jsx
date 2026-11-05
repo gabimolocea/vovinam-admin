@@ -269,6 +269,8 @@ export default function NewsDetailPage() {
           </button>
         </div>
 
+        <RichContent html={cleanContent} />
+
         {tags.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium text-[#00334d]">În acest articol:</p>
@@ -284,8 +286,6 @@ export default function NewsDetailPage() {
             </div>
           </div>
         )}
-
-        <RichContent html={cleanContent} />
 
         {post.gallery_images?.length > 0 && (
           <section className="flex flex-col gap-3">
