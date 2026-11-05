@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 
 const AUTOPLAY_MS = 6000;
+// Width/height from which a photo counts as wide: 16:9 and anything wider.
+const WIDE_RATIO = 1.6;
 
 // News posts don't have a real "category" field, only a freeform
 // comma-separated `tags` string — use the first tag as the category shown
@@ -27,6 +29,10 @@ export default function HeroCarousel({ slides }) {
   // below the subject - center it and zoom from the center instead once
   // we know it's portrait.
   const [portraitSlides, setPortraitSlides] = useState({});
+  // A very wide photo (a whole team side by side) loses the people at both
+  // ends to that mobile crop-and-zoom - those are shown whole on mobile
+  // too, over the same blurred backdrop desktop uses for its letterboxing.
+  const [wideSlides, setWideSlides] = useState({});
   const timerRef = useRef(null);
   const navigate = useNavigate();
   // Mobile/tablet: the scrim's dark/solid band needs to cover roughly the
@@ -42,6 +48,8 @@ export default function HeroCarousel({ slides }) {
     const img = e.target;
     if (img.naturalHeight > img.naturalWidth) {
       setPortraitSlides((prev) => (prev[slug] ? prev : { ...prev, [slug]: true }));
+    } else if (img.naturalWidth / img.naturalHeight >= WIDE_RATIO) {
+      setWideSlides((prev) => (prev[slug] ? prev : { ...prev, [slug]: true }));
     }
   }, []);
 
@@ -115,10 +123,10 @@ export default function HeroCarousel({ slides }) {
                     src={slide.featured_image}
                     alt=""
                     aria-hidden="true"
-                    className="site-hero-bg-mirror absolute inset-0 hidden h-full w-full object-cover lg:block"
+                    className={`site-hero-bg-mirror absolute inset-0 h-full w-full object-cover lg:block ${wideSlides[slide.slug] ? 'block' : 'hidden'}`}
                     loading={i === 0 ? 'eager' : 'lazy'}
                   />
-                  <div className="site-hero-bg-scrim absolute inset-0 hidden lg:block" />
+                  <div className={`site-hero-bg-scrim absolute inset-0 lg:block ${wideSlides[slide.slug] ? 'block' : 'hidden'}`} />
                   {/* Mobile/tablet: cover-crop with a mild extra zoom
                       (scale-[1.2]) so photos read as a deliberately tight,
                       zoomed-in shot instead of a bare minimum crop - reset
@@ -131,8 +139,10 @@ export default function HeroCarousel({ slides }) {
                   <img
                     src={slide.featured_image}
                     alt={slide.featured_image_alt || ''}
-                    className={`site-hero-photo relative h-full w-full scale-[1.2] object-cover lg:scale-100 lg:object-contain ${
-                      portraitSlides[slide.slug] ? 'object-center' : 'origin-top object-top'
+                    className={`site-hero-photo relative h-full w-full lg:scale-100 lg:object-contain ${
+                      wideSlides[slide.slug]
+                        ? 'object-contain object-top lg:object-center'
+                        : `scale-[1.2] object-cover ${portraitSlides[slide.slug] ? 'object-center' : 'origin-top object-top'}`
                     }`}
                     loading={i === 0 ? 'eager' : 'lazy'}
                     onLoad={(e) => handlePhotoLoad(slide.slug, e)}
