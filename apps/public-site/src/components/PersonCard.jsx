@@ -66,7 +66,8 @@ export default function PersonCard({ person }) {
         )}
         {person.referee_category && (
           <span className="text-xs font-bold uppercase tracking-wide text-brand-red">
-            {person.referee_category}
+            {/* "Categoria B" alone didn't say what it was a category of. */}
+            Arbitru {person.referee_category}
           </span>
         )}
         {person.title && (
