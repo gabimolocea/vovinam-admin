@@ -211,6 +211,17 @@ class NewsPostAdmin(BulkGalleryUploadMixin, admin.ModelAdmin):
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('author').prefetch_related('gallery_images')
+
+    def save_related(self, request, form, formsets, change):
+        # After the form's own many-to-many save, or it would overwrite the
+        # tagged_athletes this adds with whatever the form submitted.
+        super().save_related(request, form, formsets, change)
+        from .auto_tagging import auto_tag_post
+
+        tagged = auto_tag_post(form.instance)
+        if tagged:
+            names = ', '.join(f'{a.first_name} {a.last_name}'.strip() for a in tagged)
+            self.message_user(request, f'Am etichetat automat: {names}.', level=messages.INFO)
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "author":
