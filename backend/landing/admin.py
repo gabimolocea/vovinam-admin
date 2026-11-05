@@ -8,6 +8,7 @@ from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from .models import (
@@ -27,13 +28,47 @@ from .models import (
     DocumentPage,
 )
 
+# A page with a folded corner and "PDF" on it - drawn inline so a PDF in the
+# gallery reads as a document at a glance, like a photo's thumbnail does.
+PDF_ICON_SVG = (
+    '<svg width="{size}" height="{size}" viewBox="0 0 48 48" role="img" aria-label="PDF">'
+    '<path d="M10 4h20l10 10v30H10z" fill="#fff" stroke="#c0392b" stroke-width="2"/>'
+    '<path d="M30 4v10h10" fill="#fbe3e0" stroke="#c0392b" stroke-width="2"/>'
+    '<rect x="6" y="24" width="30" height="13" rx="2" fill="#c0392b"/>'
+    '<text x="21" y="34" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" '
+    'font-weight="700" fill="#fff">PDF</text></svg>'
+)
+
+
+def gallery_preview(obj, size=60):
+    """Thumbnail of a gallery item: the photo, or a PDF illustration linking to the file."""
+    if obj is None or not obj.pk:
+        return '—'
+    if obj.document:
+        return format_html(
+            '<a href="{}" target="_blank" title="Deschide PDF-ul">{}</a>',
+            obj.document.url, mark_safe(PDF_ICON_SVG.format(size=size)),
+        )
+    if obj.image:
+        return format_html(
+            '<img src="{}" width="{}" height="{}" style="object-fit: cover; border-radius: 4px;" />',
+            obj.image.url, size, size,
+        )
+    return '—'
+
+
 class NewsPostGalleryInline(admin.TabularInline):
     model = NewsPostGallery
     fk_name = 'news_post'
     extra = 1
-    fields = ['image', 'document', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
+    fields = ['preview', 'image', 'document', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
+    readonly_fields = ['preview']
     filter_horizontal = ['tagged_athletes', 'tagged_clubs']
     ordering = ['order']
+
+    @admin.display(description=_('Previzualizare'))
+    def preview(self, obj):
+        return gallery_preview(obj)
 
 
 class EventGalleryInline(NewsPostGalleryInline):
@@ -554,11 +589,7 @@ class NewsPostGalleryAdmin(admin.ModelAdmin):
     fields = ['news_post', 'event', 'image', 'document', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
 
     def image_preview(self, obj):
-        if obj.document:
-            return format_html('<a href="{}" target="_blank">PDF</a>', obj.document.url)
-        if obj.image:
-            return format_html('<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />', obj.image.url)
-        return _('Fără imagine')
+        return gallery_preview(obj, size=50)
     image_preview.short_description = _('Previzualizare')
 
 
