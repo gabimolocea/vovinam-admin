@@ -148,6 +148,94 @@
   border-radius: 0.5rem;
 }
 
+/* Text written in the CKEditor (articles, events, about, documents).
+   Tailwind's reset strips every list marker and heading size, so lists
+   and headings typed in the admin came out as plain paragraphs. */
+.public-site-app .prose-content > * + * {
+  margin-top: 1em;
+}
+
+.public-site-app .prose-content ul,
+.public-site-app .prose-content ol {
+  padding-left: 1.5em;
+}
+
+.public-site-app .prose-content ul {
+  list-style: disc;
+}
+
+.public-site-app .prose-content ol {
+  list-style: decimal;
+}
+
+.public-site-app .prose-content ul ul {
+  list-style: circle;
+}
+
+.public-site-app .prose-content li + li,
+.public-site-app .prose-content li > ul,
+.public-site-app .prose-content li > ol {
+  margin-top: 0.35em;
+}
+
+.public-site-app .prose-content li::marker {
+  color: #00334d;
+}
+
+.public-site-app .prose-content h1,
+.public-site-app .prose-content h2,
+.public-site-app .prose-content h3,
+.public-site-app .prose-content h4 {
+  font-family: theme('fontFamily.display');
+  font-weight: 700;
+  line-height: 1.25;
+  color: #00334d;
+}
+
+.public-site-app .prose-content * + h1,
+.public-site-app .prose-content * + h2,
+.public-site-app .prose-content * + h3,
+.public-site-app .prose-content * + h4 {
+  margin-top: 1.5em;
+}
+
+.public-site-app .prose-content h1 { font-size: 1.875rem; }
+.public-site-app .prose-content h2 { font-size: 1.5rem; }
+.public-site-app .prose-content h3 { font-size: 1.25rem; }
+.public-site-app .prose-content h4 { font-size: 1.125rem; }
+
+.public-site-app .prose-content a {
+  color: #0a4c75;
+  text-decoration: underline;
+}
+
+.public-site-app .prose-content blockquote {
+  border-left: 4px solid #edb654;
+  padding-left: 1em;
+  font-style: italic;
+}
+
+.public-site-app .prose-content hr {
+  border-top: 1px solid #dce0e5;
+}
+
+.public-site-app .prose-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.public-site-app .prose-content th,
+.public-site-app .prose-content td {
+  border: 1px solid #dce0e5;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.public-site-app .prose-content th {
+  background-color: #f3f5f7;
+  font-weight: 600;
+}
+
 .public-site-app .video-embed {
   position: relative;
   width: 100%;
