@@ -27,6 +27,47 @@ from ..notification_utils import notify_profile_image_submitted, notify_profile_
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def athlete_card(request, pk):
+    """The few things the hover card on an athlete tagged in an article
+    shows: photo, name, grade, title and roles. Sign-in only, like the
+    profile it previews (see athlete_detail) - visitors just see the name."""
+    from ..serializers._common import _person_name, _safe_file_url
+
+    athlete = (
+        Athlete.objects
+        .select_related('club', 'current_grade', 'title', 'federation_role')
+        .filter(pk=pk, is_deleted=False, status='approved')
+        .first()
+    )
+    if not athlete:
+        return Response({'detail': 'Not found.'}, status=404)
+    roles = [
+        label for flag, label in (
+            (athlete.is_coach, 'Antrenor'), (athlete.is_instructor, 'Instructor'), (athlete.is_referee, 'Arbitru'),
+        ) if flag
+    ]
+    return Response({
+        'id': athlete.id,
+        'full_name': _person_name(athlete),
+        # The field's default placeholder isn't a photo of anyone - the card
+        # shows its own person icon instead.
+        'profile_image': (
+            _safe_file_url(athlete.profile_image)
+            if athlete.profile_image and athlete.profile_image.name != Athlete._meta.get_field('profile_image').default
+            else None
+        ),
+        'profile_image_focus_x': athlete.profile_image_focus_x,
+        'profile_image_focus_y': athlete.profile_image_focus_y,
+        'club': athlete.club.name if athlete.club_id else None,
+        'grade': athlete.current_grade.name if athlete.current_grade_id else None,
+        'title': athlete.title.name if athlete.title_id else None,
+        'federation_role': athlete.federation_role.name if athlete.federation_role_id else None,
+        'roles': roles,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def athlete_detail(request, pk):
     """Athlete detail endpoint used by the frontend's (now sign-in-gated)
     athlete profile page.

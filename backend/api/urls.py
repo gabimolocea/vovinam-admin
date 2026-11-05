@@ -235,4 +235,5 @@ urlpatterns = autocomplete_urlpatterns + [
     # Simple public athlete detail endpoint (placed after router to not conflict with update/delete)
     # This is a read-only endpoint for public pages - the router handles CRUD
     path('athletes/<int:pk>/public/', views.athlete_detail, name='athlete-detail-public'),
+    path('athletes/<int:pk>/card/', views.athlete_card, name='athlete-card'),
 ]

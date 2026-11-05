@@ -214,6 +214,8 @@ export const athleteAPI = {
   list: (params) => api.get('/athletes/', { params }),
   get: (id) => api.get(`/athletes/${id}/`),
   getPublic: (id) => api.get(`/athletes/${id}/public/`),
+  // Compact preview for the hover card on athletes tagged in articles.
+  card: (id) => api.get(`/athletes/${id}/card/`),
   create: (data) => api.post('/athletes/', data),
   update: (id, data) => api.patch(`/athletes/${id}/`, data),
   // `focus` e punctul ales de om pe poza ({x, y} in procente). Merge in
