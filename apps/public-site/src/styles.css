@@ -517,6 +517,39 @@
   }
 }
 
+/* Mobile/tablet: a very wide photo is shown whole (HeroCarousel's
+   wideSlides), sitting right above the title instead of under the header,
+   and fading into the navy at both its top and bottom edges instead of
+   ending on hard edges over the blurred backdrop. The box is sized to the
+   photo itself (height: auto, capped to the room above the title), so the
+   fades land on the photo's own edges. It ends just below where the
+   title's dark band starts (--hero-title-h, see the scrim below), so only
+   its last strip blends into that band. */
+@media (max-width: 1023px) {
+  .public-site-app .site-hero-photo-wide {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--hero-title-h, 90px) - 24px);
+    width: 100%;
+    height: auto;
+    max-height: calc(100% - var(--hero-title-h, 90px) + 24px);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 80%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 80%, transparent 100%);
+  }
+
+  /* The strip above the photo: the same navy the bottom fades into, so the
+     photo sits framed by one gradient top and bottom, not by grey blur. */
+  .public-site-app .site-hero-top-scrim {
+    background: linear-gradient(
+      180deg,
+      #0c213d 0%,
+      rgba(12, 33, 61, 0.85) 25%,
+      rgba(12, 33, 61, 0) 55%
+    );
+  }
+}
+
 /* Active slide's progress bar fills left-to-right over the autoplay
    duration (animationDuration is set inline from AUTOPLAY_MS). */
 @keyframes site-hero-progress {

@@ -31,7 +31,9 @@ export default function HeroCarousel({ slides }) {
   const [portraitSlides, setPortraitSlides] = useState({});
   // A very wide photo (a whole team side by side) loses the people at both
   // ends to that mobile crop-and-zoom - those are shown whole on mobile
-  // too, over the same blurred backdrop desktop uses for its letterboxing.
+  // too, sitting at the bottom of the band right above the title and
+  // fading into the navy there (see .site-hero-photo-wide), over the same
+  // blurred backdrop desktop uses for its letterboxing.
   const [wideSlides, setWideSlides] = useState({});
   const timerRef = useRef(null);
   const navigate = useNavigate();
@@ -141,7 +143,7 @@ export default function HeroCarousel({ slides }) {
                     alt={slide.featured_image_alt || ''}
                     className={`site-hero-photo relative h-full w-full lg:scale-100 lg:object-contain ${
                       wideSlides[slide.slug]
-                        ? 'object-contain object-top lg:object-center'
+                        ? 'site-hero-photo-wide object-contain object-bottom lg:object-center'
                         : `scale-[1.2] object-cover ${portraitSlides[slide.slug] ? 'object-center' : 'origin-top object-top'}`
                     }`}
                     loading={i === 0 ? 'eager' : 'lazy'}
@@ -152,6 +154,7 @@ export default function HeroCarousel({ slides }) {
                 <div className="site-hero-fallback h-full w-full" />
               )}
               <div className="site-hero-scrim absolute inset-0" />
+              {wideSlides[slide.slug] && <div className="site-hero-top-scrim absolute inset-0 lg:hidden" />}
             </div>
 
             <div className="relative mx-auto flex h-full w-full max-w-7xl flex-col justify-end gap-8 px-4 pb-[92px] sm:px-6 lg:pb-36">
