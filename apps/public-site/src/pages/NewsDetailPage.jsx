@@ -4,7 +4,7 @@ import { MessageCircle, Pause, Volume2 } from 'lucide-react';
 import { useAuth, publicContentAPI } from '@shared';
 import { Alert, Button, Skeleton, Textarea } from '../components/ui';
 import Lightbox from '../components/Lightbox';
-import PhotoLightbox from '../components/PhotoLightbox';
+import GalleryGrid from '../components/GalleryGrid';
 import RichContent from '../components/RichContent';
 import ShareButton from '../components/ShareButton';
 import Seo, { newsArticleJsonLd } from '../components/Seo';
@@ -110,7 +110,6 @@ export default function NewsDetailPage() {
   // Galeria se deschide in vizualizatorul cu lista: derulare cu degetul,
   // etichete, aprecieri. Imaginea principala ramane pe cel simplu - e
   // una singura, n-are prin ce sa deruleze.
-  const [galleryIndex, setGalleryIndex] = useState(null);
 
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
@@ -287,23 +286,7 @@ export default function NewsDetailPage() {
           </div>
         )}
 
-        {post.gallery_images?.length > 0 && (
-          <section className="flex flex-col gap-3">
-            <h2 className="font-display text-xl font-semibold text-[#00334d]">Galerie foto</h2>
-            <div className="grid grid-cols-3 gap-3">
-              {post.gallery_images.map((image, position) => (
-                <button
-                  key={image.id}
-                  type="button"
-                  className="overflow-hidden rounded-lg border border-[#dce0e5]"
-                  onClick={() => setGalleryIndex(position)}
-                >
-                  <img src={image.image} alt={image.alt_text || ''} className="aspect-video h-full w-full object-cover transition-transform hover:scale-105" />
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
+        <GalleryGrid items={post.gallery_images} />
 
         <section ref={commentsRef} className="flex flex-col gap-4">
           <h2 className="font-display text-xl font-semibold text-[#00334d]">
@@ -348,14 +331,6 @@ export default function NewsDetailPage() {
       </div>
 
       <Lightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />
-      {galleryIndex !== null && (
-        <PhotoLightbox
-          photos={post.gallery_images}
-          index={galleryIndex}
-          onIndexChange={setGalleryIndex}
-          onClose={() => setGalleryIndex(null)}
-        />
-      )}
     </article>
   );
 }

@@ -165,3 +165,49 @@ class AdminNewestFirstTests(TestCase):
         response = self.client.get(reverse('admin:api_event_changelist'))
         titles = [event.title for event in response.context['cl'].result_list]
         self.assertEqual(titles, ['viitor', 'recent', 'vechi'])
+
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA)
+class GalleryPdfTests(TestCase):
+    """A gallery can hold PDFs next to photos - shown as document tiles, never in the photo feeds."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_superuser(username='pdf', email='pdf@example.com', password='parola12345')
+        self.client.force_login(self.admin)
+        self.post = NewsPost.objects.create(title='Program', slug='program', author=self.admin, published=True)
+        self.url = reverse('admin:landing_newspost_gallery_upload', args=[self.post.pk])
+
+    def test_a_pdf_goes_in_as_a_document(self):
+        pdf = SimpleUploadedFile('program.pdf', b'%PDF-1.4\n%test\n', content_type='application/pdf')
+        response = self.client.post(self.url, {'images': [pdf, an_image('a.jpg')]})
+
+        self.assertEqual(len(response.json()['created']), 2)
+        document = NewsPostGallery.objects.get(news_post=self.post, image='')
+        self.assertTrue(document.document.name.endswith('.pdf'))
+
+    def test_a_file_only_named_pdf_is_refused(self):
+        fake = SimpleUploadedFile('virus.pdf', b'MZ not a pdf', content_type='application/pdf')
+        response = self.client.post(self.url, {'images': [fake]})
+
+        self.assertEqual(response.json()['failed'][0]['name'], 'virus.pdf')
+        self.assertFalse(NewsPostGallery.objects.filter(news_post=self.post).exists())
+
+    def test_public_pages_get_the_pdf_but_photo_feeds_dont(self):
+        pdf = SimpleUploadedFile('program.pdf', b'%PDF-1.4\n%test\n', content_type='application/pdf')
+        self.client.post(self.url, {'images': [pdf, an_image('a.jpg')]})
+
+        detail = self.client.get('/api/public/news/program/', HTTP_HOST='localhost').json()
+        kinds = sorted('pdf' if item['document'] else 'photo' for item in detail['gallery_images'])
+        self.assertEqual(kinds, ['pdf', 'photo'])
+
+        feed = self.client.get('/api/public/gallery/', HTTP_HOST='localhost').json()
+        self.assertTrue(all(item['image'] for item in feed['results']))
+
+    def test_an_item_is_a_photo_or_a_pdf_not_both_or_neither(self):
+        from django.core.exceptions import ValidationError
+
+        with self.assertRaises(ValidationError):
+            NewsPostGallery(news_post=self.post).clean()
+        with self.assertRaises(ValidationError):
+            NewsPostGallery(news_post=self.post, image='a.jpg', document='b.pdf').clean()

@@ -1,3 +1,4 @@
+from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -526,7 +527,16 @@ class NewsPostGallery(models.Model):
         null=True,
         blank=True,
     )
-    image = models.ImageField(upload_to='news/gallery/')
+    # Each gallery item is either a photo or a PDF (a programme, a results
+    # sheet, a diploma) - exactly one of the two, see clean(). Not a database
+    # constraint: rows older than this field were never checked for it.
+    image = models.ImageField(upload_to='news/gallery/', blank=True)
+    document = models.FileField(
+        upload_to='news/gallery/documents/',
+        blank=True,
+        validators=[FileExtensionValidator(['pdf'])],
+        help_text="PDF shown in the gallery as a document tile instead of a photo",
+    )
     alt_text = models.CharField(
         max_length=100, 
         blank=True, 
@@ -572,6 +582,11 @@ class NewsPostGallery(models.Model):
     def __str__(self):
         owner = self.news_post or self.event
         return f"{owner.title if owner else '—'} - Image {self.order}"
+
+    def clean(self):
+        super().clean()
+        if bool(self.image) == bool(self.document):
+            raise ValidationError('Alege fie o poză, fie un PDF - exact unul dintre ele.')
 
 
 

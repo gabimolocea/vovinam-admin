@@ -72,9 +72,10 @@ def _with_reaction_counts(queryset, comment_filter=Q(comments__is_approved=True)
 
 
 class PublicNewsPostGallerySerializer(serializers.ModelSerializer):
+    # A gallery item is either a photo (`image`) or a PDF (`document`).
     class Meta:
         model = NewsPostGallery
-        fields = ['id', 'image', 'alt_text', 'caption', 'order']
+        fields = ['id', 'image', 'document', 'alt_text', 'caption', 'order']
 
 
 class PublicNewsPostListSerializer(serializers.ModelSerializer):
@@ -806,7 +807,9 @@ class PublicGalleryViewSet(viewsets.ViewSet):
 
     def get_queryset(self):
         return (
-            _with_reaction_counts(NewsPostGallery.objects.select_related('news_post', 'event'))
+            # Photos only: the PDFs a gallery can also hold have no place in
+            # the "Poze" tabs or the photo viewer.
+            _with_reaction_counts(NewsPostGallery.objects.exclude(image='').select_related('news_post', 'event'))
             .prefetch_related('tagged_athletes', 'tagged_clubs', 'reactions')
             .order_by('-created_at')
         )

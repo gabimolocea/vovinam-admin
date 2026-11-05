@@ -31,7 +31,7 @@ class NewsPostGalleryInline(admin.TabularInline):
     model = NewsPostGallery
     fk_name = 'news_post'
     extra = 1
-    fields = ['image', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
+    fields = ['image', 'document', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
     filter_horizontal = ['tagged_athletes', 'tagged_clubs']
     ordering = ['order']
 
@@ -106,10 +106,20 @@ class BulkGalleryUploadMixin:
         created, failed = [], []
         for offset, uploaded in enumerate(files):
             try:
+                # A PDF goes in as a document tile, anything else as a photo.
+                # Checked by its first bytes, not just the name, so a renamed
+                # file can't land in the gallery as a "PDF".
+                is_pdf = uploaded.name.lower().endswith('.pdf')
+                if is_pdf:
+                    head = uploaded.read(5)
+                    uploaded.seek(0)
+                    if head != b'%PDF-':
+                        raise ValueError('Fișierul nu este un PDF valid.')
+                field = 'document' if is_pdf else 'image'
                 item = NewsPostGallery.objects.create(
-                    **owner_kwargs, image=uploaded, order=start + offset,
+                    **owner_kwargs, **{field: uploaded}, order=start + offset,
                 )
-                created.append({'id': item.pk, 'url': item.image.url, 'name': uploaded.name})
+                created.append({'id': item.pk, 'url': getattr(item, field).url, 'name': uploaded.name})
             except Exception as exc:
                 # O imagine stricata dintr-o transa nu trebuie sa piarda
                 # si restul transei.
@@ -541,9 +551,11 @@ class NewsPostGalleryAdmin(admin.ModelAdmin):
     ordering = ['-created_at']
     raw_id_fields = ['news_post', 'event']
     filter_horizontal = ['tagged_athletes', 'tagged_clubs']
-    fields = ['news_post', 'event', 'image', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
+    fields = ['news_post', 'event', 'image', 'document', 'alt_text', 'caption', 'order', 'tagged_athletes', 'tagged_clubs']
 
     def image_preview(self, obj):
+        if obj.document:
+            return format_html('<a href="{}" target="_blank">PDF</a>', obj.document.url)
         if obj.image:
             return format_html('<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />', obj.image.url)
         return _('Fără imagine')

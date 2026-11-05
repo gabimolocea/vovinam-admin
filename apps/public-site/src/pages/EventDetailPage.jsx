@@ -7,7 +7,7 @@ import Seo, { sportsEventJsonLd } from '../components/Seo';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ShareButton from '../components/ShareButton';
 import Lightbox from '../components/Lightbox';
-import PhotoLightbox from '../components/PhotoLightbox';
+import GalleryGrid from '../components/GalleryGrid';
 import RichContent from '../components/RichContent';
 import { excerpt, DEFAULT_OG_IMAGE } from '../lib/seo';
 import { formatEventDateRange, getEventTypeLabels } from '../lib/events';
@@ -18,7 +18,6 @@ export default function EventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [posterOpen, setPosterOpen] = useState(false);
-  const [galleryIndex, setGalleryIndex] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -142,23 +141,7 @@ export default function EventDetailPage() {
             <RichContent html={event.description} />
           )}
 
-          {event.gallery_images?.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2 className="font-display text-xl font-semibold text-[#00334d]">Galerie foto</h2>
-              <div className="grid grid-cols-3 gap-3">
-                {event.gallery_images.map((image, position) => (
-                  <button
-                    key={image.id}
-                    type="button"
-                    className="overflow-hidden rounded-lg border border-[#dce0e5]"
-                    onClick={() => setGalleryIndex(position)}
-                  >
-                    <img src={image.image} alt={image.alt_text || ''} className="aspect-video h-full w-full object-cover transition-transform hover:scale-105" />
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
+          <GalleryGrid items={event.gallery_images} />
         </div>
       </div>
 
@@ -166,14 +149,6 @@ export default function EventDetailPage() {
         image={posterOpen ? { image: event.featured_image, alt_text: event.title } : null}
         onClose={() => setPosterOpen(false)}
       />
-      {galleryIndex !== null && (
-        <PhotoLightbox
-          photos={event.gallery_images}
-          index={galleryIndex}
-          onIndexChange={setGalleryIndex}
-          onClose={() => setGalleryIndex(null)}
-        />
-      )}
     </article>
   );
 }
